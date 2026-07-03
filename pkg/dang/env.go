@@ -350,11 +350,6 @@ func init() {
 	Prelude.AddObject("Regexp", RegexpType)
 	RegexpType.AddObject("Match", MatchType)
 
-	// Install the Path scalar so user code can refer to it by name in type
-	// position (`:: Path!`, annotations, case patterns). Its constructor is
-	// the builtin function of the same name, registered by registerPath.
-	Prelude.AddObject("Path", PathType)
-
 	// Install Error interface with message field
 	Prelude.AddObject("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NewFnType(NewRecordType(""), hm.NonNullType{Type: StringType})))
@@ -405,8 +400,9 @@ func init() {
 }
 
 func NewPreludeTypeScope(name string) *OverlayTypeScope {
+	loadPrelude()
 	mod := NewType(name, ObjectKind)
-	return &OverlayTypeScope{mod, Prelude}
+	return &OverlayTypeScope{mod, preludeChain}
 }
 
 func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {

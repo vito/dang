@@ -417,9 +417,6 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 			}
 			return RegexpValue{Re: re, Source: val.Val}, nil
 		}
-		if mod == PathType {
-			return newPathValue(val.Val), nil
-		}
 		// A scalar declared with a new() hook computes its canonical string
 		// at materialization (the Regexp-compiles-here precedent).
 		if hook, argName, ok := mod.ScalarHook(); ok {
@@ -530,9 +527,6 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			}
 			if mod == StringType {
 				return StringValue{Val: s}, nil
-			}
-			if mod == PathType {
-				return newPathValue(s), nil
 			}
 			if hook, argName, ok := mod.ScalarHook(); ok {
 				v, err := runScalarHook(ctx, scope, mod, hook, argName, s)

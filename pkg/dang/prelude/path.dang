@@ -1,0 +1,378 @@
+# The Path scalar, self-hosted: a slash-separated path, normalized on
+# construction. This file ships embedded in the interpreter and is evaluated
+# once into the prelude, so everything here is available without any import.
+
+# cleanPath is Go's path.Clean, expressed lexically: collapse empty and "."
+# segments, resolve ".." against prior segments, keep leading ".." for
+# relative paths, and represent the empty path as ".".
+let cleanPath(raw: String!): String! {
+  let rooted = raw.hasPrefix("/")
+  let out: [String!]! = []
+  raw.split("/").each { seg =>
+    if (seg == "" or seg == ".") {
+      continue
+    }
+    if (seg == "..") {
+      if (out.isEmpty) {
+        if (!rooted) {
+          out += [".."]
+        }
+        continue
+      }
+      if (out.takeLast(1)[0] == "..") {
+        out += [".."]
+      } else {
+        out = out.dropLast(1)
+      }
+      continue
+    }
+    out += [seg]
+  }
+  let joined = out.join("/")
+  if (rooted) {
+    "/" + joined
+  } else if (joined == "") {
+    "."
+  } else {
+    joined
+  }
+}
+
+# segments splits a cleaned path into its parts, excluding the root; the
+# empty path "." has no segments.
+let segments(p: String!): [String!]! {
+  if (p == "." or p == "/") {
+    return [] :: [String!]!
+  }
+  p.trimPrefix("/").split("/")
+}
+
+# relPath is filepath.Rel over slash-separated paths: the path that reaches
+# target from base, or null when that is not expressible.
+let relPath(base: String!, target: String!): String {
+  let b = cleanPath(base)
+  let t = cleanPath(target)
+  if (t == b) {
+    return "."
+  }
+  if (b.hasPrefix("/") != t.hasPrefix("/")) {
+    return null
+  }
+  let bsegs = segments(b)
+  let tsegs = segments(t)
+  let n = if (bsegs.length < tsegs.length) { bsegs.length } else { tsegs.length }
+  let common = 0
+  loop {
+    if (common >= n) {
+      break
+    }
+    if (bsegs[common] != tsegs[common]) {
+      break
+    }
+    common += 1
+  }
+  # cleaned paths carry ".." only at the front; if base still has one past
+  # the common prefix, it escapes upward and no relative path exists
+  if (bsegs.dropFirst(common).contains("..")) {
+    return null
+  }
+  let parts = [] :: [String!]!
+  let ups = bsegs.length - common
+  let i = 0
+  loop {
+    if (i >= ups) {
+      break
+    }
+    parts += [".."]
+    i += 1
+  }
+  parts += tsegs.dropFirst(common)
+  if (parts.isEmpty) {
+    "."
+  } else {
+    parts.join("/")
+  }
+}
+
+let containsPath(base: String!, target: String!): Boolean! {
+  let rel = relPath(base, target)
+  if (rel == null) {
+    return false
+  }
+  rel == "." or (rel != ".." and !rel.hasPrefix("../"))
+}
+
+# regexEscape makes a single character literal inside a regular expression.
+let regexEscape(ch: String!): String! {
+  if (ch.containsMatch(`^[A-Za-z0-9]$`)) {
+    ch
+  } else {
+    "\\" + ch
+  }
+}
+
+# globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
+# [...] classes, \ escapes; * and ? never match "/") into an anchored
+# regular expression, or null when the pattern is malformed.
+let globToRegexp(pattern: String!): String {
+  let chars = pattern.split("")
+  let out = "^"
+  let i = 0
+  let bad = false
+  loop {
+    if (bad or i >= chars.length) {
+      break
+    }
+    let c = chars[i] ?? ""
+    if (c == "*") {
+      out += "[^/]*"
+      i += 1
+      continue
+    }
+    if (c == "?") {
+      out += "[^/]"
+      i += 1
+      continue
+    }
+    if (c == "\\") {
+      let nxt = chars[i + 1]
+      if (nxt == null) {
+        bad = true
+        continue
+      }
+      out += regexEscape(nxt)
+      i += 2
+      continue
+    }
+    if (c == "[") {
+      out += "["
+      i += 1
+      if (chars[i] == "^") {
+        out += "^"
+        i += 1
+      }
+      let content = 0
+      let closed = false
+      loop {
+        let cc = chars[i]
+        if (cc == null) {
+          break
+        }
+        if (cc == "]") {
+          if (content > 0) {
+            closed = true
+          }
+          break
+        }
+        if (cc == "\\") {
+          let esc = chars[i + 1]
+          if (esc == null) {
+            break
+          }
+          out += regexEscape(esc)
+          i += 2
+          content += 1
+          continue
+        }
+        if (cc == "-") {
+          out += "-"
+        } else {
+          out += regexEscape(cc)
+        }
+        i += 1
+        content += 1
+      }
+      if (!closed) {
+        bad = true
+        continue
+      }
+      out += "]"
+      i += 1
+      continue
+    }
+    out += regexEscape(c)
+    i += 1
+  }
+  if (bad) {
+    return null
+  }
+  out + "$"
+}
+
+"""
+a slash-separated path, normalized on construction
+"""
+scalar Path {
+  new(raw: String!) {
+    cleanPath(raw)
+  }
+
+  """
+  the last element of the path
+
+  ```
+  Path("/usr/local/bin").name
+  ```
+  """
+  name: String! {
+    let s = self :: String!
+    if (s == "/") {
+      return "/"
+    }
+    segments(s).takeLast(1)[0] ?? "."
+  }
+
+  """
+  the last element of the path with its extension removed
+
+  ```
+  Path("src/app.tar.gz").stem
+  ```
+  """
+  stem: String! {
+    let n = self.name
+    let pieces = n.split(".")
+    if (pieces.length == 1) {
+      return n
+    }
+    if (pieces.length == 2 and pieces[0] == "") {
+      return n
+    }
+    pieces.dropLast(1).join(".")
+  }
+
+  """
+  the extension of the last path element without its dot, or null when there
+  is none; a leading dot alone (".bashrc") does not begin an extension
+
+  ```
+  Path("src/app.tar.gz").extension
+  ```
+  """
+  extension: String {
+    let pieces = self.name.split(".")
+    if (pieces.length == 1) {
+      return null
+    }
+    if (pieces.length == 2 and pieces[0] == "") {
+      return null
+    }
+    pieces.takeLast(1)[0]
+  }
+
+  """
+  the path with its last element removed; the parent of the root is the
+  root, and the parent of a bare name is `.`
+
+  ```
+  Path("/usr/local/bin").parent
+  ```
+  """
+  parent: Path! {
+    let s = self :: String!
+    if (s == "/") {
+      return Path("/")
+    }
+    let segs = segments(s)
+    if (segs.length <= 1) {
+      if (s.hasPrefix("/")) {
+        return Path("/")
+      }
+      return Path(".")
+    }
+    let joined = segs.dropLast(1).join("/")
+    if (s.hasPrefix("/")) {
+      Path("/" + joined)
+    } else {
+      Path(joined)
+    }
+  }
+
+  """
+  the path's segments, excluding the root; the empty path `.` has none
+
+  ```
+  Path("/usr/local/bin").parts
+  ```
+  """
+  parts: [String!]! {
+    segments(self :: String!)
+  }
+
+  """
+  whether the path is absolute
+
+  ```
+  Path("/etc").isAbsolute
+  ```
+  """
+  isAbsolute: Boolean! {
+    (self :: String!).hasPrefix("/")
+  }
+
+  """
+  the path extended with another path, normalized
+
+  ```
+  Path("a").join("b/c")
+  ```
+  """
+  join(other: Path!): Path! {
+    Path((self :: String!) + "/" + (other :: String!))
+  }
+
+  """
+  the path expressed relative to base, or null when that is not expressible
+  (mixing absolute and relative paths, or base escaping upward through `..`)
+
+  ```
+  Path("/usr/local/bin").relativeTo("/usr")
+  ```
+  """
+  relativeTo(base: Path!): Path {
+    let rel = relPath(base :: String!, self :: String!)
+    if (rel == null) {
+      return null
+    }
+    Path(rel)
+  }
+
+  """
+  whether other is the same path or lexically contained within it; mixing
+  absolute and relative paths is never containment
+
+  ```
+  Path("/usr/local").contains("/usr/local/bin")
+  ```
+  """
+  contains(other: Path!): Boolean! {
+    containsPath(self :: String!, other :: String!)
+  }
+
+  """
+  whether the path matches the shell-style glob pattern; raises when the
+  pattern is invalid
+
+  ```
+  Path("main.dang").matches("*.dang")
+  ```
+  """
+  matches(pattern: String!): Boolean! {
+    let re = globToRegexp(pattern)
+    if (re == null) {
+      raise `matches: invalid pattern "${pattern}"`
+    }
+    (self :: String!).containsMatch(re :: Regexp!)
+  }
+
+  """
+  the path as a plain String
+
+  ```
+  Path("a//b/./c").string
+  ```
+  """
+  string: String! {
+    self :: String!
+  }
+}

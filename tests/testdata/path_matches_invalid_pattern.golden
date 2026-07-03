@@ -1,9 +1,11 @@
-[1m[31mError:[0m matches: invalid pattern "["
-  [2m[34m--> errors/path_matches_invalid_pattern.dang:2:10[0m
+[1m[31mError:[0m uncaught error: matches: invalid pattern "["
+  [2m[34m--> prelude/path.dang:363:7[0m
  [2m    |[0m
- [2m  1 | # Path.matches raises on an invalid glob pattern.[0m
- [2m[34m[1m  2 | [0mlet ok = Path("x").matches("[")
-[2m                [31m^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  3 | [0m
+ [2m361 |     let re = globToRegexp(pattern)[0m
+ [2m362 |     if (re == null) {[0m
+ [2m[34m[1m363 | [0m      raise `matches: invalid pattern "${pattern}"`
+[2m             [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m364 |     }[0m
+ [2m365 |     (self :: String!).containsMatch(re :: Regexp!)[0m
  [2m    |[0m
 

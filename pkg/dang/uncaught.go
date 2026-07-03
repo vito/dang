@@ -78,11 +78,20 @@ func (u *uncaughtErrorReport) annotate(out *strings.Builder, label, message stri
 // disk. Empty when unknown, so annotate degrades rather than underlining
 // the wrong file's lines.
 func (u *uncaughtErrorReport) sourceFor(loc *SourceLocation) string {
+	// Prelude locations resolve to the embedded source: the boundary's own
+	// source is never the right text for them, even for the primary
+	// location (a raise inside prelude code).
+	if src, ok := preludeSource(loc.Filename); ok {
+		return src
+	}
 	primary := u.Raised.Location
 	if u.Source != "" && primary != nil && primary.Filename == loc.Filename {
 		return u.Source
 	}
 	if loc.Filename != "" {
+		if src, ok := preludeSource(loc.Filename); ok {
+			return src
+		}
 		if contents, err := os.ReadFile(loc.Filename); err == nil {
 			return string(contents)
 		}

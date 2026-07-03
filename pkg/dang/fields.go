@@ -1299,6 +1299,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 			scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
 		}
 		env.Add(s.Name.Name, scalarScheme)
+		mod.SetVisibility(s.Name.Name, s.Visibility)
 	}
 
 	if s.Value == nil {
@@ -1329,6 +1330,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		}
 		s.ConstructorFnType = ctorType
 		env.Add(s.Name.Name, hm.NewScheme(nil, ctorType))
+		mod.SetVisibility(s.Name.Name, s.Visibility)
 	}
 
 	// Hoist member signatures onto the scalar type so methods can

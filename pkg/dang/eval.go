@@ -358,6 +358,12 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	// Add builtin functions
 	addBuiltinFunctions(env)
 
+	// Bind the Dang-source prelude's public declarations, builtin-style.
+	loadPrelude()
+	for _, kv := range preludeBindings {
+		env.Bind(kv.Key, kv.Value, PublicVisibility)
+	}
+
 	return env
 }
 
