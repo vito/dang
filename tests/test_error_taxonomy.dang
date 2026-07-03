@@ -5,24 +5,24 @@
 import Test
 
 # assert failures are AssertionError
-let assertCaught = try {
+let assertCaught = {
   assert { 1 == 2 }
   "unreachable"
-} catch {
+} rescue {
   e: AssertionError => "assert caught"
   e: Error => "wrong type"
 }
 assert { assertCaught == "assert caught" }
 
 # interpreter faults are RuntimeError
-let faultCaught = try { 1 / 0 } catch {
+let faultCaught = 1 / 0 rescue {
   e: RuntimeError => e.message
   e: Error => "wrong type"
 }
 assert { faultCaught == "division by zero" }
 
 # raise "string" stays BasicError — specifically NOT a RuntimeError
-let raiseCaught = try { raise "boom" } catch {
+let raiseCaught = { raise "boom" } rescue {
   e: RuntimeError => "wrong type"
   e: AssertionError => "wrong type"
   e: BasicError => e.message
@@ -30,21 +30,21 @@ let raiseCaught = try { raise "boom" } catch {
 assert { raiseCaught == "boom" }
 
 # failed GraphQL requests are GraphQLError, carrying the response path
-let gqlPath = try { user(id: "1").alwaysFails } catch {
+let gqlPath = user(id: "1").alwaysFails rescue {
   e: GraphQLError => e.path
   e: Error => ["wrong type"]
 }
 assert { gqlPath == ["user", "alwaysFails"] }
 
 # extensions arrive as JSON text, ready for JSON.decode
-let gqlExtensions = try { user(id: "1").alwaysFails } catch {
+let gqlExtensions = user(id: "1").alwaysFails rescue {
   e: GraphQLError => e.extensions
   e: Error => "wrong type"
 }
 assert { gqlExtensions == "{\"code\":\"ALWAYS_FAILS\"}" }
 
 # the response message is the server's own, without client-side wrapping
-let gqlMessage = try { user(id: "1").alwaysFails } catch {
+let gqlMessage = user(id: "1").alwaysFails rescue {
   e: GraphQLError => e.message
   e: Error => "wrong type"
 }
@@ -56,16 +56,16 @@ type TokenError implements Error {
   token: String!
 }
 
-let customCaught = try {
+let customCaught = {
   raise TokenError(message: "bad token", token: "abc123")
-} catch {
+} rescue {
   e: RuntimeError => "wrong type"
   e: TokenError => e.token
 }
 assert { customCaught == "abc123" }
 
 # the Error interface pattern still catches every member of the taxonomy
-let viaInterface = try { 1 % 0 } catch {
+let viaInterface = 1 % 0 rescue {
   e: Error => "interface: " + e.message
 }
 assert { viaInterface == "interface: modulo by zero" }
