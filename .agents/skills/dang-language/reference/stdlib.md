@@ -130,5 +130,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 
 ## Error types
 - `Error` — interface with `message: String!`
-- `BasicError` — concrete type behind `raise "msg"`; implements `Error`
-- `AssertionError` — raised by a failed `assert` (carries the offending expression and sub-values)
+- `BasicError` — concrete type behind `raise "msg"`, and nothing else; implements `Error`
+- `AssertionError` — a failed `assert` block (`message` carries the offending expression and sub-values)
+- `RuntimeError` — interpreter faults: division by zero, failed non-null assertions/casts, invalid enum values
+- `GraphQLError` — a GraphQL response reporting errors; adds `path: [String!]!` (failing field) and `extensions: String!` (extensions object as JSON text, `"{}"` when absent)

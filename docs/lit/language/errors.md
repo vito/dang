@@ -194,8 +194,9 @@ fetch(id: Int!): String! {
 ```
 
 The `Error` interface is itself a valid pattern — a typed catch-all
-matching any error, including runtime errors like division by zero, which
-arrive wrapped in `BasicError` so `.message` is always there:
+matching any error, including runtime failures like division by zero
+(a `RuntimeError`; see the built-in taxonomy below), so `.message` is
+always there:
 
 ```dang
 toString(100 / 0) rescue {
@@ -303,6 +304,40 @@ quarter(n: Int!): String! {
 }
 
 [quarter(8), quarter(6)]
+```
+
+## The built-in taxonomy
+
+The runtime classifies its own failures into nameable prelude types, so a
+rescue can dispatch on the *kind* of failure instead of string-matching
+messages:
+
+- `BasicError` — exactly what `raise "some string"` produces, nothing else.
+- `AssertionError` — a failed `assert { }` block.
+- `RuntimeError` — interpreter faults: division by zero, failed non-null
+  assertions and casts, invalid enum values.
+- `GraphQLError` — a GraphQL response reporting errors, with two extra
+  fields: `path: [String!]!` locates the failing field in the request, and
+  `extensions: String!` holds the response's extensions object as JSON
+  text (`"{}"` when absent), ready for `JSON.decode`.
+
+All of them are ordinary `Error` implementers, usable as type patterns:
+
+```dang
+assert { 1 == 2 } rescue {
+  e: AssertionError => "the assertion failed"
+  e: RuntimeError => "the interpreter faulted"
+}
+```
+
+A failed request keeps the server's own error message, untouched by
+client-side wrapping, and its `path` and `extensions` make the failure
+inspectable without parsing text:
+
+```dang-static
+user(id: "1").alwaysFails rescue {
+  e: GraphQLError => `${e.message} (at ${toString(e.path)})`
+}
 ```
 
 ## Propagation

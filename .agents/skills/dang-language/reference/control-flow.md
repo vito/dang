@@ -86,7 +86,7 @@ raise NotFoundError(message: "user gone", resource: "User")
 ```dang
 interface Error { message: String! }
 ```
-- A real prelude interface; `BasicError` is the built-in implementer for string raises.
+- A real prelude interface, implemented by the **built-in taxonomy**: `BasicError` (string raises, nothing else), `AssertionError` (failed `assert` blocks), `RuntimeError` (interpreter faults: division by zero, failed non-null assertions/casts, invalid enum values), `GraphQLError` (a GraphQL response reporting errors; adds `path: [String!]!` and `extensions: String!` — the extensions object as JSON text, `"{}"` when absent).
 - User error types `implements Error`, which forces `message: String!` (omitting it → ``object Foo is missing `message: String!`, required by interface Error``). Additional fields (`resource`, `field`, `code`) are preserved on the raised value and readable in `rescue` clauses.
 
 ### Rescuing: the fallback form `expr rescue fallback`
@@ -109,7 +109,7 @@ validate(name) rescue {
 - The whole `rescue` is one expression — assignable, returnable, nestable.
 - Clauses are `case` patterns limited to **type patterns** plus `else` (a value pattern like `404 =>` is a syntax error). `binding: Type => expr` binds the error narrowed to `Type`; pattern types must implement `Error` (else `type X does not implement interface Error`). `else => expr` is the catch-all that discards the error. First match wins. The `Error` interface itself matches any error (typed catch-all); place specific types first.
 - When **no clause matches**, the error is re-raised to the next enclosing `rescue` — a partial `rescue` narrows what it handles rather than swallowing the rest, and (unlike a non-exhaustive `case`) never makes the result nullable: a miss re-raises, it never yields null.
-- Rescues errors raised anywhere in the operand, including ones propagated from called functions and **runtime errors** (null access, `1 / 0` → `division by zero`, GraphQL failures). Runtime errors arrive wrapped in `BasicError`, so `.message` is uniform.
+- Rescues errors raised anywhere in the operand, including ones propagated from called functions and **runtime failures**, classified into the taxonomy above: interpreter faults arrive as `RuntimeError`, failed asserts as `AssertionError`, GraphQL response errors as `GraphQLError` (server's own message, not the client-side wrapping) — so handlers dispatch on type instead of string-matching `.message`.
 - Operand and clause results merge to one type when they can; arms that diverge **widen to a union** (`1 rescue { e: Error => "s" }` is `Int! | String!`), exactly like `if` branches and `case` clauses.
 
 ### Precedence and parsing
