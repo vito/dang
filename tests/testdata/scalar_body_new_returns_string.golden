@@ -1,0 +1,11 @@
+[1m[31mError:[0m scalar new() must return String!, got Int!
+  [2m[34m--> errors/scalar_body_new_returns_string.dang:5:5[0m
+ [2m    |[0m
+ [2m  3 | scalar Port {[0m
+ [2m  4 |   new(raw: String!) {[0m
+ [2m[34m[1m  5 | [0m    42
+[2m           [31m^^[0m
+ [2m  6 |   }[0m
+ [2m  7 | }[0m
+ [2m    |[0m
+

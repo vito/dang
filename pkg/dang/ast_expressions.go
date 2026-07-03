@@ -917,7 +917,8 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 			case ScalarValue:
 				// Methods on custom scalar values (e.g. Path) dispatch through
-				// the builtin registry, keyed by the scalar's named type.
+				// the builtin registry, keyed by the scalar's named type, then
+				// through the scalar's Dang-defined methods (scalar bodies).
 				if mod, ok := rec.ScalarType.(*Type); ok {
 					methodKey := GetMethodKey(mod, d.Field.Name)
 					if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
@@ -925,6 +926,15 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 					} else if found {
 						if builtinFn, ok := method.(BuiltinFunction); ok {
 							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+						}
+					}
+					if methods := mod.ScalarMethods(); methods != nil {
+						if val, found, err := methods.Lookup(ctx, d.Field.Name); err != nil {
+							return nil, err
+						} else if found {
+							if fnVal, ok := val.(FunctionValue); ok {
+								return BoundScalarMethod{Method: fnVal, Receiver: rec}, nil
+							}
 						}
 					}
 				}

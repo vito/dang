@@ -1,0 +1,93 @@
+# Test scalar bodies: Dang-defined methods on scalars and the new()
+# materialization hook, which normalizes at every way a value comes to exist.
+
+# A Slug normalizes at construction: trimmed, lowered, spaces to dashes.
+scalar Slug {
+  new(raw: String!) {
+    raw.trimSpace.toLower.replace(" ", "-")
+  }
+
+  let core: String! {
+    self :: String!
+  }
+
+  words: [String!]! {
+    self.core.split("-")
+  }
+
+  first: String! {
+    self.words[0] ?? ""
+  }
+
+  shouty: String! {
+    # bare sibling calls re-dispatch through self
+    words.join("+").toUpper
+  }
+
+  withSuffix(suffix: String!): Slug! {
+    Slug(self.core + "-" + suffix)
+  }
+}
+
+# constructor: any String expression, normalized on entry
+let s = Slug("  Hello World  ")
+let str: String! = s
+assert { str == "hello-world" }
+assert { s == Slug("hello-world") }
+assert { s == "hello-world" }
+assert { s.words == ["hello", "world"] }
+assert { s.first == "hello" }
+assert { s.shouty == "HELLO+WORLD" }
+assert { s.withSuffix("x") == Slug("hello-world-x") }
+
+# the hook runs at literal materialization: typed slots, defaults, args, returns
+let lit: Slug! = "FOO Bar"
+assert { lit == "foo-bar" }
+
+describe(slug: Slug! = "Default Slug"): String! { slug :: String! }
+assert { describe == "default-slug" }
+assert { describe("With Arg") == "with-arg" }
+
+mk: Slug! { "  Computed " }
+assert { mk == "computed" }
+
+# the hook runs at :: casts of non-literal Strings
+let raw = "Cast Me"
+assert { (raw :: Slug!) == "cast-me" }
+
+# the hook runs at codec decode
+type Post {
+  slug: Slug!
+}
+let post: Post! = JSON.decode("""{"slug": "From JSON"}""")
+assert { post.slug == Slug("from-json") }
+
+# scalar values degrade to String at boundaries, and stringify bare
+shout(msg: String!): String! { msg.toUpper }
+assert { shout(s) == "HELLO-WORLD" }
+assert { toString(s) == "hello-world" }
+assert { `slug: ${s}` == "slug: hello-world" }
+
+# case clause literals materialize (and normalize) against the scalar operand
+let matched = case (s) {
+  "  Hello World " => true
+  else => false
+}
+assert { matched }
+
+# a raising hook makes construction recoverable with rescue
+scalar Upper {
+  new(raw: String!) {
+    if (raw != raw.toUpper) {
+      raise `not upper: ${raw}`
+    }
+    raw
+  }
+}
+
+let fine: Upper! = "FINE"
+assert { fine == "FINE" }
+let bad = Upper("nope") rescue null
+assert { bad == null }
+
+print("All scalar body tests passed!")

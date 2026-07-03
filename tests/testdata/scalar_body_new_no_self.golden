@@ -1,0 +1,11 @@
+[1m[31mError:[0m self is not available in scalar new(); use the parameter instead
+  [2m[34m--> errors/scalar_body_new_no_self.dang:4:5[0m
+ [2m    |[0m
+ [2m  2 | scalar Slug {[0m
+ [2m  3 |   new(raw: String!) {[0m
+ [2m[34m[1m  4 | [0m    self :: String!
+[2m           [31m^^^^[0m
+ [2m  5 |   }[0m
+ [2m  6 | }[0m
+ [2m    |[0m
+

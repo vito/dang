@@ -1,0 +1,10 @@
+[1m[31mError:[0m shouted: not upper: quiet
+  [2m[34m--> errors/scalar_body_hook_raise.dang:11:23[0m
+ [2m    |[0m
+ [2m  9 | }[0m
+ [2m 10 | [0m
+ [2m[34m[1m 11 | [0mlet shouted: Upper! = "quiet"
+[2m                             [31m^^^^^^^[0m
+ [2m 12 | [0m
+ [2m    |[0m
+

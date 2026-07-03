@@ -361,7 +361,7 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 	case DeferredValue:
 		return materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec)
 	case StringValue:
-		return materializeStringValue(v, target, path)
+		return materializeStringValue(ctx, scope, v, target, path)
 	case ScalarValue:
 		// Degrade a custom scalar flowing into a String slot; any other
 		// target passes through (the value is trusted to match its type).
@@ -393,7 +393,7 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 	}
 }
 
-func materializeStringValue(val StringValue, target hm.Type, path string) (Value, error) {
+func materializeStringValue(ctx context.Context, scope ValueScope, val StringValue, target hm.Type, path string) (Value, error) {
 	inner := unwrapNonNull(target)
 	mod, ok := inner.(*Type)
 	if !ok {
@@ -419,6 +419,15 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 		}
 		if mod == PathType {
 			return newPathValue(val.Val), nil
+		}
+		// A scalar declared with a new() hook computes its canonical string
+		// at materialization (the Regexp-compiles-here precedent).
+		if hook, argName, ok := mod.ScalarHook(); ok {
+			v, err := runScalarHook(ctx, scope, mod, hook, argName, val.Val)
+			if err != nil {
+				return nil, materializeError(path, "%s", err.Error())
+			}
+			return v, nil
 		}
 		return ScalarValue{Val: val.Val, ScalarType: mod}, nil
 	default:
@@ -524,6 +533,13 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			}
 			if mod == PathType {
 				return newPathValue(s), nil
+			}
+			if hook, argName, ok := mod.ScalarHook(); ok {
+				v, err := runScalarHook(ctx, scope, mod, hook, argName, s)
+				if err != nil {
+					return nil, materializeDeferredError(path, "%s", err.Error())
+				}
+				return v, nil
 			}
 			return ScalarValue{Val: s, ScalarType: mod}, nil
 		case ObjectKind:

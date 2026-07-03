@@ -342,9 +342,14 @@ EnumDecl <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:C
 }
 EnumToken <- "enum" !WordChar
 
-ScalarDecl <- ScalarToken _ name:Symbol {
+ScalarDecl <- ScalarToken _ name:Symbol body:(_ b:Block { return b, nil })? {
+  var block *Block
+  if body != nil {
+    block = body.(*Block)
+  }
   return &ScalarDecl{
     Name: name.(*Symbol),
+    Value: block,
     Visibility: PublicVisibility,
     Loc: c.Loc(),
   }, nil

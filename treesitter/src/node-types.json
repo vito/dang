@@ -3555,6 +3555,16 @@
     "type": "scalar_decl",
     "named": true,
     "fields": {
+      "b": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,

@@ -464,14 +464,38 @@ func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
 	return mod, nil
 }
 
-// findNewConstructor returns the NewConstructorDecl from the object body, if any
-func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
-	for _, form := range c.Value.Forms {
+// findNewConstructorIn returns the NewConstructorDecl among a body block's
+// forms, if any. Shared by object and scalar declarations.
+func findNewConstructorIn(block *Block) *NewConstructorDecl {
+	if block == nil {
+		return nil
+	}
+	for _, form := range block.Forms {
 		if newDecl, ok := form.(*NewConstructorDecl); ok {
 			return newDecl
 		}
 	}
 	return nil
+}
+
+// formsWithoutNew returns a body block's forms excluding any
+// NewConstructorDecl. Shared by object and scalar declarations.
+func formsWithoutNew(block *Block) []Node {
+	if block == nil {
+		return nil
+	}
+	var forms []Node
+	for _, form := range block.Forms {
+		if _, ok := form.(*NewConstructorDecl); !ok {
+			forms = append(forms, form)
+		}
+	}
+	return forms
+}
+
+// findNewConstructor returns the NewConstructorDecl from the object body, if any
+func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
+	return findNewConstructorIn(c.Value)
 }
 
 // bodyFormsWithoutNew returns the object body forms excluding the NewConstructorDecl
@@ -1077,12 +1101,14 @@ func (e *EnumDecl) Walk(fn func(Node) bool) {
 type ScalarDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
+	Value      *Block // optional body: method members and an optional new() hook
 	Visibility Visibility
 	DocString  string
 	Directives []*DirectiveApplication
 	Loc        *SourceLocation
 
-	Inferred *Type
+	Inferred          *Type
+	ConstructorFnType *hm.FunctionType // set when the body declares new()
 }
 
 var _ Node = &ScalarDecl{}
@@ -1093,14 +1119,154 @@ func (s *ScalarDecl) DeclaredSymbols() []string {
 }
 
 func (s *ScalarDecl) ReferencedSymbols() []string {
-	return nil // Scalar declarations don't reference other symbols
+	if s.Value == nil {
+		return nil
+	}
+	return s.Value.ReferencedSymbols()
 }
 
-func (s *ScalarDecl) Body() hm.Expression { return nil }
+func (s *ScalarDecl) Body() hm.Expression {
+	if s.Value == nil {
+		return nil
+	}
+	return s.Value
+}
 
 func (s *ScalarDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
 var _ Hoister = &ScalarDecl{}
+
+// validateScalarBodyForms enforces that a scalar body declares only methods
+// (function-shaped members) and at most one new() hook. Scalars carry no
+// state beyond their underlying string, so stored fields are rejected.
+func (s *ScalarDecl) validateScalarBodyForms() error {
+	sawNew := false
+	for _, form := range s.Value.Forms {
+		switch f := form.(type) {
+		case *NewConstructorDecl:
+			if sawNew {
+				return NewInferError(fmt.Errorf("scalar %s declares more than one new()", s.Name.Name), f)
+			}
+			sawNew = true
+		case *FieldDecl:
+			if f.Name.Name == "new" {
+				vis := "pub"
+				if f.Visibility == PrivateVisibility {
+					vis = "let"
+				}
+				return NewInferError(
+					fmt.Errorf("'new' is a constructor, not a method; use `new(...) { ... }` without `%s` or a return type", vis),
+					f,
+				)
+			}
+			if _, isFun := f.Value.(*FunDecl); !isFun {
+				return NewInferError(
+					fmt.Errorf("scalar member %q must be a method; scalars carry no fields beyond their underlying string", f.Name.Name),
+					f,
+				)
+			}
+		default:
+			return NewInferError(fmt.Errorf("scalar bodies may only declare methods and new()"), form)
+		}
+	}
+	return nil
+}
+
+// buildScalarConstructorType computes the type of the constructor function
+// derived from a scalar's new() hook: exactly one non-null String parameter,
+// returning the non-null scalar.
+func (s *ScalarDecl) buildScalarConstructorType(ctx context.Context, env hm.Env, newDecl *NewConstructorDecl, fresh hm.Fresher) (*hm.FunctionType, error) {
+	if newDecl.BlockParam != nil {
+		return nil, NewInferError(fmt.Errorf("scalar new() cannot take a block parameter"), newDecl)
+	}
+	if len(newDecl.Args) != 1 {
+		return nil, NewInferError(fmt.Errorf("scalar new() must take exactly one String! parameter"), newDecl)
+	}
+	arg := newDecl.Args[0]
+	if arg.Value != nil {
+		return nil, NewInferError(fmt.Errorf("scalar new() parameter cannot have a default"), arg)
+	}
+
+	fnDecl := FunctionBase{Args: newDecl.Args}
+	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
+	argEnv := env.Clone()
+	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s new(): %w", s.Name.Name, err)
+	}
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
+
+	argType, _ := argsRec.Fields[0].Value.Type()
+	if nn, ok := argType.(hm.NonNullType); !ok || nn.Type != StringType {
+		return nil, NewInferError(
+			fmt.Errorf("scalar new() parameter must be String!, got %s", argType),
+			arg,
+		)
+	}
+
+	return hm.NewFnType(argsRec, hm.NonNullType{Type: s.Inferred}), nil
+}
+
+// inferScalarNew infers the body of a scalar's new() hook. Unlike an object
+// constructor, the hook computes the scalar's canonical *underlying string*
+// (the runtime wraps it into the scalar value), so the body must return
+// String! — and `self` is unavailable, since no value exists yet.
+func (s *ScalarDecl) inferScalarNew(ctx context.Context, newDecl *NewConstructorDecl, env hm.Env, fresh hm.Fresher) error {
+	var selfErr error
+	newDecl.BodyBlock.Walk(func(n Node) bool {
+		if _, ok := n.(*SelfKeyword); ok {
+			selfErr = NewInferError(fmt.Errorf("self is not available in scalar new(); use the parameter instead"), n)
+			return false
+		}
+		return true
+	})
+	if selfErr != nil {
+		return selfErr
+	}
+
+	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
+	newEnv := env.Clone().(*OverlayTypeScope)
+	arg := newDecl.Args[0]
+	argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
+	}
+	newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
+
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(constructorCtx, returnTarget)
+	bodyType, err := newDecl.BodyBlock.Infer(bodyCtx, newEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("inferring new() body: %w", err)
+	}
+
+	expectedType := hm.NonNullType{Type: StringType}
+	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
+		errorNode := Node(newDecl.BodyBlock)
+		if len(newDecl.BodyBlock.Forms) > 0 {
+			errorNode = newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		}
+		return NewInferError(
+			fmt.Errorf("scalar new() must return String!, got %s", bodyType.Name()),
+			errorNode,
+		)
+	}
+	for _, ret := range collectReturnStatements(newDecl.BodyBlock, returnTarget) {
+		retType := returnValueType(ret)
+		if retType == nil {
+			continue
+		}
+		if _, err := hm.Assignable(retType, expectedType); err != nil {
+			return NewInferError(
+				fmt.Errorf("scalar new() must return String!, got %s", retType),
+				ret.Value,
+			)
+		}
+	}
+	return nil
+}
 
 func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(TypeScope)
@@ -1116,18 +1282,63 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 
-	// Add the scalar type to the environment. A builtin scalar (JSON, ...)
+	if s.DocString != "" {
+		mod.SetDocString(s.Name.Name, s.DocString)
+		scalarType.SetTypeDocString(s.DocString)
+	}
+
+	// The scalar's value binding. A scalar with new() binds its constructor
+	// function instead (added in pass 1 below); a builtin scalar (JSON, ...)
 	// doubles as its namespace and is always present, so it binds non-null —
 	// otherwise member access like JSON.encode would inherit the binding's
 	// nullability and weaken String! to String.
-	scalarScheme := hm.NewScheme(nil, scalarType)
-	if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
-		scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
+	newDecl := findNewConstructorIn(s.Value)
+	if newDecl == nil {
+		scalarScheme := hm.NewScheme(nil, scalarType)
+		if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
+			scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
+		}
+		env.Add(s.Name.Name, scalarScheme)
 	}
-	env.Add(s.Name.Name, scalarScheme)
 
-	if s.DocString != "" {
-		mod.SetDocString(s.Name.Name, s.DocString)
+	if s.Value == nil {
+		return nil
+	}
+
+	// Pass 0 must only register the type name; see ObjectDecl.Hoist.
+	if pass == 0 {
+		return nil
+	}
+
+	if err := s.validateScalarBodyForms(); err != nil {
+		return err
+	}
+
+	inferTypeScope := &OverlayTypeScope{
+		primary: scalarType,
+		lexical: env.(TypeScope),
+	}
+
+	// self resolves to the non-null scalar inside method bodies.
+	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
+
+	if newDecl != nil {
+		ctorType, err := s.buildScalarConstructorType(ctx, inferTypeScope, newDecl, fresh)
+		if err != nil {
+			return err
+		}
+		s.ConstructorFnType = ctorType
+		env.Add(s.Name.Name, hm.NewScheme(nil, ctorType))
+	}
+
+	// Hoist member signatures onto the scalar type so methods can
+	// forward-reference each other and other types.
+	for _, form := range formsWithoutNew(s.Value) {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, inferTypeScope, fresh, 0); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -1145,26 +1356,102 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	}
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
+		scalarType.SetTypeDocString(s.DocString)
 	}
 
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 
+	if s.Value == nil {
+		return scalarType, nil
+	}
+
+	// Body-form validation happens in Hoist pass 1 (which always precedes
+	// Infer for type declarations); re-validating here would double-report.
+
+	inferTypeScope := &OverlayTypeScope{
+		primary: scalarType,
+		lexical: env.(TypeScope),
+	}
+	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
+
+	if _, err := InferFormsWithPhases(ctx, formsWithoutNew(s.Value), inferTypeScope, fresh); err != nil {
+		return nil, err
+	}
+
+	if newDecl := findNewConstructorIn(s.Value); newDecl != nil {
+		if err := s.inferScalarNew(ctx, newDecl, inferTypeScope, fresh); err != nil {
+			return nil, err
+		}
+	}
+
 	return scalarType, nil
 }
 
 func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	// Scalars are just type placeholders, similar to enums but with no values
-	// The actual scalar values come from GraphQL or are just strings
-	scalarModule := NewObject(s.Inferred)
-	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
-	// scalar's namespace: bind Dang's members onto its runtime object.
-	attachBuiltinMethods(scalarModule, s.Inferred)
+	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
+		newDecl := findNewConstructorIn(s.Value)
 
-	// Register the scalar type in the environment
-	scope.Bind(s.Name.Name, scalarModule, s.Visibility)
+		var evalScope ValueScope
+		if s.Value != nil {
+			// Evaluate method members into a methods object hung off the *Type,
+			// where Select.Eval dispatches them for ScalarValue receivers. The
+			// members' shared closure overlays the methods object itself, so
+			// sibling methods see each other by bare name.
+			methods := NewObject(s.Inferred)
+			evalScope = CreateOverlayValueScope(methods, scope)
+			for _, form := range formsWithoutNew(s.Value) {
+				if _, err := EvalNode(ctx, evalScope, form); err != nil {
+					return nil, err
+				}
+			}
+			// Methods are dynamic: a bare sibling call inside a method body
+			// re-dispatches through the receiver (see FunctionValue.Call).
+			for _, kv := range methods.Bindings(PrivateVisibility) {
+				if fnVal, ok := kv.Value.(FunctionValue); ok {
+					fnVal.IsDynamic = true
+					methods.Bind(kv.Key, fnVal, PublicVisibility)
+				}
+			}
+			s.Inferred.SetScalarMethods(methods)
+		}
 
-	return scalarModule, nil
+		if newDecl != nil {
+			// The new() hook computes the canonical underlying string; the
+			// runtime wraps it (see runScalarHook). It runs with no self —
+			// deliberately not IsDynamic, so a caller's dynamic scope can
+			// never be mistaken for a receiver.
+			argName := newDecl.Args[0].Name.Name
+			hookArgs := NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   argName,
+				Value: hm.NewScheme(nil, hm.NonNullType{Type: StringType}),
+			})
+			hook := FunctionValue{
+				Args:    []string{argName},
+				Body:    newDecl.BodyBlock,
+				Closure: evalScope,
+				FnType:  hm.NewFnType(hookArgs, hm.NonNullType{Type: StringType}),
+			}
+			s.Inferred.SetScalarHook(hook, argName)
+
+			ctor := ScalarConstructor{
+				ScalarType: s.Inferred,
+				FnType:     s.ConstructorFnType,
+				ArgName:    argName,
+				Hook:       hook,
+			}
+			scope.Bind(s.Name.Name, ctor, s.Visibility)
+			return ctor, nil
+		}
+
+		// No constructor: the scalar's name binds its namespace object. A
+		// scalar whose name matches a builtin scalar (e.g. JSON) doubles as
+		// that scalar's namespace: bind Dang's members onto its runtime object.
+		scalarModule := NewObject(s.Inferred)
+		attachBuiltinMethods(scalarModule, s.Inferred)
+		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
+		return scalarModule, nil
+	})
 }
 
 func (s *ScalarDecl) Walk(fn func(Node) bool) {
@@ -1173,6 +1460,9 @@ func (s *ScalarDecl) Walk(fn func(Node) bool) {
 	}
 	for _, d := range s.Directives {
 		d.Walk(fn)
+	}
+	if s.Value != nil {
+		s.Value.Walk(fn)
 	}
 }
 

@@ -1,0 +1,10 @@
+# A scalar body may declare at most one new() hook.
+scalar Slug {
+  new(raw: String!) {
+    raw
+  }
+
+  new(other: String!) {
+    other
+  }
+}

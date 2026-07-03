@@ -860,8 +860,16 @@ func nodeEndLine(node Node) int {
 }
 
 func isTypeDecl(node Node) bool {
-	_, ok := node.(*ObjectDecl)
-	return ok
+	switch n := node.(type) {
+	case *ObjectDecl:
+		return true
+	case *ScalarDecl:
+		// Only body-bearing scalars format like type declarations; a bare
+		// `scalar Name` reads as a simple one-line declaration.
+		return n.Value != nil
+	default:
+		return false
+	}
 }
 
 func isInterfaceDecl(node Node) bool {
@@ -1121,6 +1129,30 @@ func (f *Formatter) formatScalarDecl(s *ScalarDecl) {
 
 	f.write("scalar ")
 	f.write(s.Name.Name)
+
+	if s.Value == nil {
+		return
+	}
+
+	f.write(" {")
+	if s.Name.Loc != nil {
+		f.nl(s.Name.Loc.Line)
+	} else {
+		f.newline()
+	}
+
+	f.indented(func() {
+		f.formatDeclForms(s.Value.Forms)
+		if s.Value.Loc != nil && s.Value.Loc.End != nil {
+			f.emitCommentsBeforeClose(s.Value.Loc.End.Line)
+		}
+	})
+
+	f.writeIndent()
+	f.write("}")
+	if s.Loc != nil && s.Loc.End != nil {
+		f.emitTrailingComment(s.Loc.End.Line)
+	}
 }
 
 // wereSuffixDirectivesMultiline checks if suffix directives were originally on

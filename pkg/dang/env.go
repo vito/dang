@@ -203,6 +203,14 @@ type Type struct {
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
 
+	// Scalar-body runtime hooks: Dang-defined methods and the new()
+	// materialization hook for scalars declared with a body. Written once by
+	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).
+	scalarMethods *Object
+	scalarHook    FunctionValue
+	scalarHookArg string
+	hasScalarHook bool
+
 	// Interface tracking
 	interfaces   []TypeScope // Interfaces this type implements
 	implementers []TypeScope // Types that implement this interface (for interface modules)
@@ -1032,6 +1040,34 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	}
 
 	return fnType
+}
+
+// SetScalarMethods records the runtime methods object for a scalar declared
+// with a body. Select.Eval dispatches ScalarValue receivers through it.
+// Written once during the scalar declaration's Eval and treated as frozen
+// afterwards (shared-Prelude discipline applies for prelude scalars).
+func (e *Type) SetScalarMethods(methods *Object) {
+	e.scalarMethods = methods
+}
+
+// ScalarMethods returns the scalar's Dang-defined methods object, or nil.
+func (e *Type) ScalarMethods() *Object {
+	return e.scalarMethods
+}
+
+// SetScalarHook records the scalar's new() hook: a String! -> String!
+// function run at every materialization of the scalar (literals, casts,
+// decode, and the derived constructor). argName is the hook's parameter name.
+func (e *Type) SetScalarHook(hook FunctionValue, argName string) {
+	e.scalarHook = hook
+	e.scalarHookArg = argName
+	e.hasScalarHook = true
+}
+
+// ScalarHook returns the scalar's new() hook and its parameter name;
+// ok is false when the scalar has no hook.
+func (e *Type) ScalarHook() (hook FunctionValue, argName string, ok bool) {
+	return e.scalarHook, e.scalarHookArg, e.hasScalarHook
 }
 
 // SetTypeDocString sets the documentation string for the type itself

@@ -117,6 +117,48 @@ func (c InputObjectConstructor) Call(ctx context.Context, scope ValueScope, args
 	return instance, nil
 }
 
+// ScalarConstructor constructs a scalar value from a String by running the
+// scalar's new() hook and wrapping the resulting canonical string. It is the
+// value bound under the scalar's name when its declaration includes new(),
+// mirroring how a type's name doubles as its constructor.
+type ScalarConstructor struct {
+	ScalarType *Type
+	FnType     *hm.FunctionType
+	ArgName    string
+	Hook       FunctionValue
+}
+
+func (c ScalarConstructor) Type() hm.Type        { return c.FnType }
+func (c ScalarConstructor) String() string       { return fmt.Sprintf("scalar:%s", c.ScalarType.Named) }
+func (c ScalarConstructor) IsAutoCallable() bool { return false }
+
+func (c ScalarConstructor) ParameterNames() []string {
+	return []string{c.ArgName}
+}
+
+func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	raw, ok := args[c.ArgName].(StringValue)
+	if !ok {
+		return nil, fmt.Errorf("%s: argument %q must be String!, got %T", c.ScalarType.Named, c.ArgName, args[c.ArgName])
+	}
+	return runScalarHook(ctx, scope, c.ScalarType, c.Hook, c.ArgName, raw.Val)
+}
+
+// runScalarHook runs a scalar's new() hook on raw and wraps the resulting
+// canonical string into a ScalarValue. Shared by the derived constructor and
+// materialization (literals, casts, decode).
+func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, hook FunctionValue, argName, raw string) (Value, error) {
+	result, err := hook.Call(ctx, scope, map[string]Value{argName: StringValue{Val: raw}})
+	if err != nil {
+		return nil, err
+	}
+	str, ok := result.(StringValue)
+	if !ok {
+		return nil, fmt.Errorf("%s new() must produce String!, got %T", scalarType.Named, result)
+	}
+	return ScalarValue{Val: str.Val, ScalarType: scalarType}, nil
+}
+
 // GraphQLFunction represents a GraphQL API function that makes actual calls
 type GraphQLFunction struct {
 	Name       string
@@ -1268,6 +1310,13 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 			if recv, ok := self.(ValueScope); ok {
 				return BoundMethod{Method: f, Receiver: recv}.Call(ctx, scope, args)
 			}
+			// A scalar method's self is a plain value, not a scope: a bare
+			// sibling call inside a scalar body re-dispatches with a fresh
+			// self cell the same way (falling through would MutateSelf a
+			// scope derived from the shared closure).
+			if sv, ok := self.(ScalarValue); ok {
+				return BoundScalarMethod{Method: f, Receiver: sv}.Call(ctx, scope, args)
+			}
 		}
 	}
 
@@ -1892,6 +1941,59 @@ func (b BoundMethod) ParameterNames() []string {
 }
 
 func (b BoundMethod) IsAutoCallable() bool {
+	return b.Method.IsAutoCallable()
+}
+
+// BoundScalarMethod is a Dang-defined scalar method bound to its receiver
+// value. Scalar receivers are plain values, not scopes, so unlike BoundMethod
+// the receiver enters the body only as `self`; bare names resolve through the
+// method's closure, which overlays the scalar's sibling methods.
+type BoundScalarMethod struct {
+	Method   FunctionValue
+	Receiver Value
+}
+
+func (b BoundScalarMethod) Type() hm.Type {
+	return b.Method.Type()
+}
+
+func (b BoundScalarMethod) String() string {
+	return fmt.Sprintf("bound_scalar_method(%s)", b.Method.String())
+}
+
+func (b BoundScalarMethod) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("cannot marshal bound method value")
+}
+
+func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	// EnterSelf installs a fresh, unshared cell on the derived scope, so the
+	// (possibly process-shared) closure's own cell is never touched.
+	fnScope := b.Method.Closure.Derive(false)
+	fnScope.EnterSelf(b.Receiver)
+
+	returnFrame := NewControlFrame(ReturnFrame)
+	defer returnFrame.Deactivate()
+	methodCtx := contextWithReturnFrame(ctx, returnFrame)
+
+	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {
+		return nil, err
+	}
+
+	val, err := EvalNode(methodCtx, fnScope, b.Method.Body)
+	if err != nil {
+		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
+			return returnVal, nil
+		}
+		return nil, err
+	}
+	return val, nil
+}
+
+func (b BoundScalarMethod) ParameterNames() []string {
+	return b.Method.Args
+}
+
+func (b BoundScalarMethod) IsAutoCallable() bool {
 	return b.Method.IsAutoCallable()
 }
 

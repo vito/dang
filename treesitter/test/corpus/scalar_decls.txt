@@ -1,0 +1,83 @@
+================================================================================
+Scalar declaration
+================================================================================
+
+scalar URL
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (scalar_decl
+      (scalar_token)
+      (symbol
+        (id
+          (word_token))))))
+
+================================================================================
+Scalar declaration with body
+================================================================================
+
+scalar Slug {
+  new(raw: String!) {
+    raw
+  }
+
+  first: String! {
+    "x"
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (scalar_decl
+      (scalar_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (new_constructor_decl
+            (new_token)
+            (arg_types
+              (immediate_paren)
+              (arg_type
+                (arg_with_type
+                  (symbol
+                    (id
+                      (word_token)))
+                  (colon_token)
+                  (type
+                    (non_null
+                      (type
+                        (named_type
+                          (upper_id
+                            (upper_token))))
+                      (bang_token))))))
+            (block
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token)))))))
+        (form_sep)
+        (decl
+          (field_decl
+            (type_and_block_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (block
+                (literal
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))))))))))

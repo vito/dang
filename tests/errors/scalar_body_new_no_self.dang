@@ -1,0 +1,6 @@
+# self is not available inside a scalar's new() hook: no value exists yet.
+scalar Slug {
+  new(raw: String!) {
+    self :: String!
+  }
+}
