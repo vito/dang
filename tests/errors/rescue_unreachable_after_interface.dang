@@ -1,0 +1,11 @@
+# An interface pattern matches every implementer, so a more specific
+# clause below it can never fire.
+type MiniError implements Error {
+  message: String!
+}
+
+let x = { raise "boom" } rescue {
+  e: Error => "general"
+  m: MiniError => "specific"
+}
+print(x)

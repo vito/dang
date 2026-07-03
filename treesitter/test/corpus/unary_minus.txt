@@ -55,20 +55,21 @@ Negation of parenthesized expression
   last: (unary_expr
     expr: (paren_form
       expr: (default_expr
-        (logical_or_expr
-          (logical_and_expr
-            (equality_expr
-              (relational_expr
-                (additive_expr
-                  left: (symbol_or_call
-                    (auto_call_symbol
-                      name: (id
-                        (word_token))))
-                  op: (additive_op)
-                  right: (symbol_or_call
-                    (auto_call_symbol
-                      name: (id
-                        (word_token)))))))))))))
+        (rescue_expr
+          (logical_or_expr
+            (logical_and_expr
+              (equality_expr
+                (relational_expr
+                  (additive_expr
+                    left: (symbol_or_call
+                      (auto_call_symbol
+                        name: (id
+                          (word_token))))
+                    op: (additive_op)
+                    right: (symbol_or_call
+                      (auto_call_symbol
+                        name: (id
+                          (word_token))))))))))))))
 
 ===
 Subtraction of negative
@@ -80,21 +81,22 @@ a - -b
 
 (dang
   last: (default_expr
-    (logical_or_expr
-      (logical_and_expr
-        (equality_expr
-          (relational_expr
-            (additive_expr
-              left: (symbol_or_call
-                (auto_call_symbol
-                  name: (id
-                    (word_token))))
-              op: (additive_op)
-              right: (unary_expr
-                expr: (symbol_or_call
+    (rescue_expr
+      (logical_or_expr
+        (logical_and_expr
+          (equality_expr
+            (relational_expr
+              (additive_expr
+                left: (symbol_or_call
                   (auto_call_symbol
                     name: (id
-                      (word_token))))))))))))
+                      (word_token))))
+                op: (additive_op)
+                right: (unary_expr
+                  expr: (symbol_or_call
+                    (auto_call_symbol
+                      name: (id
+                        (word_token)))))))))))))
 
 ===
 List of negative literals

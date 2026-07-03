@@ -1,0 +1,12 @@
+swapping
+Jane Smith
+[1m[33mWarning:[0m a lazy User is assigned to `holder`, declared outside this rescue: its failures will surface where it is used, not here
+  [2m[34m--> warnings/rescue_lazy_assign.dang:10:3[0m
+ [2m    |[0m
+ [2m  8 | let outcome = {[0m
+ [2m  9 |   print("swapping")[0m
+ [2m[34m[1m 10 | [0m  holder = secondaryUser
+[2m         [33m^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 11 |   "swapped"[0m
+ [2m 12 | } rescue "failed"[0m
+ [2m    |[0m

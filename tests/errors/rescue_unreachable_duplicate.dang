@@ -1,0 +1,6 @@
+# A duplicate type pattern can never fire; the first one wins every time.
+let x = { raise "boom" } rescue {
+  a: BasicError => "first"
+  b: BasicError => "second"
+}
+print(x)

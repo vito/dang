@@ -1,0 +1,155 @@
+===
+Rescue with fallback expression
+===
+
+let x = risky rescue "fallback"
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (default_expr
+          (rescue_expr
+            (symbol_or_call
+              (auto_call_symbol
+                (id
+                  (word_token))))
+            (rescue_token)
+            (rescue_handler
+              (literal
+                (string
+                  (immediate_string_content)
+                  (immediate_quote_token))))))))))
+
+===
+Rescue with clause block
+===
+
+let x = risky rescue {
+  e: BasicError => e.message
+  else => "other"
+}
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (default_expr
+          (rescue_expr
+            (symbol_or_call
+              (auto_call_symbol
+                (id
+                  (word_token))))
+            (rescue_token)
+            (rescue_handler
+              (rescue_clauses
+                (rescue_clause
+                  (symbol
+                    (id
+                      (word_token)))
+                  (colon_token)
+                  (symbol
+                    (id
+                      (word_token)))
+                  (arrow_token)
+                  (select_or_call
+                    (symbol_or_call
+                      (auto_call_symbol
+                        (id
+                          (word_token))))
+                    (dot_token)
+                    (field_id)))
+                (sep)
+                (rescue_clause
+                  (else_token)
+                  (arrow_token)
+                  (literal
+                    (string
+                      (immediate_string_content)
+                      (immediate_quote_token))))))))))))
+
+===
+Rescue on a block operand
+===
+
+let x = {
+  raise "boom"
+} rescue null
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (default_expr
+          (rescue_expr
+            (block
+              (raise
+                (raise_token)
+                (literal
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))))
+            (rescue_token)
+            (rescue_handler
+              (literal
+                (null
+                  (null_token))))))))))
+
+===
+Rescue chains with default
+===
+
+let x = risky rescue null ?? "default"
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (default_expr
+          (rescue_expr
+            (symbol_or_call
+              (auto_call_symbol
+                (id
+                  (word_token))))
+            (rescue_token)
+            (rescue_handler
+              (literal
+                (null
+                  (null_token)))))
+          (double_interro_token)
+          (literal
+            (string
+              (immediate_string_content)
+              (immediate_quote_token))))))))

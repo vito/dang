@@ -87,20 +87,21 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
               (word_token)))))
       (arrow_token)
       (default_expr
-        (logical_or_expr
-          (logical_and_expr
-            (equality_expr
-              (relational_expr
-                (additive_expr
-                  (multiplicative_expr
-                    (symbol_or_call
-                      (auto_call_symbol
-                        (id
-                          (word_token))))
-                    (multiplicative_op)
-                    (literal
-                      (int
-                        (non_zero_decimal_digit))))))))))))
+        (rescue_expr
+          (logical_or_expr
+            (logical_and_expr
+              (equality_expr
+                (relational_expr
+                  (additive_expr
+                    (multiplicative_expr
+                      (symbol_or_call
+                        (auto_call_symbol
+                          (id
+                            (word_token))))
+                      (multiplicative_op)
+                      (literal
+                        (int
+                          (non_zero_decimal_digit)))))))))))))
   (comment_token)
   (form_sep)
   (symbol_or_call

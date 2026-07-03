@@ -109,7 +109,10 @@ type Dang {
   `pub` keywords until the engine bumps its embedded dang. (The .dagger sources
   are already excluded from `source` via @ignorePatterns.) Files that don't
   parse are skipped too, since tests/errors/ holds deliberately-malformed
-  syntax fixtures the formatter can't read.
+  syntax fixtures the formatter can't read. Note that fixtures that PARSE but
+  fail type-checking (like the removed try/catch and bare-binding forms) get
+  reformatted — possibly into valid code — so they must be fmt-stable or live
+  in Go tests as inline sources instead.
   """
   @generate
   fmt: Changeset! {

@@ -1,0 +1,18 @@
+# An interface pattern before an implementer makes the implementer clause
+# unreachable in case, exactly as in rescue.
+interface Shape {
+  area: Int!
+}
+
+type Square implements Shape {
+  area: Int!
+}
+
+describe(s: Shape!): String! {
+  case (s) {
+    any: Shape => "some shape"
+    sq: Square => "square"
+  }
+}
+
+print(describe(Square(area: 4)))

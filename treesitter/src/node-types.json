@@ -46,6 +46,10 @@
         "named": true
       },
       {
+        "type": "legacy_try_catch",
+        "named": true
+      },
+      {
         "type": "raise",
         "named": true
       },
@@ -55,10 +59,6 @@
       },
       {
         "type": "term",
-        "named": true
-      },
-      {
-        "type": "try_catch",
         "named": true
       },
       {
@@ -1107,56 +1107,6 @@
     }
   },
   {
-    "type": "catch_clause",
-    "named": true,
-    "fields": {
-      "binding": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "symbol",
-            "named": true
-          }
-        ]
-      },
-      "expr": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "type_name": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "symbol",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "arrow_token",
-          "named": true
-        },
-        {
-          "type": "colon_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "conditional",
     "named": true,
     "fields": {
@@ -1332,7 +1282,7 @@
         "required": false,
         "types": [
           {
-            "type": "logical_or_expr",
+            "type": "rescue_expr",
             "named": true
           },
           {
@@ -1365,7 +1315,7 @@
           "named": true
         },
         {
-          "type": "logical_or_expr",
+          "type": "rescue_expr",
           "named": true
         }
       ]
@@ -2272,6 +2222,120 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "legacy_catch_clause",
+    "named": true,
+    "fields": {
+      "binding": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
+          "named": true
+        },
+        {
+          "type": "colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "legacy_try_catch",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "clause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "legacy_catch_clause",
+            "named": true
+          }
+        ]
+      },
+      "cs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "legacy_catch_clause",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "legacy_catch_clause",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "catch_token",
+          "named": true
+        },
+        {
+          "type": "try_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3294,6 +3358,174 @@
     "fields": {}
   },
   {
+    "type": "rescue_clause",
+    "named": true,
+    "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
+          "named": true
+        },
+        {
+          "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "else_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "rescue_clauses",
+    "named": true,
+    "fields": {
+      "clause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "rescue_clause",
+            "named": true
+          }
+        ]
+      },
+      "cs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "rescue_clause",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "rescue_clause",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "rescue_expr",
+    "named": true,
+    "fields": {
+      "handler": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "rescue_handler",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "rescue_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "logical_or_expr",
+          "named": true
+        },
+        {
+          "type": "rescue_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "rescue_handler",
+    "named": true,
+    "fields": {
+      "clauses": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "rescue_clauses",
+            "named": true
+          }
+        ]
+      },
+      "fallback": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "logical_or_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "return",
     "named": true,
     "fields": {
@@ -3621,70 +3853,6 @@
       "types": [
         {
           "type": "triple_quote",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "try_catch",
-    "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "clause": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "catch_clause",
-            "named": true
-          }
-        ]
-      },
-      "cs": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "catch_clause",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      },
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "catch_clause",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "catch_token",
-          "named": true
-        },
-        {
-          "type": "try_token",
           "named": true
         }
       ]
@@ -4731,6 +4899,10 @@
   },
   {
     "type": "raise_token",
+    "named": true
+  },
+  {
+    "type": "rescue_token",
     "named": true
   },
   {

@@ -68,7 +68,7 @@ GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.f
 - A `.{{ }}` selection is different: it materializes an **anonymous record**, which compares by **value** (same fields + equal values ⇒ equal). Reference identity applies to the GraphQL object *handle*, not to a selected record. See the object-equality rules in `objects.md`.
 
 ## Errors from the server
-- Non-null violations and GraphQL errors **raise** — catchable via `try`/`catch`.
+- Non-null violations and GraphQL errors **raise** — recoverable via `rescue` (e.g. `dir.file("VERSION").contents rescue null`).
 
 ## Input types
 User-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax:

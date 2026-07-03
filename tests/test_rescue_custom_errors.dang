@@ -10,19 +10,19 @@ type ValidationError implements Error {
   field: String!
 }
 
-# raise a custom error type, catch-all
-let result = try {
+# raise a custom error type, typed catch-all
+let result = {
   raise NotFoundError(message: "user not found", resource: "User")
-} catch {
-  err => err.message
+} rescue {
+  err: Error => err.message
 }
 
 assert { result == "user not found" }
 
-# catch with type patterns — like case but directly in catch
-let matched = try {
+# rescue with type patterns — like case but directly in rescue
+let matched = {
   raise ValidationError(message: "too short", field: "name")
-} catch {
+} rescue {
   v: ValidationError => "invalid " + v.field + ": " + v.message
   n: NotFoundError => "missing " + n.resource
 }
@@ -30,9 +30,9 @@ let matched = try {
 assert { matched == "invalid name: too short" }
 
 # match the other branch
-let matched2 = try {
+let matched2 = {
   raise NotFoundError(message: "gone", resource: "Post")
-} catch {
+} rescue {
   v: ValidationError => "invalid " + v.field
   n: NotFoundError => "missing " + n.resource
 }
@@ -40,11 +40,11 @@ let matched2 = try {
 assert { matched2 == "missing Post" }
 
 # type patterns with a catch-all fallback
-let withFallback = try {
+let withFallback = {
   raise "plain error"
-} catch {
+} rescue {
   v: ValidationError => "validation"
-  err => "other: " + err.message
+  err: Error => "other: " + err.message
 }
 
 assert { withFallback == "other: plain error" }
@@ -58,19 +58,15 @@ validate(name: String!): String! {
   }
 }
 
-let validated = try {
-  validate("")
-} catch {
+let validated = validate("") rescue {
   v: ValidationError => v.field + " " + v.message
 }
 
 assert { validated == "name must not be empty" }
 
 # non-error path works normally
-let ok = try {
-  validate("Alice")
-} catch {
-  err => "unreachable"
+let ok = validate("Alice") rescue {
+  err: Error => "unreachable"
 }
 
 assert { ok == "Alice" }

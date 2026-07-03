@@ -32,7 +32,7 @@
 
 - `pub`, `let`, `type`, `interface`, `enum`, `union`, `scalar`, `new`, `implements`
 - `if`, `else`, `case`, `break`, `continue`, `return`
-- `try`, `catch`, `raise`
+- `raise`, `rescue` (`try` and `catch` are no longer reserved — see [#errors] for migrating legacy `try`/`catch`)
 - `pub` is optional and being retired — a declaration is public by default; see [#fields]
 - `import`, `directive`, `on`
 - `true`, `false`, `null`

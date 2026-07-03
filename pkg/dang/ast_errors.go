@@ -2,36 +2,55 @@ package dang
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
+	"github.com/Khan/genqlient/graphql"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-// TryCatch is an expression that evaluates a body block and, if it raises
-// an error, dispatches to catch clauses.  The catch block uses the same
-// clause syntax as case:
+// RescueExpr is the postfix error-handling expression.  The operand is any
+// expression — commonly a call chain or a block — and if evaluating it
+// raises, the handler runs.  Clause form dispatches on the error's type
+// using the same type patterns as case and re-raises when nothing matches;
+// fallback form yields a replacement value on any error:
 //
-//	try { ... } catch {
-//	  v: ValidationError => handle(v)
-//	  n: NotFoundError   => handle(n)
-//	  err                => fallback(err)  # catch-all
+//	validate(name) rescue {
+//	  v: ValidationError => v.field
+//	  e: Error           => e.message   # typed catch-all, binds the error
+//	  else               => "?"         # catch-all, discards the error
 //	}
-type TryCatch struct {
+//
+//	dir.file("VERSION").contents rescue null
+type RescueExpr struct {
 	InferredTypeHolder
-	TryBody *Block
+	Operand Node
 	Clauses []*CaseClause
-	Loc     *SourceLocation
+	// Fallback is the expression after `rescue` in the fallback form;
+	// mutually exclusive with Clauses.
+	Fallback Node
+	// Legacy marks a node parsed from the removed `try { } catch { }`
+	// block syntax: the formatter rewrites it to the postfix form, and
+	// inference rejects it with a migration hint.
+	Legacy bool
+	Loc    *SourceLocation
 }
 
-var _ Node = (*TryCatch)(nil)
-var _ Evaluator = (*TryCatch)(nil)
+var _ Node = (*RescueExpr)(nil)
+var _ Evaluator = (*RescueExpr)(nil)
 
-func (t *TryCatch) DeclaredSymbols() []string { return nil }
+func (t *RescueExpr) DeclaredSymbols() []string { return nil }
 
-func (t *TryCatch) ReferencedSymbols() []string {
+func (t *RescueExpr) ReferencedSymbols() []string {
 	var symbols []string
-	symbols = append(symbols, t.TryBody.ReferencedSymbols()...)
+	symbols = append(symbols, t.Operand.ReferencedSymbols()...)
+	if t.Fallback != nil {
+		symbols = append(symbols, t.Fallback.ReferencedSymbols()...)
+	}
 	for _, clause := range t.Clauses {
 		if clause.Value != nil {
 			symbols = append(symbols, clause.Value.ReferencedSymbols()...)
@@ -44,16 +63,43 @@ func (t *TryCatch) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (t *TryCatch) Body() hm.Expression { return t }
+func (t *RescueExpr) Body() hm.Expression { return t }
 
-func (t *TryCatch) GetSourceLocation() *SourceLocation { return t.Loc }
+func (t *RescueExpr) GetSourceLocation() *SourceLocation { return t.Loc }
 
-func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
-		// Infer the try body type.
-		bodyType, err := t.TryBody.Infer(ctx, env, fresh)
+		if t.Legacy {
+			return nil, NewInferError(
+				fmt.Errorf("try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate"),
+				t,
+			)
+		}
+
+		bodyType, err := t.Operand.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
+		}
+
+		// Fallback form: `expr rescue fallback` merges the two types the
+		// same way an else clause would.
+		if t.Fallback != nil {
+			fallbackType, err := t.Fallback.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			checkRescueLaziness(ctx, env, t, bodyType)
+			return mergeControlResultTypesTagged(
+				bodyType, nodeOrigin("rescue operand", t.Operand),
+				fallbackType, nodeOrigin("rescue fallback", t.Fallback),
+			), nil
+		}
+
+		if len(t.Clauses) == 0 {
+			return nil, NewInferError(
+				fmt.Errorf("rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value`"),
+				t,
+			)
 		}
 
 		errorType := hm.NonNullType{Type: ErrorType}
@@ -67,8 +113,16 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		resultType := bodyType
+		operandSrc := nodeOrigin("rescue operand", t.Operand)
 
+		var elseClause *CaseClause
+		var priorPatterns []*CaseClause
 		for _, clause := range t.Clauses {
+			// A clause after an else catch-all can never match.
+			if err := checkClauseReachable(clause, elseClause, nil); err != nil {
+				return nil, err
+			}
+
 			var clauseType hm.Type
 
 			if clause.IsTypePattern() {
@@ -77,6 +131,10 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 				if err := implicitCase.inferTypePatternClause(ctx, env, fresh, clause, errorType); err != nil {
 					return nil, err
 				}
+				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil {
+					return nil, err
+				}
+				priorPatterns = append(priorPatterns, clause)
 
 				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
@@ -87,27 +145,50 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 					return nil, err
 				}
 			} else if clause.IsElse {
-				// Catch-all: err => ...
-				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					clauseEnv := env.Clone()
-					if clause.Binding != "" {
-						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, errorType))
+				// A binding on a catch-all can only come from the removed
+				// bare-binding form (`err =>`), which parses so it can be
+				// rejected with a targeted error here.
+				if clause.Binding != "" {
+					return nil, NewInferError(
+						fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
+						clause,
+					)
+				}
+				// Unlike case — whose nullable operands fall through every
+				// type pattern — a rescue's operand is always Error!, so an
+				// `e: Error` pattern is a complete catch-all and a later
+				// else can never fire.
+				for _, prev := range priorPatterns {
+					if canonicalModule(prev.resolvedMemberType) == ErrorType {
+						return nil, NewInferError(
+							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.TypePattern.Name, prev.Loc.Line),
+							clause,
+						)
 					}
-					return clause.Expr.Infer(ctx, clauseEnv, fresh)
+				}
+				elseClause = clause
+				// Catch-all: else => ...
+				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
+					return clause.Expr.Infer(ctx, env.Clone(), fresh)
 				})
 				if err != nil {
 					return nil, err
 				}
 			} else {
-				return nil, NewInferError(fmt.Errorf("catch clauses must be type patterns or a catch-all"), clause)
+				return nil, NewInferError(fmt.Errorf("rescue clauses must be type patterns or a catch-all"), clause)
 			}
 
 			// Arms that diverge from the body (or each other) widen to a
 			// union, same as if branches and case clauses. There is no null
 			// fallthrough to account for: a catch with no matching clause
 			// re-raises rather than yielding null.
-			resultType = mergeControlResultTypes(resultType, clauseType)
+			resultType = mergeControlResultTypesTagged(
+				resultType, operandSrc,
+				clauseType, armOrigin("rescue clause", clause.Loc),
+			)
 		}
+
+		checkRescueLaziness(ctx, env, t, bodyType)
 
 		return resultType, nil
 	})
@@ -115,12 +196,27 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 // RaisedError is a sentinel wrapper that carries an error value through
 // Go's error interface so that Eval methods propagate it up the call
-// stack until a TryCatch catches it.
+// stack until a RescueExpr rescues it.
+//
+// A RaisedError is immutable once returned: memoized lazy-slot errors mean
+// the same wrapper pointer can resurface at multiple observation sites, so
+// mutating one after the fact would retroactively rewrite history.
 type RaisedError struct {
 	Value    Value // always an *Object implementing Error
 	Location *SourceLocation
+
+	// Cause is the error that was being rescued when this one was raised,
+	// recorded out-of-band (never surfaced through the Error interface or
+	// the type system). It is left nil for a plain re-raise of the rescued
+	// error itself, and when the raised value carries its own non-null
+	// `cause` field — an explicit cause wins over the implicit record.
+	Cause *RaisedError
 }
 
+// Error returns just the message field. Keep it that way: this string is
+// load-bearing in the docs literate build, the playground, and the REPL,
+// which all render failures from Error() — richer uncaught output belongs
+// to the boundary printer, not here.
 func (r *RaisedError) Error() string {
 	if mv, ok := r.Value.(*Object); ok {
 		if msg, found := mv.lookupValue("message"); found {
@@ -130,9 +226,26 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
-func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+// inFlightErrorKey carries the error currently being rescued through the
+// dynamic extent of a rescue arm (clause expr or fallback), so that a
+// raise evaluating during recovery can record it as the new error's cause.
+type inFlightErrorKey struct{}
+
+// raisedErrorFor returns the *RaisedError wrapper for an error caught by a
+// rescue: the original wrapper when the error came from raise (preserving
+// its location and cause chain), or a fresh one around the classified
+// value otherwise.
+func raisedErrorFor(err error, errVal Value) *RaisedError {
+	var raised *RaisedError
+	if errors.As(err, &raised) {
+		return raised
+	}
+	return &RaisedError{Value: errVal}
+}
+
+func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
-		val, err := EvalNode(ctx, scope, t.TryBody)
+		val, err := EvalNode(ctx, scope, t.Operand)
 		if err == nil {
 			return val, nil
 		}
@@ -141,8 +254,15 @@ func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, err
 		}
 
-		// Resolve the error value to bind in catch clauses.
+		// Resolve the error value once, and expose it to the arm's dynamic
+		// extent so a raise during recovery records it as the cause.
 		errVal := extractErrorValue(err)
+		armCtx := context.WithValue(ctx, inFlightErrorKey{}, raisedErrorFor(err, errVal))
+
+		// Fallback form: any error yields the fallback value.
+		if t.Fallback != nil {
+			return EvalNode(armCtx, scope.Derive(true), t.Fallback)
+		}
 
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
@@ -151,14 +271,14 @@ func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				if clause.Binding != "" {
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
-				return EvalNode(ctx, childScope, clause.Expr)
+				return EvalNode(armCtx, childScope, clause.Expr)
 			}
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
 					childScope := scope.Derive(true)
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
-					return EvalNode(ctx, childScope, clause.Expr)
+					return EvalNode(armCtx, childScope, clause.Expr)
 				}
 				continue
 			}
@@ -169,36 +289,101 @@ func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	})
 }
 
-// extractErrorValue turns any caught error into an *Object.  User-
-// level raises already carry one; runtime errors are wrapped in a
-// BasicError.
+// extractErrorValue turns any caught error into an *Object, classifying
+// it into the built-in taxonomy. User-level raises already carry one;
+// assert{} failures become AssertionError; errors returned in a GraphQL
+// response become GraphQLError; every other fault becomes RuntimeError.
+// BasicError is reserved for `raise "string"` (see Raise.Eval).
 func extractErrorValue(err error) Value {
 	var raised *RaisedError
 	if errors.As(err, &raised) {
 		return raised.Value
 	}
-	// Wrap runtime errors in a BasicError.
+
+	var assertErr *AssertionError
+	if errors.As(err, &assertErr) {
+		// Use Message, not Error(): the "  Location: file:line:col" suffix
+		// is for uncaught rendering, not the caught value.
+		return newTypedError(AssertionErrorType, assertErr.Message)
+	}
+
+	var gqlErrs gqlerror.List
+	if errors.As(err, &gqlErrs) && len(gqlErrs) > 0 {
+		return newGraphQLError(gqlErrs)
+	}
+	// genqlient's HTTPError (non-200 responses) has no Unwrap, so any
+	// GraphQL errors in its body are invisible to errors.As above.
+	var httpErr *graphql.HTTPError
+	if errors.As(err, &httpErr) && len(httpErr.Response.Errors) > 0 {
+		return newGraphQLError(httpErr.Response.Errors)
+	}
+
+	// Everything else — interpreter faults, transport failures — is a
+	// RuntimeError carrying the innermost message.
 	msg := err.Error()
 	var sourceErr *SourceError
 	if errors.As(err, &sourceErr) {
 		msg = sourceErr.Inner.Error()
 	}
-	return newBasicError(msg)
+	return newTypedError(RuntimeErrorType, msg)
+}
+
+// newTypedError creates an *Object of the given prelude error type with
+// the given message.
+func newTypedError(mod *Type, message string) *Object {
+	mv := NewObject(mod)
+	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
+	return mv
 }
 
 // newBasicError creates an *Object of type BasicError with the given
 // message.
 func newBasicError(message string) *Object {
-	mv := NewObject(BasicErrorType)
-	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
+	return newTypedError(BasicErrorType, message)
+}
+
+// newGraphQLError builds a GraphQLError from the errors in a GraphQL
+// response. The first error provides the message, path, and extensions;
+// GraphQL servers (and Dagger in particular) return one error per failed
+// request in practice.
+func newGraphQLError(list gqlerror.List) *Object {
+	first := list[0]
+
+	mv := newTypedError(GraphQLErrorType, first.Message)
+
+	elems := []Value{}
+	for _, seg := range first.Path {
+		switch s := seg.(type) {
+		case ast.PathName:
+			elems = append(elems, StringValue{Val: string(s)})
+		case ast.PathIndex:
+			elems = append(elems, StringValue{Val: strconv.Itoa(int(s))})
+		}
+	}
+	mv.Bind("path", ListValue{
+		Elements: elems,
+		ElemType: hm.NonNullType{Type: StringType},
+	}, PublicVisibility)
+
+	extensions := "{}"
+	if len(first.Extensions) > 0 {
+		if encoded, err := json.Marshal(first.Extensions); err == nil {
+			extensions = string(encoded)
+		}
+	}
+	mv.Bind("extensions", StringValue{Val: extensions}, PublicVisibility)
+
 	return mv
 }
 
-func (t *TryCatch) Walk(fn func(Node) bool) {
+func (t *RescueExpr) Walk(fn func(Node) bool) {
 	if !fn(t) {
 		return
 	}
-	t.TryBody.Walk(fn)
+	t.Operand.Walk(fn)
+	if t.Fallback != nil {
+		t.Fallback.Walk(fn)
+	}
 	for _, clause := range t.Clauses {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)
@@ -261,17 +446,43 @@ func (r *Raise) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		return nil, err
 	}
 
+	inFlight, _ := ctx.Value(inFlightErrorKey{}).(*RaisedError)
+
 	switch v := val.(type) {
 	case StringValue:
+		// A string raise mints a fresh BasicError, which can never be the
+		// rescued value itself, so the implicit cause always applies.
 		return nil, &RaisedError{
 			Value:    newBasicError(v.Val),
 			Location: r.Loc,
+			Cause:    inFlight,
 		}
 	case *Object:
-		return nil, &RaisedError{Value: v, Location: r.Loc}
+		cause := inFlight
+		if inFlight != nil && v == inFlight.Value {
+			// Plain re-raise of the rescued error: no self-cause.
+			cause = nil
+		} else if hasExplicitCause(v) {
+			// The raised value carries its own cause; explicit wins.
+			cause = nil
+		}
+		return nil, &RaisedError{Value: v, Location: r.Loc, Cause: cause}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)
 	}
+}
+
+// hasExplicitCause reports whether an error object carries a non-null
+// `cause` field of its own. lookupValue never forces pending initializers,
+// and declared fields are always published by the time a constructed
+// object reaches raise, so this stays pure.
+func hasExplicitCause(v *Object) bool {
+	cv, ok := v.lookupValue("cause")
+	if !ok {
+		return false
+	}
+	_, isNull := cv.(NullValue)
+	return !isNull
 }
 
 func (r *Raise) Walk(fn func(Node) bool) {

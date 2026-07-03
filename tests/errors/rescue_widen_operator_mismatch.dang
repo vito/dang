@@ -1,0 +1,13 @@
+# A rescue whose arms diverge widens to a union; using it where one member
+# doesn't fit reports which arm each member came from.
+half(n: Int!): Int! {
+  if (n % 2 != 0) {
+    raise "odd"
+  }
+  n / 2
+}
+
+let x = half(4) rescue {
+  e: Error => "fallback"
+}
+print(toString(x + 1))

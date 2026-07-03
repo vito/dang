@@ -167,9 +167,11 @@ func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
 	}
 
 	if !lt.Eq(rt) {
-		return nil, fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt)
+		return nil, withUnionProvenance(
+			fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt), lt, rt)
 	}
-	return nil, fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt)
+	return nil, withUnionProvenance(
+		fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt), lt)
 }
 
 // stripNonNull unwraps a NonNullType, reporting whether the wrapper was present.

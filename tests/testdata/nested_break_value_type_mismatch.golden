@@ -1,4 +1,6 @@
 [1m[31mError:[0m cannot use String! | a | Int! as String!
+  - a from the break value at errors/nested_break_value_type_mismatch.dang:7:3
+  - Int! from the break value at errors/nested_break_value_type_mismatch.dang:8:5
   [2m[34m--> errors/nested_break_value_type_mismatch.dang:6:19[0m
  [2m    |[0m
  [2m  4 | }[0m

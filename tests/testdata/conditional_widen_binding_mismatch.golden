@@ -1,0 +1,13 @@
+[1m[31mError:[0m cannot use Int! | String! as Int!
+  - Int! from the then branch at errors/conditional_widen_binding_mismatch.dang:3:20
+  - String! from the else branch at errors/conditional_widen_binding_mismatch.dang:5:8
+  [2m[34m--> errors/conditional_widen_binding_mismatch.dang:8:16[0m
+ [2m    |[0m
+ [2m  6 |   "one"[0m
+ [2m  7 | }[0m
+ [2m[34m[1m  8 | [0mresult: Int! = v
+[2m                      [31m^[0m
+ [2m  9 | print(toString(result))[0m
+ [2m 10 | [0m
+ [2m    |[0m
+

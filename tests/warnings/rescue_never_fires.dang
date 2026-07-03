@@ -1,0 +1,17 @@
+# A rescue around pure GraphQL chain-building can never fire: selecting an
+# object-typed field only extends a lazy query, so no request is sent — and
+# no failure can happen — inside the rescue.
+
+import Test
+
+# a bare root field read only builds a query for a lazy handle
+let info = serverInfo rescue null
+
+# a plain value read can't fail either
+let greeting = "hello"
+let g = greeting rescue "?"
+
+# neither can a literal
+let n = 42 rescue 0
+
+print(toString(n))

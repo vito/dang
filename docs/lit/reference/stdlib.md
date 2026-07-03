@@ -63,7 +63,9 @@
 > See [#errors]. These are prelude types rather than builtins, so they aren't part of the generated lists above.
 
 - `Error` — interface with `message: String!`
-- `BasicError` — concrete type behind `raise "msg"`; implements `Error`, has `message: String!`
-- `AssertionError` — raised by a failed `assert` (carries the offending expression and sub-values)
+- `BasicError` — concrete type behind `raise "msg"`, and nothing else; implements `Error`
+- `AssertionError` — a failed `assert` block (`message` carries the offending expression and sub-values)
+- `RuntimeError` — interpreter faults: division by zero, failed non-null assertions/casts, invalid enum values
+- `GraphQLError` — a GraphQL response reporting errors; adds `path: [String!]!` (failing field in the request) and `extensions: String!` (extensions object as JSON text, `"{}"` when absent)
 
 > Meta: when generics land properly, update `[T]!` method signatures to show the actual type parameter rather than handwaving `T`/`U`.

@@ -70,8 +70,8 @@ func BuildStaticCompletions(typeScope dang.TypeScope) []string {
 
 	keywords := []string{
 		"let", "if", "else", "true", "false", "null",
-		"self", "type", "pub", "new", "import", "assert", "try",
-		"catch", "raise", "print", "loop",
+		"self", "type", "pub", "new", "import", "assert",
+		"rescue", "raise", "print", "loop",
 	}
 	for _, kw := range keywords {
 		add(kw)

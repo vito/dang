@@ -1,0 +1,21 @@
+# The operand can fail, but its result is a still-unexecuted handle: failures
+# in its pipeline surface where the handle is forced, outside the rescue.
+
+import Test
+
+let picked = {
+  print("picking")
+  primaryUser
+} rescue null
+
+# no warning: `name` is a leaf, so the request runs inside the rescue
+let name = primaryUser.name rescue "unknown"
+
+# no warning: `sync` executes even though its Dang-visible type is User!
+let synced = primaryUser.sync rescue null
+
+# no warning: a `.{{ }}` selection executes where written
+let record = primaryUser.{{name}} rescue null
+
+assert { name == "John Doe" }
+print("done")

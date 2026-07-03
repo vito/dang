@@ -60,14 +60,26 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		hasElse := false
+		var elseClause *CaseClause
+		var priorPatterns []*CaseClause
 		var resultType hm.Type
 		for i, clause := range c.Clauses {
+			// A clause after an else catch-all can never match, whatever
+			// kind it is.
+			if err := checkClauseReachable(clause, elseClause, nil); err != nil {
+				return nil, err
+			}
+
 			var caseType hm.Type
 			if clause.IsTypePattern() {
 				// Type pattern clause: binding: TypeName => expr
 				if err := c.inferTypePatternClause(ctx, env, fresh, clause, exprType); err != nil {
 					return nil, err
 				}
+				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil {
+					return nil, err
+				}
+				priorPatterns = append(priorPatterns, clause)
 
 				// Infer the clause body in a scoped env with the binding.
 				// Use resolvedMemberType which respects narrowed unions from
@@ -98,8 +110,12 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
 			} else {
-				// Else clause
+				// Else clause. Note: an else after type patterns is never
+				// flagged here — a nullable operand falls through every type
+				// pattern, so a trailing else stays reachable even after an
+				// interface catch-all.
 				hasElse = true
+				elseClause = clause
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
@@ -114,7 +130,10 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 			}
 			// Clause bodies that diverge widen to a union, same as if/else
 			// branches.
-			resultType = mergeControlResultTypes(resultType, caseType)
+			resultType = mergeControlResultTypesTagged(
+				resultType, armOrigin("case clause", c.Clauses[0].Loc),
+				caseType, armOrigin("case clause", clause.Loc),
+			)
 		}
 
 		c.exhaustive = hasElse || c.coversAllMembers(exprType)
@@ -417,6 +436,46 @@ func canonicalModule(m *Type) *Type {
 		return m.Canonical
 	}
 	return m
+}
+
+// typePatternCovers reports whether an earlier type-pattern clause already
+// matches every value a later pattern would, mirroring matchesType's
+// runtime dispatch exactly: canonical pointer identity, or an earlier
+// interface pattern that the later type implements. Strictly pairwise —
+// patterns that only *collectively* cover a later one leave it reachable,
+// so a defensive else after exhaustive union patterns stays legal.
+func typePatternCovers(earlier, later *Type) bool {
+	earlierCanon := canonicalModule(earlier)
+	laterCanon := canonicalModule(later)
+	if earlierCanon == laterCanon {
+		return true
+	}
+	return earlierCanon.Kind == InterfaceKind && laterCanon.ImplementsInterface(earlierCanon)
+}
+
+// checkClauseReachable rejects a clause that can never match: any clause
+// after an else catch-all, or a type pattern already covered by an earlier
+// one. Call it at the top of a clause loop, before inferring the clause,
+// with the clause's resolvedMemberType populated for type patterns.
+func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatterns []*CaseClause) error {
+	if elseClause != nil {
+		return NewInferError(
+			fmt.Errorf("unreachable clause: follows the else catch-all on line %d", elseClause.Loc.Line),
+			clause,
+		)
+	}
+	if clause.IsTypePattern() && clause.resolvedMemberType != nil {
+		for _, prev := range priorPatterns {
+			if typePatternCovers(prev.resolvedMemberType, clause.resolvedMemberType) {
+				return NewInferError(
+					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
+						clause.TypePattern.Name, prev.TypePattern.Name, prev.Loc.Line),
+					clause.TypePattern,
+				)
+			}
+		}
+	}
+	return nil
 }
 
 // valueModule extracts the *Type backing a runtime value.

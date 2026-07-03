@@ -78,7 +78,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
   }
 }
 
-Form <- Return / TryCatch / Raise / Conditional / Case / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Return / LegacyTryCatch / Raise / Conditional / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
 
@@ -533,7 +533,7 @@ FieldId <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
     Loc: c.Loc(),
   }, nil
 }
-WordToken <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
+WordToken <- !NullToken !RescueToken [a-zA-Z_][a-zA-Z0-9_]* {
   return string(c.text), nil
 }
 WordChar <- [a-zA-Z0-9_]
@@ -665,13 +665,71 @@ TypeVariable <- v:[a-z] {
 BangToken <- '!'
 
 // Precedence levels from lowest to highest
-DefaultExpr <- left:(LogicalOrExpr / Term) _ DoubleInterroToken _ right:(DefaultExpr / Term) {
+DefaultExpr <- left:(RescueExpr / Term) _ DoubleInterroToken _ right:(DefaultExpr / Term) {
   return &Default{
     Left: left.(Node),
     Right: right.(Node),
     Loc: c.Loc(),
   }, nil
+} / RescueExpr
+
+// Postfix error handling. `expr rescue { clauses }` recovers from an error
+// raised while evaluating expr, dispatching on the error's type and
+// re-raising when no clause matches; `expr rescue fallback` yields fallback
+// on any error. Binds tighter than `??`, looser than `or`, so
+// `x.contents rescue null ?? "default"` handles the error first, then the
+// null. A bare `{` after `rescue` always starts a clause block; `{{ }}`
+// record fallbacks are unaffected.
+RescueExpr <- left:(RescueExpr / Term) _ RescueToken _ handler:RescueHandler {
+  rescue := handler.(*RescueExpr)
+  rescue.Operand = left.(Node)
+  rescue.Loc = c.Loc()
+  return rescue, nil
 } / LogicalOrExpr
+
+RescueHandler <- clauses:RescueClauses {
+  return &RescueExpr{
+    Clauses: clauses.([]*CaseClause),
+  }, nil
+} / !BlockOpen fallback:(LogicalOrExpr / Term) {
+  return &RescueExpr{
+    Fallback: fallback.(Node),
+  }, nil
+}
+
+BlockOpen <- '{' !'{'
+
+// Zero clauses and bare-binding catch-alls parse here so inference can
+// reject them with targeted, source-highlighted errors; failing the parse
+// instead would backtrack into a useless generic syntax error.
+RescueClauses <- '{' _ cs:(clause:RescueClause Sep { return clause, nil })* last:RescueClause? _ '}' {
+  return sliceOfAppend[*CaseClause](cs, last), nil
+}
+
+// Rescue clauses are case clauses restricted to type patterns plus `else`:
+// `e: SomeError =>` binds and narrows, `e: Error =>` is the typed catch-all,
+// `else =>` discards. The old bare-binding catch-all gets a targeted error.
+RescueClause <- ElseToken _ ArrowToken _ expr:Form {
+  return &CaseClause{
+    Expr: expr.(Node),
+    IsElse: true,
+    Loc: c.Loc(),
+  }, nil
+} / binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
+  return &CaseClause{
+    Expr: expr.(Node),
+    Binding: binding.(*Symbol).Name,
+    TypePattern: typeName.(*Symbol),
+    Loc: c.Loc(),
+  }, nil
+} / binding:Symbol _ ArrowToken _ expr:Form {
+  return &CaseClause{
+    Expr: expr.(Node),
+    IsElse: true,
+    Binding: binding.(*Symbol).Name,
+    Loc: c.Loc(),
+  }, nil
+}
 
 LogicalOrExpr <- left:(LogicalOrExpr / Term) _ OrToken _ right:(LogicalAndExpr / Term) {
   return &LogicalOr{
@@ -1036,16 +1094,23 @@ CommentToken <- '#' [^\n]* {
 
 // Additional language constructs
 
-TryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:CatchClause Sep { return clause, nil })* last:CatchClause? _ '}' {
-  return &TryCatch{
-    TryBody: body.(*Block),
+// Vestigial recognition of the removed `try { } catch { }` block syntax.
+// It parses into a RescueExpr marked Legacy so `dang fmt` can rewrite it to
+// the postfix form, while inference rejects it with a migration hint
+// instead of a generic parse error. `try` is otherwise an ordinary
+// identifier.
+LegacyTryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:LegacyCatchClause Sep { return clause, nil })* last:LegacyCatchClause? _ '}' {
+  return &RescueExpr{
+    Operand: body.(*Block),
     Clauses: sliceOfAppend[*CaseClause](cs, last),
+    Legacy: true,
     Loc: c.Loc(),
   }, nil
 }
 
-CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
-  // binding: TypeName => ... (typed pattern, same as case)
+// The legacy clause grammar, bare-binding catch-all included, so old code
+// parses cleanly for rewriting.
+LegacyCatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
   return &CaseClause{
     Value: nil,
     Expr: expr.(Node),
@@ -1054,7 +1119,6 @@ CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr
     Loc: c.Loc(),
   }, nil
 } / binding:Symbol _ ArrowToken _ expr:Form {
-  // name => ... (catch-all, binds the error)
   return &CaseClause{
     Value: nil,
     Expr: expr.(Node),
@@ -1066,6 +1130,7 @@ CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr
 
 TryToken <- "try" !WordChar
 CatchToken <- "catch" !WordChar
+RescueToken <- "rescue" !WordChar
 
 Raise <- RaiseToken _inlineSpace value:Form {
   return &Raise{

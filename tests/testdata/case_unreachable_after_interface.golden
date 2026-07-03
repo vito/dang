@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: Square is already matched by the Shape clause on line 13
+  [2m[34m--> errors/case_unreachable_after_interface.dang:14:9[0m
+ [2m    |[0m
+ [2m 12 |   case (s) {[0m
+ [2m 13 |     any: Shape => "some shape"[0m
+ [2m[34m[1m 14 | [0m    sq: Square => "square"
+[2m               [31m^^^^^^[0m
+ [2m 15 |   }[0m
+ [2m 16 | }[0m
+ [2m    |[0m
+

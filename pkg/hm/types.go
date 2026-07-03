@@ -292,38 +292,85 @@ func BorrowTypes(capacity int) Types {
 // UnionType if it is assignable to any of the options.
 type UnionType struct {
 	Options []Type
+
+	// sources carries an optional opaque per-option annotation, index-aligned
+	// with Options — provenance recorded by whoever widened arms into this
+	// union, consumed by diagnostics. It is deliberately ignored by Eq (two
+	// unions with the same options are the same type wherever their members
+	// came from) and by String. Attach at construction only: union values are
+	// shared, never cloned, so post-hoc mutation would leak provenance across
+	// unrelated uses.
+	sources []any
 }
 
 // NewUnionType creates a flattened, de-duplicated inline union type. If only
 // one distinct option remains, that option is returned directly.
 func NewUnionType(options ...Type) Type {
+	return NewUnionTypeWithSources(options, nil)
+}
+
+// NewUnionTypeWithSources is NewUnionType with an opaque provenance
+// annotation per option (sources may be shorter than options; missing or
+// nil entries mean "unknown"). Flattening a nested union keeps its inner
+// per-option sources, falling back to the outer annotation; de-duplication
+// keeps the first non-nil source for a repeated option.
+func NewUnionTypeWithSources(options []Type, sources []any) Type {
 	flattened := make([]Type, 0, len(options))
-	for _, option := range options {
+	flatSources := make([]any, 0, len(options))
+	for i, option := range options {
+		var src any
+		if i < len(sources) {
+			src = sources[i]
+		}
 		if union, ok := option.(*UnionType); ok {
-			flattened = append(flattened, union.Options...)
+			for j, inner := range union.Options {
+				flattened = append(flattened, inner)
+				flatSources = append(flatSources, union.optionSourceOr(j, src))
+			}
 			continue
 		}
 		flattened = append(flattened, option)
+		flatSources = append(flatSources, src)
 	}
 
 	deduped := make([]Type, 0, len(flattened))
-	for _, option := range flattened {
+	dedupedSources := make([]any, 0, len(flattened))
+	for i, option := range flattened {
 		duplicate := false
-		for _, existing := range deduped {
+		for j, existing := range deduped {
 			if option.Eq(existing) {
 				duplicate = true
+				if dedupedSources[j] == nil {
+					dedupedSources[j] = flatSources[i]
+				}
 				break
 			}
 		}
 		if !duplicate {
 			deduped = append(deduped, option)
+			dedupedSources = append(dedupedSources, flatSources[i])
 		}
 	}
 
 	if len(deduped) == 1 {
 		return deduped[0]
 	}
-	return &UnionType{Options: deduped}
+	return &UnionType{Options: deduped, sources: dedupedSources}
+}
+
+// OptionSource returns the opaque provenance recorded for option i, or nil.
+func (t *UnionType) OptionSource(i int) any {
+	if i < len(t.sources) {
+		return t.sources[i]
+	}
+	return nil
+}
+
+func (t *UnionType) optionSourceOr(i int, fallback any) any {
+	if src := t.OptionSource(i); src != nil {
+		return src
+	}
+	return fallback
 }
 
 func (t *UnionType) Name() string {
@@ -339,7 +386,9 @@ func (t *UnionType) Apply(subs Subs) Substitutable {
 	for i, option := range t.Options {
 		options[i] = option.Apply(subs).(Type)
 	}
-	return NewUnionType(options...)
+	// Re-thread sources: the rebuild would otherwise silently drop them
+	// on every substitution.
+	return NewUnionTypeWithSources(options, t.sources)
 }
 
 func (t *UnionType) FreeTypeVar() TypeVarSet {
@@ -359,7 +408,7 @@ func (t *UnionType) Normalize(k, v TypeVarSet) (Type, error) {
 		}
 		options[i] = normalized
 	}
-	return NewUnionType(options...), nil
+	return NewUnionTypeWithSources(options, t.sources), nil
 }
 
 func (t *UnionType) Types() Types {

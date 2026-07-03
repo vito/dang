@@ -25,12 +25,14 @@
 ```
 let type interface enum union scalar new implements
 if else case break continue return
-try catch raise
+raise rescue
 import directive on
 true false null
 and or
 self
 ```
+
+- `try` and `catch` are **ordinary identifiers** — the old `try { } catch { }` block syntax was replaced by the postfix `rescue` operator (see control-flow.md).
 
 ## Docstrings
 
@@ -84,14 +86,15 @@ greet(
 | level | operators | assoc |
 |---|---|---|
 | 1 | `??` | right |
-| 2 | `or` | left |
-| 3 | `and` | left |
-| 4 | `==`, `!=` | left |
-| 5 | `<`, `<=`, `>`, `>=` | left |
-| 6 | `+`, `-` | left |
-| 7 | `*`, `/`, `%` | left |
-| 8 | `!`, `-` (unary), `&` (prefix) | — |
-| 9 | `.`, `[]`, `()` | left |
+| 2 | `rescue` (postfix error handling) | left |
+| 3 | `or` | left |
+| 4 | `and` | left |
+| 5 | `==`, `!=` | left |
+| 6 | `<`, `<=`, `>`, `>=` | left |
+| 7 | `+`, `-` | left |
+| 8 | `*`, `/`, `%` | left |
+| 9 | `!`, `-` (unary), `&` (prefix) | — |
+| 10 | `.`, `[]`, `()` | left |
 
 - `::` (cast / type hint) is **not** in this chain. It binds only a bare `Term` on its left — wrap compound exprs in parens: `(a + b) :: T!`.
 - Unary/postfix (levels 8–9) bind tighter than every binary operator. `&expr`, `!expr`, `-expr`, `.field`, `[i]`, `(args)` all bind as `Term`.
@@ -117,6 +120,9 @@ greet(
 - Result type is the **fallback's** type: `T ?? T! → T!`; `T ?? T → T`.
 - Right-associative: `a ?? b ?? c` = `a ?? (b ?? c)`.
 
+### Error fallback `rescue`
+- `expr rescue fallback` and `expr rescue { clauses }` — postfix error handling; binds tighter than `??`, looser than `or`; left-associative (chains re-raise into the next `rescue`). A bare `{` after `rescue` always starts a clause block. Semantics in control-flow.md.
+
 ### Compound assignment
 - `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field or `let` local.
 - `=` is plain reassignment, not an operator on the precedence chain.
@@ -135,7 +141,7 @@ Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
 Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
                            | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
-Form         := Return | TryCatch | Raise | Conditional
+Form         := Return | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | IndexOrCall | SelectOrCall | Literal | List
               | ObjectLiteral | Block | ParenForm | SymbolOrCall
@@ -149,6 +155,7 @@ TypeVariable := [a-z]                             # single lowercase letter
 ```
 
 Notable productions:
+- `RescueExpr`: `(RescueExpr | Term) 'rescue' ('{' RescueClause* '}' | fallback)` — sits in the binary-operator chain between `??` and `or` (`DefaultExpr` bottoms out in it). Left-recursive, so chains associate left. (The removed `try {} catch {}` form still parses, solely so type-checking can reject it with a migration hint and `dang fmt -w` can rewrite it.)
 - `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — field path; zero-arg fields auto-call.
 - `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block on a call; params optional.
 - `ObjectSelection`: `'{{' ... '}}'` after a `.` — a `FieldSelection` list (`user.{{name, posts.{{title}}}}`) or a list of `InlineFragment`s for unions/interfaces. A field may carry a GraphQL-style alias (`user.{{full: name}}`); a bare field is shorthand for `name: name`.

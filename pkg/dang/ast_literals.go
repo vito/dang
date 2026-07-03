@@ -22,6 +22,13 @@ var (
 	MapTypeModule  = NewType("Map", ScalarKind)
 	ErrorType      = NewType("Error", InterfaceKind)
 	BasicErrorType = NewType("BasicError", ObjectKind)
+
+	// The built-in error taxonomy: every caught failure is classified into
+	// one of these (or arrives as the user's own raised Error implementer).
+	// BasicError is reserved for `raise "string"`.
+	AssertionErrorType = NewType("AssertionError", ObjectKind)
+	RuntimeErrorType   = NewType("RuntimeError", ObjectKind)
+	GraphQLErrorType   = NewType("GraphQLError", ObjectKind)
 )
 
 // Constant is implemented by nodes whose type can be determined without

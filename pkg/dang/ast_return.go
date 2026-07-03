@@ -152,7 +152,10 @@ func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType h
 		subs, err := assignableForValue(bodyType, declaredType, body)
 		if err != nil {
 			return nil, NewInferError(
-				fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, bodyType),
+				withUnionProvenance(
+					fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, bodyType),
+					bodyType,
+				),
 				body,
 			)
 		}
@@ -168,7 +171,10 @@ func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType h
 			retSubs, err := assignableForValue(retType, declaredType, ret.Value)
 			if err != nil {
 				return nil, NewInferError(
-					fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, retType),
+					withUnionProvenance(
+						fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, retType),
+						retType,
+					),
 					ret.Value,
 				)
 			}

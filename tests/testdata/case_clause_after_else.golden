@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: follows the else catch-all on line 4
+  [2m[34m--> errors/case_clause_after_else.dang:5:3[0m
+ [2m    |[0m
+ [2m  3 |   1 => "one"[0m
+ [2m  4 |   else => "other"[0m
+ [2m[34m[1m  5 | [0m  3 => "three"
+[2m         [31m^^^^^^^^^^^^[0m
+ [2m  6 | }[0m
+ [2m  7 | print(n)[0m
+ [2m    |[0m
+

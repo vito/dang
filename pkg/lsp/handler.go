@@ -311,6 +311,11 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
+	// Collect inference warnings (e.g. the rescue laziness analysis) into a
+	// sink instead of letting them print to the LSP process stderr on every
+	// keystroke; they surface as Warning-severity diagnostics below.
+	ctx, inferWarnings := dang.WithInferWarningSink(ctx)
+
 	// Run type inference focused on the active buffer: full body inference for
 	// the open file, declarations only for siblings. Cross-file declarations
 	// still resolve through the shared dirScope; sibling body errors do not run
@@ -320,6 +325,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeScope, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
+	analysis.Diagnostics = append(analysis.Diagnostics, warningDiagnostics(inferWarnings.Take(), fp)...)
 	// The block's TypeScope composes the shared dirScope with the file's own
 	// imports, so editor features see exactly what inference saw — including the
 	// file's unqualified imported symbols, which only live in the file-local env.

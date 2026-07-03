@@ -1,0 +1,32 @@
+# Test rescue as an expression in various positions
+
+# rescue in a let binding
+let greeting = {
+  raise "nope"
+} rescue {
+  err: Error => "fallback"
+}
+
+safeDivide(a: Int!, b: Int!): Int! {
+  a / b rescue {
+    err: Error => 0
+  }
+}
+
+assert { safeDivide(10, 2) == 5 }
+assert { safeDivide(10, 0) == 0 }
+
+# nested rescue
+let nestedResult = {
+  {
+    raise "inner"
+  } rescue {
+    err: Error => raise "outer: " + err.message
+  }
+} rescue {
+  err: Error => err.message
+}
+
+assert { nestedResult == "outer: inner" }
+
+print("Rescue expression tests passed!")

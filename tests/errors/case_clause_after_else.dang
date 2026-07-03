@@ -1,0 +1,7 @@
+# Nothing may follow an else catch-all; it already matches everything.
+let n = case (3) {
+  1 => "one"
+  else => "other"
+  3 => "three"
+}
+print(n)

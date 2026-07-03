@@ -38,7 +38,7 @@ Four ideas the rest of the language hangs on:
 - **No `return` for the normal result** — the last expression is the value.
   `return` is for *early* exit only.
 - **No truthiness** — `if` conditions must be `Boolean!`.
-- **Everything is an expression** — `if`, `case`, `loop`, `try` all yield values.
+- **Everything is an expression** — `if`, `case`, `loop`, `rescue` all yield values.
 - **Multi-field selection** — `user.{{name, posts.{{title}}}}` becomes one GraphQL
   query (lazy; sent when forced). Fields can be aliased (`user.{{full: name}}`). It
   is the same `{{ }}` construct as a record literal; every `{{ }}` evaluates its
@@ -77,7 +77,7 @@ Load the reference file that matches the question:
 | `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
 | `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
 | `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write**, **interfaces** & **unions** + variance |
-| `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`try`/`catch`/`raise`, the `Error` interface, when to raise vs. return null) |
+| `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`raise`, the postfix `rescue` operator, the `Error` interface, when to raise vs. return null) |
 | `reference/stdlib.md` | top-level builtins (`assert`/`print`/`loop`/`toString`), **`String!` methods** (incl. regex/`Match`, base64), **list `[T]!` methods**, **`JSON`/`YAML`/`TOML` codec namespaces** (`encode`/`decode`), `Random`, `UUID`, error types |
 | `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |
 | `reference/cli.md` | the `dang` CLI, `dang fmt`, the REPL and its `:` commands, exit codes, LSP/editor integration |

@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: the Error clause on line 4 already matches every error
+  [2m[34m--> errors/rescue_else_after_error_catchall.dang:5:3[0m
+ [2m    |[0m
+ [2m  3 | let x = { raise "boom" } rescue {[0m
+ [2m  4 |   e: Error => e.message[0m
+ [2m[34m[1m  5 | [0m  else => "unreachable"
+[2m         [31m^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | }[0m
+ [2m  7 | print(x)[0m
+ [2m    |[0m
+

@@ -121,3 +121,61 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 
 	return combined.String()
 }
+
+// The removed error forms (bare-binding catch-alls and legacy try/catch)
+// deliberately still parse so the compiler can reject them with targeted
+// diagnostics and `dang fmt` can rewrite them. That means they cannot live
+// as fixtures under tests/errors/: the repo-wide `dang fmt` sweep would
+// heal them into valid code. They run from a temp dir instead.
+func (DangSuite) TestRescueMigrationDiagnostics(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name   string
+		source string
+		wants  []string
+	}{
+		{
+			name: "bare binding catch-all",
+			source: `let x = "value" rescue {
+  err => "caught"
+}
+print(x)
+`,
+			wants: []string{
+				"bare catch-all `err =>` is no longer supported",
+				"err: Error =>",
+				"else =>",
+			},
+		},
+		{
+			name: "legacy try/catch",
+			source: `let x = try {
+  raise "boom"
+} catch {
+  err => "caught: " + err.message
+}
+print(x)
+`,
+			wants: []string{
+				"try/catch was replaced by postfix `rescue`",
+				"dang fmt -w",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			dir, err := os.MkdirTemp("", "dang-rescue-migration")
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+			path := filepath.Join(dir, "main.dang")
+			require.NoError(t, os.WriteFile(path, []byte(tt.source), 0644))
+
+			err = dang.RunFile(ctx, path, false)
+			require.Error(t, err)
+			for _, want := range tt.wants {
+				require.Contains(t, err.Error(), want)
+			}
+		})
+	}
+}

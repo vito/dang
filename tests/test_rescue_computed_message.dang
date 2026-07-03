@@ -20,15 +20,13 @@ half(n: Int!): Int! {
 }
 
 # catch-all binds the Error interface; message resolves via the object
-let caught = try { half(7) } catch {
-  err => err.message
+let caught = half(7) rescue {
+  err: Error => err.message
 }
 assert { caught == "7 is odd" }
 
 # type pattern gives access to the concrete type's other fields
-let matched = try {
-  half(3)
-} catch {
+let matched = half(3) rescue {
   o: OddError => `odd number: ${o.number}`
 }
 assert { matched == "odd number: 3" }
@@ -37,21 +35,21 @@ assert { matched == "odd number: 3" }
 assert { OddError(5).message == "5 is odd" }
 
 # non-error path still works
-let ok = try { half(4) } catch {
-  err => -1
+let ok = half(4) rescue {
+  err: Error => -1
 }
 assert { ok == 2 }
 
-# computed and plain message types can mix in one catch
+# computed and plain message types can mix in one rescue
 type PlainError implements Error {
   message: String!
 }
 
-let mixed = try {
+let mixed = {
   raise PlainError("plain")
-} catch {
+} rescue {
   o: OddError => o.message
-  err => err.message
+  err: Error => err.message
 }
 assert { mixed == "plain" }
 

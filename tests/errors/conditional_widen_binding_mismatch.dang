@@ -1,0 +1,9 @@
+# Diverging if/else branches widen to a union; assigning it to a narrower
+# declared type cites the branch each member came from.
+let v = if (1 > 0) {
+  1
+} else {
+  "one"
+}
+result: Int! = v
+print(toString(result))

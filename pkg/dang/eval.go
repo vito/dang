@@ -1503,8 +1503,13 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 	// context.Canceled errors our own fail-fast cancellation may have induced in
 	// still-running siblings — otherwise the actual cause could be masked by
 	// cancellation noise from a lower index (e.g. a list of GraphQL queries
-	// where one fails and the rest are cancelled mid-flight).
+	// where one fails and the rest are cancelled mid-flight). Completed
+	// sibling failures ride along on a parallelFailure wrapper so the
+	// boundary report can show every parallel failure that actually
+	// happened; the wrapper unwraps to the primary, so rescue dispatch and
+	// errors.Is/As are unaffected.
 	var canceled error
+	var genuine []error
 	for i := range errs {
 		switch {
 		case errs[i] == nil:
@@ -1513,10 +1518,15 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 				canceled = errs[i]
 			}
 		default:
-			return nil, errs[i]
+			genuine = append(genuine, errs[i])
 		}
 	}
-	if canceled != nil {
+	switch {
+	case len(genuine) == 1:
+		return nil, genuine[0]
+	case len(genuine) > 1:
+		return nil, &parallelFailure{Primary: genuine[0], Also: genuine[1:]}
+	case canceled != nil:
 		return nil, canceled
 	}
 	return results, nil
@@ -2275,14 +2285,16 @@ func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
 		), true
 	}
 
-	// Surface uncaught raise errors with source highlighting.
+	// Surface uncaught raise errors with the full report: raise site,
+	// public data fields, cause chain, and concurrent sibling failures.
 	var raised *RaisedError
 	if errors.As(err, &raised) {
-		return NewSourceError(
-			fmt.Errorf("uncaught error: %s", raised.Error()),
-			raised.Location,
-			source,
-		), true
+		report := &uncaughtErrorReport{Raised: raised, Source: source}
+		var parallel *parallelFailure
+		if errors.As(err, &parallel) {
+			report.Also = parallel.Also
+		}
+		return report, true
 	}
 
 	return nil, false

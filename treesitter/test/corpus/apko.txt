@@ -235,32 +235,34 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (plus_equal_token))
                   (list
                     (default_expr
-                      (logical_or_expr
-                        (logical_and_expr
-                          (equality_expr
-                            (relational_expr
-                              (additive_expr
-                                (paren_form
-                                  (default_expr
-                                    (logical_or_expr
-                                      (logical_and_expr
-                                        (equality_expr
-                                          (relational_expr
-                                            (additive_expr
-                                              (literal
-                                                (string
-                                                  (immediate_string_content)
-                                                  (immediate_quote_token)))
-                                              (additive_op)
-                                              (symbol_or_call
-                                                (auto_call_symbol
-                                                  (id
-                                                    (word_token)))))))))))
-                                (additive_op)
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))))))))))))))
+                      (rescue_expr
+                        (logical_or_expr
+                          (logical_and_expr
+                            (equality_expr
+                              (relational_expr
+                                (additive_expr
+                                  (paren_form
+                                    (default_expr
+                                      (rescue_expr
+                                        (logical_or_expr
+                                          (logical_and_expr
+                                            (equality_expr
+                                              (relational_expr
+                                                (additive_expr
+                                                  (literal
+                                                    (string
+                                                      (immediate_string_content)
+                                                      (immediate_quote_token)))
+                                                  (additive_op)
+                                                  (symbol_or_call
+                                                    (auto_call_symbol
+                                                      (id
+                                                        (word_token))))))))))))
+                                  (additive_op)
+                                  (literal
+                                    (string
+                                      (immediate_string_content)
+                                      (immediate_quote_token))))))))))))))))
         (form_sep)
         (decl
           (field_decl

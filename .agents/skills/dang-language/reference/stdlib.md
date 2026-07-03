@@ -113,7 +113,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
-### Errors (all catchable with `try`/`catch`)
+### Errors (all recoverable with `rescue`)
 - invalid input → `<Format>.decode: invalid <Format>: ...` (e.g. `JSON.decode: invalid JSON: ...`, `YAML.decode: invalid YAML: ...`)
 - missing required field → `<path>: missing required field`
 - wrong type for field → raises
@@ -130,5 +130,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 
 ## Error types
 - `Error` — interface with `message: String!`
-- `BasicError` — concrete type behind `raise "msg"`; implements `Error`
-- `AssertionError` — raised by a failed `assert` (carries the offending expression and sub-values)
+- `BasicError` — concrete type behind `raise "msg"`, and nothing else; implements `Error`
+- `AssertionError` — a failed `assert` block (`message` carries the offending expression and sub-values)
+- `RuntimeError` — interpreter faults: division by zero, failed non-null assertions/casts, invalid enum values
+- `GraphQLError` — a GraphQL response reporting errors; adds `path: [String!]!` (failing field) and `extensions: String!` (extensions object as JSON text, `"{}"` when absent)
