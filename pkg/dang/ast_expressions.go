@@ -1439,6 +1439,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			// Link back to the canonical type for runtime matching.
 			narrowedMember := NewType(memberMod.Name(), ObjectKind)
 			narrowedMember.Qualifier = memberMod.Qualifier
+			narrowedMember.SourceSchema = memberMod.SourceSchema
 			narrowedMember.Canonical = memberMod
 
 			// Validate each field in the fragment exists on the concrete type

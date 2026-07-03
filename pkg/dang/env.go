@@ -178,6 +178,14 @@ type Type struct {
 	// Qualifier is the import/module alias used for display-only type names.
 	Qualifier string
 
+	// SourceSchema is the introspection schema this type was imported from,
+	// or nil for user-declared types. It lets static analysis recover facts
+	// the hm.Type mapping erases — most importantly whether a field's
+	// underlying GraphQL return type is a scalar leaf (the request executes
+	// at the call site) or an object (the call only extends a lazy query
+	// chain), which @expectedType rewriting otherwise makes indistinguishable.
+	SourceSchema *introspection.Schema
+
 	Parent TypeScope
 
 	objects          map[string]TypeScope
@@ -439,6 +447,7 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 				sub = NewType(t.Name, kind)
 				if subMod, ok := sub.(*Type); ok {
 					subMod.Qualifier = name
+					subMod.SourceSchema = schema
 				}
 				// Store type description as module documentation
 				if t.Description != "" {
@@ -817,6 +826,7 @@ func (e *Type) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 func (e *Type) Clone() hm.Env {
 	mod := NewType(e.Named, e.Kind)
 	mod.Qualifier = e.Qualifier
+	mod.SourceSchema = e.SourceSchema
 	mod.Parent = e
 	mod.dynamicScopeType = e.dynamicScopeType
 	return mod
