@@ -73,9 +73,9 @@ which case it yields `fallback` instead. When nothing raises, the operand
 passes through untouched:
 
 ```dang
-let attempt = "all good" rescue "recovered"
+let attempt = halve(10) rescue -1
 
-attempt.toUpper
+attempt + 1
 ```
 
 The most useful fallback is often `null`: it turns "this failed" into
@@ -334,14 +334,76 @@ Jumps are not errors: `return`, `break`, and `continue` pass through a
 accidentally rescued:
 
 ```dang
-bail: String! {
-  { return "returned, not caught" } rescue {
+bail(n: Int!): String! {
+  {
+    if (n < 0) { raise "negative" }
+    return "returned, not caught"
+  } rescue {
     err: Error => "caught?!"
   }
 }
 
-bail
+bail(1)
 ```
+
+## Rescue where failures happen {#rescue-laziness}
+
+`rescue` catches what fails *while the operand runs* — which, for GraphQL
+values, is less than it looks. Selecting an object-typed field only extends
+a lazy query chain (see [#graphql]): no request is sent, so nothing can
+fail, until a **leaf** field (one whose underlying schema type is a scalar
+or enum — including `@expectedType`-mapped fields like Dagger's `sync`) or
+a `.{{ }}` selection forces the chain. Failures happen at leaves and
+braces, not where the chain is built.
+
+A rescue wrapped around pure chain-building therefore guards nothing, and
+the compiler says so:
+
+```dang-static
+let notes = repo.file("NOTES.md") rescue null
+```
+
+```
+Warning: this rescue can never fire: `file` only builds a GraphQL query — no
+request is sent inside the rescue; failures happen where the chain executes
+— rescue at a leaf field (`.contents`, `.name`, `.digest`) or where the
+value is used
+```
+
+The fix is to move the rescue to the expression that executes — the leaf:
+
+```dang-static
+let notes = repo.file("NOTES.md").contents rescue null
+```
+
+Two related escapes get flagged the same way. When an operand *can* fail
+but its **result** is a still-unexecuted handle, the pipeline behind that
+handle hasn't run — its failures surface wherever the handle is later
+forced, outside the rescue:
+
+```dang-static
+let base = {
+  print("picking a base image")
+  container.from("registry.internal/base:latest")   # still lazy on the way out
+} rescue null
+```
+
+And assigning a lazy handle to a binding declared *outside* the rescue
+defers its failures to that binding's eventual use site:
+
+```dang-static
+let img = container.from("alpine")
+let ok = {
+  img = container.from("registry.internal/base:latest")   # escapes the rescue
+  true
+} rescue false
+```
+
+These are warnings, not errors: the analysis is conservative, and it stays
+quiet whenever anything inside the operand could genuinely fail. The dead
+form also fires on trivially infallible operands — `42 rescue 0`, or a
+rescue around a plain variable read — where the rescue is simply dead
+code.
 
 ## When to raise vs. return null
 

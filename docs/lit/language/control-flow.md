@@ -351,17 +351,20 @@ shout(word: String): String {
 [shout("hey"), shout(null)]
 ```
 
-And `return` is not an error: `rescue` cannot intercept it. (`sneaky`
-is a zero-arg function, so referencing it calls it — see [#functions].)
+And `return` is not an error: `rescue` cannot intercept it, even when the
+same block could genuinely raise on another path:
 
 ```dang
-sneaky: String! {
-  { return "returned" } rescue {
+sneaky(n: Int!): String! {
+  {
+    if (n == 0) { raise "zero" }
+    return "returned"
+  } rescue {
     err: Error => `caught: ${err.message}`
   }
 }
 
-sneaky
+sneaky(1)
 ```
 
 ## `raise` / `rescue`

@@ -129,6 +129,13 @@ validate(name) rescue {
 - `return` cannot be rescued — `{ return x } rescue fallback` still returns `x`; likewise `break`/`continue` are not errors.
 - Re-raise inside a clause with `raise err` (or a new error); it propagates to the next enclosing `rescue`.
 
+### Laziness warnings (non-fatal)
+GraphQL failures happen at **execution points** — a leaf field call (scalar/enum underneath, incl. `@expectedType`-mapped fields like Dagger's `sync`) or a `.{{ }}` selection — not where an object-typed chain is built. The compiler warns (never errors) when a rescue is disconnected from them; warnings print to stderr on CLI runs and appear as Warning-severity LSP diagnostics:
+- **`this rescue can never fire`** — the operand is provably infallible: only literals, plain reads, and GraphQL chain-building (`dir.file("x") rescue null` — `file` builds a query; nothing runs). Fix: rescue at the leaf (`.contents`, `.sync`, `.{{ }}`).
+- **`a lazy T leaves this rescue without executing`** — the operand can fail, but its result is a still-unexecuted handle; the pipeline's failures surface where the handle is later forced, outside the rescue. Tails that ARE execution points (`.sync`, `.stdout`, `.{{ }}`) are exempt.
+- **`a lazy T is assigned to X, declared outside this rescue`** — a handle assigned to an outer binding escapes the handler the same way.
+The analysis is conservative in the permissive direction: any call, raise, division, indexing, or unknown construct counts as fallible and silences it.
+
 ### When to raise vs. return null
 | situation | use |
 |---|---|
