@@ -494,7 +494,7 @@ func localTypeIsQualifiedImport(env TypeScope, name string) bool {
 	return found && origin.Kind == BindingOriginImport && origin.Qualified
 }
 
-func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
+func declareLocalType(ctx context.Context, env TypeScope, name string, kind Kind) (*Type, error) {
 	if existing, found := env.LocalNamedType(name); found {
 		if localTypeShadowsImport(env, name) {
 			// Local declarations intentionally shadow unqualified imports.
@@ -508,6 +508,10 @@ func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
 	}
 
 	mod := NewType(name, kind)
+	// Stamp the declaring module so module-level `let` visibility can tell
+	// same-module access from foreign access. Nil ctx module (un-instrumented
+	// entry point) leaves it nil, which disables enforcement for this type.
+	mod.homeModule = moduleScopeFromContext(ctx)
 	env.AddObject(name, mod)
 	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
 	// scalar's namespace: staple Dang's members onto its type.
@@ -684,7 +688,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ObjectDecl.Hoist: environment does not support module operations")
 	}
 
-	object, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, c.Name)
 	}
@@ -792,7 +796,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
 
-	object, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, c.Name)
 	}
@@ -1192,7 +1196,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		return fmt.Errorf("EnumDecl.Hoist: environment does not support module operations")
 	}
 
-	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	enumType, declareErr := declareLocalType(ctx, mod, e.Name.Name, EnumKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, e.Name)
 	}
@@ -1233,7 +1237,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
 	}
 
-	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	enumType, declareErr := declareLocalType(ctx, mod, e.Name.Name, EnumKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, e.Name)
 	}
@@ -1468,7 +1472,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ScalarDecl.Hoist: environment does not support module operations")
 	}
 
-	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, s.Name)
 	}
@@ -1554,7 +1558,7 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
 	}
 
-	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, s.Name)
 	}
@@ -1741,7 +1745,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		return fmt.Errorf("InterfaceDecl.Hoist: environment does not support module operations")
 	}
 
-	iface, declareErr := declareLocalType(mod, i.Name.Name, InterfaceKind)
+	iface, declareErr := declareLocalType(ctx, mod, i.Name.Name, InterfaceKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, i.Name)
 	}
@@ -1949,7 +1953,7 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("UnionDecl.Hoist: environment does not support module operations")
 	}
 
-	unionMod, declareErr := declareLocalType(mod, u.Name.Name, UnionKind)
+	unionMod, declareErr := declareLocalType(ctx, mod, u.Name.Name, UnionKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, u.Name)
 	}

@@ -176,7 +176,7 @@ func TestBuildScopesFromImportsTracksImportedTypeOrigins(t *testing.T) {
 	importedContainer, found := typeScope.NamedType("Container")
 	require.True(t, found)
 
-	localContainer, err := declareLocalType(typeScope, "Container", ObjectKind)
+	localContainer, err := declareLocalType(context.Background(), typeScope, "Container", ObjectKind)
 	require.NoError(t, err)
 	require.NotSame(t, importedContainer, localContainer)
 
@@ -229,7 +229,7 @@ func TestDeclareLocalTypeRejectsQualifiedImportAlias(t *testing.T) {
 	importedContainer, found := importAlias.NamedType("Container")
 	require.True(t, found)
 
-	localDagger, err := declareLocalType(typeScope, "Dagger", ObjectKind)
+	localDagger, err := declareLocalType(context.Background(), typeScope, "Dagger", ObjectKind)
 	require.ErrorContains(t, err, `type "Dagger" conflicts with import alias`)
 	require.Nil(t, localDagger)
 

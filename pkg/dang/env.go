@@ -237,6 +237,15 @@ type Type struct {
 	meta    *Type   // companion meta-type; lazily created via MetaType
 	metaOf  *Type   // non-nil iff THIS is a meta-type, pointing to the instance type it describes
 	statics *Object // runtime namespace of static members; nil until a self { } block is evaluated
+
+	// homeModule identifies the compilation unit (directory module, single
+	// file, or the prelude) this type was declared in. It powers module-level
+	// visibility: a `let` member is reachable anywhere within its home module
+	// but rejected from another module. Stamped once at declareLocalType from
+	// the module scope threaded through the inference context; nil for types
+	// not created that way (builtins, schema-derived, anonymous records), for
+	// which visibility is never enforced. See moduleScope.
+	homeModule *moduleScope
 }
 
 func NewType(name string, kind Kind) *Type {
@@ -1098,6 +1107,35 @@ func (e *Type) StaticVisibility(name string) Visibility {
 		return vis
 	}
 	return PrivateVisibility
+}
+
+// Visibility reports the declared visibility of a member, walking the Parent
+// chain like SchemeOf so a runtime clone (whose own table is empty) resolves to
+// the original declaration. Defaults to PublicVisibility for an unknown member:
+// an unmarked declaration is public (visOrPublic), so only an explicit `let`
+// reads back private.
+func (e *Type) Visibility(name string) Visibility {
+	if v, ok := e.visibility[name]; ok {
+		return v
+	}
+	if pt, ok := e.Parent.(*Type); ok {
+		return pt.Visibility(name)
+	}
+	return PublicVisibility
+}
+
+// HomeModule returns the module this type was declared in, walking the Parent
+// chain (a clone shares its original's home). Nil for types not declared via
+// declareLocalType — builtins, schema-derived types, anonymous records — for
+// which module-level visibility is never enforced.
+func (e *Type) HomeModule() *moduleScope {
+	if e.homeModule != nil {
+		return e.homeModule
+	}
+	if pt, ok := e.Parent.(*Type); ok {
+		return pt.HomeModule()
+	}
+	return nil
 }
 
 // SetStatics records the runtime namespace object holding a type's evaluated

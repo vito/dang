@@ -123,6 +123,10 @@ func loadPrelude() {
 		fileBlock := &FileBlock{Forms: forms, Inline: true}
 
 		ctx := context.Background()
+		// The prelude is its own module: its `let` helpers are reachable across
+		// prelude files but invisible to user code (a different module). See
+		// moduleScope.
+		ctx = withModuleScope(ctx, &moduleScope{label: "prelude"})
 		if _, err := Infer(ctx, chain, fileBlock, true); err != nil {
 			panic(fmt.Errorf("prelude: inference: %w", err))
 		}

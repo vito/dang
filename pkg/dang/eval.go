@@ -2367,6 +2367,11 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 
 	typeScope := NewPreludeTypeScope("")
 
+	// Tag this program as its own module so `let` members declared in it are
+	// private to it (and prelude `let` members stay invisible here). See
+	// moduleScope.
+	ctx = withModuleScope(ctx, &moduleScope{label: "file:" + filePath})
+
 	inferred, err := Infer(ctx, typeScope, node, true)
 	if err != nil {
 		// Convert InferError to SourceError with full context
@@ -2669,6 +2674,11 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 
 	typeScope := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
+
+	// All files in the directory share one module identity, so a `let` member
+	// declared in any file is reachable from its siblings but not from another
+	// module (or from user code touching a prelude type). See moduleScope.
+	ctx = withModuleScope(ctx, &moduleScope{label: "dir:" + dirPath})
 
 	if isDebug {
 		fmt.Println("Running phased inference...")

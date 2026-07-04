@@ -673,6 +673,22 @@ type Select struct {
 var _ Node = (*Select)(nil)
 var _ Evaluator = (*Select)(nil)
 
+// staticMemberAccessible reports whether a static member of owner is reachable
+// as `Type.member` from the code currently being inferred. Public statics are
+// always reachable; a private (`let`) static only from within its declaring
+// module. When the module identity is unknown on either side it stays
+// unreachable — the pre-visibility behavior — so a private static never leaks
+// to an un-instrumented caller (statics fail closed, the reverse of instance
+// members, because each preserves its own backward-compatible default).
+func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool {
+	if owner.StaticVisibility(name) == PublicVisibility {
+		return true
+	}
+	home := owner.HomeModule()
+	cur := moduleScopeFromContext(ctx)
+	return home != nil && cur != nil && home == cur
+}
+
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Handle nil receiver (symbol calls) - look up type in environment
@@ -698,11 +714,12 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			if ts, ok := env.(TypeScope); ok {
 				if named, found := ts.NamedType(sym.Name); found {
 					if owner, ok := named.(*Type); ok {
-						// Only public statics are reachable as `Type.member`.
-						// Private (let) statics are block-internal helpers,
-						// reachable by bare name within the type's own static
-						// bodies through the shared closure, never from outside.
-						if scheme, isStatic := owner.StaticScheme(d.Field.Name); isStatic && owner.StaticVisibility(d.Field.Name) == PublicVisibility {
+						// A public static is reachable as `Type.member`
+						// anywhere; a private (let) static only from within its
+						// declaring module (module-level visibility, matching
+						// let instance members). Outside that, resolution falls
+						// through to normal receiver inference.
+						if scheme, isStatic := owner.StaticScheme(d.Field.Name); isStatic && staticMemberAccessible(ctx, owner, d.Field.Name) {
 							t, mono := scheme.Type()
 							if !mono {
 								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
@@ -854,6 +871,21 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			tv := fresh.Fresh()
 			d.SetInferredType(tv)
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
+		}
+		// Module-level visibility: a `let` member is private to the module that
+		// declares its type — reachable anywhere within that module (any file,
+		// sibling type, via self or a local value) but rejected from another
+		// module, so user code cannot reach a prelude type's `let` helpers.
+		// Enforced only when both the member's home module and the current
+		// module are known and differ; nil on either side (builtins, schema
+		// types, an un-instrumented entry point) falls open. Bare-name access
+		// took the nil-receiver branch far above and is unaffected.
+		if recType, ok := rec.(*Type); ok && recType.Visibility(d.Field.Name) == PrivateVisibility {
+			if home := recType.HomeModule(); home != nil {
+				if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
+					return nil, fmt.Errorf("%q is a private member of %s and cannot be accessed from another module", d.Field.Name, recType.Named)
+				}
+			}
 		}
 		t, mono := scheme.Type()
 		if !mono {
