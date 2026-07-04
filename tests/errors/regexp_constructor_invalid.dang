@@ -1,0 +1,3 @@
+# The Regexp(...) constructor compile-checks its argument, so an invalid
+# pattern raises at the call, naming the pattern.
+let bad = Regexp("(")

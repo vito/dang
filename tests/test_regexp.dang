@@ -19,6 +19,15 @@ assert { digits != `\w+` }
 let fromJSON = JSON.decode(`"[a-z]+"`) :: Regexp!
 assert { "hello".containsMatch(fromJSON) }
 
+# Regexp(...) constructor: builds a pattern from any String expression,
+# mirroring Path(...). Compile-checks the pattern, just like materialization.
+assert { "x42".containsMatch(Regexp("[0-9]+")) }
+assert { Regexp(`\d+`) == `\d+` }
+let dyn = "[a-z]+"
+assert { "hello".containsMatch(Regexp(dyn)) }
+# named-parameter form
+assert { "hi".containsMatch(Regexp(pattern: "h.")) }
+
 # match: returns a Match with the whole match and positional captures
 let m = "x42y".match(`(\d+)`)
 assert { m.string == "42" }

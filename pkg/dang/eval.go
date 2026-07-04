@@ -119,13 +119,13 @@ func (c InputObjectConstructor) Call(ctx context.Context, scope ValueScope, args
 
 // ScalarConstructor constructs a scalar value from a String by running the
 // scalar's new() hook and wrapping the resulting canonical string. It is the
-// value bound under the scalar's name when its declaration includes new(),
+// value bound under the scalar's name when its declaration includes new()
+// (Dang scalars) or when a builtin scalar registers a Go-native hook (Regexp),
 // mirroring how a type's name doubles as its constructor.
 type ScalarConstructor struct {
 	ScalarType *Type
 	FnType     *hm.FunctionType
 	ArgName    string
-	Hook       FunctionValue
 }
 
 func (c ScalarConstructor) Type() hm.Type        { return c.FnType }
@@ -141,7 +141,16 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 	if !ok {
 		return nil, fmt.Errorf("%s: argument %q must be String!, got %T", c.ScalarType.Named, c.ArgName, args[c.ArgName])
 	}
-	return runScalarHook(ctx, scope, c.ScalarType, c.Hook, c.ArgName, raw.Val)
+	// The hook lives on the type (set before this constructor was built), so
+	// this handles both Dang new() and Go-native hooks uniformly.
+	v, hooked, err := applyScalarHook(ctx, scope, c.ScalarType, raw.Val)
+	if err != nil {
+		return nil, err
+	}
+	if !hooked {
+		return ScalarValue{Val: raw.Val, ScalarType: c.ScalarType}, nil
+	}
+	return v, nil
 }
 
 // applyScalarHook materializes raw into scalarType through its new() hook —
@@ -730,6 +739,15 @@ func addBuiltinFunctions(scope ValueScope) {
 
 		scope.Bind(hostModule.Named, modValue, PublicVisibility)
 	}
+
+	// The Regexp(...) constructor: a builtin scalar with a Go-native hook,
+	// bound like a Dang scalar's derived constructor. Its type-level scheme
+	// lives in the Prelude (see env.go init).
+	scope.Bind("Regexp", ScalarConstructor{
+		ScalarType: RegexpType,
+		FnType:     regexpConstructorType(),
+		ArgName:    regexpConstructorArg,
+	}, PublicVisibility)
 }
 
 // applyDefaults fills in default values for missing arguments

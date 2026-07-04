@@ -350,8 +350,11 @@ func init() {
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
-	// Install regex types so user code can refer to them by name.
+	// Install regex types so user code can refer to them by name, and the
+	// Regexp(...) constructor value so a pattern can be built explicitly
+	// (the runtime ScalarConstructor is bound in addBuiltinFunctions).
 	Prelude.AddObject("Regexp", RegexpType)
+	Prelude.Add("Regexp", hm.NewScheme(nil, regexpConstructorType()))
 	RegexpType.AddObject("Match", MatchType)
 
 	// Install Error interface with message field

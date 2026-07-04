@@ -24,6 +24,20 @@ var RegexpType = NewType("Regexp", ScalarKind)
 // type-check those members and list them in the stdlib reference.
 var MatchType = NewType("Match", ObjectKind)
 
+// regexpConstructorArg is the parameter name of the Regexp(...) constructor.
+const regexpConstructorArg = "pattern"
+
+// regexpConstructorType is the type of the Regexp(...) constructor:
+// String! -> Regexp!. Shared between the Prelude type-level scheme and the
+// runtime ScalarConstructor binding so the two never drift.
+func regexpConstructorType() *hm.FunctionType {
+	args := NewRecordType("", Keyed[*hm.Scheme]{
+		Key:   regexpConstructorArg,
+		Value: hm.NewScheme(nil, NonNull(StringType)),
+	})
+	return hm.NewFnType(args, NonNull(RegexpType))
+}
+
 // regexpArg returns the compiled form of a Regexp-typed argument. The value
 // is a plain ScalarValue whose string is the pattern source; materialization
 // already compile-checked it, so this is a cache hit (or a cheap re-compile

@@ -1457,7 +1457,6 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 				ScalarType: s.Inferred,
 				FnType:     s.ConstructorFnType,
 				ArgName:    argName,
-				Hook:       hook,
 			}
 			scope.Bind(s.Name.Name, ctor, s.Visibility)
 			return ctor, nil

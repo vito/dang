@@ -1,0 +1,10 @@
+[1m[31mError:[0m invalid regexp "(": error parsing regexp: missing closing ): `(`
+  [2m[34m--> errors/regexp_constructor_invalid.dang:3:11[0m
+ [2m    |[0m
+ [2m  1 | # The Regexp(...) constructor compile-checks its argument, so an invalid[0m
+ [2m  2 | # pattern raises at the call, naming the pattern.[0m
+ [2m[34m[1m  3 | [0mlet bad = Regexp("(")
+[2m                 [31m^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+
