@@ -1011,7 +1011,7 @@ func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 
 	if len(n.Args) > 0 || n.BlockParam != nil {
 		f.write("new(")
-		f.formatFunctionArgs(n.Args, n.BlockParam, n.Loc)
+		f.formatFunctionArgs(n.Args, n.BlockParam, locLine(n.Loc))
 		f.write(") ")
 	} else {
 		f.write("new ")
@@ -1322,10 +1322,16 @@ func (f *Formatter) formatFunDecl(fn *FunDecl) {
 }
 
 func (f *Formatter) formatFunDeclSignature(fn *FunDecl, fieldNameLine int) {
-	// Arguments
+	// Arguments. Multiline detection anchors on the name's line, not fn.Loc —
+	// a multi-line prefix directive puts the decl's start lines above the
+	// signature itself.
 	if len(fn.Args) > 0 || fn.BlockParam != nil {
 		f.write("(")
-		f.formatFunctionArgs(fn.Args, fn.BlockParam, fn.Loc)
+		parentLine := fieldNameLine
+		if parentLine == 0 {
+			parentLine = locLine(fn.Loc)
+		}
+		f.formatFunctionArgs(fn.Args, fn.BlockParam, parentLine)
 		f.write(")")
 	}
 
@@ -1384,7 +1390,15 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl, fieldNameLine int) {
 	}
 }
 
-func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl, parentLoc *SourceLocation) {
+// locLine returns a location's line, or 0 when unknown.
+func locLine(loc *SourceLocation) int {
+	if loc == nil {
+		return 0
+	}
+	return loc.Line
+}
+
+func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl, parentLine int) {
 	// Check if any arg has a docstring - if so, force multiline
 	hasDocString := false
 	for _, arg := range args {
@@ -1400,9 +1414,9 @@ func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl,
 	// Check if args were originally on multiple lines
 	wasMultiline := false
 	// If the first arg is on a different line than the parent declaration, it's multiline
-	if parentLoc != nil && len(args) > 0 {
+	if parentLine > 0 && len(args) > 0 {
 		firstArgLoc := args[0].GetSourceLocation()
-		if firstArgLoc != nil && firstArgLoc.Line > parentLoc.Line {
+		if firstArgLoc != nil && firstArgLoc.Line > parentLine {
 			wasMultiline = true
 		}
 	}
@@ -1563,7 +1577,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 	if len(d.Args) > 0 {
 		f.write("(")
-		f.formatFunctionArgs(d.Args, nil, nil)
+		f.formatFunctionArgs(d.Args, nil, 0)
 		f.write(")")
 	}
 
