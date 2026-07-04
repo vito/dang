@@ -607,6 +607,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatDirectiveDecl(n)
 	case *NewConstructorDecl:
 		f.formatNewConstructorDecl(n)
+	case *SelfBlockDecl:
+		f.formatSelfBlockDecl(n)
 	case *ImportDecl:
 		f.formatImportDecl(n)
 	case *Block:
@@ -1002,6 +1004,11 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 	if c.Loc != nil && c.Loc.End != nil {
 		f.emitTrailingComment(c.Loc.End.Line)
 	}
+}
+
+func (f *Formatter) formatSelfBlockDecl(n *SelfBlockDecl) {
+	f.write("self ")
+	f.formatBlock(n.BodyBlock)
 }
 
 func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {

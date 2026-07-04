@@ -404,6 +404,57 @@ func (n *NewConstructorDecl) Eval(ctx context.Context, scope ValueScope) (Value,
 	return NullValue{}, nil
 }
 
+// SelfBlockDecl is a `self { ... }` block inside a type body: it groups static
+// members, which land on the type's meta-type rather than on instances. Its
+// contents are ordinary declarations (methods, stored fields, let/pub
+// visibility, docstrings) processed against the meta scope by the enclosing
+// type declaration (see hoistStatics / inferStatics / evalStatics). Like
+// NewConstructorDecl, it is handled specially by its container; reaching its own
+// Infer means it appeared outside a type body, which is an error.
+type SelfBlockDecl struct {
+	InferredTypeHolder
+	BodyBlock *Block
+	Loc       *SourceLocation
+}
+
+var _ Node = &SelfBlockDecl{}
+var _ Evaluator = &SelfBlockDecl{}
+
+func (s *SelfBlockDecl) DeclaredSymbols() []string { return nil }
+
+func (s *SelfBlockDecl) ReferencedSymbols() []string {
+	if s.BodyBlock == nil {
+		return nil
+	}
+	return s.BodyBlock.ReferencedSymbols()
+}
+
+func (s *SelfBlockDecl) Body() hm.Expression { return s.BodyBlock }
+
+func (s *SelfBlockDecl) GetSourceLocation() *SourceLocation { return s.Loc }
+
+func (s *SelfBlockDecl) Walk(fn func(Node) bool) {
+	if !fn(s) {
+		return
+	}
+	if s.BodyBlock != nil {
+		s.BodyBlock.Walk(fn)
+	}
+}
+
+// Infer errors: a self { } block is only meaningful inside a type body, where
+// the enclosing declaration processes its members against the meta-type. At top
+// level it reaches this method.
+func (s *SelfBlockDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return nil, NewInferError(fmt.Errorf("self { } block is only valid inside a type body"), s)
+}
+
+// Eval is a no-op: static members are evaluated into the type's statics object
+// by the enclosing declaration (see evalStatics).
+func (s *SelfBlockDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return NullValue{}, nil
+}
+
 var _ Node = &ObjectDecl{}
 var _ Evaluator = &ObjectDecl{}
 
@@ -478,19 +529,143 @@ func findNewConstructorIn(block *Block) *NewConstructorDecl {
 	return nil
 }
 
-// formsWithoutNew returns a body block's forms excluding any
-// NewConstructorDecl. Shared by object and scalar declarations.
+// formsWithoutNew returns a body block's instance-member forms: everything
+// except the NewConstructorDecl and any self { } blocks (whose members are
+// static and processed separately, against the meta-type). Shared by object and
+// scalar declarations.
 func formsWithoutNew(block *Block) []Node {
 	if block == nil {
 		return nil
 	}
 	var forms []Node
 	for _, form := range block.Forms {
-		if _, ok := form.(*NewConstructorDecl); !ok {
+		switch form.(type) {
+		case *NewConstructorDecl, *SelfBlockDecl:
+			// handled separately
+		default:
 			forms = append(forms, form)
 		}
 	}
 	return forms
+}
+
+// selfBlocksIn returns the self { } blocks among a body block's forms, in
+// source order. Static members live in these blocks.
+func selfBlocksIn(block *Block) []*SelfBlockDecl {
+	if block == nil {
+		return nil
+	}
+	var blocks []*SelfBlockDecl
+	for _, form := range block.Forms {
+		if sb, ok := form.(*SelfBlockDecl); ok {
+			blocks = append(blocks, sb)
+		}
+	}
+	return blocks
+}
+
+// staticForms flattens, in source order, the member forms of every self { }
+// block in body, skipping any nested self { } or new() forms (which are
+// rejected by validateStaticForms during hoisting).
+func staticForms(block *Block) []Node {
+	var forms []Node
+	for _, sb := range selfBlocksIn(block) {
+		if sb.BodyBlock == nil {
+			continue
+		}
+		for _, form := range sb.BodyBlock.Forms {
+			switch form.(type) {
+			case *SelfBlockDecl, *NewConstructorDecl:
+				// rejected in validateStaticForms; skip so downstream phases
+				// don't double-report the same structural error.
+			default:
+				forms = append(forms, form)
+			}
+		}
+	}
+	return forms
+}
+
+// validateStaticForms rejects forms that may not appear inside a self { } block:
+// a nested self { } (one meta level only) and new() (construction is not a
+// static). Called once, during hoisting, so the error is reported a single time.
+func validateStaticForms(block *Block) error {
+	for _, sb := range selfBlocksIn(block) {
+		if sb.BodyBlock == nil {
+			continue
+		}
+		for _, form := range sb.BodyBlock.Forms {
+			switch form.(type) {
+			case *SelfBlockDecl:
+				return NewInferError(fmt.Errorf("self { } cannot be nested"), form)
+			case *NewConstructorDecl:
+				return NewInferError(fmt.Errorf("new() cannot appear inside a self { } block"), form)
+			}
+		}
+	}
+	return nil
+}
+
+// hoistStatics registers the schemes of a type's static members (declared in
+// self { } blocks) onto its meta-type. The meta scope's lexical fallback is the
+// enclosing scope, so statics may reference outer types and the type's own name
+// (its constructor), but not its instance members — those live on a separate
+// table. Runs during the enclosing declaration's Hoist, pass 1.
+func hoistStatics(ctx context.Context, instanceType *Type, block *Block, env hm.Env, fresh hm.Fresher) error {
+	if err := validateStaticForms(block); err != nil {
+		return err
+	}
+	forms := staticForms(block)
+	if len(forms) == 0 {
+		return nil
+	}
+	meta := instanceType.MetaType()
+	// self inside a static resolves to the type-object (the statics namespace).
+	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
+	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	for _, form := range forms {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, metaScope, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// inferStatics infers the bodies of a type's static members against its
+// meta-type. Runs during the enclosing declaration's Infer.
+func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.Env, fresh hm.Fresher) error {
+	forms := staticForms(block)
+	if len(forms) == 0 {
+		return nil
+	}
+	meta := instanceType.MetaType()
+	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
+	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	_, err := InferFormsWithPhases(ctx, forms, metaScope, fresh)
+	return err
+}
+
+// evalStatics evaluates a type's static members into a fresh statics namespace
+// object (whose module is the meta-type) and records it on the type. Static
+// methods share the block's closure so bare sibling statics resolve, and self
+// resolves to the statics namespace. Runs during the enclosing declaration's
+// Eval. A no-op when the type declares no statics.
+func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope ValueScope) error {
+	forms := staticForms(block)
+	if len(forms) == 0 {
+		return nil
+	}
+	meta := instanceType.MetaType()
+	statics := NewObject(meta)
+	staticsScope := CreateOverlayValueScope(statics, scope)
+	staticsScope.EnterSelf(statics)
+	if _, err := EvaluateFormsWithPhases(ctx, forms, staticsScope); err != nil {
+		return err
+	}
+	instanceType.SetStatics(statics)
+	return nil
 }
 
 // findNewConstructor returns the NewConstructorDecl from the object body, if any
@@ -500,13 +675,7 @@ func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
 
 // bodyFormsWithoutNew returns the object body forms excluding the NewConstructorDecl
 func (c *ObjectDecl) bodyFormsWithoutNew() []Node {
-	var forms []Node
-	for _, form := range c.Value.Forms {
-		if _, ok := form.(*NewConstructorDecl); !ok {
-			forms = append(forms, form)
-		}
-	}
-	return forms
+	return formsWithoutNew(c.Value)
 }
 
 func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
@@ -609,6 +778,11 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		}
 	}
 
+	// Hoist static members (self { } blocks) onto the object's meta-type.
+	if err := hoistStatics(ctx, object, c.Value, env, fresh); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -666,6 +840,11 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Infer body forms (excluding new() which is handled separately)
 	bodyForms := c.bodyFormsWithoutNew()
 	if _, err := InferFormsWithPhases(ctx, bodyForms, inferTypeScope, fresh); err != nil {
+		return nil, err
+	}
+
+	// Infer static members (self { } blocks) against the meta-type.
+	if err := inferStatics(ctx, object, c.Value, env, fresh); err != nil {
 		return nil, err
 	}
 
@@ -957,6 +1136,13 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// Add the constructor to the evaluation environment
 		scope.Bind(c.Name.Name, constructor, c.Visibility)
 
+		// Evaluate static members (self { } blocks) into the type's statics
+		// namespace. Bound after the constructor so a static may reference the
+		// type's name (its constructor) through the shared closure.
+		if err := evalStatics(ctx, c.Inferred, c.Value, scope); err != nil {
+			return nil, err
+		}
+
 		return constructor, nil
 	})
 }
@@ -1169,8 +1355,12 @@ func (s *ScalarDecl) validateScalarBodyForms() error {
 					f,
 				)
 			}
+		case *SelfBlockDecl:
+			// Static members live on the meta-type, validated and processed
+			// separately (see staticForms). Unlike instances, the type-object is
+			// real state, so static stored fields are allowed here.
 		default:
-			return NewInferError(fmt.Errorf("scalar bodies may only declare methods and new()"), form)
+			return NewInferError(fmt.Errorf("scalar bodies may only declare methods, new(), and a self { } block"), form)
 		}
 	}
 	return nil
@@ -1350,6 +1540,11 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		}
 	}
 
+	// Hoist static members (self { } blocks) onto the scalar's meta-type.
+	if err := hoistStatics(ctx, scalarType, s.Value, env, fresh); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1398,6 +1593,11 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, err
 	}
 
+	// Infer static members (self { } blocks) against the meta-type.
+	if err := inferStatics(ctx, scalarType, s.Value, env, fresh); err != nil {
+		return nil, err
+	}
+
 	if newDecl := findNewConstructorIn(s.Value); newDecl != nil {
 		if err := s.inferScalarNew(ctx, newDecl, inferTypeScope, fresh); err != nil {
 			return nil, err
@@ -1435,6 +1635,15 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			s.Inferred.SetScalarMethods(methods)
 		}
 
+		// evalScalarStatics evaluates the self { } members into the scalar's
+		// statics namespace. Deferred until after the scalar's name is bound so
+		// a static stored field like `empty: Tag! = Tag("")` can construct the
+		// scalar. Closed over the outer scope, not the instance-methods scope, so
+		// statics never see instance members by bare name.
+		evalScalarStatics := func() error {
+			return evalStatics(ctx, s.Inferred, s.Value, scope)
+		}
+
 		if newDecl != nil {
 			// The new() hook computes the canonical underlying string; the
 			// runtime wraps it (see runScalarHook). It runs with no self —
@@ -1459,6 +1668,9 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 				ArgName:    argName,
 			}
 			scope.Bind(s.Name.Name, ctor, s.Visibility)
+			if err := evalScalarStatics(); err != nil {
+				return nil, err
+			}
 			return ctor, nil
 		}
 
@@ -1468,6 +1680,9 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		scalarModule := NewObject(s.Inferred)
 		attachBuiltinMethods(scalarModule, s.Inferred)
 		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
+		if err := evalScalarStatics(); err != nil {
+			return nil, err
+		}
 		return scalarModule, nil
 	})
 }

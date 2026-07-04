@@ -228,6 +228,15 @@ type Type struct {
 	members []TypeScope // Member types of this union (for union modules)
 	unions  []TypeScope // Unions this type is a member of
 
+	// Metaclass support: a type T that declares static members (a self { }
+	// block) gets a companion meta-type describing the *name* T (as opposed to
+	// instances of T). Static members' schemes live on the meta-type's own
+	// scheme table, distinct from instance members on T, so `T.static` and
+	// `value.instance` resolve separately and can never collide. See the
+	// type-statics design.
+	meta    *Type   // companion meta-type; lazily created via MetaType
+	metaOf  *Type   // non-nil iff THIS is a meta-type, pointing to the instance type it describes
+	statics *Object // runtime namespace of static members; nil until a self { } block is evaluated
 }
 
 func NewType(name string, kind Kind) *Type {
@@ -1044,6 +1053,59 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 
 	return fnType
 }
+
+// MetaType returns T's companion meta-type, creating it on first use. The
+// meta-type is nominal (Type.Eq compares named types by pointer identity) and
+// deliberately shares T's display name so member-not-found errors read
+// naturally ("field x not found in Foo"); it is never entered into any type
+// namespace, so the shared name cannot collide with a real lookup.
+func (e *Type) MetaType() *Type {
+	if e.meta == nil {
+		m := NewType(e.Named, ObjectKind)
+		m.metaOf = e
+		e.meta = m
+	}
+	return e.meta
+}
+
+// IsMeta reports whether this type is a meta-type (the type of a type *name*,
+// as opposed to instances of the type).
+func (e *Type) IsMeta() bool { return e.metaOf != nil }
+
+// InstanceType returns the type a meta-type describes, or nil when e is not a
+// meta-type.
+func (e *Type) InstanceType() *Type { return e.metaOf }
+
+// StaticScheme returns the scheme of a static member declared on e (in a
+// self { } block), if any. It consults only e's meta-type's own table, so a
+// static never shadows or is shadowed by an instance member or an outer
+// binding: the two live on separate tables by construction. Returns
+// (nil, false) when e declares no statics or has no such static.
+func (e *Type) StaticScheme(name string) (*hm.Scheme, bool) {
+	if e.meta == nil {
+		return nil, false
+	}
+	return e.meta.LocalSchemeOf(name)
+}
+
+// StaticVisibility reports the declared visibility of a static member, or
+// PrivateVisibility when there is no such static.
+func (e *Type) StaticVisibility(name string) Visibility {
+	if e.meta == nil {
+		return PrivateVisibility
+	}
+	if vis, ok := e.meta.visibility[name]; ok {
+		return vis
+	}
+	return PrivateVisibility
+}
+
+// SetStatics records the runtime namespace object holding a type's evaluated
+// static members. Written once when a self { } block is evaluated.
+func (e *Type) SetStatics(statics *Object) { e.statics = statics }
+
+// Statics returns the runtime namespace of static members, or nil.
+func (e *Type) Statics() *Object { return e.statics }
 
 // SetScalarMethods records the runtime methods object for a scalar declared
 // with a body. Select.Eval dispatches ScalarValue receivers through it.

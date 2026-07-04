@@ -1,0 +1,8 @@
+# Test: a self { } block cannot be nested inside another self { } block.
+type Outer {
+  self {
+    self {
+      foo(): Int! { 1 }
+    }
+  }
+}

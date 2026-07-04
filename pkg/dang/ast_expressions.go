@@ -662,7 +662,12 @@ type Select struct {
 	Field            *Symbol
 	AutoCall         bool
 	NullableReceiver bool // set during Infer when receiver is nullable
-	Loc              *SourceLocation
+	// staticOwner is set during Infer when this selection resolved to a static
+	// member of a type named directly by the receiver (e.g. Regexp.escape). It
+	// tells Eval to read the member from the type's statics namespace rather
+	// than evaluating the receiver (which would auto-construct an instance).
+	staticOwner *Type
+	Loc         *SourceLocation
 }
 
 var _ Node = (*Select)(nil)
@@ -679,6 +684,43 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			t, _ := scheme.Type()
 			d.SetInferredType(t)
 			return t, nil
+		}
+
+		// Static member resolution. When the receiver names a type directly
+		// (e.g. `Regexp.escape`) and that type declares the field as a static
+		// member (in a self { } block), resolve it against the type's meta-type
+		// instead of inferring the receiver as a value. This is deliberately
+		// static-first: only a *declared* static short-circuits here, so a bare
+		// type name whose field is not a static falls through unchanged — most
+		// importantly, `AllDefaults.field` still auto-constructs and reads an
+		// instance field, exactly as before this feature existed.
+		if sym, ok := d.Receiver.(*Symbol); ok {
+			if ts, ok := env.(TypeScope); ok {
+				if named, found := ts.NamedType(sym.Name); found {
+					if owner, ok := named.(*Type); ok {
+						// Only public statics are reachable as `Type.member`.
+						// Private (let) statics are block-internal helpers,
+						// reachable by bare name within the type's own static
+						// bodies through the shared closure, never from outside.
+						if scheme, isStatic := owner.StaticScheme(d.Field.Name); isStatic && owner.StaticVisibility(d.Field.Name) == PublicVisibility {
+							t, mono := scheme.Type()
+							if !mono {
+								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
+							}
+							if d.AutoCall {
+								var err error
+								t, _, err = autoCallFnType(t)
+								if err != nil {
+									return nil, err
+								}
+							}
+							d.staticOwner = owner
+							d.SetInferredType(t)
+							return t, nil
+						}
+					}
+				}
+			}
 		}
 
 		// Handle normal receiver
@@ -865,6 +907,34 @@ func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
+		// Static member: Infer resolved this to a static of a named type. Read
+		// it from the type's statics namespace directly, without evaluating the
+		// receiver — evaluating it would auto-construct an instance and miss the
+		// static entirely.
+		if d.staticOwner != nil {
+			statics := d.staticOwner.Statics()
+			if statics == nil {
+				return nil, fmt.Errorf("static %q of %s is unavailable", d.Field.Name, d.staticOwner.Named)
+			}
+			val, found, err := statics.Lookup(ctx, d.Field.Name)
+			if err != nil {
+				return nil, err
+			}
+			if !found {
+				return nil, fmt.Errorf("static %q not found in %s", d.Field.Name, d.staticOwner.Named)
+			}
+			// A static method binds the statics namespace as its receiver, so
+			// `self` and bare sibling statics resolve within the block.
+			if fnVal, isFn := val.(FunctionValue); isFn {
+				val = BoundMethod{Method: fnVal, Receiver: statics}
+			}
+			// Zero-arg statics auto-call, matching the normal selection path.
+			if d.AutoCall && isAutoCallableFn(val) {
+				return autoCallFn(ctx, scope, val)
+			}
+			return val, nil
+		}
+
 		var receiverVal Value
 		var err error
 

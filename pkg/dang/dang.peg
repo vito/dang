@@ -31,7 +31,7 @@ SemiToken <- ';'
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / NewConstructorDecl / FieldDecl / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / NewConstructorDecl / SelfBlockDecl / FieldDecl / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
     if docstring != nil {
@@ -72,6 +72,9 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
     if docstring != nil {
       node.DocString = docstring.(string)
     }
+    return node, nil
+  case *SelfBlockDecl:
+    // A self { } block carries no docstring of its own; its members do.
     return node, nil
   default:
     return decl, nil
@@ -388,6 +391,17 @@ NewConstructorDecl <- NewToken _ args:ArgTypes _ block:Block {
   }, nil
 }
 NewToken <- "new" !WordChar
+
+// A self { } block groups static members inside a type body. `self` is never
+// callable-with-a-block, so this production wins unambiguously in Decl position
+// (tried before Form), while a bare `self` expression (self.field, self :: T)
+// still parses as a SelfKeyword since it is not followed by a block.
+SelfBlockDecl <- SelfToken _ block:Block {
+  return &SelfBlockDecl{
+    BodyBlock: block.(*Block),
+    Loc: c.Loc(),
+  }, nil
+}
 
 FieldDecl <- TypeAndArgsAndBlockField  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockField         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
