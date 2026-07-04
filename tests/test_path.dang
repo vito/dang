@@ -26,10 +26,12 @@ let annotated: Path! = "src//main.go"
 assert { annotated == Path("src/main.go") }
 
 norm(candidate: Path! = "lib"): Path! { candidate }
+
 assert { norm == Path("lib") }
 assert { norm("a//./b") == Path("a/b") }
 
 mk: Path! { "x//y" }
+
 assert { mk == Path("x/y") }
 
 # =============================================================================
@@ -97,6 +99,7 @@ assert { s == "src/app/main.go" }
 
 # call argument (user function), then String methods on the result
 shout(msg: String!): String! { msg.toUpper }
+
 assert { shout(src) == "SRC/APP/MAIN.GO" }
 
 # builtin method argument
@@ -104,6 +107,7 @@ assert { s.hasPrefix(src.parent) }
 
 # return boundary
 giveString: String! { Path("a//b") }
+
 assert { giveString == "a/b" }
 
 # reassignment
@@ -117,6 +121,7 @@ assert { cast == "src/app/main.go" }
 
 # list elements degrade too
 strJoin(xs: [String!]!): String! { xs.join(",") }
+
 assert { strJoin([Path("a"), Path("b")]) == "a,b" }
 
 # GraphQL argument boundary
@@ -145,6 +150,7 @@ assert { label == "matched" }
 type Cfg {
   out: Path!
 }
+
 let cfg: Cfg! = JSON.decode("""{"out": "dist//site"}""")
 assert { cfg.out == Path("dist/site") }
 

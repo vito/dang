@@ -45,10 +45,12 @@ let lit: Slug! = "FOO Bar"
 assert { lit == "foo-bar" }
 
 describe(slug: Slug! = "Default Slug"): String! { slug :: String! }
+
 assert { describe == "default-slug" }
 assert { describe("With Arg") == "with-arg" }
 
 mk: Slug! { "  Computed " }
+
 assert { mk == "computed" }
 
 # the hook runs at :: casts of non-literal Strings
@@ -59,11 +61,13 @@ assert { (raw :: Slug!) == "cast-me" }
 type Post {
   slug: Slug!
 }
+
 let post: Post! = JSON.decode("""{"slug": "From JSON"}""")
 assert { post.slug == Slug("from-json") }
 
 # scalar values degrade to String at boundaries, and stringify bare
 shout(msg: String!): String! { msg.toUpper }
+
 assert { shout(s) == "HELLO-WORLD" }
 assert { toString(s) == "hello-world" }
 assert { `slug: ${s}` == "slug: hello-world" }
