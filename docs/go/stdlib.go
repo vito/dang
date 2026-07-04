@@ -16,8 +16,8 @@ import (
 // Each registry entry's signature comes from the registered parameter,
 // block, and return types; its description comes from the builtin's .Doc(...),
 // and its pre-seeded REPL from the builtin's .Example(...). Prelude members
-// render the same cards from their schemes and docstrings, with the
-// docstring's first fenced code block as the runnable example. Editing a
+// render the same cards from their schemes, docstrings, and @example
+// directives (the directive's code is the runnable example). Editing a
 // builtin or a prelude member updates this page — there is nothing to
 // hand-maintain.
 //
@@ -49,7 +49,7 @@ func (p Plugin) StdlibFunctions() booklit.Content {
 	preludeMod := dang.PreludeModule()
 	for name, scheme := range preludeMod.Bindings(dang.PublicVisibility) {
 		doc, _ := preludeMod.GetDocString(name)
-		if def, ok := synthPreludeDef(name, scheme, doc); ok {
+		if def, ok := synthPreludeDef(name, scheme, doc, preludeMod.GetDirectives(name)); ok {
 			defs = append(defs, def)
 		}
 	}
@@ -94,14 +94,13 @@ func preludeTypeByName(name string) (*dang.Type, bool) {
 
 // preludeMemberDefs synthesizes BuiltinDef-shaped entries for a Dang-defined
 // type's public members so they render through the same card machinery as Go
-// builtins. Signatures come from the member schemes; descriptions and
-// runnable examples come from the docstring convention (the first fenced
-// code block is the example).
+// builtins. Signatures come from the member schemes; descriptions come from
+// docstrings and runnable examples from @example directives.
 func preludeMemberDefs(mod *dang.Type) []dang.BuiltinDef {
 	var defs []dang.BuiltinDef
 	for name, scheme := range mod.Bindings(dang.PublicVisibility) {
 		doc, _ := mod.GetDocString(name)
-		if def, ok := synthPreludeDef(name, scheme, doc); ok {
+		if def, ok := synthPreludeDef(name, scheme, doc, mod.GetDirectives(name)); ok {
 			def.IsMethod = true
 			def.ReceiverType = mod
 			defs = append(defs, def)
@@ -110,9 +109,9 @@ func preludeMemberDefs(mod *dang.Type) []dang.BuiltinDef {
 	return defs
 }
 
-// synthPreludeDef builds a BuiltinDef from a Dang-declared member's scheme
-// and docstring.
-func synthPreludeDef(name string, scheme *hm.Scheme, doc string) (dang.BuiltinDef, bool) {
+// synthPreludeDef builds a BuiltinDef from a Dang-declared member's scheme,
+// docstring, and directives.
+func synthPreludeDef(name string, scheme *hm.Scheme, doc string, directives []*dang.DirectiveApplication) (dang.BuiltinDef, bool) {
 	t, mono := scheme.Type()
 	if !mono {
 		return dang.BuiltinDef{}, false
@@ -131,7 +130,8 @@ func synthPreludeDef(name string, scheme *hm.Scheme, doc string) (dang.BuiltinDe
 			def.ParamTypes = append(def.ParamTypes, dang.ParamDef{Name: f.Key, Type: pt})
 		}
 	}
-	def.Doc, def.Example = dang.SplitDocExample(doc)
+	def.Doc = strings.TrimSpace(doc)
+	def.Example, _ = dang.ExampleDirective(directives)
 	return def, true
 }
 

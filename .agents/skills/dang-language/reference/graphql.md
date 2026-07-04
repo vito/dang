@@ -164,7 +164,7 @@ type Person @deprecated(reason: "use NewPerson") {
 @check
 mixedField: String! @cache(ttl: 120) { "mixed" }   # prefix and suffix both collected
 ```
-- Suffix form attaches to the field/type; prefix form sits on its own line before the declaration. Both forms apply to types, fields, and function/field arguments (`process(user: Person! @experimental)`). Multiple prefix directives go on separate lines.
+- Suffix form attaches to the field/type; prefix form sits on its own line before the declaration. Both forms apply to types, scalars (`scalar Tag @experimental`), fields, and function/field arguments (`process(user: Person! @experimental)`). Multiple prefix directives go on separate lines.
 - Args: named (`@cache(ttl: 60, key: "user")`) or positional shorthand (`@cache(60, key: "user")`); positionals before named (`positional arguments must come before named arguments`). Declaration defaults apply when omitted.
 
 ### Qualified access
@@ -173,5 +173,15 @@ mixedField: String! @cache(ttl: 120) { "mixed" }   # prefix and suffix both coll
 
 ### Common built-ins
 - `@defaultPath(path: ...)` — provides a default for a `Directory!` field (Dagger)
+- `@example(code: String!)` — attaches a runnable example to a declaration, read by doc tooling (declared in the prelude, available everywhere). Idiomatically the code is a language-tagged fenced template so editors highlight it as Dang:
+  ````dang
+  """
+  doubles a number
+  """
+  @example(```dang
+  double(21)
+  ```)
+  double(n: Int!): Int! { n * 2 }
+  ````
 - `@ignorePatterns(patterns: [...])` — filtering metadata
 - plus every directive imported from connected schemas

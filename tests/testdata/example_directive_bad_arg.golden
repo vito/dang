@@ -1,0 +1,10 @@
+[1m[31mError:[0m DirectiveApplication.Infer: argument "code" type mismatch: expected String!, got Int!
+  [2m[34m--> errors/example_directive_bad_arg.dang:2:1[0m
+ [2m    |[0m
+ [2m  1 | # @example's code argument must be a string.[0m
+ [2m[34m[1m  2 | [0m@example(42)
+[2m       [31m^^^^^^^^^^^^[0m
+ [2m  3 | answer: Int! {[0m
+ [2m  4 |   42[0m
+ [2m    |[0m
+

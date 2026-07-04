@@ -63,10 +63,11 @@ Before writing a builtin in Go, consider whether it belongs in the
 **Dang-source prelude** (`pkg/dang/prelude/*.dang`): stdlib expressible in
 the core language (string/list manipulation, string-refinement scalars with
 methods and a `new()` hook) lives there — `Path` is the model. Prelude
-members document themselves with docstrings whose first fenced code block is
-a runnable example (enforced + evaluated by `TestPreludeDocExamples`), and
-the docs reference renders them via the same card machinery. Go builtins
-remain for anything needing Go (I/O, regexp engine, crypto/random).
+members document themselves with a prose docstring plus an `@example`
+directive whose argument is a ```` ```dang ```` fenced template holding a
+runnable snippet (enforced + evaluated by `TestPreludeExamples`), and the
+docs reference renders them via the same card machinery. Go builtins remain
+for anything needing Go (I/O, regexp engine, crypto/random).
 
 ## Examples are required
 

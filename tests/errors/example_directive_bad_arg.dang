@@ -1,0 +1,5 @@
+# @example's code argument must be a string.
+@example(42)
+answer: Int! {
+  42
+}

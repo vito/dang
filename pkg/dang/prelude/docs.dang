@@ -1,0 +1,9 @@
+# Documentation directives. The stdlib reference generator and the prelude
+# example tests read @example off a declaration; the docstring itself stays
+# plain prose.
+
+"""
+attaches a runnable example to a declaration; write the code as a
+language-tagged fenced template literal so editors highlight it as Dang
+"""
+directive @example(code: String!) on FIELD_DEFINITION | SCALAR

@@ -44,17 +44,17 @@ func TestPreludeConcurrentUse(t *testing.T) {
 }
 
 // Every public member declared by the Dang-source prelude must carry a
-// runnable example — the first fenced code block of its docstring — and
-// every example must parse, type-check, and evaluate. This is the prelude's
-// counterpart of TestStdlibExamplesEvaluate for Go builtins.
-func TestPreludeDocExamples(t *testing.T) {
+// runnable example — the code of its @example directive — and every example
+// must parse, type-check, and evaluate. This is the prelude's counterpart of
+// TestStdlibExamplesEvaluate for Go builtins.
+func TestPreludeExamples(t *testing.T) {
 	mod := PreludeModule()
 	checked := 0
 
-	check := func(label, doc string) {
-		_, example := SplitDocExample(doc)
-		if example == "" {
-			t.Errorf("prelude %s docstring has no runnable example fence", label)
+	check := func(label string, directives []*DirectiveApplication) {
+		example, ok := ExampleDirective(directives)
+		if !ok {
+			t.Errorf("prelude %s has no @example directive", label)
 			return
 		}
 		if err := evalExample(example); err != nil {
@@ -69,14 +69,12 @@ func TestPreludeDocExamples(t *testing.T) {
 			continue
 		}
 		for member := range typ.Bindings(PublicVisibility) {
-			doc, _ := typ.GetDocString(member)
-			check(typeName+"."+member, doc)
+			check(typeName+"."+member, typ.GetDirectives(member))
 		}
 	}
 
 	for name := range mod.Bindings(PublicVisibility) {
-		doc, _ := mod.GetDocString(name)
-		check(name, doc)
+		check(name, mod.GetDirectives(name))
 	}
 
 	if checked == 0 {

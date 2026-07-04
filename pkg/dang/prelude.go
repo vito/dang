@@ -37,24 +37,39 @@ func PreludeModule() *Type {
 	return preludeModule
 }
 
-// SplitDocExample splits a docstring into its description and its runnable
-// example, per the stdlib convention that a docstring's first fenced code
-// block (``` ... ```) is a self-contained snippet demonstrating the member.
-// Docstrings without a fence return the whole text and "".
-func SplitDocExample(doc string) (desc, example string) {
-	idx := strings.Index(doc, "```")
-	if idx < 0 {
-		return strings.TrimSpace(doc), ""
+// ExampleDirective returns the runnable example attached to a declaration
+// via its @example directive (declared in prelude/docs.dang), per the stdlib
+// convention that every public member of the Dang-source prelude documents
+// itself with one. The code argument is written as a ```dang fenced template
+// literal; any literal string works, but interpolation does not (the example
+// must be self-contained), so non-literal arguments report ok=false.
+func ExampleDirective(directives []*DirectiveApplication) (code string, ok bool) {
+	for _, d := range directives {
+		if d.Scope != nil || d.Name != "example" || len(d.Args) == 0 {
+			continue
+		}
+		return literalString(d.Args[0].Value)
 	}
-	rest := doc[idx+3:]
-	if nl := strings.Index(rest, "\n"); nl >= 0 {
-		rest = rest[nl+1:] // drop an optional language tag
+	return "", false
+}
+
+// literalString extracts the compile-time content of a literal string node:
+// a plain string or an interpolation-free template.
+func literalString(node Node) (string, bool) {
+	switch n := node.(type) {
+	case *String:
+		return strings.TrimSpace(n.Value), true
+	case *Template:
+		if !n.IsLiteralOnly() {
+			return "", false
+		}
+		var b strings.Builder
+		for _, p := range n.Parts {
+			b.WriteString(p.Lit)
+		}
+		return strings.TrimSpace(b.String()), true
 	}
-	end := strings.Index(rest, "```")
-	if end < 0 {
-		return strings.TrimSpace(doc), ""
-	}
-	return strings.TrimSpace(doc[:idx]), strings.TrimSpace(rest[:end])
+	return "", false
 }
 
 // preludeSource returns the embedded source of a prelude file for error

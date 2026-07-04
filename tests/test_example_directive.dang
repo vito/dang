@@ -1,0 +1,46 @@
+# The @example documentation directive ships in the prelude: user declarations
+# attach runnable examples without declaring the directive themselves. The code
+# argument is any literal string, idiomatically a language-tagged fence.
+"""
+doubles a number
+"""
+@example(```dang
+double(21)
+```)
+double(n: Int!): Int! {
+  n * 2
+}
+
+# Plain-string argument in suffix position also works.
+greeting: String! @example("greeting") = "hello"
+
+"""
+a hash-prefixed tag, normalized on construction
+"""
+@example(```dang
+Tag("chill")
+```)
+scalar Tag {
+  new(raw: String!) {
+    "#" + raw.trimPrefix("#")
+  }
+
+  """
+  the tag without its hash
+  """
+  @example(```dang
+  Tag("#chill").word
+  ```)
+  word: String! {
+    (self :: String!).trimPrefix("#")
+  }
+}
+
+# Suffix directive on a bodyless scalar.
+scalar Marker @example(`"x" :: Marker!`)
+
+assert { double(21) == 42 }
+assert { greeting == "hello" }
+assert { Tag("chill") == Tag("#chill") }
+assert { Tag("#chill").word == "chill" }
+print("example directive tests passed!")
