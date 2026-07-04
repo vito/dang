@@ -152,6 +152,50 @@ func registerRegexp() {
 
 	registerRegexpStringMethods()
 	registerRegexpMatchMethods()
+	registerRegexpStatics()
+}
+
+// registerRegexpStatics installs Regexp's static members — reachable as
+// `Regexp.member`, never on a Regexp instance. Regexp is a builtin scalar with
+// no Dang body, so instead of a self { } block its statics are wired directly:
+// the scheme lands on the meta-type's own table (where Select's static-first
+// resolution consults StaticScheme/StaticVisibility) and the runtime value in a
+// statics namespace object (where Select.Eval reads via Statics()). This is the
+// Go-native equivalent of the `self { }` machinery in fields.go.
+//
+// escape is the motivating case (type-statics.md): it quotes regexp
+// metacharacters in a string so it can be matched literally, e.g. when building
+// a pattern from arbitrary user input.
+func registerRegexpStatics() {
+	meta := RegexpType.MetaType()
+	statics := NewObject(meta)
+
+	escapeType := hm.NewFnType(
+		NewRecordType("", Keyed[*hm.Scheme]{
+			Key:   "s",
+			Value: hm.NewScheme(nil, NonNull(StringType)),
+		}),
+		NonNull(StringType),
+	)
+
+	const escapeDoc = "quote the regexp metacharacters in s so it matches literally"
+	meta.Add("escape", hm.NewScheme(nil, escapeType))
+	meta.SetVisibility("escape", PublicVisibility)
+	meta.SetDocString("escape", escapeDoc)
+
+	statics.Bind("escape", BuiltinFunction{
+		Name:   "escape",
+		FnType: escapeType,
+		CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+			s, ok := args["s"].(StringValue)
+			if !ok {
+				return nil, fmt.Errorf("Regexp.escape: expected String, got %T", args["s"])
+			}
+			return StringValue{Val: regexp.QuoteMeta(s.Val)}, nil
+		},
+	}, PublicVisibility)
+
+	RegexpType.SetStatics(statics)
 }
 
 func registerRegexpStringMethods() {

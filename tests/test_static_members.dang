@@ -90,4 +90,12 @@ assert { Slug("Hi").shout == "HI" }
 assert { (Slug.empty :: String!) == "" }
 assert { Slug.sep == "-" }
 
+# --- a builtin static on a Go-native scalar (Regexp.escape) ---
+# Regexp has no Dang body; its static is wired directly onto the meta-type, but
+# it resolves through the exact same Type.member static path as the blocks above.
+assert { Regexp.escape("a.b") == "a\\.b" }
+# the motivating case: match arbitrary text literally by escaping it first
+assert { "cost: $5.00".containsMatch(Regexp(Regexp.escape("$5.00"))) }
+assert { !"cost: $5x00".containsMatch(Regexp(Regexp.escape("$5.00"))) }
+
 print("Static member tests passed!")
