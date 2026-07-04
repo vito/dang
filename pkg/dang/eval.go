@@ -144,6 +144,25 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 	return runScalarHook(ctx, scope, c.ScalarType, c.Hook, c.ArgName, raw.Val)
 }
 
+// applyScalarHook materializes raw into scalarType through its new() hook —
+// Go-native or Dang-defined — wrapping the canonical string into a
+// ScalarValue. ok is false when the scalar has no hook and the caller should
+// wrap raw unchanged.
+func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, raw string) (v Value, ok bool, err error) {
+	if hook := scalarType.GoScalarHook(); hook != nil {
+		canonical, err := hook(raw)
+		if err != nil {
+			return nil, true, err
+		}
+		return ScalarValue{Val: canonical, ScalarType: scalarType}, true, nil
+	}
+	if hook, argName, ok := scalarType.ScalarHook(); ok {
+		v, err := runScalarHook(ctx, scope, scalarType, hook, argName, raw)
+		return v, true, err
+	}
+	return nil, false, nil
+}
+
 // runScalarHook runs a scalar's new() hook on raw and wraps the resulting
 // canonical string into a ScalarValue. Shared by the derived constructor and
 // materialization (literals, casts, decode).

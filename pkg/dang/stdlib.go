@@ -77,9 +77,6 @@ func registerStdlib() {
 			if scalarVal, ok := val.(ScalarValue); ok {
 				return ToValue(scalarVal.Val)
 			}
-			if reVal, ok := val.(RegexpValue); ok {
-				return ToValue(reVal.Source)
-			}
 
 			// Otherwise, serialize to JSON
 			jsonBytes, err := json.Marshal(val)

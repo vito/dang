@@ -210,6 +210,10 @@ type Type struct {
 	scalarHook    FunctionValue
 	scalarHookArg string
 	hasScalarHook bool
+	// goScalarHook is the Go-native counterpart of scalarHook, for builtin
+	// scalars whose validation cannot be expressed in Dang (Regexp's compile
+	// check). Registered once at stdlib init.
+	goScalarHook func(raw string) (string, error)
 
 	// Interface tracking
 	interfaces   []TypeScope // Interfaces this type implements
@@ -1066,6 +1070,19 @@ func (e *Type) ScalarHook() (hook FunctionValue, argName string, ok bool) {
 	return e.scalarHook, e.scalarHookArg, e.hasScalarHook
 }
 
+// SetGoScalarHook records a Go-native new() hook: like a Dang new() hook it
+// validates raw and returns the canonical underlying string, and it runs at
+// the same materialization boundaries (see applyScalarHook). For builtin
+// scalars whose validation cannot be expressed in Dang.
+func (e *Type) SetGoScalarHook(hook func(raw string) (string, error)) {
+	e.goScalarHook = hook
+}
+
+// GoScalarHook returns the scalar's Go-native new() hook, or nil.
+func (e *Type) GoScalarHook() func(raw string) (string, error) {
+	return e.goScalarHook
+}
+
 // SetTypeDocString sets the documentation string for the type itself
 // (as opposed to its members, which use SetDocString).
 func (e *Type) SetTypeDocString(docString string) {
@@ -1166,9 +1183,9 @@ func (t *Type) AcceptsCoercionFrom(other hm.Type) bool {
 	}
 
 	// String accepts degrade coercion from any custom scalar — such values
-	// are strings underneath (ScalarValue/RegexpValue), so they may flow into
-	// String slots at value-handoff boundaries. This is the mirror image of
-	// the literal→scalar rule below.
+	// are strings underneath (ScalarValue), so they may flow into String
+	// slots at value-handoff boundaries. This is the mirror image of the
+	// literal→scalar rule below.
 	if t == StringType {
 		otherMod, ok := other.(*Type)
 		return ok && isDegradableScalar(otherMod)

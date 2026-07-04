@@ -8,6 +8,17 @@ assert { !"abc".containsMatch(`\d+`) }
 let digits: Regexp! = `\d+`
 assert { "x42y".containsMatch(digits) }
 
+# a Regexp is a plain scalar value: equal patterns compare equal, and it
+# degrade-compares against its source string
+let alsoDigits: Regexp! = `\d+`
+assert { digits == alsoDigits }
+assert { digits == `\d+` }
+assert { digits != `\w+` }
+
+# codec decode into a Regexp slot compile-checks the pattern
+let fromJSON = JSON.decode(`"[a-z]+"`) :: Regexp!
+assert { "hello".containsMatch(fromJSON) }
+
 # match: returns a Match with the whole match and positional captures
 let m = "x42y".match(`(\d+)`)
 assert { m.string == "42" }

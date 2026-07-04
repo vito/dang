@@ -11,7 +11,10 @@ import (
 )
 
 // RegexpType is the "Regexp" scalar — backtick template strings auto-coerce
-// to it via the scalar coercion path in materializeStringValue.
+// to it via the scalar coercion path in materializeStringValue, where its
+// Go-native new() hook compile-checks the pattern. At runtime a Regexp is a
+// plain ScalarValue holding the pattern source; consumers reach the compiled
+// form through compileRegexp's cache (see regexpArg).
 var RegexpType = NewType("Regexp", ScalarKind)
 
 // MatchType is the "Match" object returned by String regex methods. A Match
@@ -21,18 +24,16 @@ var RegexpType = NewType("Regexp", ScalarKind)
 // type-check those members and list them in the stdlib reference.
 var MatchType = NewType("Match", ObjectKind)
 
-// RegexpValue is the runtime value for a compiled Regexp.
-type RegexpValue struct {
-	Re     *regexp.Regexp
-	Source string
-}
-
-var _ Value = RegexpValue{}
-
-func (r RegexpValue) Type() hm.Type  { return NonNull(RegexpType) }
-func (r RegexpValue) String() string { return r.Source }
-func (r RegexpValue) MarshalJSON() ([]byte, error) {
-	return fmt.Appendf(nil, "%q", r.Source), nil
+// regexpArg returns the compiled form of a Regexp-typed argument. The value
+// is a plain ScalarValue whose string is the pattern source; materialization
+// already compile-checked it, so this is a cache hit (or a cheap re-compile
+// of a known-good pattern after a cache reset).
+func regexpArg(args Args, name string) (*regexp.Regexp, error) {
+	val, ok := args.Values[name].(ScalarValue)
+	if !ok {
+		return nil, fmt.Errorf("%s: expected Regexp, got %T", name, args.Values[name])
+	}
+	return compileRegexp(val.Val)
 }
 
 // newMatch builds the plain object returned for a successful regex match.
@@ -126,6 +127,15 @@ func registerRegexp() {
 	RegexpType.SetTypeDocString("a compiled regular expression (Go regexp/syntax)")
 	MatchType.SetTypeDocString("the result of a successful regex match")
 
+	// The materialization hook: every string entering a Regexp slot must
+	// compile. The pattern source is its own canonical form.
+	RegexpType.SetGoScalarHook(func(raw string) (string, error) {
+		if _, err := compileRegexp(raw); err != nil {
+			return "", err
+		}
+		return raw, nil
+	})
+
 	registerRegexpStringMethods()
 	registerRegexpMatchMethods()
 }
@@ -138,7 +148,10 @@ func registerRegexpStringMethods() {
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			s := self.(StringValue).Val
-			re := args.Values["pattern"].(RegexpValue).Re
+			re, err := regexpArg(args, "pattern")
+			if err != nil {
+				return nil, err
+			}
 			return BoolValue{Val: re.MatchString(s)}, nil
 		})
 
@@ -149,7 +162,10 @@ func registerRegexpStringMethods() {
 		Returns(MatchType).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			s := self.(StringValue).Val
-			re := args.Values["pattern"].(RegexpValue).Re
+			re, err := regexpArg(args, "pattern")
+			if err != nil {
+				return nil, err
+			}
 			idx := re.FindStringSubmatchIndex(s)
 			if idx == nil {
 				return NullValue{}, nil
@@ -164,7 +180,10 @@ func registerRegexpStringMethods() {
 		Returns(NonNull(ListOf(NonNull(MatchType)))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			s := self.(StringValue).Val
-			re := args.Values["pattern"].(RegexpValue).Re
+			re, err := regexpArg(args, "pattern")
+			if err != nil {
+				return nil, err
+			}
 			all := re.FindAllStringSubmatchIndex(s, -1)
 			out := make([]Value, len(all))
 			for i, idx := range all {
@@ -184,7 +203,10 @@ func registerRegexpStringMethods() {
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			s := self.(StringValue).Val
-			re := args.Values["pattern"].(RegexpValue).Re
+			re, err := regexpArg(args, "pattern")
+			if err != nil {
+				return nil, err
+			}
 			tpl := args.GetString("with")
 			n := args.GetInt("count")
 
@@ -211,7 +233,10 @@ func registerRegexpStringMethods() {
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			s := self.(StringValue).Val
-			re := args.Values["pattern"].(RegexpValue).Re
+			re, err := regexpArg(args, "pattern")
+			if err != nil {
+				return nil, err
+			}
 			n := args.GetInt("count")
 			if args.Block == nil {
 				return nil, fmt.Errorf("rewriteMatches requires a block argument")
@@ -251,7 +276,10 @@ func registerRegexpStringMethods() {
 		Returns(NonNull(ListOf(NonNull(StringType)))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			s := self.(StringValue).Val
-			re := args.Values["pattern"].(RegexpValue).Re
+			re, err := regexpArg(args, "pattern")
+			if err != nil {
+				return nil, err
+			}
 			n := args.GetInt("limit")
 			if n <= 0 {
 				n = -1

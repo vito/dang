@@ -113,10 +113,9 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may
 // degrade to String at value-handoff boundaries. Every non-primitive scalar
-// value is a string underneath (ScalarValue/RegexpValue), so they all qualify
-// — except the codec namespaces (JSON/YAML/TOML): those are scalar-kind
-// static modules whose bare name evaluates to the module object, not a
-// string.
+// value is a string underneath (ScalarValue), so they all qualify — except
+// the codec namespaces (JSON/YAML/TOML): those are scalar-kind static
+// modules whose bare name evaluates to the module object, not a string.
 func isDegradableScalar(mod *Type) bool {
 	if mod.Kind != ScalarKind || isPrimitiveScalar(mod) {
 		return false
@@ -369,11 +368,6 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			return StringValue{Val: v.Val}, nil
 		}
 		return val, nil
-	case RegexpValue:
-		if unwrapNonNull(target) == StringType {
-			return StringValue{Val: v.Source}, nil
-		}
-		return val, nil
 	case ListValue:
 		elemTarget, ok := listElementTarget(target)
 		if !ok {
@@ -410,17 +404,9 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 		if isPrimitiveScalar(mod) {
 			return val, nil
 		}
-		if mod == RegexpType {
-			re, err := compileRegexp(val.Val)
-			if err != nil {
-				return nil, materializeError(path, "%s", err.Error())
-			}
-			return RegexpValue{Re: re, Source: val.Val}, nil
-		}
-		// A scalar declared with a new() hook computes its canonical string
-		// at materialization (the Regexp-compiles-here precedent).
-		if hook, argName, ok := mod.ScalarHook(); ok {
-			v, err := runScalarHook(ctx, scope, mod, hook, argName, val.Val)
+		// A scalar with a new() hook — Dang-defined or Go-native (Regexp's
+		// compile check) — computes its canonical string at materialization.
+		if v, hooked, err := applyScalarHook(ctx, scope, mod, val.Val); hooked {
 			if err != nil {
 				return nil, materializeError(path, "%s", err.Error())
 			}
@@ -528,8 +514,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			if mod == StringType {
 				return StringValue{Val: s}, nil
 			}
-			if hook, argName, ok := mod.ScalarHook(); ok {
-				v, err := runScalarHook(ctx, scope, mod, hook, argName, s)
+			if v, hooked, err := applyScalarHook(ctx, scope, mod, s); hooked {
 				if err != nil {
 					return nil, materializeDeferredError(path, "%s", err.Error())
 				}
