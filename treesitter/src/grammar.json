@@ -1261,6 +1261,21 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
           "type": "SYMBOL",
           "name": "scalar_token"
         },
@@ -1270,6 +1285,17 @@
           "content": {
             "type": "SYMBOL",
             "name": "symbol"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "suffix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "directive_application"
+            }
           }
         },
         {

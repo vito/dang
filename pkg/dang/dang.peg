@@ -342,7 +342,7 @@ EnumDecl <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:C
 }
 EnumToken <- "enum" !WordChar
 
-ScalarDecl <- ScalarToken _ name:Symbol body:(_ b:Block { return b, nil })? {
+ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* ScalarToken _ name:Symbol suffixDirectives:DirectiveApplication* body:(_ b:Block { return b, nil })? {
   var block *Block
   if body != nil {
     block = body.(*Block)
@@ -351,6 +351,7 @@ ScalarDecl <- ScalarToken _ name:Symbol body:(_ b:Block { return b, nil })? {
     Name: name.(*Symbol),
     Value: block,
     Visibility: PublicVisibility,
+    Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
 }

@@ -1127,8 +1127,26 @@ func (f *Formatter) formatScalarDecl(s *ScalarDecl) {
 		f.formatDocString(s.DocString)
 	}
 
+	// Prefix directives
+	for _, d := range s.Directives {
+		if d.Loc != nil && s.Name.Loc != nil && d.Loc.Line < s.Name.Loc.Line {
+			f.formatDirectiveApplication(d)
+			f.emitTrailingComment(d.Loc.Line)
+			f.newline()
+			f.writeIndent()
+		}
+	}
+
 	f.write("scalar ")
 	f.write(s.Name.Name)
+
+	// Suffix directives (on same line)
+	for _, d := range s.Directives {
+		if d.Loc == nil || s.Name.Loc == nil || d.Loc.Line >= s.Name.Loc.Line {
+			f.write(" ")
+			f.formatDirectiveApplication(d)
+		}
+	}
 
 	if s.Value == nil {
 		return

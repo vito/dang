@@ -1119,10 +1119,14 @@ func (s *ScalarDecl) DeclaredSymbols() []string {
 }
 
 func (s *ScalarDecl) ReferencedSymbols() []string {
-	if s.Value == nil {
-		return nil
+	var symbols []string
+	for _, directive := range s.Directives {
+		symbols = append(symbols, directive.ReferencedSymbols()...)
 	}
-	return s.Value.ReferencedSymbols()
+	if s.Value != nil {
+		symbols = append(symbols, s.Value.ReferencedSymbols()...)
+	}
+	return symbols
 }
 
 func (s *ScalarDecl) Body() hm.Expression {
@@ -1286,6 +1290,9 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		mod.SetDocString(s.Name.Name, s.DocString)
 		scalarType.SetTypeDocString(s.DocString)
 	}
+	if len(s.Directives) > 0 {
+		mod.SetDirectives(s.Name.Name, s.Directives)
+	}
 
 	// The scalar's value binding. A scalar with new() binds its constructor
 	// function instead (added in pass 1 below); a builtin scalar (JSON, ...)
@@ -1360,9 +1367,19 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		mod.SetDocString(s.Name.Name, s.DocString)
 		scalarType.SetTypeDocString(s.DocString)
 	}
+	if len(s.Directives) > 0 {
+		mod.SetDirectives(s.Name.Name, s.Directives)
+	}
 
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
+
+	// Validate directive applications
+	for _, directive := range s.Directives {
+		if _, err := directive.Infer(ctx, env, fresh); err != nil {
+			return nil, fmt.Errorf("ScalarDecl.Infer: directive validation: %w", err)
+		}
+	}
 
 	if s.Value == nil {
 		return scalarType, nil

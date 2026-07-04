@@ -81,3 +81,65 @@ scalar Slug {
                   (string
                     (immediate_string_content)
                     (immediate_quote_token)))))))))))
+
+================================================================================
+Scalar declaration with prefix @example directive
+================================================================================
+
+@example(```dang
+x
+```)
+scalar Tag
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (scalar_decl
+      (prefix_directive_application
+        (id
+          (word_token))
+        (arg_values
+          (immediate_paren)
+          (argument
+            (positional_value
+              (literal
+                (template
+                  (multi_template
+                    (multi_template_open_token)
+                    (lang_tag_part
+                      (lang_tag_name))
+                    (multi_template_part)
+                    (multi_template_part)
+                    (multi_template_close_token))))))))
+      (scalar_token)
+      (symbol
+        (id
+          (word_token))))))
+
+================================================================================
+Scalar declaration with suffix directive
+================================================================================
+
+scalar Marker @example("x")
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (scalar_decl
+      (scalar_token)
+      (symbol
+        (id
+          (word_token)))
+      (directive_application
+        (id
+          (word_token))
+        (arg_values
+          (immediate_paren)
+          (argument
+            (positional_value
+              (literal
+                (string
+                  (immediate_string_content)
+                  (immediate_quote_token))))))))))
