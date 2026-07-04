@@ -2,203 +2,6 @@
 # construction. This file ships embedded in the interpreter and is evaluated
 # once into the prelude, so everything here is available without any import.
 
-# cleanPath is Go's path.Clean, expressed lexically: collapse empty and "."
-# segments, resolve ".." against prior segments, keep leading ".." for
-# relative paths, and represent the empty path as ".".
-let cleanPath(raw: String!): String! {
-  let rooted = raw.hasPrefix("/")
-  let out: [String!]! = []
-  raw.split("/").each { seg =>
-    if (seg == "" or seg == ".") {
-      continue
-    }
-    if (seg == "..") {
-      if (out.isEmpty) {
-        if (!rooted) {
-          out += [".."]
-        }
-        continue
-      }
-      if (out.takeLast(1)[0] == "..") {
-        out += [".."]
-      } else {
-        out = out.dropLast(1)
-      }
-      continue
-    }
-    out += [seg]
-  }
-  let joined = out.join("/")
-  if (rooted) {
-    "/" + joined
-  } else if (joined == "") {
-    "."
-  } else {
-    joined
-  }
-}
-
-# segments splits a cleaned path into its parts, excluding the root; the
-# empty path "." has no segments.
-let segments(p: String!): [String!]! {
-  if (p == "." or p == "/") {
-    return [] :: [String!]!
-  }
-  p.trimPrefix("/").split("/")
-}
-
-# relPath is filepath.Rel over slash-separated paths: the path that reaches
-# target from base, or null when that is not expressible.
-let relPath(base: String!, target: String!): String {
-  let b = cleanPath(base)
-  let t = cleanPath(target)
-  if (t == b) {
-    return "."
-  }
-  if (b.hasPrefix("/") != t.hasPrefix("/")) {
-    return null
-  }
-  let bsegs = segments(b)
-  let tsegs = segments(t)
-  let n = if (bsegs.length < tsegs.length) { bsegs.length } else { tsegs.length }
-  let common = 0
-  loop {
-    if (common >= n) {
-      break
-    }
-    if (bsegs[common] != tsegs[common]) {
-      break
-    }
-    common += 1
-  }
-  # cleaned paths carry ".." only at the front; if base still has one past
-  # the common prefix, it escapes upward and no relative path exists
-  if (bsegs.dropFirst(common).contains("..")) {
-    return null
-  }
-  let parts = [] :: [String!]!
-  let ups = bsegs.length - common
-  let i = 0
-  loop {
-    if (i >= ups) {
-      break
-    }
-    parts += [".."]
-    i += 1
-  }
-  parts += tsegs.dropFirst(common)
-  if (parts.isEmpty) {
-    "."
-  } else {
-    parts.join("/")
-  }
-}
-
-let containsPath(base: String!, target: String!): Boolean! {
-  let rel = relPath(base, target)
-  if (rel == null) {
-    return false
-  }
-  rel == "." or (rel != ".." and !rel.hasPrefix("../"))
-}
-
-# regexEscape makes a single character literal inside a regular expression.
-let regexEscape(ch: String!): String! {
-  if (ch.containsMatch(`^[A-Za-z0-9]$`)) {
-    ch
-  } else {
-    "\\" + ch
-  }
-}
-
-# globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
-# [...] classes, \ escapes; * and ? never match "/") into an anchored
-# regular expression, or null when the pattern is malformed.
-let globToRegexp(pattern: String!): String {
-  let chars = pattern.split("")
-  let out = "^"
-  let i = 0
-  let bad = false
-  loop {
-    if (bad or i >= chars.length) {
-      break
-    }
-    let c = chars[i] ?? ""
-    if (c == "*") {
-      out += "[^/]*"
-      i += 1
-      continue
-    }
-    if (c == "?") {
-      out += "[^/]"
-      i += 1
-      continue
-    }
-    if (c == "\\") {
-      let nxt = chars[i + 1]
-      if (nxt == null) {
-        bad = true
-        continue
-      }
-      out += regexEscape(nxt)
-      i += 2
-      continue
-    }
-    if (c == "[") {
-      out += "["
-      i += 1
-      if (chars[i] == "^") {
-        out += "^"
-        i += 1
-      }
-      let content = 0
-      let closed = false
-      loop {
-        let cc = chars[i]
-        if (cc == null) {
-          break
-        }
-        if (cc == "]") {
-          if (content > 0) {
-            closed = true
-          }
-          break
-        }
-        if (cc == "\\") {
-          let esc = chars[i + 1]
-          if (esc == null) {
-            break
-          }
-          out += regexEscape(esc)
-          i += 2
-          content += 1
-          continue
-        }
-        if (cc == "-") {
-          out += "-"
-        } else {
-          out += regexEscape(cc)
-        }
-        i += 1
-        content += 1
-      }
-      if (!closed) {
-        bad = true
-        continue
-      }
-      out += "]"
-      i += 1
-      continue
-    }
-    out += regexEscape(c)
-    i += 1
-  }
-  if (bad) {
-    return null
-  }
-  out + "$"
-}
-
 """
 a slash-separated path, normalized on construction
 """
@@ -366,5 +169,202 @@ scalar Path {
   ```)
   string: String! {
     self :: String!
+  }
+
+# cleanPath is Go's path.Clean, expressed lexically: collapse empty and "."
+# segments, resolve ".." against prior segments, keep leading ".." for
+# relative paths, and represent the empty path as ".".
+  let cleanPath(raw: String!): String! {
+    let rooted = raw.hasPrefix("/")
+    let out: [String!]! = []
+    raw.split("/").each { seg =>
+      if (seg == "" or seg == ".") {
+        continue
+      }
+      if (seg == "..") {
+        if (out.isEmpty) {
+          if (!rooted) {
+            out += [".."]
+          }
+          continue
+        }
+        if (out.takeLast(1)[0] == "..") {
+          out += [".."]
+        } else {
+          out = out.dropLast(1)
+        }
+        continue
+      }
+      out += [seg]
+    }
+    let joined = out.join("/")
+    if (rooted) {
+      "/" + joined
+    } else if (joined == "") {
+      "."
+    } else {
+      joined
+    }
+  }
+
+# segments splits a cleaned path into its parts, excluding the root; the
+# empty path "." has no segments.
+  let segments(p: String!): [String!]! {
+    if (p == "." or p == "/") {
+      return [] :: [String!]!
+    }
+    p.trimPrefix("/").split("/")
+  }
+
+# relPath is filepath.Rel over slash-separated paths: the path that reaches
+# target from base, or null when that is not expressible.
+  let relPath(base: String!, target: String!): String {
+    let b = cleanPath(base)
+    let t = cleanPath(target)
+    if (t == b) {
+      return "."
+    }
+    if (b.hasPrefix("/") != t.hasPrefix("/")) {
+      return null
+    }
+    let bsegs = segments(b)
+    let tsegs = segments(t)
+    let n = if (bsegs.length < tsegs.length) { bsegs.length } else { tsegs.length }
+    let common = 0
+    loop {
+      if (common >= n) {
+        break
+      }
+      if (bsegs[common] != tsegs[common]) {
+        break
+      }
+      common += 1
+    }
+    # cleaned paths carry ".." only at the front; if base still has one past
+    # the common prefix, it escapes upward and no relative path exists
+    if (bsegs.dropFirst(common).contains("..")) {
+      return null
+    }
+    let parts = [] :: [String!]!
+    let ups = bsegs.length - common
+    let i = 0
+    loop {
+      if (i >= ups) {
+        break
+      }
+      parts += [".."]
+      i += 1
+    }
+    parts += tsegs.dropFirst(common)
+    if (parts.isEmpty) {
+      "."
+    } else {
+      parts.join("/")
+    }
+  }
+
+  let containsPath(base: String!, target: String!): Boolean! {
+    let rel = relPath(base, target)
+    if (rel == null) {
+      return false
+    }
+    rel == "." or (rel != ".." and !rel.hasPrefix("../"))
+  }
+
+# regexEscape makes a single character literal inside a regular expression.
+  let regexEscape(ch: String!): String! {
+    if (ch.containsMatch(`^[A-Za-z0-9]$`)) {
+      ch
+    } else {
+      "\\" + ch
+    }
+  }
+
+# globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
+# [...] classes, \ escapes; * and ? never match "/") into an anchored
+# regular expression, or null when the pattern is malformed.
+  let globToRegexp(pattern: String!): String {
+    let chars = pattern.split("")
+    let out = "^"
+    let i = 0
+    let bad = false
+    loop {
+      if (bad or i >= chars.length) {
+        break
+      }
+      let c = chars[i] ?? ""
+      if (c == "*") {
+        out += "[^/]*"
+        i += 1
+        continue
+      }
+      if (c == "?") {
+        out += "[^/]"
+        i += 1
+        continue
+      }
+      if (c == "\\") {
+        let nxt = chars[i + 1]
+        if (nxt == null) {
+          bad = true
+          continue
+        }
+        out += regexEscape(nxt)
+        i += 2
+        continue
+      }
+      if (c == "[") {
+        out += "["
+        i += 1
+        if (chars[i] == "^") {
+          out += "^"
+          i += 1
+        }
+        let content = 0
+        let closed = false
+        loop {
+          let cc = chars[i]
+          if (cc == null) {
+            break
+          }
+          if (cc == "]") {
+            if (content > 0) {
+              closed = true
+            }
+            break
+          }
+          if (cc == "\\") {
+            let esc = chars[i + 1]
+            if (esc == null) {
+              break
+            }
+            out += regexEscape(esc)
+            i += 2
+            content += 1
+            continue
+          }
+          if (cc == "-") {
+            out += "-"
+          } else {
+            out += regexEscape(cc)
+          }
+          i += 1
+          content += 1
+        }
+        if (!closed) {
+          bad = true
+          continue
+        }
+        out += "]"
+        i += 1
+        continue
+      }
+      out += regexEscape(c)
+      i += 1
+    }
+    if (bad) {
+      return null
+    }
+    out + "$"
   }
 }
