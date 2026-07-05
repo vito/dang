@@ -155,10 +155,10 @@ func TestProjectConfigImports(t *testing.T) {
 	configDir := filepath.Dir(configPath)
 	resolved, err := ResolveImportConfigs(ctx, config, configDir)
 	require.NoError(t, err)
-	require.Len(t, resolved, 3)
+	require.Len(t, resolved, 5)
 
-	// Verify we got schemas for both GraphQL imports, and a module dir for the
-	// native Dang import (Lib), which carries no schema/client.
+	// Verify we got schemas for both GraphQL imports, and a module dir for each
+	// native Dang import (Lib/Util/Calc), which carries no schema/client.
 	var testConfig, otherConfig, libConfig ImportConfig
 	for _, c := range resolved {
 		switch c.Name {
@@ -201,12 +201,17 @@ func TestLoadProjectConfig(t *testing.T) {
 	config, err := LoadProjectConfig("../../tests/dang.toml")
 	require.NoError(t, err)
 	require.NotNil(t, config)
-	require.Len(t, config.Imports, 3)
+	require.Len(t, config.Imports, 5)
 	require.NotNil(t, config.Imports["Test"])
 	require.Equal(t, "./gqlserver/schema.graphqls", config.Imports["Test"].Schema)
 	require.NotNil(t, config.Imports["Other"])
 	require.NotNil(t, config.Imports["Lib"])
 	require.Equal(t, "./importlib", config.Imports["Lib"].Path)
+	// Native Dang modules backing the per-module identity tests.
+	require.NotNil(t, config.Imports["Util"])
+	require.Equal(t, "./importutil", config.Imports["Util"].Path)
+	require.NotNil(t, config.Imports["Calc"])
+	require.Equal(t, "./importcalc", config.Imports["Calc"].Path)
 }
 
 func TestDaggerImportSource(t *testing.T) {

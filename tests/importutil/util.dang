@@ -1,0 +1,19 @@
+# A leaf utility module imported by consumers via `[imports.Util] path` in
+# dang.toml. It has no imports of its own, so it sits at the bottom of the
+# dependency chain used to test native Dang module identity.
+#
+# Under the per-module identity model each importing module gets its OWN compiled
+# copy of this module: App's Util and Calc's Util are distinct instances even
+# though both resolve to this same directory. Their `Widget` types therefore do
+# not unify across the module boundary (see errors/import_foreign_type_mismatch),
+# while all files of a single module DO share one instance (see
+# test_import_transitive).
+
+type Widget {
+  size: Int! = 3
+
+  area: Int! { self.size * self.size }
+}
+
+# Public helper, used transitively through Calc.
+double(n: Int!): Int! { n * 2 }

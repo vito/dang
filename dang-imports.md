@@ -5,10 +5,16 @@ landed). `[imports.X] path = "./dir"` now binds X to a native Dang module
 compiled from source, with its own `pub`/`let` API. The cross-USER-module `let`
 visibility boundary is finally reachable and tested end to end
 (`tests/importlib/` + `tests/test_import_dang_module.dang` positive;
-`tests/errors/import_dang_private_member.dang` negative golden). Phases 2–3 (VCS
-refs, fetch/cache/lock, MVS, transitive deps) remain future work. Decisions
-locked: run all module code on import (no library/program split), local path
-imports first.
+`tests/errors/import_dang_private_member.dang` negative golden). **Instance
+identity is now decided AND shipped: per-module** (per-`dang.toml`) — each module
+gets its own copy of a dependency, nothing unifies across the module boundary;
+transitive local imports and cycle detection landed with it, tested in
+conventional style (`tests/test_import_transitive/` positive,
+`tests/errors/import_foreign_type_mismatch.dang` negative golden, cycle Go test;
+see §9). Phases 2–3 (VCS refs, fetch/cache/lock, transitive
+*remote* deps) remain future work; **no Go-style MVS** (per-module makes version
+reconciliation moot). Decisions locked: run all module code on import (no
+library/program split), local path imports first, per-module instance identity.
 
 Implementation surfaced one latent bug, now fixed: `ObjectDecl.Hoist`
 (fields.go) added a `type`'s constructor scheme to the type env **without**
@@ -298,66 +304,94 @@ reference:
   its resolved local path.
 - **C. How far now** — DECIDED: **Phase 1 only** (local path imports), to unblock
   the visibility test, then reassess.
+- **D. Instance identity** — DECIDED & SHIPPED: **per-module** (per-`dang.toml`).
+  See §9.
 
-## 9. Open for next session — module instance-identity model
+## 9. Module instance-identity model — DECIDED: per-module (shipped)
 
-Phase 1 shipped (commits `fix(dang): set visibility on type value bindings` +
-`feat(dang): native Dang module imports via path`). Before Phase 2 (remote refs)
-there is one unresolved design decision that changes the cache/identity core:
-**when is an imported module the *same instance* vs a fresh one?** Still being
-thought through — do not lock it in without confirming.
+Phase 1 shipped native local-path imports (commits `fix(dang): set visibility on
+type value bindings` + `feat(dang): native Dang module imports via path`). The
+one open question that changed the cache/identity core — **when is an imported
+module the *same instance* vs a fresh one?** — is now **decided and
+implemented**: the sharing unit is the **module** (a `dang.toml`).
 
 **Settled: no Go-style MVS.** We are NOT doing Minimal Version Selection or
 global "one version per module path" reconciliation. This supersedes §4's
-version-selection paragraph. Refs still pin exact versions and `dang.lock` still
-records resolved commits for reproducibility, but there is no selection
+version-selection paragraph. Refs will still pin exact versions and `dang.lock`
+will still record resolved commits for reproducibility, but there is no selection
 algorithm.
 
-**The three candidate identity models (leaning toward the third):**
+**Decision: per-module (per-`dang.toml`) instance identity.** All files of one
+module resolve a given import to a single instance, but two *different* modules
+each instantiate their own copy of a dependency — even at the same pinned version
+/ same directory. Nothing is shared across the module boundary. (The two rejected
+alternatives: *shared-per-version* — one instance per `module@version` graph-wide,
+types unify across modules; and *strict-per-import* — every `import` statement its
+own instance, so even sibling files disagree.)
 
-1. *Shared-per-version* — cache key `module@exact-version`; the same pin
-   anywhere in the graph is one shared instance, so its types unify across
-   modules. Different versions coexist (skew allowed, no reconciliation). This
-   is what Phase 1 currently does (keyed by resolved dir, cache persists across
-   the module boundary — see the comment in `moduleImportContext`).
-2. *Strict-per-import* — every `import` statement gets its own instance, even
-   two imports in the same module. Rejected: files in one module should agree.
-3. *Per-module (per-`dang.toml`)* — **the current lean.** The sharing unit is
-   the module: all files of a module resolve a given import to one instance, but
-   two *different* modules each instantiate their own copy of a dependency, even
-   at the same pinned version. Nothing is shared across modules.
+**Why per-module.** Version reconciliation disappears completely — nothing is
+shared across modules, so two modules pinning different versions cannot conflict;
+you fetch exactly what each `dang.toml` pins and instantiate it for that module.
+Hermetic modules; simplest of the three. Aligns with the intent that behavior is
+shared through **interfaces** (loose coupling), not by unifying concrete foreign
+types. These import graphs are expected to be small, so the duplication cost is a
+non-issue.
 
-**Why per-module is attractive:** version reconciliation disappears completely —
-nothing is shared across modules, so two modules pinning different versions
-cannot conflict; you fetch exactly what each `dang.toml` pins and instantiate it
-for that module. Hermetic modules; simplest of the three.
-
-**Consequences to weigh before committing to per-module:**
+**Accepted consequences (all confirmed, not open):**
 - *Foreign types don't unify across modules.* App's `Semver` ≠ B's `Semver`,
   same version or not. A module's public API that exposes a dependency's type
-  (`bump(v: Semver): Semver`) is only usable if the module re-exports the
-  constructor, so callers build values through that module's instance. Read as
-  intended (modules as black boxes with their own vocabulary) — CONFIRM.
-- *No dedup = N copies.* Ten modules importing one util compile AND run it ten
-  times (top-level side effects included). Fine at expected scale; opt-in dedup
-  could be added later without changing the model.
-- *Cycles get more dangerous.* Per-module instantiation would expand A→B→A
-  infinitely (a new instance each hop), so detection must track the **active
-  compile path** by ref identity, not a shared cache entry. The current
-  Phase-1 in-progress marker keys on the shared cache and must be reworked into
-  a path/stack check under this model.
+  (`bump(v: Semver): Semver`) is used structurally (member access on the returned
+  value works) or via a shared **interface**; an explicit cross-instance
+  annotation (`let v: Semver = other.bump(...)` where `Semver` is *your* copy)
+  will not typecheck. Modules are black boxes with their own vocabulary — as
+  intended.
+- *No dedup = N copies.* N modules importing one util compile AND run it N times
+  (top-level side effects included). Fine at expected scale; opt-in dedup could
+  be added later without changing the model.
 
-**Code implications if per-module wins:** flip the one Phase-1 decision —
-`moduleImportContext` currently *inherits* the dang-module cache across the
-boundary (to unify nested modules); per-module wants a **fresh** cache per module
-compilation instead. Within-module sharing already falls out. Rework cycle
-detection as above.
+**Implementation (shipped in this session).** Two changes in
+`pkg/dang/import_dang.go`:
+1. *Fresh cache per module.* `moduleImportContext` now installs a **fresh**
+   Dang-module cache (`WithDangModuleCache`) per compiled module, alongside the
+   already-fresh schema cache. So each module resolves its own dependencies into
+   its own cache; two modules importing the same directory never share a `*Type`.
+   Within-module sharing falls out because all of a module's files infer/eval
+   under the one ctx that owns that cache.
+2. *Compile-stack cycle detection.* The old in-progress marker lived in the
+   shared cache and could not survive the (now per-module) boundary — A→B→A would
+   expand a fresh instance every hop, forever. Replaced with a ctx-threaded
+   **compile-stack** of module dirs (`compileStackFromContext` / `pushCompileStack`)
+   that *does* cross the boundary; `loadDangModule` errors `import cycle detected:
+   A -> B -> A` when a dir recurs on the active path. Modules are now cached only
+   after a successful compile (no marker), so a failed load leaves nothing to
+   retry around.
 
-**Recommended next step (network-free, decisive):** build transitive **local**
-import fixtures — a module that itself imports another local module, plus an
-app + a dep sharing a module. These are the decisive test of whichever identity
-model we pick (does App's `Lib` differ from a dep's `Lib`? do an app's two files
-share one? does a cycle error cleanly?), and they are the exact foundation the
-remote-ref phase reuses (resolve ref → fetch to content-addressed dir → hand to
-the existing `loadDangModule`). Given how the visibility audit went, expect this
-to surface a latent issue.
+**Tests — conventional style (`.dang` fixtures, `tests/`).** Dang unification is
+**nominal** ("structurally compatible … but not declared as an implementation"),
+so per-module identity is fully observable through the type checker — no need to
+count side effects. Fixture modules: `tests/importutil/` (leaf `Util`, defines
+`Widget` + `double`) and `tests/importcalc/` (`Calc`, imports `Util`, re-exposes
+`tripled` and a `Util.Widget`).
+- *Positive* — `tests/test_import_transitive/` (language suite). Two files:
+  `Calc.tripled` runs `Util.double` across `App -> Calc -> Util` (transitive),
+  and a `Util.Widget` produced in one App file is assigned to a `Util.Widget`
+  slot in the sibling file — which only typechecks because both files share one
+  `Util` instance (within-module sharing; a per-import model would fail nominal
+  unification).
+- *Negative* — `tests/errors/import_foreign_type_mismatch.dang` + golden. App
+  imports `Util` (its own copy) and `Calc` (which imports its own `Util`);
+  assigning `Calc.widget` to App's `Util.Widget!` is rejected — the two instances
+  of the same directory don't unify across the module boundary. This is the
+  cross-module distinctness proof.
+- *Cycle* — `TestDangModuleImportCycle` in `tests/errors_test.go`. A directory
+  that must **error** fits neither the golden harness (the cycle message embeds
+  absolute module dirs) nor the language harness (an error there is a failure),
+  so it runs from a temp dir and asserts the message — the same pattern as the
+  existing `TestRunDirControlFlowSourceErrors`. A↔B mutual import ⇒ `import cycle
+  detected` rather than looping.
+
+**Remaining for Phase 2/3.** The per-module model is the foundation the remote-ref
+phase reuses verbatim: resolve ref → fetch to a content-addressed dir → hand the
+dir to the existing `loadDangModule`. Cycle detection already keys on the compile
+path (by resolved dir), so it carries over unchanged; when refs land, the stack
+key can shift from abs dir to `module-path@commit` if desired.

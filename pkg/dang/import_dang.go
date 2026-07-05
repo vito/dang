@@ -5,28 +5,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // dangModule is a compiled native Dang module: its inferred public type scope
-// plus the parsed file blocks needed to evaluate its code. Exactly one is
-// produced per module directory per build and shared by every importer (keyed
-// by resolved absolute dir in the ctx-scoped Dang-module cache), so its types
-// unify across the dependency graph and its homeModule identity is stable —
-// the same guarantee the schema-module cache gives GraphQL imports.
+// plus the parsed file blocks needed to evaluate its code. Under the per-module
+// identity model, one is produced per importing module per build: all files of a
+// single module share one *dangModule per imported directory (keyed by resolved
+// absolute dir in that module's ctx-scoped Dang-module cache), so its types and
+// homeModule identity are stable within the module. But two DIFFERENT modules
+// importing the same directory each get their own *dangModule — foreign types
+// deliberately do not unify across the module boundary; behavior is shared via
+// interfaces instead.
 //
-// The module is frozen once compiled: its top-level code runs at most once (on
-// first evaluation), exactly like the prelude.
+// The module is frozen once compiled: its top-level code runs at most once per
+// instance (on first evaluation), exactly like the prelude. A directory imported
+// by N distinct modules therefore compiles and runs N times, once per instance.
 type dangModule struct {
 	dir       string
 	typeScope TypeScope
 	blocks    []*FileBlock
-
-	// inProgress marks a module whose inference is mid-flight, so a re-entrant
-	// load (an import cycle) is detected and errored rather than looping.
-	inProgress bool
 
 	once  sync.Once
 	value ValueScope
@@ -36,10 +37,12 @@ type dangModule struct {
 type dangModuleCacheKey struct{}
 
 // WithDangModuleCache attaches a dir-keyed cache of compiled Dang modules to
-// ctx. Consulted by loadDangModule so every importer of the same module
-// directory reuses one compiled *dangModule (and thus one set of *Type
+// ctx. Consulted by loadDangModule so all files of one module reuse a single
+// compiled *dangModule per imported directory (and thus one set of *Type
 // identities). Mirrors WithSchemaModuleCache. ContextWithImportConfigs
-// auto-creates one when none is attached.
+// auto-creates one when none is attached; moduleImportContext installs a FRESH
+// one per compiled module, which is what keeps each module's imports distinct
+// (the per-module identity model).
 func WithDangModuleCache(ctx context.Context, cache *sync.Map) context.Context {
 	return context.WithValue(ctx, dangModuleCacheKey{}, cache)
 }
@@ -49,49 +52,68 @@ func dangModuleCacheFromContext(ctx context.Context) *sync.Map {
 	return c
 }
 
+type compileStackKey struct{}
+
+// compileStackFromContext returns the chain of module directories currently
+// mid-compile, outermost first. It threads through ctx across the module
+// boundary (unlike the per-module Dang-module cache, which is freshened per
+// module) so a re-entrant import of a directory already on the chain is detected
+// as a cycle — a shared-cache marker cannot do this job here, because each
+// module compiles its dependencies with its OWN fresh cache and A->B->A would
+// otherwise expand a new instance every hop, forever.
+func compileStackFromContext(ctx context.Context) []string {
+	s, _ := ctx.Value(compileStackKey{}).([]string)
+	return s
+}
+
+func pushCompileStack(ctx context.Context, dir string) context.Context {
+	prev := compileStackFromContext(ctx)
+	next := make([]string, len(prev)+1)
+	copy(next, prev)
+	next[len(prev)] = dir
+	return context.WithValue(ctx, compileStackKey{}, next)
+}
+
 // loadDangModule returns the compiled module rooted at dir, compiling it on a
-// cache miss. The result is cached (keyed by resolved absolute dir) so repeated
-// and cross-file imports of the same module unify. Compilation is marked
-// in-progress in the cache so an import cycle is reported rather than looping.
+// cache miss. The result is cached (keyed by resolved absolute dir) in the
+// importing module's cache, so its files' repeated imports of that directory
+// unify. Import cycles are reported via the ctx compile-stack rather than a
+// cache marker, because each module compiles its deps with a fresh cache and a
+// marker would not survive the boundary.
 func loadDangModule(ctx context.Context, dir string) (*dangModule, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
 	}
 
+	// Cycle detection against the active compile path. See compileStackFromContext.
+	stack := compileStackFromContext(ctx)
+	for i, d := range stack {
+		if d == dir {
+			chain := append(append([]string(nil), stack[i:]...), dir)
+			return nil, fmt.Errorf("import cycle detected: %s", strings.Join(chain, " -> "))
+		}
+	}
+
 	cache := dangModuleCacheFromContext(ctx)
 	if cache != nil {
 		if v, ok := cache.Load(dir); ok {
-			mod := v.(*dangModule)
-			if mod.inProgress {
-				return nil, fmt.Errorf("import cycle detected: Dang module %s imports itself (directly or transitively)", dir)
-			}
-			return mod, nil
+			return v.(*dangModule), nil
 		}
 	}
 
-	mod := &dangModule{dir: dir, inProgress: true}
-	if cache != nil {
-		// Publish the in-progress marker before inference so a transitive import
-		// back to this directory is detected as a cycle.
-		if actual, loaded := cache.LoadOrStore(dir, mod); loaded {
-			existing := actual.(*dangModule)
-			if existing.inProgress {
-				return nil, fmt.Errorf("import cycle detected: Dang module %s imports itself (directly or transitively)", dir)
-			}
-			return existing, nil
-		}
-	}
-
-	if err := mod.compile(ctx); err != nil {
-		if cache != nil {
-			// Drop the failed marker so a later pass (e.g. the LSP re-inferring
-			// after an edit) can retry from scratch.
-			cache.Delete(dir)
-		}
+	mod := &dangModule{dir: dir}
+	if err := mod.compile(pushCompileStack(ctx, dir)); err != nil {
 		return nil, err
 	}
-	mod.inProgress = false
+
+	// Store only after a successful compile: a failed load leaves no marker, so a
+	// later pass (e.g. the LSP re-inferring after an edit) retries from scratch.
+	// Imports infer sequentially per directory, so no LoadOrStore race here — the
+	// same discipline the schema-module cache relies on.
+	if cache != nil {
+		cache.Store(dir, mod)
+	}
 	return mod, nil
 }
 
@@ -156,13 +178,22 @@ func parseModuleBlocks(ctx context.Context, dir string) (context.Context, []*Fil
 }
 
 // moduleImportContext strips the importer's project/import configs and attaches
-// the module's own. The Dang-module cache is intentionally left in place so
-// nested Dang modules unify across the whole build.
+// the module's own, and gives the module FRESH schema and Dang-module caches.
+// The fresh Dang-module cache is the per-module identity model: a module
+// resolves its OWN dependencies into its OWN cache, so two different modules
+// importing the same directory each compile a distinct instance and never share
+// a *Type identity. Within a single module all files share this one cache, so a
+// module's repeated / cross-file imports of one dependency still unify. Cross-
+// module cycle detection deliberately does NOT rely on this cache — it uses the
+// ctx compile-stack (see loadDangModule) precisely because the cache is fresh
+// per module and could not carry a cycle marker across the boundary.
 func moduleImportContext(ctx context.Context, dir string) (context.Context, error) {
-	// Clear the importer's schema imports and give the module a fresh schema
-	// cache so imported GraphQL types don't alias across the module boundary.
+	// Clear the importer's schema imports and give the module fresh schema and
+	// Dang-module caches so neither GraphQL nor Dang types alias across the
+	// module boundary.
 	ctx = context.WithValue(ctx, importConfigsKey{}, []ImportConfig(nil))
 	ctx = WithSchemaModuleCache(ctx, &sync.Map{})
+	ctx = WithDangModuleCache(ctx, &sync.Map{})
 
 	configPath := filepath.Join(dir, "dang.toml")
 	if _, statErr := os.Stat(configPath); statErr == nil {

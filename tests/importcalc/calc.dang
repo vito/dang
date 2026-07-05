@@ -1,0 +1,14 @@
+# A middle module that imports the leaf Util module (see dang.toml). It sits
+# between an app and Util, so importing Calc exercises TRANSITIVE native imports:
+# Calc's own `import Util` must resolve, compile, and evaluate through the module
+# boundary before Calc's API is usable.
+import Util
+
+# Transitive use of a dependency's public helper.
+tripled(n: Int!): Int! { Util.double(n) + n }
+
+# Re-exposes a value whose type comes from Calc's OWN copy of Util. An importer
+# that also imports Util cannot assign this to its own Util.Widget slot, because
+# the two Util instances are distinct (per-module identity). See
+# errors/import_foreign_type_mismatch.
+widget: Util.Widget! { Util.Widget }
