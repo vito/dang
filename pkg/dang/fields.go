@@ -728,9 +728,14 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 	c.ConstructorFnType = constructorType
 
-	// Add the constructor function type to the environment
+	// Add the constructor function type to the environment, carrying the
+	// declaration's visibility so the type name is exported (or kept private)
+	// across a module boundary. Without this the binding defaults to private and
+	// an importer can't reach the type unqualified — the eval side already binds
+	// the constructor with c.Visibility (see ConstructorFunction binding below).
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
+	mod.SetVisibility(c.Name.Name, c.Visibility)
 
 	// Link the implementation after all interface type names have been
 	// registered by pass 0.
@@ -1211,6 +1216,10 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
 	enumScheme := hm.NewScheme(nil, NonNull(enumType))
 	env.Add(e.Name.Name, enumScheme)
+	// Carry the declaration's visibility so the enum's value binding is exported
+	// across a module boundary (the eval side binds it with e.Visibility). Without
+	// this it defaults to private and an importer can't reach it unqualified.
+	mod.SetVisibility(e.Name.Name, e.Visibility)
 
 	if pass > 0 {
 		// Add each enum value as a field in the enum module
@@ -1761,6 +1770,10 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		// Add the interface type to the environment so it can be referenced.
 		interfaceScheme := hm.NewScheme(nil, iface)
 		env.Add(i.Name.Name, interfaceScheme)
+		// Carry the declaration's visibility so the interface's value binding is
+		// exported across a module boundary (the eval side binds it with
+		// i.Visibility); otherwise it defaults to private.
+		mod.SetVisibility(i.Name.Name, i.Visibility)
 		return nil
 	}
 
@@ -1966,6 +1979,10 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	if pass == 0 {
 		// Pass 0: Register the union type so it can be referenced.
 		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+		// Carry the declaration's visibility so the union's value binding is
+		// exported across a module boundary (the eval side binds it with
+		// u.Visibility); otherwise it defaults to private.
+		mod.SetVisibility(u.Name.Name, u.Visibility)
 		return nil
 	}
 
