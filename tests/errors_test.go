@@ -95,9 +95,15 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
-	// Lib is a native Dang module (not a GraphQL schema), imported from source.
-	// Used by errors that exercise the cross-module `let` visibility boundary.
+	// Native Dang modules (not GraphQL schemas), imported from source. Lib backs
+	// the cross-module `let` visibility boundary; Util + Calc back the per-module
+	// type-distinctness boundary (Calc imports its own copy of Util via its
+	// dang.toml, so Calc's Util.Widget doesn't unify with an importer's).
 	libDir, err := filepath.Abs("importlib")
+	require.NoError(t, err)
+	utilDir, err := filepath.Abs("importutil")
+	require.NoError(t, err)
+	calcDir, err := filepath.Abs("importcalc")
 	require.NoError(t, err)
 
 	ctx = dang.ContextWithImportConfigs(ctx,
@@ -112,6 +118,14 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 		dang.ImportConfig{
 			Name:          "Lib",
 			DangModuleDir: libDir,
+		},
+		dang.ImportConfig{
+			Name:          "Util",
+			DangModuleDir: utilDir,
+		},
+		dang.ImportConfig{
+			Name:          "Calc",
+			DangModuleDir: calcDir,
 		},
 	)
 
@@ -187,4 +201,31 @@ print(x)
 			}
 		})
 	}
+}
+
+// TestDangModuleImportCycle checks that a native Dang import cycle (module A
+// imports B imports A) is reported as a clean error rather than looping forever.
+// A directory that must ERROR fits neither the golden harness (the cycle message
+// embeds absolute module dirs) nor the language harness (an error there is a test
+// failure), so — like TestRunDirControlFlowSourceErrors — it runs from a temp
+// dir and asserts on the message. Under the per-module identity model each hop
+// would instantiate a fresh copy, so cycle detection tracks the active compile
+// path (a ctx stack) instead of a shared cache marker.
+func (DangSuite) TestDangModuleImportCycle(ctx context.Context, t *testctx.T) {
+	root := t.TempDir()
+
+	writeCycleModule := func(name, importsName string) {
+		modDir := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(modDir, 0755))
+		toml := "[imports." + importsName + "]\npath = \"../" + strings.ToLower(importsName) + "\"\n"
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, "dang.toml"), []byte(toml), 0644))
+		src := "import " + importsName + "\n\npub " + name + ": Int! = 1\n"
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, name+".dang"), []byte(src), 0644))
+	}
+	writeCycleModule("a", "B")
+	writeCycleModule("b", "A")
+
+	_, err := dang.RunDir(ctx, filepath.Join(root, "a"), false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "import cycle detected")
 }

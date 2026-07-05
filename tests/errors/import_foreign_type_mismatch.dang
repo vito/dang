@@ -1,0 +1,13 @@
+# Cross-module type distinctness under the per-module import identity model.
+#
+# This module imports Util directly (getting ITS OWN copy) and Calc, which
+# imports Util through its own dang.toml (getting a SEPARATE copy). `Calc.widget`
+# is a `Util.Widget` built from Calc's copy; assigning it to a slot annotated
+# with THIS module's `Util.Widget` is rejected, because the two Util instances —
+# same directory, different module — do not unify. Foreign types don't cross the
+# module boundary; behavior is shared through interfaces instead.
+
+import Calc
+import Util
+
+let w: Util.Widget! = Calc.widget

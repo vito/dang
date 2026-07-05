@@ -1,0 +1,19 @@
+# Native Dang module identity, positive cases (the negative counterpart is
+# errors/import_foreign_type_mismatch). Two things are exercised here:
+#
+#   1. TRANSITIVE imports: Calc imports Util internally; using Calc.tripled runs
+#      Util.double across two module boundaries (App -> Calc -> Util).
+#   2. WITHIN-MODULE SHARING: this file and its sibling b.dang both `import Util`
+#      and must resolve it to the SAME instance, so a Util value produced here is
+#      assignable to a Util.Widget slot there.
+
+import Calc
+import Util
+
+# Transitive: Calc.tripled(n) == Util.double(n) + n == 3n.
+assert { Calc.tripled(2) == 6 }
+assert { Calc.tripled(10) == 30 }
+
+# A Util value produced in this file, consumed by the sibling file. Its type is
+# App's Util.Widget.
+pub appWidget = Util.Widget

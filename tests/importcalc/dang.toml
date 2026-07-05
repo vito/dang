@@ -1,0 +1,5 @@
+# Calc's OWN manifest, resolved when Calc is compiled as a module (relative to
+# this directory, not the importer's). This is how a native Dang module declares
+# its own dependencies; the importer never sees or shares them.
+[imports.Util]
+path = "../importutil"

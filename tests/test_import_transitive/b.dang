@@ -1,0 +1,8 @@
+# Sibling of a.dang in the same module. `appWidget` is declared over there; the
+# annotation below only typechecks because both files resolve `Util` to the same
+# instance (within-module sharing). If each `import` produced its own instance,
+# this file's Util.Widget would be a distinct, non-unifying type.
+import Util
+
+let checked: Util.Widget! = appWidget
+assert { checked.area == 9 }
