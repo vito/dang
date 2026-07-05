@@ -995,6 +995,11 @@ type ImportDecl struct {
 	client   graphql.Client
 	schema   *introspection.Schema
 	inferred TypeScope
+
+	// dangMod is set for native Dang module imports (config.DangModuleDir).
+	// It carries the compiled module reused at Eval, mirroring how client/schema
+	// are stashed for GraphQL imports.
+	dangMod *dangModule
 }
 
 type ImportConfig struct {
@@ -1010,6 +1015,12 @@ type ImportConfig struct {
 	// Dagger indicates this import connects to a Dagger Engine session.
 	// Used by the LSP to find the client for module introspection.
 	Dagger bool
+
+	// DangModuleDir, when non-empty, marks this as a native Dang module import
+	// (not a GraphQL schema). It is the resolved absolute path to the module's
+	// directory; the module is compiled from source and its `pub` declarations
+	// become the import's API. See import_dang.go.
+	DangModuleDir string
 }
 
 type importConfigsKey struct{}
@@ -1033,6 +1044,9 @@ func WithSchemaModuleCache(ctx context.Context, cache *sync.Map) context.Context
 func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) context.Context {
 	if _, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); !ok {
 		ctx = WithSchemaModuleCache(ctx, &sync.Map{})
+	}
+	if _, ok := ctx.Value(dangModuleCacheKey{}).(*sync.Map); !ok {
+		ctx = WithDangModuleCache(ctx, &sync.Map{})
 	}
 	return context.WithValue(ctx, importConfigsKey{}, configs)
 }
@@ -1106,10 +1120,24 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				if err != nil {
 					return nil, err
 				}
-				i.client = config.Client
-				i.schema = config.Schema
-				i.inferred = TypeScopeFromSchema(i.Name.Name, config.Schema)
-				cacheImportModule(ctx, i.Name.Name, i.inferred)
+				if config.DangModuleDir != "" {
+					// Native Dang module: compile the module directory under its
+					// own moduleScope and install its public type scope. Keyed by
+					// resolved dir in the ctx-scoped Dang-module cache, so every
+					// importer of the same dir gets one *Type identity and its
+					// types unify — the schema cache's guarantee, by directory.
+					mod, err := loadDangModule(ctx, config.DangModuleDir)
+					if err != nil {
+						return nil, err
+					}
+					i.dangMod = mod
+					i.inferred = mod.typeScope
+				} else {
+					i.client = config.Client
+					i.schema = config.Schema
+					i.inferred = TypeScopeFromSchema(i.Name.Name, config.Schema)
+					cacheImportModule(ctx, i.Name.Name, i.inferred)
+				}
 			}
 		}
 
@@ -1126,6 +1154,17 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		return nil, fmt.Errorf("ImportDecl.Eval: import not properly inferred")
 	}
 
+	// Native Dang module: evaluate its code (once, shared across importers) and
+	// install its public value scope.
+	if i.dangMod != nil {
+		importValueScope, err := i.dangMod.valueScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		installImportedValueScope(scope, i.Name.Name, importValueScope)
+		return importValueScope, nil
+	}
+
 	// Create evaluation environment for the imported schema
 	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
 
@@ -1139,6 +1178,11 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error) {
 	for _, config := range importConfigsFromContext(ctx) {
 		if config.Name == i.Name.Name {
+			// Native Dang modules carry no GraphQL schema — the module is
+			// compiled from source in ImportDecl.Infer. Skip introspection.
+			if config.DangModuleDir != "" {
+				return config, nil
+			}
 			if config.Schema == nil {
 				var err error
 				config.Schema, err = introspectSchema(ctx, config.Client, config.Dagger)
