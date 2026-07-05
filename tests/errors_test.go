@@ -203,29 +203,59 @@ print(x)
 	}
 }
 
-// TestDangModuleImportCycle checks that a native Dang import cycle (module A
-// imports B imports A) is reported as a clean error rather than looping forever.
-// A directory that must ERROR fits neither the golden harness (the cycle message
-// embeds absolute module dirs) nor the language harness (an error there is a test
-// failure), so — like TestRunDirControlFlowSourceErrors — it runs from a temp
-// dir and asserts on the message. Under the per-module identity model each hop
-// would instantiate a fresh copy, so cycle detection tracks the active compile
-// path (a ctx stack) instead of a shared cache marker.
+// TestDangModuleImportCycle checks that native Dang import cycles are reported
+// as a clean error rather than looping forever. A directory that must ERROR fits
+// neither the golden harness (the cycle message embeds absolute module dirs) nor
+// the language harness (an error there is a test failure), so — like
+// TestRunDirControlFlowSourceErrors — it runs from a temp dir and asserts on the
+// message. Under the per-module identity model each hop would instantiate a fresh
+// copy, so cycle detection tracks the active compile path (a ctx stack) instead
+// of a shared cache marker; these cases exercise that stack at various depths.
 func (DangSuite) TestDangModuleImportCycle(ctx context.Context, t *testctx.T) {
-	root := t.TempDir()
-
-	writeCycleModule := func(name, importsName string) {
+	// writeModule writes a module dir `name` that imports `alias` (bound to the
+	// sibling directory `importDir` via a relative path).
+	writeModule := func(root, name, alias, importDir string) {
 		modDir := filepath.Join(root, name)
 		require.NoError(t, os.MkdirAll(modDir, 0755))
-		toml := "[imports." + importsName + "]\npath = \"../" + strings.ToLower(importsName) + "\"\n"
+		toml := "[imports." + alias + "]\npath = \"../" + importDir + "\"\n"
 		require.NoError(t, os.WriteFile(filepath.Join(modDir, "dang.toml"), []byte(toml), 0644))
-		src := "import " + importsName + "\n\npub " + name + ": Int! = 1\n"
+		src := "import " + alias + "\n\npub " + name + ": Int! = 1\n"
 		require.NoError(t, os.WriteFile(filepath.Join(modDir, name+".dang"), []byte(src), 0644))
 	}
-	writeCycleModule("a", "B")
-	writeCycleModule("b", "A")
 
-	_, err := dang.RunDir(ctx, filepath.Join(root, "a"), false)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "import cycle detected")
+	t.Run("two-node", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeModule(root, "a", "B", "b")
+		writeModule(root, "b", "A", "a")
+
+		_, err := dang.RunDir(ctx, filepath.Join(root, "a"), false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "import cycle detected")
+	})
+
+	t.Run("three-node", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeModule(root, "a", "B", "b")
+		writeModule(root, "b", "C", "c")
+		writeModule(root, "c", "A", "a")
+
+		_, err := dang.RunDir(ctx, filepath.Join(root, "a"), false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "import cycle detected")
+	})
+
+	t.Run("self-import", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		modDir := filepath.Join(root, "a")
+		require.NoError(t, os.MkdirAll(modDir, 0755))
+		// A module that imports its own directory via ".".
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, "dang.toml"),
+			[]byte("[imports.Me]\npath = \".\"\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, "a.dang"),
+			[]byte("import Me\n\npub a: Int! = 1\n"), 0644))
+
+		_, err := dang.RunDir(ctx, modDir, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "import cycle detected")
+	})
 }
