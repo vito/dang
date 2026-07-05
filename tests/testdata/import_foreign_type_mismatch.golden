@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use Widget! as Widget!: distinct "Widget" types from different modules do not unify across the module boundary; share behavior through an interface instead
+[1m[31mError:[0m the "Widget" value here is a different type from the "Widget" expected: they come from different modules and do not unify across the module boundary; share behavior through an interface instead
   [2m[34m--> errors/import_foreign_type_mismatch.dang:13:23[0m
  [2m    |[0m
  [2m 11 | import Util[0m

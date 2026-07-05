@@ -158,10 +158,13 @@ func diagnoseAssignment(have, want hm.Type) error {
 			// identity mismatch, not a missing `implements`: it happens when two
 			// modules each hold their own copy of a type (per-module import
 			// identity), and those copies never unify across the module boundary.
-			// Steer the author toward a shared interface rather than "declare an
-			// implementation", which cannot bridge the boundary.
-			return fmt.Errorf("cannot use %s as %s: distinct %q types from different modules do not unify across the module boundary; share behavior through an interface instead",
-				have, want, haveMod.Named)
+			// Both sides stringify to the same "Widget!", so the usual
+			// "cannot use X as Y" head reads as a tautology — phrase it to make
+			// the two-different-types point explicit instead, and steer the author
+			// toward a shared interface rather than "declare an implementation",
+			// which cannot bridge the boundary.
+			return fmt.Errorf("the %q value here is a different type from the %q expected: they come from different modules and do not unify across the module boundary; share behavior through an interface instead",
+				haveMod.Named, wantMod.Named)
 		}
 		return fmt.Errorf("cannot use %s as %s: %s is structurally compatible with %s but %s is not declared as an implementation",
 			have, want, haveMod.Named, wantMod.Named, haveMod.Named)
