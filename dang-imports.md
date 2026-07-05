@@ -298,3 +298,66 @@ reference:
   its resolved local path.
 - **C. How far now** — DECIDED: **Phase 1 only** (local path imports), to unblock
   the visibility test, then reassess.
+
+## 9. Open for next session — module instance-identity model
+
+Phase 1 shipped (commits `fix(dang): set visibility on type value bindings` +
+`feat(dang): native Dang module imports via path`). Before Phase 2 (remote refs)
+there is one unresolved design decision that changes the cache/identity core:
+**when is an imported module the *same instance* vs a fresh one?** Still being
+thought through — do not lock it in without confirming.
+
+**Settled: no Go-style MVS.** We are NOT doing Minimal Version Selection or
+global "one version per module path" reconciliation. This supersedes §4's
+version-selection paragraph. Refs still pin exact versions and `dang.lock` still
+records resolved commits for reproducibility, but there is no selection
+algorithm.
+
+**The three candidate identity models (leaning toward the third):**
+
+1. *Shared-per-version* — cache key `module@exact-version`; the same pin
+   anywhere in the graph is one shared instance, so its types unify across
+   modules. Different versions coexist (skew allowed, no reconciliation). This
+   is what Phase 1 currently does (keyed by resolved dir, cache persists across
+   the module boundary — see the comment in `moduleImportContext`).
+2. *Strict-per-import* — every `import` statement gets its own instance, even
+   two imports in the same module. Rejected: files in one module should agree.
+3. *Per-module (per-`dang.toml`)* — **the current lean.** The sharing unit is
+   the module: all files of a module resolve a given import to one instance, but
+   two *different* modules each instantiate their own copy of a dependency, even
+   at the same pinned version. Nothing is shared across modules.
+
+**Why per-module is attractive:** version reconciliation disappears completely —
+nothing is shared across modules, so two modules pinning different versions
+cannot conflict; you fetch exactly what each `dang.toml` pins and instantiate it
+for that module. Hermetic modules; simplest of the three.
+
+**Consequences to weigh before committing to per-module:**
+- *Foreign types don't unify across modules.* App's `Semver` ≠ B's `Semver`,
+  same version or not. A module's public API that exposes a dependency's type
+  (`bump(v: Semver): Semver`) is only usable if the module re-exports the
+  constructor, so callers build values through that module's instance. Read as
+  intended (modules as black boxes with their own vocabulary) — CONFIRM.
+- *No dedup = N copies.* Ten modules importing one util compile AND run it ten
+  times (top-level side effects included). Fine at expected scale; opt-in dedup
+  could be added later without changing the model.
+- *Cycles get more dangerous.* Per-module instantiation would expand A→B→A
+  infinitely (a new instance each hop), so detection must track the **active
+  compile path** by ref identity, not a shared cache entry. The current
+  Phase-1 in-progress marker keys on the shared cache and must be reworked into
+  a path/stack check under this model.
+
+**Code implications if per-module wins:** flip the one Phase-1 decision —
+`moduleImportContext` currently *inherits* the dang-module cache across the
+boundary (to unify nested modules); per-module wants a **fresh** cache per module
+compilation instead. Within-module sharing already falls out. Rework cycle
+detection as above.
+
+**Recommended next step (network-free, decisive):** build transitive **local**
+import fixtures — a module that itself imports another local module, plus an
+app + a dep sharing a module. These are the decisive test of whichever identity
+model we pick (does App's `Lib` differ from a dep's `Lib`? do an app's two files
+share one? does a cycle error cleanly?), and they are the exact foundation the
+remote-ref phase reuses (resolve ref → fetch to content-addressed dir → hand to
+the existing `loadDangModule`). Given how the visibility audit went, expect this
+to surface a latent issue.
