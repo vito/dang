@@ -15,13 +15,32 @@ see §9), plus a diagnostics/hardening pass (clearer cross-module mismatch messa
 deeper + self import-cycle tests). Commits: `16a7def1` (per-module identity),
 `56f43aab` + `2704a260` (mismatch diagnostic), `0b963b0e` (cycle tests).
 
-**Next up is Phase 2 (remote VCS refs) — the plan is in §10**, and the direction
-is now locked: adopt Dagger's exact module-ref syntax and **extract Dagger's ref
-resolution code** (`engine/vcs` + `core/gitref`) into a local package rather than
-reimplement it. **No Go-style MVS** (per-module makes version reconciliation
-moot). Decisions locked: run all module code on import (no library/program split),
-local path imports first, per-module instance identity, Dagger ref syntax +
-extracted resolver.
+**Phase 2 (remote VCS refs) — steps 1–3 SHIPPED for static hosts** (see §10; the
+direction was locked as: adopt Dagger's exact module-ref syntax and **extract
+Dagger's ref resolution code** rather than reimplement). What landed:
+- **Step 1** — `engine/vcs` + `core/gitref` extracted verbatim into
+  `pkg/modref/vcs` (package `vcs`, keeps the Go Authors BSD `LICENSE`) and
+  `pkg/modref` (package `modref`). Only the package name, the internal vcs import
+  path, and the tracer string changed; both upstream test suites came across and
+  pass. Adds `go-git/v5` as a direct dep (only `transport.NewEndpoint`).
+- **Step 2** — `dang.toml` gained `[imports.X] ref = "host/user/repo[/sub]@ver"`
+  (`ImportSource.Ref` → lazily-recorded `ImportConfig.DangModuleRef`; mutually
+  exclusive with `path` and the GraphQL fields; no network at config time).
+- **Step 3** — `ImportDecl.Infer`'s native-module branch, on a ref with no dir,
+  calls `fetchDangModuleRef` (`import_dang_fetch.go`): `modref.Parse` → one `git
+  ls-remote` to resolve tag/branch→commit (raw SHA resolves offline) → shallow
+  `git fetch --depth 1` checked out via temp-dir + atomic rename into a
+  content-addressed `$DANG_MODCACHE/<module-path>@<commit>` → the subpath within
+  it handed to the **unchanged** `loadDangModule`. A present cache dir is
+  immutable and skips the fetch. Verified end-to-end against real
+  `github.com/vito/daggerverse` and hermetically against a `file://` repo.
+
+**No Go-style MVS** (per-module makes version reconciliation moot). Decisions
+locked and now realized: run all module code on import (no library/program
+split), local path imports first, per-module instance identity, Dagger ref
+syntax + extracted resolver. **Deferred/untested:** `dang.lock` (step 4, for
+fully-offline tag resolution); the dynamic `go-import` vanity path (works via
+`modref` but only static hosts like github.com are exercised so far).
 
 Implementation surfaced one latent bug, now fixed: `ObjectDecl.Hoist`
 (fields.go) added a `type`'s constructor scheme to the type env **without**
@@ -239,10 +258,12 @@ thing to verify when it lands: an imported Dang type must keep *its own*
    `moduleScope`, reuse the install machinery. Network-free, versioning-free,
    low-risk. **Unblocked and shipped the cross-module visibility test.**
    Per-module identity + diagnostics/hardening also DONE (§9).
-2. **Phase 2 — VCS refs (NEXT; full plan in §10).** Extract Dagger's `engine/vcs`
-   + `core/gitref` (§3) → add a Dagger-style `ref` string to `dang.toml` → resolve
-   + shallow-fetch to a content-addressed `$DANG_MODCACHE` dir → hand the dir to
-   the **unchanged** `loadDangModule`. Optional follow-up: `dang.lock`.
+2. **Phase 2 — VCS refs (steps 1–3 SHIPPED for static hosts; full plan in §10).**
+   Extracted Dagger's `engine/vcs` + `core/gitref` (§3) → added a Dagger-style
+   `ref` string to `dang.toml` → resolve + shallow-fetch to a content-addressed
+   `$DANG_MODCACHE` dir → hand the dir to the **unchanged** `loadDangModule`.
+   Remaining follow-up: `dang.lock`; dynamic `go-import` vanity hosts (code path
+   present, untested).
 3. **~~Phase 3 — transitive deps + MVS + vanity~~ — mostly absorbed.** MVS is
    dropped (per-module, §9). Vanity (`go-import`) resolution comes *for free* with
    the extracted `engine/vcs`. Transitive **remote** deps need no new code (a
@@ -468,26 +489,34 @@ go-import behavior we're inheriting.
 
 **Ordered steps:**
 
-1. **Extract the packages (self-contained commit, no Dang wiring).** Copy the two
-   packages under `pkg/`, rewrite import paths, add `go-git` (and confirm
-   `x/sys`) to `go.mod`, and get `Parse` / `RepoRootForImportPath` + their tests
-   green in-tree. Verifiable in isolation before touching the compiler.
-2. **`dang.toml` ref surface (`project.go`).** Add a Dagger-style `ref` string to
-   `ImportSource` (supersedes the split `git`/`version`/`subdir` sketch). In
-   `resolveImportSource`, branch beside the `path` one and record the raw ref for
-   **lazy** resolution — do NOT fetch here (networked; be lazy like schema
-   introspection). Carry it on `ImportConfig` as `DangModuleRef string` (alongside
-   `DangModuleDir`).
-3. **Resolve + fetch + cache (new file, e.g. `import_dang_fetch.go`).** In
-   `ImportDecl.Infer`'s Dang branch, when the config carries a ref and no dir yet:
-   `gitref.Parse` → shallow `git` fetch of the resolved commit into
-   `$DANG_MODCACHE/<module-path>@<commit>` (XDG cache default; immutable; a hit is
-   network-free) → the `RepoRootSubdir` within it is the module dir → pass that
-   dir to the **unchanged** `loadDangModule`. Everything downstream (per-module
-   cache, cycle stack, visibility) already works from a dir.
-4. **`dang.lock` (thin-slice-optional follow-up).** Record resolved commit + a
-   content hash per ref (go.mod/go.sum split) for reproducible, offline builds;
-   a present lock skips resolution and fetches the pinned commit.
+1. **Extract the packages (self-contained commit, no Dang wiring). DONE** —
+   commit `modref: extract Dagger's VCS ref resolver`. `engine/vcs` →
+   `pkg/modref/vcs` (package `vcs`, BSD `LICENSE` kept), `core/gitref` →
+   `pkg/modref` (package `modref`). Rewrote only the package name, the internal
+   vcs import path, and the tracer string; added `go-git/v5 v5.19.0` as a direct
+   dep (`x/sys` + `otel/trace` already present). Both upstream test suites came
+   across verbatim and pass (`go test ./pkg/modref/...`).
+2. **`dang.toml` ref surface (`project.go`). DONE.** Added `ImportSource.Ref`
+   (Dagger-style string; supersedes the split `git`/`version`/`subdir` sketch).
+   `resolveImportSource` branches beside `path`, records the raw ref for **lazy**
+   resolution (no fetch here), and rejects combining `ref` with `path` or the
+   GraphQL fields. Carried on `ImportConfig` as `DangModuleRef` alongside
+   `DangModuleDir`; `loadImportConfig` skips introspection for it too.
+3. **Resolve + fetch + cache (`import_dang_fetch.go`). DONE.** In
+   `ImportDecl.Infer`'s Dang branch, a ref with no dir goes through
+   `fetchDangModuleRef`: `modref.Parse` → `resolveCommit` (one `git ls-remote`;
+   annotated tags dereferenced to the commit; raw SHA offline) → shallow `git
+   fetch --depth 1` into `$DANG_MODCACHE/<module-path>@<commit>` via temp-dir +
+   atomic rename (torn-cache-safe under concurrency) → `RepoRootSubdir` joined on
+   is the module dir → **unchanged** `loadDangModule`. Present dir = immutable
+   hit, no fetch. Downstream (per-module cache, cycle stack, visibility)
+   unchanged. Covered by `import_dang_fetch_test.go` (hermetic `file://` repo)
+   and a manual `github.com/vito/daggerverse` smoke.
+4. **`dang.lock` (thin-slice-optional follow-up). NOT STARTED.** Record resolved
+   commit + a content hash per ref (go.mod/go.sum split) for reproducible,
+   offline builds; a present lock skips resolution and fetches the pinned commit.
+   This is what makes a *tag* ref fully offline on a cache hit — today a tag
+   still costs one `ls-remote` per build (a raw-SHA ref is already offline).
 
 **Per-module consequences for remote (already true, restated):** two modules
 pinning the same ref get **separate instances** — bytes shared on disk
