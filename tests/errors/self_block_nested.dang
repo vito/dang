@@ -2,7 +2,7 @@
 type Outer {
   self {
     self {
-      foo(): Int! { 1 }
+      foo: Int! { 1 }
     }
   }
 }

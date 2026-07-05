@@ -159,6 +159,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "self_block_decl"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "field_decl"
               },
               {
@@ -217,7 +221,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 177,
+      "value": 178,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -314,7 +318,7 @@
     },
     "non_null_assert": {
       "type": "PREC_LEFT",
-      "value": 176,
+      "value": 177,
       "content": {
         "type": "SEQ",
         "members": [
@@ -499,7 +503,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 169,
+      "value": 170,
       "content": {
         "type": "SEQ",
         "members": [
@@ -586,7 +590,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 168,
+      "value": 169,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1380,6 +1384,23 @@
         "type": "STRING",
         "value": "new"
       }
+    },
+    "self_block_decl": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "self_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "block",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
     },
     "field_decl": {
       "type": "CHOICE",

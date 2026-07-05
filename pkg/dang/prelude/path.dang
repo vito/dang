@@ -171,9 +171,9 @@ scalar Path {
     self :: String!
   }
 
-# cleanPath is Go's path.Clean, expressed lexically: collapse empty and "."
-# segments, resolve ".." against prior segments, keep leading ".." for
-# relative paths, and represent the empty path as ".".
+  # cleanPath is Go's path.Clean, expressed lexically: collapse empty and "."
+  # segments, resolve ".." against prior segments, keep leading ".." for
+  # relative paths, and represent the empty path as ".".
   let cleanPath(raw: String!): String! {
     let rooted = raw.hasPrefix("/")
     let out: [String!]! = []
@@ -207,8 +207,8 @@ scalar Path {
     }
   }
 
-# segments splits a cleaned path into its parts, excluding the root; the
-# empty path "." has no segments.
+  # segments splits a cleaned path into its parts, excluding the root; the
+  # empty path "." has no segments.
   let segments(p: String!): [String!]! {
     if (p == "." or p == "/") {
       return [] :: [String!]!
@@ -216,8 +216,8 @@ scalar Path {
     p.trimPrefix("/").split("/")
   }
 
-# relPath is filepath.Rel over slash-separated paths: the path that reaches
-# target from base, or null when that is not expressible.
+  # relPath is filepath.Rel over slash-separated paths: the path that reaches
+  # target from base, or null when that is not expressible.
   let relPath(base: String!, target: String!): String {
     let b = cleanPath(base)
     let t = cleanPath(target)
@@ -271,7 +271,7 @@ scalar Path {
     rel == "." or (rel != ".." and !rel.hasPrefix("../"))
   }
 
-# regexEscape makes a single character literal inside a regular expression.
+  # regexEscape makes a single character literal inside a regular expression.
   let regexEscape(ch: String!): String! {
     if (ch.containsMatch(`^[A-Za-z0-9]$`)) {
       ch
@@ -280,9 +280,9 @@ scalar Path {
     }
   }
 
-# globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
-# [...] classes, \ escapes; * and ? never match "/") into an anchored
-# regular expression, or null when the pattern is malformed.
+  # globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
+  # [...] classes, \ escapes; * and ? never match "/") into an anchored
+  # regular expression, or null when the pattern is malformed.
   let globToRegexp(pattern: String!): String {
     let chars = pattern.split("")
     let out = "^"

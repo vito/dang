@@ -1256,6 +1256,10 @@
             "named": true
           },
           {
+            "type": "self_block_decl",
+            "named": true
+          },
+          {
             "type": "union_decl",
             "named": true
           }
@@ -3682,6 +3686,32 @@
       "types": [
         {
           "type": "dot_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "self_block_decl",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "self_token",
           "named": true
         }
       ]

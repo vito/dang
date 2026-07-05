@@ -1,4 +1,4 @@
 # Test: a self { } block is only valid inside a type body.
 self {
-  foo(): Int! { 1 }
+  foo: Int! { 1 }
 }
