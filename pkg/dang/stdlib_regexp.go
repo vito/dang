@@ -189,7 +189,7 @@ func registerRegexpStatics() {
 		CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 			s, ok := args["s"].(StringValue)
 			if !ok {
-				return nil, fmt.Errorf("Regexp.escape: expected String, got %T", args["s"])
+				return nil, fmt.Errorf("expected String, got %T", args["s"])
 			}
 			return StringValue{Val: regexp.QuoteMeta(s.Val)}, nil
 		},
