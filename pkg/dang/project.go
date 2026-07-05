@@ -53,6 +53,17 @@ type ImportSource struct {
 	//   path = "./lib/helpers"
 	Path string `toml:"path,omitempty"`
 
+	// Ref points at a native Dang module in a remote VCS repository, using
+	// Dagger's module-ref syntax host/user/repo[/subpath]@version. The repo is
+	// shallow-fetched to a content-addressed module cache and then compiled from
+	// source exactly like a local `path` import — its `pub` declarations become
+	// the API, its `let`s stay private. Mutually exclusive with `path` and the
+	// GraphQL fields.
+	//
+	//   [imports.Semver]
+	//   ref = "github.com/vito/dang-semver/semver@v1.4.0"
+	Ref string `toml:"ref,omitempty"`
+
 	// Schema is a path to a local .graphqls SDL file (relative to dang.toml).
 	// Provides type information for the LSP and type checker.
 	Schema string `toml:"schema,omitempty"`
@@ -211,18 +222,26 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	ic := ImportConfig{Name: name}
 	configPath := filepath.Join(configDir, "dang.toml")
 
-	// Native Dang module import (local path). Resolved lazily from source when
-	// the import is inferred, so no client/schema is set up here. Mutually
-	// exclusive with the GraphQL source kinds.
-	if source.Path != "" {
+	// Native Dang module import (local path or remote VCS ref). Resolved lazily
+	// when the import is inferred — a `path` against configDir, a `ref` fetched
+	// to the module cache — so no client/schema/network happens here. Mutually
+	// exclusive with each other and with the GraphQL source kinds.
+	if source.Path != "" || source.Ref != "" {
 		if source.Dagger || source.Schema != "" || source.Endpoint != "" || len(source.Service) > 0 {
-			return ic, fmt.Errorf("'path' cannot be combined with 'dagger', 'schema', 'endpoint', or 'service'")
+			return ic, fmt.Errorf("'path'/'ref' cannot be combined with 'dagger', 'schema', 'endpoint', or 'service'")
 		}
-		modDir := source.Path
-		if !filepath.IsAbs(modDir) {
-			modDir = filepath.Join(configDir, modDir)
+		if source.Path != "" && source.Ref != "" {
+			return ic, fmt.Errorf("'path' and 'ref' cannot both be set")
 		}
-		ic.DangModuleDir = modDir
+		if source.Path != "" {
+			modDir := source.Path
+			if !filepath.IsAbs(modDir) {
+				modDir = filepath.Join(configDir, modDir)
+			}
+			ic.DangModuleDir = modDir
+		} else {
+			ic.DangModuleRef = source.Ref
+		}
 		return ic, nil
 	}
 

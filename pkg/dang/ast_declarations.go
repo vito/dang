@@ -1021,6 +1021,13 @@ type ImportConfig struct {
 	// directory; the module is compiled from source and its `pub` declarations
 	// become the import's API. See import_dang.go.
 	DangModuleDir string
+
+	// DangModuleRef, when non-empty, marks this as a native Dang module import
+	// sourced from a remote VCS ref (Dagger's host/user/repo[/subpath]@version
+	// syntax). It is resolved and shallow-fetched to a content-addressed cache
+	// dir at inference time, then handed to the same loader as DangModuleDir.
+	// See import_dang_fetch.go.
+	DangModuleRef string
 }
 
 type importConfigsKey struct{}
@@ -1120,13 +1127,25 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				if err != nil {
 					return nil, err
 				}
-				if config.DangModuleDir != "" {
+				if config.DangModuleDir != "" || config.DangModuleRef != "" {
 					// Native Dang module: compile the module directory under its
 					// own moduleScope and install its public type scope. Keyed by
 					// resolved dir in the ctx-scoped Dang-module cache, so every
 					// importer of the same dir gets one *Type identity and its
 					// types unify — the schema cache's guarantee, by directory.
-					mod, err := loadDangModule(ctx, config.DangModuleDir)
+					//
+					// A remote `ref` is resolved and shallow-fetched to a content-
+					// addressed cache dir first; from there it is the same loader,
+					// so the per-module cache, cycle stack, and visibility all work
+					// unchanged. A local `path` skips the fetch.
+					dir := config.DangModuleDir
+					if dir == "" {
+						dir, err = fetchDangModuleRef(ctx, config.DangModuleRef)
+						if err != nil {
+							return nil, err
+						}
+					}
+					mod, err := loadDangModule(ctx, dir)
 					if err != nil {
 						return nil, err
 					}
@@ -1179,8 +1198,9 @@ func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error)
 	for _, config := range importConfigsFromContext(ctx) {
 		if config.Name == i.Name.Name {
 			// Native Dang modules carry no GraphQL schema — the module is
-			// compiled from source in ImportDecl.Infer. Skip introspection.
-			if config.DangModuleDir != "" {
+			// compiled from source in ImportDecl.Infer (a remote ref is fetched
+			// to a cache dir there first). Skip introspection.
+			if config.DangModuleDir != "" || config.DangModuleRef != "" {
 				return config, nil
 			}
 			if config.Schema == nil {
