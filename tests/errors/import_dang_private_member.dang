@@ -1,0 +1,7 @@
+# `secret` is a `let` member of Greeter, private to the Lib module. Reaching it
+# from here — a different module that imports Lib — is rejected. This is the
+# cross-user-module `let` case that native Dang imports make reachable (before,
+# the only module boundary that could exercise it was prelude -> user code).
+import Lib
+
+Lib.Greeter("Dang").secret

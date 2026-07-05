@@ -5,3 +5,7 @@ service = ["go", "run", "./gqlserver/service"]
 [imports.Other]
 schema = "./gqlserver/schema.graphqls"
 service = ["go", "run", "./gqlserver/service"]
+
+# A native Dang module (not a GraphQL schema): imported from source.
+[imports.Lib]
+path = "./importlib"

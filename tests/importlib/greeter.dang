@@ -1,0 +1,25 @@
+# A native Dang module, imported by consumers via `[imports.Lib] path` in
+# dang.toml. Its typed (public-by-default) declarations form the module's API;
+# its `let`s are private to the module. This is what an importer's cross-module
+# `let` visibility is tested against — see errors/import_dang_private_member.
+
+type Greeter {
+  name: String! = "world"
+
+  # Public method: reachable by any importer as Greeter.greeting / Greeter(x).
+  greeting: String! { salutation + ", " + self.name + "!" }
+
+  # Private method: an importer that reaches for `.secret` is rejected, because
+  # `secret` belongs to this module and the importer is a different one.
+  let secret: String! { "shhh" }
+
+  # Public accessor: same-module code reads the private member freely, so an
+  # importer sees the value only through here.
+  reveal: String! { self.secret }
+}
+
+# Module-private top-level helper, used by the pub method above.
+let salutation = "Hello"
+
+# Public top-level value: reachable qualified (Lib.answer) and unqualified.
+answer: Int! = 42

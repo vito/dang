@@ -43,6 +43,16 @@ type ImportSource struct {
 	//   service = ["~/src/dagger/bin/dagger", "session"]
 	Dagger bool `toml:"dagger,omitempty"`
 
+	// Path points at a native Dang module directory (relative to dang.toml).
+	// Unlike the GraphQL source kinds above, the import binds to another Dang
+	// module compiled from source — its `pub` top-level declarations become the
+	// import's API, its `let`s stay private. Mutually exclusive with the GraphQL
+	// fields.
+	//
+	//   [imports.Helpers]
+	//   path = "./lib/helpers"
+	Path string `toml:"path,omitempty"`
+
 	// Schema is a path to a local .graphqls SDL file (relative to dang.toml).
 	// Provides type information for the LSP and type checker.
 	Schema string `toml:"schema,omitempty"`
@@ -200,6 +210,21 @@ func ResolveDaggerImport(ctx context.Context, configs []ImportConfig, dir string
 func resolveImportSource(ctx context.Context, name string, source *ImportSource, configDir string) (ImportConfig, error) {
 	ic := ImportConfig{Name: name}
 	configPath := filepath.Join(configDir, "dang.toml")
+
+	// Native Dang module import (local path). Resolved lazily from source when
+	// the import is inferred, so no client/schema is set up here. Mutually
+	// exclusive with the GraphQL source kinds.
+	if source.Path != "" {
+		if source.Dagger || source.Schema != "" || source.Endpoint != "" || len(source.Service) > 0 {
+			return ic, fmt.Errorf("'path' cannot be combined with 'dagger', 'schema', 'endpoint', or 'service'")
+		}
+		modDir := source.Path
+		if !filepath.IsAbs(modDir) {
+			modDir = filepath.Join(configDir, modDir)
+		}
+		ic.DangModuleDir = modDir
+		return ic, nil
+	}
 
 	// For Dagger imports, default the service command and set up the
 	// lazy client that starts a dagger session.

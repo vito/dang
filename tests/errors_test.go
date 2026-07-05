@@ -95,6 +95,11 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
+	// Lib is a native Dang module (not a GraphQL schema), imported from source.
+	// Used by errors that exercise the cross-module `let` visibility boundary.
+	libDir, err := filepath.Abs("importlib")
+	require.NoError(t, err)
+
 	ctx = dang.ContextWithImportConfigs(ctx,
 		dang.ImportConfig{
 			Name:   "Test",
@@ -104,10 +109,14 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 			Name:   "Other",
 			Client: client, // Same client/schema, but different import name
 		},
+		dang.ImportConfig{
+			Name:          "Lib",
+			DangModuleDir: libDir,
+		},
 	)
 
 	// Run the Dang file
-	err := dang.RunFile(ctx, dangFile, false)
+	err = dang.RunFile(ctx, dangFile, false)
 	require.Error(t, err, "Test expects an error, but did not error.")
 
 	// Combine stdout and stderr output

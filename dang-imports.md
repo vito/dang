@@ -1,11 +1,21 @@
 # Design: native Dang module imports
 
-Status: **design done, Phase 1 planned — ready to implement next session** (see
-§7.1). Decisions locked: run all module code on import (no library/program
-split), local path imports first. Goal: `import X` can bind X to another Dang
-module (Dang source, with its own `pub`/`let` API), not just a GraphQL schema.
-Unblocks real cross-module `let` visibility testing (see type-statics.md §8 —
-today the only cross-module boundary is prelude→user).
+Status: **Phase 1 DONE — local path imports shipped** (see §7.1, all steps
+landed). `[imports.X] path = "./dir"` now binds X to a native Dang module
+compiled from source, with its own `pub`/`let` API. The cross-USER-module `let`
+visibility boundary is finally reachable and tested end to end
+(`tests/importlib/` + `tests/test_import_dang_module.dang` positive;
+`tests/errors/import_dang_private_member.dang` negative golden). Phases 2–3 (VCS
+refs, fetch/cache/lock, MVS, transitive deps) remain future work. Decisions
+locked: run all module code on import (no library/program split), local path
+imports first.
+
+Implementation surfaced one latent bug, now fixed: `ObjectDecl.Hoist`
+(fields.go) added a `type`'s constructor scheme to the type env **without**
+setting its visibility, so it defaulted to private and never re-exported across
+an import boundary — invisible until a user type was first imported. The eval
+side already bound the constructor with `c.Visibility`; the infer side now
+matches. Everything else reused existing machinery verbatim.
 
 Modeled on **Go modules** (decentralized, VCS-backed, semver + MVS, no central
 registry) and **Dagger module refs** (`host/user/repo[/subdir]@version`,
@@ -178,19 +188,40 @@ thing to verify when it lands: an imported Dang type must keep *its own*
 
 ## 7. Phasing
 
-1. **Phase 1 — local path imports (next session; plan in §7.1).**
+1. **Phase 1 — local path imports (DONE; see §7.1).**
    `[imports.X] path = "…"`; load the dir as a module (run all its code), own
    `moduleScope`, reuse the install machinery. Network-free, versioning-free,
-   low-risk. **Unblocks the cross-module visibility test.**
+   low-risk. **Unblocked and shipped the cross-module visibility test.**
 2. **Phase 2 — VCS refs + fetch + cache + lock.** Known hosts + git fetch +
    `dang.lock` + `$DANG_MODCACHE`. Single-level (no transitive) first.
 3. **Phase 3 — transitive deps + MVS + vanity (`go-import`) resolution.** The
    full Go-style graph.
 
-## 7.1 Phase 1 implementation plan (pick up here)
+## 7.1 Phase 1 implementation plan (DONE)
 
-Everything below reuses existing machinery; net new code is small. Ordered
-steps, with exact files/functions from the current tree.
+All steps below landed. Net new code: `pkg/dang/import_dang.go` (loader, cache,
+`dangModule`, isolated module import context) plus small branches in
+`project.go`, `ast_declarations.go`, and the one-line visibility fix in
+`fields.go` (see status header). Deviations from the plan below:
+- The loader is `loadDangModule` returning a `*dangModule` (dir + typeScope +
+  blocks + lazily-evaluated valueScope), not the sketched
+  `loadDangModuleTypes`. Eval reuses the same `blocks` via `i.dangMod` on the
+  node — the two-phase carry — so cached import-node state (not re-resolved
+  configs) drives the module's own imports at eval; `moduleScope` is only read
+  during infer, so eval needs no sub-context.
+- Modules compile under an **isolated** import context (`moduleImportContext`):
+  the importer's project/schema imports are stripped and the module resolves its
+  OWN `dang.toml` (at its root, no walk-up), so a Dagger auto-import the consumer
+  configured never leaks into a module that didn't ask for it.
+- Test vehicle: the integration harness pre-loads `tests/dang.toml` and injects
+  its configs into every test's ctx, so a nested `dang.toml` under a `test_*/`
+  dir is NOT auto-resolved by `RunDir` (its `ensureProjectImports` early-returns
+  on the already-present configs). So `[imports.Lib] path` lives in the
+  top-level `tests/dang.toml` (dormant until imported); the error harness, which
+  hardcodes its configs, got a `Lib` `DangModuleDir` config added directly.
+
+Original ordered steps, with exact files/functions from the tree, retained for
+reference:
 
 **Step 1 — dang.toml surface (`project.go`).**
 - Add `Path string \`toml:"path,omitempty"\`` to `ImportSource`.
