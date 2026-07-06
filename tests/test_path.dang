@@ -85,6 +85,12 @@ assert { !Path("/usr/local").contains("relative") }
 assert { Path("main.dang").matches("*.dang") }
 assert { !Path("main.go").matches("*.dang") }
 
+# non-ASCII characters in a pattern are literal, not regexp-escaped (would
+# otherwise compile to an invalid `\é` escape and raise)
+assert { Path("café").matches("café") }
+assert { Path("café.txt").matches("caf?.txt") }
+assert { !Path("cafe").matches("café") }
+
 # an invalid glob pattern raises (recoverable)
 let bad = Path("x").matches("[") rescue null
 assert { bad == null }

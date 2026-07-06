@@ -271,15 +271,6 @@ scalar Path {
     rel == "." or (rel != ".." and !rel.hasPrefix("../"))
   }
 
-  # regexEscape makes a single character literal inside a regular expression.
-  let regexEscape(ch: String!): String! {
-    if (ch.containsMatch(`^[A-Za-z0-9]$`)) {
-      ch
-    } else {
-      "\\" + ch
-    }
-  }
-
   # globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
   # [...] classes, \ escapes; * and ? never match "/") into an anchored
   # regular expression, or null when the pattern is malformed.
@@ -309,7 +300,7 @@ scalar Path {
           bad = true
           continue
         }
-        out += regexEscape(nxt)
+        out += Regexp.escape(nxt)
         i += 2
         continue
       }
@@ -338,7 +329,7 @@ scalar Path {
             if (esc == null) {
               break
             }
-            out += regexEscape(esc)
+            out += Regexp.escape(esc)
             i += 2
             content += 1
             continue
@@ -346,7 +337,7 @@ scalar Path {
           if (cc == "-") {
             out += "-"
           } else {
-            out += regexEscape(cc)
+            out += Regexp.escape(cc)
           }
           i += 1
           content += 1
@@ -359,7 +350,7 @@ scalar Path {
         i += 1
         continue
       }
-      out += regexEscape(c)
+      out += Regexp.escape(c)
       i += 1
     }
     if (bad) {
