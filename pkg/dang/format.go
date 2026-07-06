@@ -1014,6 +1014,7 @@ func (f *Formatter) formatSelfBlockDecl(n *SelfBlockDecl) {
 func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 	if n.DocString != "" {
 		f.formatDocString(n.DocString)
+		f.writeIndent()
 	}
 
 	if len(n.Args) > 0 || n.BlockParam != nil {
