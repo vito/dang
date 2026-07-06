@@ -39,7 +39,9 @@ scalar Path {
     if (pieces.length == 1) {
       return n
     }
-    if (pieces.length == 2 and pieces[0] == "") {
+    # a leading-dot name like ".bashrc" is all stem, no extension — but a bare
+    # "." is not a dotfile, so fall through and drop its trailing dot ("")
+    if (pieces.length == 2 and pieces[0] == "" and pieces[1] != "") {
       return n
     }
     pieces.dropLast(1).join(".")

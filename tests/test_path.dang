@@ -54,6 +54,10 @@ assert { Path(".bashrc").stem == ".bashrc" }
 assert { Path("a.tar.gz").extension == "gz" }
 assert { Path("a.tar.gz").stem == "a.tar" }
 
+# a bare "." is not a dotfile: its stem drops the trailing dot (matches Go's
+# base-minus-extension), unlike a hidden file like ".bashrc"
+assert { Path(".").stem == "" }
+
 # root and relative edge cases
 assert { Path("/").name == "/" }
 assert { Path("/").parent == Path("/") }
