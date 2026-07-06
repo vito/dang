@@ -6,6 +6,6 @@
  [2m[34m[1m161 | [0m      raise `matches: invalid pattern "${pattern}"`
 [2m             [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
  [2m162 |     }[0m
- [2m163 |     (self :: String!).containsMatch(re :: Regexp!)[0m
+ [2m163 |     # a class can translate to a regexp that won't compile (e.g. a reversed[0m
  [2m    |[0m
 

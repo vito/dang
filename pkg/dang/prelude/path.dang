@@ -160,7 +160,12 @@ scalar Path {
     if (re == null) {
       raise `matches: invalid pattern "${pattern}"`
     }
-    (self :: String!).containsMatch(re :: Regexp!)
+    # a class can translate to a regexp that won't compile (e.g. a reversed
+    # range [z-a]); surface that as the same recoverable "invalid pattern"
+    # raise rather than leaking the underlying regexp error
+    (self :: String!).containsMatch(re :: Regexp!) rescue {
+      err: Error => raise `matches: invalid pattern "${pattern}"`
+    }
   }
 
   """
@@ -273,9 +278,24 @@ scalar Path {
     rel == "." or (rel != ".." and !rel.hasPrefix("../"))
   }
 
+  # classEscape makes a character literal inside a regexp character class.
+  # Regexp.escape covers the metacharacters, but "-" is a range operator inside
+  # a class and Regexp.escape (a top-level escaper) leaves it alone, so an
+  # escaped "\-" in the glob is spelled out here as a literal.
+  let classEscape(ch: String!): String! {
+    if (ch == "-") {
+      "\\-"
+    } else {
+      Regexp.escape(ch)
+    }
+  }
+
   # globToRegexp translates a shell-style glob (Go path.Match syntax: *, ?,
   # [...] classes, \ escapes; * and ? never match "/") into an anchored
-  # regular expression, or null when the pattern is malformed.
+  # regular expression, or null when the pattern is malformed. Character
+  # classes are copied through fairly literally: a well-formed class works, a
+  # class that never closes is rejected here, and a class that translates to an
+  # uncompilable regexp (e.g. a reversed range [z-a]) is caught by matches.
   let globToRegexp(pattern: String!): String {
     let chars = pattern.split("")
     let out = "^"
@@ -331,7 +351,9 @@ scalar Path {
             if (esc == null) {
               break
             }
-            out += Regexp.escape(esc)
+            # classEscape, not Regexp.escape: an escaped "\-" is a literal dash,
+            # which Regexp.escape would leave bare and turn into a range operator
+            out += classEscape(esc)
             i += 2
             content += 1
             continue

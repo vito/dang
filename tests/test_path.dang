@@ -95,9 +95,28 @@ assert { Path("café").matches("café") }
 assert { Path("café.txt").matches("caf?.txt") }
 assert { !Path("cafe").matches("café") }
 
-# an invalid glob pattern raises (recoverable)
-let bad = Path("x").matches("[") rescue null
-assert { bad == null }
+# character classes work, including negation and matching "/"
+assert { Path("m").matches("[a-z]") }
+assert { !Path("M").matches("[a-z]") }
+assert { Path("b").matches("[^a]") }
+assert { Path("a/b").matches("a[/]b") }
+# an escaped "\-" is a literal dash, not a range operator
+assert { Path("-").matches("[a\\-z]") }
+assert { !Path("b").matches("[a\\-z]") }
+
+# unusual-but-not-fatal classes are accepted and match like a regexp would,
+# rather than being validated against Go path.Match's stricter rules
+assert { Path("-").matches("[a-]") }
+assert { Path("-").matches("[-a]") }
+assert { Path("b").matches("[a-c-e]") }
+assert { !Path("d").matches("[a-c-e]") }
+
+# a class that can't translate to a valid regexp raises (recoverable): an
+# unterminated or empty class, or a reversed range like [z-a]
+assert { (Path("x").matches("[") rescue null) == null }
+assert { (Path("x").matches("[]") rescue null) == null }
+assert { (Path("x").matches("[z-a]") rescue null) == null }
+assert { (Path("x").matches("[^z-a]") rescue null) == null }
 
 # =============================================================================
 # Degrade: Path flows into String slots at value-handoff boundaries
