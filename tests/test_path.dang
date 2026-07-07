@@ -66,6 +66,30 @@ assert { Path(".").parts.isEmpty }
 assert { Path("x").parent == Path(".") }
 assert { Path("../a").parts == ["..", "a"] }
 
+# ascend yields a path and each of its ancestors up to the root; an absolute
+# path keeps the root, a relative one bottoms out at its first segment (no ".")
+let up: [String!]! = []
+Path("/usr/local/bin").ascend { dir => up += [dir.string] }
+assert { up == ["/usr/local/bin", "/usr/local", "/usr", "/"] }
+
+# like .each, it returns the elements it walked, in order
+assert { (Path("a/b/c").ascend { d => d }) == [Path("a/b/c"), Path("a/b"), Path("a")] }
+assert { (Path("a").ascend { d => d }) == [Path("a")] }
+assert { (Path(".").ascend { d => d }) == [Path(".")] }
+assert { (Path("/").ascend { d => d }) == [Path("/")] }
+
+# descend is ascend reversed: from the root (or first segment) down to the path
+let down: [String!]! = []
+Path("/usr/local/bin").descend { dir => down += [dir.string] }
+assert { down == ["/", "/usr", "/usr/local", "/usr/local/bin"] }
+assert { (Path("a/b/c").descend { d => d }) == [Path("a"), Path("a/b"), Path("a/b/c")] }
+assert { (Path(".").descend { d => d }) == [Path(".")] }
+
+# isRoot is the single POSIX root, nothing else (no Windows drive roots)
+assert { Path("/").isRoot }
+assert { !Path("/usr").isRoot }
+assert { !Path(".").isRoot }
+
 # =============================================================================
 # join / relativeTo / contains / matches
 # =============================================================================

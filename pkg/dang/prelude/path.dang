@@ -103,6 +103,43 @@ scalar Path {
   }
 
   """
+  yields the path and each of its ancestors, from the path up to its root, and
+  returns them in order; a relative path bottoms out at its first segment
+  rather than yielding `.`
+  """
+  @example(```dang
+  Path("/usr/local/bin").ascend { dir => print(dir) }
+  ```)
+  ascend(&visit(dir: Path!): r): [Path!]! {
+    let chain = prefixChain(self :: String!)
+    let n = chain.length
+    let ordered: [Path!]! = []
+    let i = 0
+    loop {
+      if (i >= n) {
+        break
+      }
+      ordered += [chain[n - 1 - i] ?? self]
+      i += 1
+    }
+    ordered.each { dir => visit(dir) }
+    ordered
+  }
+
+  """
+  yields the path's ancestors and the path itself, from the root down, and
+  returns them in order; the mirror of `ascend`
+  """
+  @example(```dang
+  Path("/usr/local/bin").descend { dir => print(dir) }
+  ```)
+  descend(&visit(dir: Path!): r): [Path!]! {
+    let chain = prefixChain(self :: String!)
+    chain.each { dir => visit(dir) }
+    chain
+  }
+
+  """
   whether the path is absolute
   """
   @example(```dang
@@ -110,6 +147,16 @@ scalar Path {
   ```)
   isAbsolute: Boolean! {
     (self :: String!).hasPrefix("/")
+  }
+
+  """
+  whether the path is the filesystem root `/`
+  """
+  @example(```dang
+  Path("/").isRoot
+  ```)
+  isRoot: Boolean! {
+    (self :: String!) == "/"
   }
 
   """
@@ -221,6 +268,33 @@ scalar Path {
       return [] :: [String!]!
     }
     p.trimPrefix("/").split("/")
+  }
+
+  # prefixChain lists a path and its ancestors from the root down (descend
+  # order): the root for an absolute path, then each successively longer
+  # prefix. A relative path yields no "." — it bottoms out at its first segment
+  # — except the bare "." path, which yields itself. ascend is this reversed.
+  let prefixChain(s: String!): [Path!]! {
+    let rooted = s.hasPrefix("/")
+    let segs = segments(s)
+    let out: [Path!]! = []
+    if (rooted) {
+      out += [Path("/")]
+    }
+    let acc: [String!]! = []
+    segs.each { seg =>
+      acc += [seg]
+      let joined = acc.join("/")
+      if (rooted) {
+        out += [Path("/" + joined)]
+      } else {
+        out += [Path(joined)]
+      }
+    }
+    if (out.isEmpty) {
+      out += [Path(s)]
+    }
+    out
   }
 
   # relPath is filepath.Rel over slash-separated paths: the path that reaches
