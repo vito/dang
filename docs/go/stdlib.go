@@ -130,6 +130,12 @@ func synthPreludeDef(name string, scheme *hm.Scheme, doc string, directives []*d
 			def.ParamTypes = append(def.ParamTypes, dang.ParamDef{Name: f.Key, Type: pt})
 		}
 	}
+	// A block parameter (e.g. Path.ascend's &visit) lives on the function type
+	// separately from the regular-argument record, so copy it across or the
+	// signature renders argless (".ascend: [Path!]!").
+	if bt := fn.Block(); bt != nil {
+		def.BlockType = bt
+	}
 	def.Doc = strings.TrimSpace(doc)
 	def.Example, _ = dang.ExampleDirective(directives)
 	return def, true
