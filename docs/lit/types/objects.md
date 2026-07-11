@@ -23,7 +23,7 @@ type Person {
 ## Public vs. private members
 
 - a bare member is **public** — readable from outside the type; public is the default for a `type`
-- `let` — readable only inside the type's own methods/defaults (private)
+- `let` — private to the declaring **module**: readable by any type or method in the same module, rejected across a module boundary (see [#modules])
 - `pub` is still accepted as an explicit public marker, but it is redundant and `dang fmt` removes it (see [#fields])
 - whether a member is a **constructor parameter** depends on having NO default, NOT on visibility:
   - `x: T!` (no default) → required positional param
@@ -31,6 +31,14 @@ type Person {
   - `let x: T!` (no default) → required positional param too, e.g. `Foo("public_value", "private_value")`
   - `let x: T! = d` → NOT a param; the default is used
   - method/computed members (have a `{ body }`) are never constructor params
+
+```dang
+# `let` privacy is module-scoped, not type-scoped: another type in the same
+# module reaches a let member (across a module boundary it is rejected)
+type Account { let secret: String! = "hunter2" }
+type Vault { unlock(a: Account!): String! { a.secret } }
+Vault.unlock(Account)   # "hunter2"
+```
 
 ## Implicit constructor
 
@@ -99,6 +107,51 @@ fullName: String! { firstName + " " + lastName }
 
 - accessed like a plain field (`obj.fullName`, no call parens); recomputes against the current receiver
 - a defaulted-value member (`pub computedField = config.name + "_computed"`) is computed once at construction; a `{ body }` computed field is re-evaluated per access
+
+## Static members {#static-members}
+
+```dang
+type Color {
+  r: Int! = 0
+  g: Int! = 0
+  b: Int! = 0
+
+  luminance: Int! { (r + g + b) / 3 }        # an instance member
+
+  # a self { } block declares statics: they live on the type itself, reached as
+  # Color.member, never on an instance
+  self {
+    white: Color! { Color(r: 255, g: 255, b: 255) }   # a factory method
+    fromGray(v: Int!): Color! { Color(r: v, g: v, b: v) }
+    grayMid: Color! { fromGray(128) }                 # a static calling a sibling static
+    let scale = 2                                      # a private (let) static helper
+    doubled(v: Int!): Int! { v * scale }
+  }
+}
+
+Color.white.luminance          # 255
+Color.fromGray(10).r           # 10
+Color.grayMid.g                # 128
+Color.doubled(7)               # 14
+Color(r: 3, g: 6, b: 9).luminance   # 6 — instances are unaffected by statics
+Color.luminance                # 0 — a bare all-default type still auto-constructs
+```
+
+```dang
+# static stored fields hold singleton state on the type
+type Config {
+  host: String! = "localhost"
+  self {
+    limit: Int! = 100
+    default: Config! = Config    # a static holding a constructed instance
+  }
+}
+
+Config.limit          # 100
+Config.default.host   # "localhost"
+```
+
+- a scalar may also carry a `self { }` block — including static *stored* fields, even though instance stored fields on a scalar are forbidden (see [#scalar-bodies])
 
 ## Implements
 

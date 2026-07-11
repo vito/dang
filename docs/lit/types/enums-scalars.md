@@ -69,10 +69,76 @@ scalar JSON
 
 > Meta: the `::` rule is the durable contract — literals are a convenience, non-literal values always go through an explicit cast.
 
+### Degrading to `String`
+
+```dang
+scalar URL
+
+let u: URL! = "https://example.com/a"
+
+# a scalar value degrades to String! at value-handoff boundaries — typed slots,
+# call args, returns, reassignment, ::, case-clause values — since it is a
+# string underneath
+let s: String! = u
+
+shout(msg: String!): String! { msg.toUpper }
+shout(u)                        # degrades into the String! argument → "HTTPS://EXAMPLE.COM/A"
+
+u == "https://example.com/a"    # compares by underlying string → true
+`link: ${u}`                    # interpolation / toString yield the bare string
+(u :: String!).toUpper          # a String *method* needs a String receiver: degrade first
+```
+
+## Scalar bodies {#scalar-bodies}
+
+```dang
+scalar Slug {
+  # new() runs at every materialization — a string literal in a Slug! slot, a
+  # `:: Slug!` cast, codec decode, and the derived Slug(...) constructor — and
+  # returns the canonical underlying String!, which the runtime wraps back up
+  new(raw: String!) {
+    raw.trimSpace.toLower.replace(" ", "-")
+  }
+
+  # members are methods only (a scalar holds no state beyond its string); inside
+  # one, `self` is the scalar value — degrade it to String! via a slot or cast
+  words: [String!]! { (self :: String!).split("-") }
+  first: String! { self.words[0] ?? "" }   # bare sibling call re-dispatches on self
+}
+
+# the scalar's name doubles as a constructor for any String expression
+Slug("  Hello World  ")             # Slug("hello-world")
+Slug("A b") == Slug("a-b")          # true — normalization makes equality semantic
+Slug("one two three").words         # ["one", "two", "three"]
+Slug("one two three").first         # "one"
+```
+
+```dang
+scalar Upper {
+  # a raise in the hook makes a bad value recoverable at the offending slot
+  new(raw: String!) {
+    if (raw != raw.toUpper) { raise `not upper: ${raw}` }
+    raw
+  }
+
+  # a self { } block adds statics, reached as Upper.member (see Static members)
+  self {
+    of(s: String!): Upper! { Upper(s.toUpper) }
+  }
+}
+
+let ok: Upper! = "HELLO"            # Upper("HELLO")
+Upper("nope") rescue "rejected"     # "rejected" — construction is recoverable
+Upper.of("mixed Case")             # Upper("MIXED CASE")
+```
+
+- a scalar's `self { }` block declares statics exactly like a `type`'s (see [#static-members])
+
 ## Built-in scalars
 
 - `Int!`, `Float!`, `String!`, `Boolean!`, `ID!` (see [#nullability])
 - `ID!` is its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop) — but string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`)
+- `Path!` and `Regexp!` are scalars carrying their own methods and a construction hook — `Path` normalizes on construction, `Regexp` compiles its pattern. `Path` is declared in the prelude with a scalar body (see [#scalar-bodies]); full method signatures for both are in [#stdlib]
 
 > Meta: scalar fields are invariant across interface implementation — `id: String!` does not satisfy `id: ID!`. Cross-ref the variance rules in [#interfaces-unions].
 
