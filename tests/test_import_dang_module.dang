@@ -1,0 +1,32 @@
+# Import a native Dang module (configured as `[imports.Lib] path` in dang.toml).
+# This exercises the module boundary end to end: the module's pub API is
+# reachable here, while its `let` members are not (that case lives in
+# errors/import_dang_private_member). It is the first cross-USER-module import
+# — previously the only module boundary was prelude -> user code.
+import Lib
+
+# Qualified access to a pub type and its pub members.
+assert { Lib.Greeter("Dang").greeting == "Hello, Dang!" }
+assert { Lib.Greeter("Dang").reveal == "shhh" } # reveal is pub; it reads the let
+
+# Unqualified imported symbols resolve too, like GraphQL imports.
+assert { Greeter.greeting == "Hello, world!" }
+
+# A pub top-level value, reachable qualified and unqualified.
+assert { Lib.answer == 42 }
+assert { answer == 42 }
+
+# Enum, interface, and union kinds re-export across the boundary too — each has
+# a value-level binding reachable both qualified and unqualified.
+assert { Lib.Color.RED != Lib.Color.GREEN }
+assert { Color.RED == Lib.Color.RED } # unqualified enum value binding
+
+let sq: Shape = Lib.Square # unqualified interface type in annotation position
+assert { sq.area == 4 }
+assert { Shape != null } # unqualified interface value binding
+
+let pet: Pet = Lib.Dog # unqualified union type in annotation position
+assert { Lib.Pet != null }
+assert { Pet != null } # unqualified union value binding
+
+print(Lib.Greeter("Dang").greeting)

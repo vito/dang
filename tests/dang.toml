@@ -5,3 +5,16 @@ service = ["go", "run", "./gqlserver/service"]
 [imports.Other]
 schema = "./gqlserver/schema.graphqls"
 service = ["go", "run", "./gqlserver/service"]
+
+# A native Dang module (not a GraphQL schema): imported from source.
+[imports.Lib]
+path = "./importlib"
+
+# A leaf utility module and a middle module that imports it. Together they
+# exercise the per-module instance-identity model: transitive imports, within-
+# module sharing, and cross-module type distinctness. Dormant unless imported.
+[imports.Util]
+path = "./importutil"
+
+[imports.Calc]
+path = "./importcalc"

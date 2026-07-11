@@ -107,7 +107,7 @@ authorization = "Bearer ${API_TOKEN}"
 [imports.Remote.headers]
 X-Custom = "value"
 ```
-- One `[imports.<Name>]` per source; `<Name>` is the qualifier (`MyApi.User`). Must specify at least one of `dagger`, `schema`, `endpoint`, `service`.
+- One `[imports.<Name>]` per source; `<Name>` is the qualifier (`MyApi.User`). Must specify at least one of `dagger`, `schema`, `endpoint`, `service` — or `path` (native Dang module, below).
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.
 - `service` — command starting a GraphQL server that prints its endpoint URL as the first stdout line; started lazily, killed on exit.
@@ -115,6 +115,12 @@ X-Custom = "value"
 - `authorization` — value for the `Authorization` header. `[imports.<Name>.headers]` — extra HTTP headers.
 - `authorization` / `endpoint` / `headers` support `${ENV_VAR}` expansion; `$(...)` command substitution is **not** supported. (The old `DANG_GRAPHQL_*` env config was dropped.)
 - Discovery walks **up** from the working directory, stopping at a `.git` boundary. Commit `dang.toml` — don't include credentials inline; reference env vars.
+
+### Native Dang module imports
+- `path = "./dir"` imports **another Dang module** (a directory of `.dang` files, relative to `dang.toml`) instead of a GraphQL source; mutually exclusive with `dagger`/`schema`/`endpoint`/`service` (`'path' cannot be combined with ...`).
+- The module's public (non-`let`) surface becomes the import's API; `let` stays private **across the boundary** (the [#fields] public/`let` rule, now enforced between modules).
+- **Per-module identity:** each importing module gets its own instance — two modules importing the same directory hold distinct copies of its types, and same-named types from different instances don't unify (`the "Widget" value here is a different type from the "Widget" expected ... share behavior through an interface instead`). No MVS/version reconciliation.
+- Transitive `path` imports resolve each module's own `dang.toml`; cycles are reported (`import cycle detected: a -> b -> a`).
 
 ### `import` declarations
 ```dang

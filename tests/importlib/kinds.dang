@@ -1,0 +1,30 @@
+# Extra exported declaration kinds, in a second file of the same module. Each
+# has a value-level binding (enum module, interface module, union module) that
+# must carry the declaration's visibility so it re-exports across the import
+# boundary — the same requirement objects and scalars already met.
+
+enum Color {
+  RED
+  GREEN
+  BLUE
+}
+
+interface Shape {
+  area: Int!
+}
+
+type Square implements Shape {
+  side: Int! = 2
+
+  area: Int! { self.side * self.side }
+}
+
+type Dog {
+  sound: String! = "woof"
+}
+
+type Cat {
+  sound: String! = "meow"
+}
+
+union Pet = Dog | Cat

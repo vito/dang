@@ -95,6 +95,17 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
+	// Native Dang modules (not GraphQL schemas), imported from source. Lib backs
+	// the cross-module `let` visibility boundary; Util + Calc back the per-module
+	// type-distinctness boundary (Calc imports its own copy of Util via its
+	// dang.toml, so Calc's Util.Widget doesn't unify with an importer's).
+	libDir, err := filepath.Abs("importlib")
+	require.NoError(t, err)
+	utilDir, err := filepath.Abs("importutil")
+	require.NoError(t, err)
+	calcDir, err := filepath.Abs("importcalc")
+	require.NoError(t, err)
+
 	ctx = dang.ContextWithImportConfigs(ctx,
 		dang.ImportConfig{
 			Name:   "Test",
@@ -104,10 +115,22 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 			Name:   "Other",
 			Client: client, // Same client/schema, but different import name
 		},
+		dang.ImportConfig{
+			Name:          "Lib",
+			DangModuleDir: libDir,
+		},
+		dang.ImportConfig{
+			Name:          "Util",
+			DangModuleDir: utilDir,
+		},
+		dang.ImportConfig{
+			Name:          "Calc",
+			DangModuleDir: calcDir,
+		},
 	)
 
 	// Run the Dang file
-	err := dang.RunFile(ctx, dangFile, false)
+	err = dang.RunFile(ctx, dangFile, false)
 	require.Error(t, err, "Test expects an error, but did not error.")
 
 	// Combine stdout and stderr output
@@ -178,4 +201,61 @@ print(x)
 			}
 		})
 	}
+}
+
+// TestDangModuleImportCycle checks that native Dang import cycles are reported
+// as a clean error rather than looping forever. A directory that must ERROR fits
+// neither the golden harness (the cycle message embeds absolute module dirs) nor
+// the language harness (an error there is a test failure), so — like
+// TestRunDirControlFlowSourceErrors — it runs from a temp dir and asserts on the
+// message. Under the per-module identity model each hop would instantiate a fresh
+// copy, so cycle detection tracks the active compile path (a ctx stack) instead
+// of a shared cache marker; these cases exercise that stack at various depths.
+func (DangSuite) TestDangModuleImportCycle(ctx context.Context, t *testctx.T) {
+	// writeModule writes a module dir `name` that imports `alias` (bound to the
+	// sibling directory `importDir` via a relative path).
+	writeModule := func(root, name, alias, importDir string) {
+		modDir := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(modDir, 0755))
+		toml := "[imports." + alias + "]\npath = \"../" + importDir + "\"\n"
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, "dang.toml"), []byte(toml), 0644))
+		src := "import " + alias + "\n\npub " + name + ": Int! = 1\n"
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, name+".dang"), []byte(src), 0644))
+	}
+
+	t.Run("two-node", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeModule(root, "a", "B", "b")
+		writeModule(root, "b", "A", "a")
+
+		_, err := dang.RunDir(ctx, filepath.Join(root, "a"), false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "import cycle detected")
+	})
+
+	t.Run("three-node", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeModule(root, "a", "B", "b")
+		writeModule(root, "b", "C", "c")
+		writeModule(root, "c", "A", "a")
+
+		_, err := dang.RunDir(ctx, filepath.Join(root, "a"), false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "import cycle detected")
+	})
+
+	t.Run("self-import", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		modDir := filepath.Join(root, "a")
+		require.NoError(t, os.MkdirAll(modDir, 0755))
+		// A module that imports its own directory via ".".
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, "dang.toml"),
+			[]byte("[imports.Me]\npath = \".\"\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(modDir, "a.dang"),
+			[]byte("import Me\n\npub a: Int! = 1\n"), 0644))
+
+		_, err := dang.RunDir(ctx, modDir, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "import cycle detected")
+	})
 }

@@ -155,20 +155,26 @@ func TestProjectConfigImports(t *testing.T) {
 	configDir := filepath.Dir(configPath)
 	resolved, err := ResolveImportConfigs(ctx, config, configDir)
 	require.NoError(t, err)
-	require.Len(t, resolved, 2)
+	require.Len(t, resolved, 5)
 
-	// Verify we got schemas for both imports
-	var testConfig, otherConfig ImportConfig
+	// Verify we got schemas for both GraphQL imports, and a module dir for each
+	// native Dang import (Lib/Util/Calc), which carries no schema/client.
+	var testConfig, otherConfig, libConfig ImportConfig
 	for _, c := range resolved {
 		switch c.Name {
 		case "Test":
 			testConfig = c
 		case "Other":
 			otherConfig = c
+		case "Lib":
+			libConfig = c
 		}
 	}
 	require.NotNil(t, testConfig.Schema, "Test import should have a schema")
 	require.NotNil(t, otherConfig.Schema, "Other import should have a schema")
+	require.Nil(t, libConfig.Schema, "native Dang import should have no schema")
+	require.Nil(t, libConfig.Client, "native Dang import should have no client")
+	require.NotEmpty(t, libConfig.DangModuleDir, "native Dang import should resolve a module dir")
 
 	// Verify the schema has expected types
 	require.NotNil(t, testConfig.Schema.Types.Get("User"))
@@ -195,10 +201,17 @@ func TestLoadProjectConfig(t *testing.T) {
 	config, err := LoadProjectConfig("../../tests/dang.toml")
 	require.NoError(t, err)
 	require.NotNil(t, config)
-	require.Len(t, config.Imports, 2)
+	require.Len(t, config.Imports, 5)
 	require.NotNil(t, config.Imports["Test"])
 	require.Equal(t, "./gqlserver/schema.graphqls", config.Imports["Test"].Schema)
 	require.NotNil(t, config.Imports["Other"])
+	require.NotNil(t, config.Imports["Lib"])
+	require.Equal(t, "./importlib", config.Imports["Lib"].Path)
+	// Native Dang modules backing the per-module identity tests.
+	require.NotNil(t, config.Imports["Util"])
+	require.Equal(t, "./importutil", config.Imports["Util"].Path)
+	require.NotNil(t, config.Imports["Calc"])
+	require.Equal(t, "./importcalc", config.Imports["Calc"].Path)
 }
 
 func TestDaggerImportSource(t *testing.T) {
