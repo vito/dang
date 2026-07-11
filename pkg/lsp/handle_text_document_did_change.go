@@ -3,20 +3,9 @@ package lsp
 import (
 	"context"
 	"log/slog"
-
-	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleTextDocumentDidChange(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params DidChangeTextDocumentParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentDidChange(ctx context.Context, params DidChangeTextDocumentParams) (any, error) {
 	if len(params.ContentChanges) == 0 {
 		return nil, nil
 	}

@@ -4,20 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"strings"
-
-	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleWorkspaceSymbol(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params WorkspaceSymbolParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleWorkspaceSymbol(ctx context.Context, params WorkspaceSymbolParams) (any, error) {
 	slog.InfoContext(ctx, "workspace symbol request", "query", params.Query)
 
 	var symbols []SymbolInformation
