@@ -46,8 +46,8 @@ authorization = "Bearer ${API_TOKEN}"
 The `endpoint`, `authorization`, and `headers` values support `${VAR}`
 environment expansion; `$(...)` command substitution is not supported.
 
-- one `[imports.<Name>]` per imported GraphQL source; `<Name>` is the qualifier (`MyApi.User`)
-- must specify at least one of `dagger`, `schema`, `endpoint`, or `service`
+- one `[imports.<Name>]` per imported source; `<Name>` is the qualifier (`MyApi.User`)
+- must specify at least one of `dagger`, `schema`, `endpoint`, or `service` — or `path`, to import a native Dang module instead of a GraphQL source (see [#dang-imports])
 - `schema = "..."` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP
 - `endpoint = "..."` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it
 - `service = [...]` — command that starts a GraphQL server, printing its endpoint URL as the first stdout line; started lazily, killed on exit
@@ -56,6 +56,30 @@ environment expansion; `$(...)` command substitution is not supported.
 - `[imports.<Name>.headers]` — extra HTTP headers (table of key = value)
 - `authorization` / `endpoint` / `headers` values support `${ENV_VAR}` expansion (note: the old `DANG_GRAPHQL_*` env-var config was dropped)
 - runtime queries are GraphQL interop; see [#interop]
+
+## Importing another Dang module {#dang-imports}
+
+An import can point at **another Dang module** on disk instead of a GraphQL
+source. Its public surface becomes available under the qualifier, exactly like a
+GraphQL import.
+
+```toml
+[imports.Helpers]
+path = "./lib/helpers"
+```
+
+- `path = "..."` — a directory of `.dang` files (relative to `dang.toml`), compiled as a module
+- mutually exclusive with the GraphQL source kinds: `'path' cannot be combined with 'dagger', 'schema', 'endpoint', or 'service'`
+- the module's public (non-`let`) declarations are its API; `let` declarations stay private **across the import boundary** — the same public/`let` rule as [#fields], now enforced between modules
+- `import Helpers` then exposes `Helpers.Greeting` (qualified) and `Greeting` (unqualified), like any import
+- transitive `path` imports work (an imported module resolves its own `dang.toml` from its directory); import cycles are reported: `import cycle detected: a -> b -> a`
+
+### Per-module identity
+
+- each importing module gets its **own instance** of an imported module — nothing unifies across the boundary
+- two modules importing the same directory therefore hold **distinct copies** of its types: a `Widget` from one is not the `Widget` from the other, even when structurally identical
+- assigning across that boundary is rejected with a hint to share behavior through an interface: `the "Widget" value here is a different type from the "Widget" expected: they come from different modules and do not unify across the module boundary; share behavior through an interface instead`
+- there is no version reconciliation (no MVS): each `dang.toml` gets exactly what it declares
 
 ## `import` declarations
 
