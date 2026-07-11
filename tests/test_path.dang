@@ -1,0 +1,210 @@
+import Test
+
+# Test the Path scalar: construction, normalization, methods, coercion in
+# (literals -> Path), and degrade coercion out (Path -> String).
+
+# =============================================================================
+# Construction and normalization
+# =============================================================================
+
+# Path(...) cleans on construction; an un-normalized Path cannot exist.
+let p = Path("a//b/../c/")
+assert { p == Path("a/c") }
+assert { p.string == "a/c" }
+assert { Path("").string == "." }
+assert { Path("/../x").string == "/x" }
+
+# Normalization makes equality semantic, including against plain strings.
+assert { Path("a//b/./c") == Path("a/b/c") }
+assert { Path("a//b") == "a/b" }
+
+# =============================================================================
+# Literals coerce into Path-typed slots (params, defaults, returns)
+# =============================================================================
+
+let annotated: Path! = "src//main.go"
+assert { annotated == Path("src/main.go") }
+
+norm(candidate: Path! = "lib"): Path! { candidate }
+
+assert { norm == Path("lib") }
+assert { norm("a//./b") == Path("a/b") }
+
+mk: Path! { "x//y" }
+
+assert { mk == Path("x/y") }
+
+# =============================================================================
+# Methods
+# =============================================================================
+
+let src = Path("src/app/main.go")
+assert { src.name == "main.go" }
+assert { src.stem == "main" }
+assert { src.extension == "go" }
+assert { src.parent == Path("src/app") }
+assert { src.parts == ["src", "app", "main.go"] }
+assert { !src.isAbsolute }
+assert { Path("/etc").isAbsolute }
+
+# extension is null when there is none; a leading dot alone does not count
+assert { Path("Makefile").extension == null }
+assert { Path(".bashrc").extension == null }
+assert { Path(".bashrc").stem == ".bashrc" }
+assert { Path("a.tar.gz").extension == "gz" }
+assert { Path("a.tar.gz").stem == "a.tar" }
+
+# a bare "." is not a dotfile: its stem drops the trailing dot (matches Go's
+# base-minus-extension), unlike a hidden file like ".bashrc"
+assert { Path(".").stem == "" }
+
+# root and relative edge cases
+assert { Path("/").name == "/" }
+assert { Path("/").parent == Path("/") }
+assert { Path("/").parts.isEmpty }
+assert { Path(".").parts.isEmpty }
+assert { Path("x").parent == Path(".") }
+assert { Path("../a").parts == ["..", "a"] }
+
+# ascend yields a path and each of its ancestors up to the root; an absolute
+# path keeps the root, a relative one bottoms out at its first segment (no ".")
+let up: [String!]! = []
+Path("/usr/local/bin").ascend { dir => up += [dir.string] }
+assert { up == ["/usr/local/bin", "/usr/local", "/usr", "/"] }
+
+# like .each, it returns the elements it walked, in order
+assert { (Path("a/b/c").ascend { d => d }) == [Path("a/b/c"), Path("a/b"), Path("a")] }
+assert { (Path("a").ascend { d => d }) == [Path("a")] }
+assert { (Path(".").ascend { d => d }) == [Path(".")] }
+assert { (Path("/").ascend { d => d }) == [Path("/")] }
+
+# descend is ascend reversed: from the root (or first segment) down to the path
+let down: [String!]! = []
+Path("/usr/local/bin").descend { dir => down += [dir.string] }
+assert { down == ["/", "/usr", "/usr/local", "/usr/local/bin"] }
+assert { (Path("a/b/c").descend { d => d }) == [Path("a"), Path("a/b"), Path("a/b/c")] }
+assert { (Path(".").descend { d => d }) == [Path(".")] }
+
+# isRoot is the single POSIX root, nothing else (no Windows drive roots)
+assert { Path("/").isRoot }
+assert { !Path("/usr").isRoot }
+assert { !Path(".").isRoot }
+
+# =============================================================================
+# join / relativeTo / contains / matches
+# =============================================================================
+
+assert { Path("/usr").join("local").join("bin") == Path("/usr/local/bin") }
+assert { Path("a").join("../b") == Path("b") }
+
+assert { Path("deep/nest").relativeTo("deep") == Path("nest") }
+assert { Path("/usr/local/bin").relativeTo("/usr") == Path("local/bin") }
+assert { Path("/usr").relativeTo("/usr") == Path(".") }
+
+# not expressible -> null, not an error
+assert { Path("/a").relativeTo("b") == null }
+assert { Path("a").relativeTo("../x") == null }
+
+assert { Path("/usr/local").contains("/usr/local") }
+assert { Path("/usr/local").contains("/usr/local/bin") }
+assert { !Path("/usr/local").contains("/usr/localbin") }
+assert { !Path("/usr/local").contains("relative") }
+
+assert { Path("main.dang").matches("*.dang") }
+assert { !Path("main.go").matches("*.dang") }
+
+# non-ASCII characters in a pattern are literal, not regexp-escaped (would
+# otherwise compile to an invalid `\é` escape and raise)
+assert { Path("café").matches("café") }
+assert { Path("café.txt").matches("caf?.txt") }
+assert { !Path("cafe").matches("café") }
+
+# character classes work, including negation and matching "/"
+assert { Path("m").matches("[a-z]") }
+assert { !Path("M").matches("[a-z]") }
+assert { Path("b").matches("[^a]") }
+assert { Path("a/b").matches("a[/]b") }
+# an escaped "\-" is a literal dash, not a range operator
+assert { Path("-").matches("[a\\-z]") }
+assert { !Path("b").matches("[a\\-z]") }
+
+# unusual-but-not-fatal classes are accepted and match like a regexp would,
+# rather than being validated against Go path.Match's stricter rules
+assert { Path("-").matches("[a-]") }
+assert { Path("-").matches("[-a]") }
+assert { Path("b").matches("[a-c-e]") }
+assert { !Path("d").matches("[a-c-e]") }
+
+# a class that can't translate to a valid regexp raises (recoverable): an
+# unterminated or empty class, or a reversed range like [z-a]
+assert { (Path("x").matches("[") rescue null) == null }
+assert { (Path("x").matches("[]") rescue null) == null }
+assert { (Path("x").matches("[z-a]") rescue null) == null }
+assert { (Path("x").matches("[^z-a]") rescue null) == null }
+
+# =============================================================================
+# Degrade: Path flows into String slots at value-handoff boundaries
+# =============================================================================
+
+# typed slot
+let s: String! = src
+assert { s == "src/app/main.go" }
+
+# call argument (user function), then String methods on the result
+shout(msg: String!): String! { msg.toUpper }
+
+assert { shout(src) == "SRC/APP/MAIN.GO" }
+
+# builtin method argument
+assert { s.hasPrefix(src.parent) }
+
+# return boundary
+giveString: String! { Path("a//b") }
+
+assert { giveString == "a/b" }
+
+# reassignment
+let mut: String! = "start"
+mut = src
+assert { mut == "src/app/main.go" }
+
+# explicit cast
+let cast = src :: String!
+assert { cast == "src/app/main.go" }
+
+# list elements degrade too
+strJoin(xs: [String!]!): String! { xs.join(",") }
+
+assert { strJoin([Path("a"), Path("b")]) == "a,b" }
+
+# GraphQL argument boundary
+let greeting = hello(name: Path("World//x").parent)
+assert { greeting == "Hello, World!" }
+
+# schema scalars degrade uniformly (URL! -> String!)
+let page: String! = homepage
+assert { page.hasPrefix("https://") }
+
+# =============================================================================
+# Interpolation, toString, case clauses, decode
+# =============================================================================
+
+assert { `at ${src}` == "at src/app/main.go" }
+assert { toString(src) == "src/app/main.go" }
+
+# case clause literals coerce (and normalize) against a Path operand
+let label = case (Path("a/b")) {
+  "a//b" => "matched"
+  else => "no"
+}
+assert { label == "matched" }
+
+# codec decode materializes (and normalizes) Path fields from strings
+type Cfg {
+  out: Path!
+}
+
+let cfg: Cfg! = JSON.decode("""{"out": "dist//site"}""")
+assert { cfg.out == Path("dist/site") }
+
+print("All Path tests passed!")

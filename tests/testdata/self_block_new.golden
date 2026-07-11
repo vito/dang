@@ -1,0 +1,11 @@
+[1m[31mError:[0m new() cannot appear inside a self { } block
+  [2m[34m--> errors/self_block_new.dang:4:5[0m
+ [2m    |[0m
+ [2m  2 | type Thing {[0m
+ [2m  3 |   self {[0m
+ [2m[34m[1m  4 | [0m    new(raw: String!) {
+[2m           [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 |       raw[0m
+ [2m  6 |     }[0m
+ [2m    |[0m
+

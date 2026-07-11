@@ -1,0 +1,7 @@
+# A scalar's new() hook computes the canonical underlying string, so its
+# body must return String!.
+scalar Port {
+  new(raw: String!) {
+    42
+  }
+}

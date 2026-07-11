@@ -36,7 +36,7 @@ type Person @deprecated(reason: "use NewPerson") {
 
 - suffix form attaches to the field or type: `name: String! @deprecated`
 - prefix form on its own, before the declaration: `@check validated: String! { ... }`
-- both forms apply to types, fields, and function/field arguments (`process(user: Person! @experimental)`)
+- both forms apply to types, scalars (`scalar Tag @experimental`), fields, and function/field arguments (`process(user: Person! @experimental)`)
 - multiple prefix directives go on separate lines; prefix and suffix on the same declaration are both collected:
 
 ```dang
@@ -48,7 +48,7 @@ mixedField: String! @cache(ttl: 120) { "mixed" }
 
 - named: `@cache(ttl: 60, key: "user")`
 - positional shorthand: `@cache(60, key: "user")` — positionals fill args in order
-- positional args must come *before* named ones; `@example(a: "x", "y")` → `positional arguments must come before named arguments`
+- positional args must come *before* named ones; `@cache(key: "x", 60)` → `positional arguments must come before named arguments`
 - defaults from the declaration apply when an arg is omitted
 
 ## Qualified access
@@ -62,6 +62,18 @@ mixedField: String! @cache(ttl: 120) { "mixed" }
 - `@defaultPath(path: ...)` — provides a default for a `Directory!` field
 - `@ignorePatterns(patterns: [...])` — filtering metadata
 - `@JSON.field(name:, omitNull:, omitEmpty:)` / `@JSON.ignore` (and `@YAML.*`, `@TOML.*`) — control how a field serializes (see [#json-yaml])
+- `@example(code: String!)` — attaches a runnable example to a declaration, read by doc tooling (the stdlib reference builds its live REPLs from these). Idiomatically the code is a language-tagged fenced template, so editors highlight it as Dang:
+
+````dang
+"""
+doubles a number
+"""
+@example(```dang
+double(21)
+```)
+double(n: Int!): Int! { n * 2 }
+````
+
 - plus every directive imported from connected schemas (see [#modules] for import/qualification)
 
 ## Structural, not semantic

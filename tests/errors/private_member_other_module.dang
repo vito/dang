@@ -1,0 +1,4 @@
+# A `let` member is private to the module that declares its type. Path is
+# declared in the prelude, so its `let` helper cleanPath is reachable from
+# Path's own methods but not from user code, which is a different module.
+Path("a/b").cleanPath("c")

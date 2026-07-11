@@ -1,0 +1,11 @@
+# A raising new() hook surfaces as a materialization error at the slot.
+scalar Upper {
+  new(raw: String!) {
+    if (raw != raw.toUpper) {
+      raise `not upper: ${raw}`
+    }
+    raw
+  }
+}
+
+let shouted: Upper! = "quiet"

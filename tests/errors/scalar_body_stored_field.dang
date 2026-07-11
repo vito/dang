@@ -1,0 +1,5 @@
+# Scalars carry no state beyond their underlying string, so a scalar body
+# may only declare methods (and new()), never stored fields.
+scalar Slug {
+  count: Int! = 0
+}

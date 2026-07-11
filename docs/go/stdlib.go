@@ -12,10 +12,14 @@ import (
 
 // The standard library reference is generated straight from the builtin
 // registry in pkg/dang (see stdlib.go, stdlib_random.go, stdlib_regexp.go,
-// assert.go). Each entry's signature comes from the registered parameter,
+// assert.go) and from the Dang-source prelude (pkg/dang/prelude/*.dang).
+// Each registry entry's signature comes from the registered parameter,
 // block, and return types; its description comes from the builtin's .Doc(...),
-// and its pre-seeded REPL from the builtin's .Example(...). Editing a builtin
-// updates this page — there is nothing to hand-maintain.
+// and its pre-seeded REPL from the builtin's .Example(...). Prelude members
+// render the same cards from their schemes, docstrings, and @example
+// directives (the directive's code is the runnable example). Editing a
+// builtin or a prelude member updates this page — there is nothing to
+// hand-maintain.
 //
 // The layout mirrors vito/bass's stdlib page: every definition becomes an
 // anchored card titled by its signature, and a long group is preceded by a
@@ -40,18 +44,33 @@ func (p Plugin) StdlibFunctions() booklit.Content {
 	dang.ForEachFunction(func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
+	// The Dang-source prelude's public top-level bindings (constructor
+	// functions like Path) render alongside the Go builtins.
+	preludeMod := dang.PreludeModule()
+	for name, scheme := range preludeMod.Bindings(dang.PublicVisibility) {
+		doc, _ := preludeMod.GetDocString(name)
+		if def, ok := synthPreludeDef(name, scheme, doc, preludeMod.GetDirectives(name)); ok {
+			defs = append(defs, def)
+		}
+	}
 	return p.stdlibModule(defs, "", "fn", "")
 }
 
 // StdlibMethods renders the builtin methods of a receiver type, named by its
 // Dang type name (e.g. String, List, Match). Entries are alphabetical and
-// prefixed with a leading dot to read as method calls.
+// prefixed with a leading dot to read as method calls. Types not in the Go
+// builtin registry fall back to the Dang-source prelude (e.g. Path), whose
+// member signatures, descriptions, and examples come from schemes and
+// docstrings instead of BuiltinDefs.
 //
 //	\stdlib-methods{String}
 func (p Plugin) StdlibMethods(name booklit.Content) (booklit.Content, error) {
 	typeName := name.String()
 	recv := receiverByName(typeName)
 	if recv == nil {
+		if mod, ok := preludeTypeByName(typeName); ok {
+			return p.stdlibModule(preludeMemberDefs(mod), ".", typeName, typeName), nil
+		}
 		return nil, fmt.Errorf("stdlib-methods: no builtin method receiver named %q", typeName)
 	}
 	var defs []dang.BuiltinDef
@@ -59,6 +78,67 @@ func (p Plugin) StdlibMethods(name booklit.Content) (booklit.Content, error) {
 		defs = append(defs, d)
 	})
 	return p.stdlibModule(defs, ".", typeName, typeName), nil
+}
+
+// preludeTypeByName resolves a type declared by the Dang-source prelude.
+func preludeTypeByName(name string) (*dang.Type, bool) {
+	for sub, scope := range dang.PreludeModule().NamedTypes() {
+		if sub != name {
+			continue
+		}
+		mod, ok := scope.(*dang.Type)
+		return mod, ok
+	}
+	return nil, false
+}
+
+// preludeMemberDefs synthesizes BuiltinDef-shaped entries for a Dang-defined
+// type's public members so they render through the same card machinery as Go
+// builtins. Signatures come from the member schemes; descriptions come from
+// docstrings and runnable examples from @example directives.
+func preludeMemberDefs(mod *dang.Type) []dang.BuiltinDef {
+	var defs []dang.BuiltinDef
+	for name, scheme := range mod.Bindings(dang.PublicVisibility) {
+		doc, _ := mod.GetDocString(name)
+		if def, ok := synthPreludeDef(name, scheme, doc, mod.GetDirectives(name)); ok {
+			def.IsMethod = true
+			def.ReceiverType = mod
+			defs = append(defs, def)
+		}
+	}
+	return defs
+}
+
+// synthPreludeDef builds a BuiltinDef from a Dang-declared member's scheme,
+// docstring, and directives.
+func synthPreludeDef(name string, scheme *hm.Scheme, doc string, directives []*dang.DirectiveApplication) (dang.BuiltinDef, bool) {
+	t, mono := scheme.Type()
+	if !mono {
+		return dang.BuiltinDef{}, false
+	}
+	fn, ok := t.(*hm.FunctionType)
+	if !ok {
+		return dang.BuiltinDef{}, false
+	}
+	def := dang.BuiltinDef{
+		Name:       name,
+		ReturnType: fn.ReturnType(),
+	}
+	if rec, ok := fn.Arg().(*dang.RecordType); ok {
+		for _, f := range rec.Fields {
+			pt, _ := f.Value.Type()
+			def.ParamTypes = append(def.ParamTypes, dang.ParamDef{Name: f.Key, Type: pt})
+		}
+	}
+	// A block parameter (e.g. Path.ascend's &visit) lives on the function type
+	// separately from the regular-argument record, so copy it across or the
+	// signature renders argless (".ascend: [Path!]!").
+	if bt := fn.Block(); bt != nil {
+		def.BlockType = bt
+	}
+	def.Doc = strings.TrimSpace(doc)
+	def.Example, _ = dang.ExampleDirective(directives)
+	return def, true
 }
 
 // StdlibStatics renders the static methods of a module, named by its Dang type

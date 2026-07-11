@@ -1,0 +1,8 @@
+# Test: new() cannot appear inside a self { } block.
+type Thing {
+  self {
+    new(raw: String!) {
+      raw
+    }
+  }
+}

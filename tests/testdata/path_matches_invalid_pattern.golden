@@ -1,0 +1,11 @@
+[1m[31mError:[0m uncaught error: matches: invalid pattern "["
+  [2m[34m--> prelude/path.dang:208:7[0m
+ [2m    |[0m
+ [2m206 |     let re = globToRegexp(pattern)[0m
+ [2m207 |     if (re == null) {[0m
+ [2m[34m[1m208 | [0m      raise `matches: invalid pattern "${pattern}"`
+[2m             [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m209 |     }[0m
+ [2m210 |     # a class can translate to a regexp that won't compile (e.g. a reversed[0m
+ [2m    |[0m
+

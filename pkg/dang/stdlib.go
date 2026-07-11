@@ -58,7 +58,7 @@ func registerStdlib() {
 
 	// toString function: toString(value: b) -> String!
 	Builtin("toString").
-		Doc("converts a value to a string, returning strings and enum values as-is and serializing other values to JSON").
+		Doc("converts a value to a string, returning strings, enum values, and custom scalar values as-is and serializing other values to JSON").
 		Example(`toString(42)`).
 		Params("value", TypeVar('b')).
 		Returns(NonNull(StringType)).
@@ -71,6 +71,11 @@ func registerStdlib() {
 			}
 			if enumVal, ok := val.(EnumValue); ok {
 				return ToValue(enumVal.Val)
+			}
+			// Custom scalar values are strings underneath — return them
+			// bare rather than JSON-quoted, matching template interpolation.
+			if scalarVal, ok := val.(ScalarValue); ok {
+				return ToValue(scalarVal.Val)
 			}
 
 			// Otherwise, serialize to JSON

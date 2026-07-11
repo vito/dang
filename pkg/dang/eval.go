@@ -117,6 +117,76 @@ func (c InputObjectConstructor) Call(ctx context.Context, scope ValueScope, args
 	return instance, nil
 }
 
+// ScalarConstructor constructs a scalar value from a String by running the
+// scalar's new() hook and wrapping the resulting canonical string. It is the
+// value bound under the scalar's name when its declaration includes new()
+// (Dang scalars) or when a builtin scalar registers a Go-native hook (Regexp),
+// mirroring how a type's name doubles as its constructor.
+type ScalarConstructor struct {
+	ScalarType *Type
+	FnType     *hm.FunctionType
+	ArgName    string
+}
+
+func (c ScalarConstructor) Type() hm.Type        { return c.FnType }
+func (c ScalarConstructor) String() string       { return fmt.Sprintf("scalar:%s", c.ScalarType.Named) }
+func (c ScalarConstructor) IsAutoCallable() bool { return false }
+
+func (c ScalarConstructor) ParameterNames() []string {
+	return []string{c.ArgName}
+}
+
+func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	raw, ok := args[c.ArgName].(StringValue)
+	if !ok {
+		return nil, fmt.Errorf("%s: argument %q must be String!, got %T", c.ScalarType.Named, c.ArgName, args[c.ArgName])
+	}
+	// The hook lives on the type (set before this constructor was built), so
+	// this handles both Dang new() and Go-native hooks uniformly.
+	v, hooked, err := applyScalarHook(ctx, scope, c.ScalarType, raw.Val)
+	if err != nil {
+		return nil, err
+	}
+	if !hooked {
+		return ScalarValue{Val: raw.Val, ScalarType: c.ScalarType}, nil
+	}
+	return v, nil
+}
+
+// applyScalarHook materializes raw into scalarType through its new() hook —
+// Go-native or Dang-defined — wrapping the canonical string into a
+// ScalarValue. ok is false when the scalar has no hook and the caller should
+// wrap raw unchanged.
+func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, raw string) (v Value, ok bool, err error) {
+	if hook := scalarType.GoScalarHook(); hook != nil {
+		canonical, err := hook(raw)
+		if err != nil {
+			return nil, true, err
+		}
+		return ScalarValue{Val: canonical, ScalarType: scalarType}, true, nil
+	}
+	if hook, argName, ok := scalarType.ScalarHook(); ok {
+		v, err := runScalarHook(ctx, scope, scalarType, hook, argName, raw)
+		return v, true, err
+	}
+	return nil, false, nil
+}
+
+// runScalarHook runs a scalar's new() hook on raw and wraps the resulting
+// canonical string into a ScalarValue. Shared by the derived constructor and
+// materialization (literals, casts, decode).
+func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, hook FunctionValue, argName, raw string) (Value, error) {
+	result, err := hook.Call(ctx, scope, map[string]Value{argName: StringValue{Val: raw}})
+	if err != nil {
+		return nil, err
+	}
+	str, ok := result.(StringValue)
+	if !ok {
+		return nil, fmt.Errorf("%s new() must produce String!, got %T", scalarType.Named, result)
+	}
+	return ScalarValue{Val: str.Val, ScalarType: scalarType}, nil
+}
+
 // GraphQLFunction represents a GraphQL API function that makes actual calls
 type GraphQLFunction struct {
 	Name       string
@@ -315,6 +385,12 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 
 	// Add builtin functions
 	addBuiltinFunctions(env)
+
+	// Bind the Dang-source prelude's public declarations, builtin-style.
+	loadPrelude()
+	for _, kv := range preludeBindings {
+		env.Bind(kv.Key, kv.Value, PublicVisibility)
+	}
 
 	return env
 }
@@ -663,6 +739,15 @@ func addBuiltinFunctions(scope ValueScope) {
 
 		scope.Bind(hostModule.Named, modValue, PublicVisibility)
 	}
+
+	// The Regexp(...) constructor: a builtin scalar with a Go-native hook,
+	// bound like a Dang scalar's derived constructor. Its type-level scheme
+	// lives in the Prelude (see env.go init).
+	scope.Bind("Regexp", ScalarConstructor{
+		ScalarType: RegexpType,
+		FnType:     regexpConstructorType(),
+		ArgName:    regexpConstructorArg,
+	}, PublicVisibility)
 }
 
 // applyDefaults fills in default values for missing arguments
@@ -1267,6 +1352,13 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 		if self, ok := scope.Self(); ok {
 			if recv, ok := self.(ValueScope); ok {
 				return BoundMethod{Method: f, Receiver: recv}.Call(ctx, scope, args)
+			}
+			// A scalar method's self is a plain value, not a scope: a bare
+			// sibling call inside a scalar body re-dispatches with a fresh
+			// self cell the same way (falling through would MutateSelf a
+			// scope derived from the shared closure).
+			if sv, ok := self.(ScalarValue); ok {
+				return BoundScalarMethod{Method: f, Receiver: sv}.Call(ctx, scope, args)
 			}
 		}
 	}
@@ -1895,6 +1987,59 @@ func (b BoundMethod) IsAutoCallable() bool {
 	return b.Method.IsAutoCallable()
 }
 
+// BoundScalarMethod is a Dang-defined scalar method bound to its receiver
+// value. Scalar receivers are plain values, not scopes, so unlike BoundMethod
+// the receiver enters the body only as `self`; bare names resolve through the
+// method's closure, which overlays the scalar's sibling methods.
+type BoundScalarMethod struct {
+	Method   FunctionValue
+	Receiver Value
+}
+
+func (b BoundScalarMethod) Type() hm.Type {
+	return b.Method.Type()
+}
+
+func (b BoundScalarMethod) String() string {
+	return fmt.Sprintf("bound_scalar_method(%s)", b.Method.String())
+}
+
+func (b BoundScalarMethod) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("cannot marshal bound method value")
+}
+
+func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	// EnterSelf installs a fresh, unshared cell on the derived scope, so the
+	// (possibly process-shared) closure's own cell is never touched.
+	fnScope := b.Method.Closure.Derive(false)
+	fnScope.EnterSelf(b.Receiver)
+
+	returnFrame := NewControlFrame(ReturnFrame)
+	defer returnFrame.Deactivate()
+	methodCtx := contextWithReturnFrame(ctx, returnFrame)
+
+	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {
+		return nil, err
+	}
+
+	val, err := EvalNode(methodCtx, fnScope, b.Method.Body)
+	if err != nil {
+		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
+			return returnVal, nil
+		}
+		return nil, err
+	}
+	return val, nil
+}
+
+func (b BoundScalarMethod) ParameterNames() []string {
+	return b.Method.Args
+}
+
+func (b BoundScalarMethod) IsAutoCallable() bool {
+	return b.Method.IsAutoCallable()
+}
+
 // BoundBuiltinMethod represents a builtin method bound to a primitive value (like StringValue)
 type BoundBuiltinMethod struct {
 	Method   BuiltinFunction
@@ -2222,6 +2367,11 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 
 	typeScope := NewPreludeTypeScope("")
 
+	// Tag this program as its own module so `let` members declared in it are
+	// private to it (and prelude `let` members stay invisible here). See
+	// moduleScope.
+	ctx = withModuleScope(ctx, &moduleScope{label: "file:" + filePath})
+
 	inferred, err := Infer(ctx, typeScope, node, true)
 	if err != nil {
 		// Convert InferError to SourceError with full context
@@ -2524,6 +2674,11 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 
 	typeScope := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
+
+	// All files in the directory share one module identity, so a `let` member
+	// declared in any file is reachable from its siblings but not from another
+	// module (or from user code touching a prelude type). See moduleScope.
+	ctx = withModuleScope(ctx, &moduleScope{label: "dir:" + dirPath})
 
 	if isDebug {
 		fmt.Println("Running phased inference...")

@@ -1,0 +1,11 @@
+[1m[31mError:[0m scalar Slug declares more than one new()
+  [2m[34m--> errors/scalar_body_double_new.dang:7:3[0m
+ [2m    |[0m
+ [2m  5 |   }[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0m  new(other: String!) {
+[2m         [31m^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 |     other[0m
+ [2m  9 |   }[0m
+ [2m    |[0m
+

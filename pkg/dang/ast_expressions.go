@@ -662,11 +662,32 @@ type Select struct {
 	Field            *Symbol
 	AutoCall         bool
 	NullableReceiver bool // set during Infer when receiver is nullable
-	Loc              *SourceLocation
+	// staticOwner is set during Infer when this selection resolved to a static
+	// member of a type named directly by the receiver (e.g. Regexp.escape). It
+	// tells Eval to read the member from the type's statics namespace rather
+	// than evaluating the receiver (which would auto-construct an instance).
+	staticOwner *Type
+	Loc         *SourceLocation
 }
 
 var _ Node = (*Select)(nil)
 var _ Evaluator = (*Select)(nil)
+
+// staticMemberAccessible reports whether a static member of owner is reachable
+// as `Type.member` from the code currently being inferred. Public statics are
+// always reachable; a private (`let`) static only from within its declaring
+// module. When the module identity is unknown on either side it stays
+// unreachable — the pre-visibility behavior — so a private static never leaks
+// to an un-instrumented caller (statics fail closed, the reverse of instance
+// members, because each preserves its own backward-compatible default).
+func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool {
+	if owner.StaticVisibility(name) == PublicVisibility {
+		return true
+	}
+	home := owner.HomeModule()
+	cur := moduleScopeFromContext(ctx)
+	return home != nil && cur != nil && home == cur
+}
 
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
@@ -679,6 +700,44 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			t, _ := scheme.Type()
 			d.SetInferredType(t)
 			return t, nil
+		}
+
+		// Static member resolution. When the receiver names a type directly
+		// (e.g. `Regexp.escape`) and that type declares the field as a static
+		// member (in a self { } block), resolve it against the type's meta-type
+		// instead of inferring the receiver as a value. This is deliberately
+		// static-first: only a *declared* static short-circuits here, so a bare
+		// type name whose field is not a static falls through unchanged — most
+		// importantly, `AllDefaults.field` still auto-constructs and reads an
+		// instance field, exactly as before this feature existed.
+		if sym, ok := d.Receiver.(*Symbol); ok {
+			if ts, ok := env.(TypeScope); ok {
+				if named, found := ts.NamedType(sym.Name); found {
+					if owner, ok := named.(*Type); ok {
+						// A public static is reachable as `Type.member`
+						// anywhere; a private (let) static only from within its
+						// declaring module (module-level visibility, matching
+						// let instance members). Outside that, resolution falls
+						// through to normal receiver inference.
+						if scheme, isStatic := owner.StaticScheme(d.Field.Name); isStatic && staticMemberAccessible(ctx, owner, d.Field.Name) {
+							t, mono := scheme.Type()
+							if !mono {
+								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
+							}
+							if d.AutoCall {
+								var err error
+								t, _, err = autoCallFnType(t)
+								if err != nil {
+									return nil, err
+								}
+							}
+							d.staticOwner = owner
+							d.SetInferredType(t)
+							return t, nil
+						}
+					}
+				}
+			}
 		}
 
 		// Handle normal receiver
@@ -813,6 +872,21 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			d.SetInferredType(tv)
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
+		// Module-level visibility: a `let` member is private to the module that
+		// declares its type — reachable anywhere within that module (any file,
+		// sibling type, via self or a local value) but rejected from another
+		// module, so user code cannot reach a prelude type's `let` helpers.
+		// Enforced only when both the member's home module and the current
+		// module are known and differ; nil on either side (builtins, schema
+		// types, an un-instrumented entry point) falls open. Bare-name access
+		// took the nil-receiver branch far above and is unaffected.
+		if recType, ok := rec.(*Type); ok && recType.Visibility(d.Field.Name) == PrivateVisibility {
+			if home := recType.HomeModule(); home != nil {
+				if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
+					return nil, fmt.Errorf("%q is a private member of %s and cannot be accessed from another module", d.Field.Name, recType.Named)
+				}
+			}
+		}
 		t, mono := scheme.Type()
 		if !mono {
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
@@ -865,6 +939,34 @@ func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
+		// Static member: Infer resolved this to a static of a named type. Read
+		// it from the type's statics namespace directly, without evaluating the
+		// receiver — evaluating it would auto-construct an instance and miss the
+		// static entirely.
+		if d.staticOwner != nil {
+			statics := d.staticOwner.Statics()
+			if statics == nil {
+				return nil, fmt.Errorf("static %q of %s is unavailable", d.Field.Name, d.staticOwner.Named)
+			}
+			val, found, err := statics.Lookup(ctx, d.Field.Name)
+			if err != nil {
+				return nil, err
+			}
+			if !found {
+				return nil, fmt.Errorf("static %q not found in %s", d.Field.Name, d.staticOwner.Named)
+			}
+			// A static method binds the statics namespace as its receiver, so
+			// `self` and bare sibling statics resolve within the block.
+			if fnVal, isFn := val.(FunctionValue); isFn {
+				val = BoundMethod{Method: fnVal, Receiver: statics}
+			}
+			// Zero-arg statics auto-call, matching the normal selection path.
+			if d.AutoCall && isAutoCallableFn(val) {
+				return autoCallFn(ctx, scope, val)
+			}
+			return val, nil
+		}
+
 		var receiverVal Value
 		var err error
 
@@ -914,6 +1016,31 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 					}
 				}
 				return nil, fmt.Errorf("string value does not have method %q", d.Field.Name)
+
+			case ScalarValue:
+				// Methods on custom scalar values (e.g. Path) dispatch through
+				// the builtin registry, keyed by the scalar's named type, then
+				// through the scalar's Dang-defined methods (scalar bodies).
+				if mod, ok := rec.ScalarType.(*Type); ok {
+					methodKey := GetMethodKey(mod, d.Field.Name)
+					if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
+						return nil, err
+					} else if found {
+						if builtinFn, ok := method.(BuiltinFunction); ok {
+							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+						}
+					}
+					if methods := mod.ScalarMethods(); methods != nil {
+						if val, found, err := methods.Lookup(ctx, d.Field.Name); err != nil {
+							return nil, err
+						} else if found {
+							if fnVal, ok := val.(FunctionValue); ok {
+								return BoundScalarMethod{Method: fnVal, Receiver: rec}, nil
+							}
+						}
+					}
+				}
+				return nil, fmt.Errorf("%s value does not have method %q", rec.ScalarType.Name(), d.Field.Name)
 
 			case FloatValue:
 				// Handle methods on float values by looking them up in the evaluation environment

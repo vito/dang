@@ -1,0 +1,101 @@
+# Test static members declared in a self { } block. Statics live on the type's
+# meta-type, distinct from instance members, and are reached as `Type.member`.
+# Zero-argument members are declared and called without parentheses, like any
+# other Dang method.
+
+# --- static methods on an object, alongside instance members ---
+type Color {
+  r: Int! = 0
+  g: Int! = 0
+  b: Int! = 0
+
+  luminance: Int! { (self.r + self.g + self.b) / 3 }
+
+  self {
+    white: Color! { Color(r: 255, g: 255, b: 255) }
+    fromGray(v: Int!): Color! { Color(r: v, g: v, b: v) }
+    grayMid: Color! { fromGray(128) } # a static calling a sibling static
+  }
+}
+
+assert { Color.white.luminance == 255 }
+assert { Color.fromGray(10).r == 10 }
+assert { Color.grayMid.g == 128 }
+
+# ordinary construction and instance members are unaffected by statics
+assert { Color(r: 3, g: 6, b: 9).luminance == 6 }
+# a bare all-default type still auto-constructs (backward compatible)
+assert { Color.luminance == 0 }
+
+# --- static stored fields (singleton state) and private helpers ---
+type Config {
+  host: String! = "localhost"
+  port: Int! = 8080
+
+  self {
+    default: Config! = Config # a static holding a constructed instance
+    limit: Int! = 100 # a static constant
+    let version = "1.0" # a private static helper (let)
+    describe: String! { "config v" + version }
+  }
+}
+
+assert { Config.limit == 100 }
+assert { Config.default.host == "localhost" }
+assert { Config.default.port == 8080 }
+assert { Config.describe == "config v1.0" }
+
+# --- forward references, self-as-type-object, merged blocks, name collision ---
+type Widget {
+  size: Int! = 1
+
+  label: String! { "widget" } # instance member
+
+  self {
+    small: Widget! { tiny } # forward ref to a sibling in a later block
+    base: Int! = 10
+    scaled: Int! { self.base * 2 } # self is the type-object here
+  }
+
+  self { # a second self block, merged
+    tiny: Widget! { Widget(size: 0) }
+    label: String! { "Widget-type" } # a static named like the instance member
+  }
+}
+
+assert { Widget.small.size == 0 }
+assert { Widget.scaled == 20 }
+assert { Widget.tiny.size == 0 }
+# static and instance member with the same name resolve on separate tables
+assert { Widget.label == "Widget-type" }
+assert { Widget(size: 5).label == "widget" }
+
+# --- statics on a scalar, alongside its new() hook and instance methods ---
+scalar Slug {
+  new(raw: String!) {
+    raw.toLower
+  }
+
+  shout: String! { (self :: String!).toUpper }
+
+  self {
+    of(title: String!): Slug! { Slug(title) }
+    empty: Slug! = Slug("") # a scalar static stored field
+    sep: String! = "-"
+  }
+}
+
+assert { (Slug.of("Hello World") :: String!) == "hello world" }
+assert { Slug("Hi").shout == "HI" }
+assert { (Slug.empty :: String!) == "" }
+assert { Slug.sep == "-" }
+
+# --- a builtin static on a Go-native scalar (Regexp.escape) ---
+# Regexp has no Dang body; its static is wired directly onto the meta-type, but
+# it resolves through the exact same Type.member static path as the blocks above.
+assert { Regexp.escape("a.b") == "a\\.b" }
+# the motivating case: match arbitrary text literally by escaping it first
+assert { "cost: $5.00".containsMatch(Regexp(Regexp.escape("$5.00"))) }
+assert { !"cost: $5x00".containsMatch(Regexp(Regexp.escape("$5.00"))) }
+
+print("Static member tests passed!")

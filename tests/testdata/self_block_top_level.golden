@@ -1,0 +1,10 @@
+[1m[31mError:[0m self { } block is only valid inside a type body
+  [2m[34m--> errors/self_block_top_level.dang:2:1[0m
+ [2m    |[0m
+ [2m  1 | # Test: a self { } block is only valid inside a type body.[0m
+ [2m[34m[1m  2 | [0mself {
+[2m       [31m^^^^^^[0m
+ [2m  3 |   foo: Int! { 1 }[0m
+ [2m  4 | }[0m
+ [2m    |[0m
+

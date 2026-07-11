@@ -208,6 +208,36 @@ from different namespaces, never match). It then compares stored data fields via
 members (function-typed in the module) are skipped, so the comparison stays pure
 (no `ctx`, no I/O, no error path). See issue #150.
 
+## Scalar bodies and the Dang-source prelude
+
+Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
+`ScalarDecl` in `fields.go`). Non-obvious invariants:
+
+- **Receiver is a value, not a scope.** A `ScalarValue` is not a
+  `ValueScope`, so scalar methods dispatch through `BoundScalarMethod`
+  (eval.go), which `EnterSelf`s the raw value into a **fresh** cell on a
+  scope derived from the method's closure. Never `MutateSelf` a scope
+  derived from a scalar method's closure — for prelude scalars that closure
+  is process-shared. The naked-self-call seam in `FunctionValue.Call` has a
+  `ScalarValue` arm that re-dispatches bare sibling calls for this reason.
+- **The `new()` hook is deliberately `IsDynamic=false`**: the naked-self
+  redirect keys on the *caller's* dynamic scope, so a dynamic hook invoked
+  inside an object method would rebind to that object. Methods, by
+  contrast, are forced `IsDynamic=true` in `ScalarDecl.Eval` so bare
+  sibling calls redirect.
+- **Hook runs at materialization** (`materializeStringValue` /
+  `materializeDecoded`), stored on the `*Type` (`SetScalarHook`) — written
+  once at `ScalarDecl.Eval`, frozen after.
+
+The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
+`prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first
+scope construction — NOT at `init()`. Its `FileBlock` must be `Inline`
+(declarations land in the chain scope, not a clone). Everything it produces
+is frozen and shared process-wide like `Prelude`; tests that stub the
+builtin registry must `loadPrelude()` first or the prelude will infer
+against an empty registry. Prelude-raised errors render embedded source via
+`preludeSource` in `uncaught.go`.
+
 ## When adding a new type-like declaration
 
 Checklist:

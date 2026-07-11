@@ -90,15 +90,17 @@ func isLiteralExpr(n Node) bool {
 	}
 }
 
-// assignableForValue is hm.Assignable, but when value is a syntactic literal
-// it falls back to AssignableWithCoercion. Use at value-handoff boundaries
-// where wrapCoerce will materialize the result.
+// assignableForValue is hm.Assignable, but it falls back to
+// AssignableWithCoercion in the two coercible situations: the value is a
+// syntactic literal (which may refine into a scalar/enum), or its type
+// carries a custom scalar (which may degrade into String). Use at
+// value-handoff boundaries where wrapCoerce will materialize the result.
 func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 	subs, err := hm.Assignable(have, want)
 	if err == nil {
 		return subs, nil
 	}
-	if isLiteralExpr(value) {
+	if isLiteralExpr(value) || containsDegradableScalar(have) {
 		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
 			return coerceSubs, nil
 		}
@@ -107,6 +109,37 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 		return nil, withUnionProvenance(diag, have, want)
 	}
 	return nil, withUnionProvenance(err, have, want)
+}
+
+// isDegradableScalar reports whether mod is a custom scalar whose values may
+// degrade to String at value-handoff boundaries. Every non-primitive scalar
+// value is a string underneath (ScalarValue), so they all qualify — except
+// the codec namespaces (JSON/YAML/TOML): those are scalar-kind static
+// modules whose bare name evaluates to the module object, not a string.
+func isDegradableScalar(mod *Type) bool {
+	if mod.Kind != ScalarKind || isPrimitiveScalar(mod) {
+		return false
+	}
+	return !builtins.staticModuleSeen[mod]
+}
+
+// containsDegradableScalar reports whether t carries a degradable custom
+// scalar at any depth reachable by matched-wrapper unification (NonNull,
+// lists) — i.e. whether AssignableWithCoercion could apply the scalar→String
+// degrade to a value of type t.
+func containsDegradableScalar(t hm.Type) bool {
+	switch v := t.(type) {
+	case hm.NonNullType:
+		return containsDegradableScalar(v.Type)
+	case ListType:
+		return containsDegradableScalar(v.Type)
+	case GraphQLListType:
+		return containsDegradableScalar(v.Type)
+	case *Type:
+		return isDegradableScalar(v)
+	default:
+		return false
+	}
 }
 
 // diagnoseAssignment expands an hm.Assignable failure into a detailed
@@ -327,7 +360,14 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 	case DeferredValue:
 		return materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec)
 	case StringValue:
-		return materializeStringValue(v, target, path)
+		return materializeStringValue(ctx, scope, v, target, path)
+	case ScalarValue:
+		// Degrade a custom scalar flowing into a String slot; any other
+		// target passes through (the value is trusted to match its type).
+		if unwrapNonNull(target) == StringType {
+			return StringValue{Val: v.Val}, nil
+		}
+		return val, nil
 	case ListValue:
 		elemTarget, ok := listElementTarget(target)
 		if !ok {
@@ -347,7 +387,7 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 	}
 }
 
-func materializeStringValue(val StringValue, target hm.Type, path string) (Value, error) {
+func materializeStringValue(ctx context.Context, scope ValueScope, val StringValue, target hm.Type, path string) (Value, error) {
 	inner := unwrapNonNull(target)
 	mod, ok := inner.(*Type)
 	if !ok {
@@ -364,12 +404,13 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 		if isPrimitiveScalar(mod) {
 			return val, nil
 		}
-		if mod == RegexpType {
-			re, err := compileRegexp(val.Val)
+		// A scalar with a new() hook — Dang-defined or Go-native (Regexp's
+		// compile check) — computes its canonical string at materialization.
+		if v, hooked, err := applyScalarHook(ctx, scope, mod, val.Val); hooked {
 			if err != nil {
 				return nil, materializeError(path, "%s", err.Error())
 			}
-			return RegexpValue{Re: re, Source: val.Val}, nil
+			return v, nil
 		}
 		return ScalarValue{Val: val.Val, ScalarType: mod}, nil
 	default:
@@ -472,6 +513,12 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			}
 			if mod == StringType {
 				return StringValue{Val: s}, nil
+			}
+			if v, hooked, err := applyScalarHook(ctx, scope, mod, s); hooked {
+				if err != nil {
+					return nil, materializeDeferredError(path, "%s", err.Error())
+				}
+				return v, nil
 			}
 			return ScalarValue{Val: s, ScalarType: mod}, nil
 		case ObjectKind:

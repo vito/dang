@@ -1,0 +1,10 @@
+[1m[31mError:[0m unify index 1: no common type between String! and Path!
+  [2m[34m--> errors/path_mixed_list_no_common_type.dang:4:17[0m
+ [2m    |[0m
+ [2m  2 | # (degrade coercion applies only at value-handoff boundaries).[0m
+ [2m  3 | let p = Path("a")[0m
+ [2m[34m[1m  4 | [0mlet mixed = [p, "b"]
+[2m                       [31m^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

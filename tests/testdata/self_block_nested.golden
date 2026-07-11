@@ -1,0 +1,11 @@
+[1m[31mError:[0m self { } cannot be nested
+  [2m[34m--> errors/self_block_nested.dang:4:5[0m
+ [2m    |[0m
+ [2m  2 | type Outer {[0m
+ [2m  3 |   self {[0m
+ [2m[34m[1m  4 | [0m    self {
+[2m           [31m^^^^^^[0m
+ [2m  5 |       foo: Int! { 1 }[0m
+ [2m  6 |     }[0m
+ [2m    |[0m
+

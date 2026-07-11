@@ -404,6 +404,57 @@ func (n *NewConstructorDecl) Eval(ctx context.Context, scope ValueScope) (Value,
 	return NullValue{}, nil
 }
 
+// SelfBlockDecl is a `self { ... }` block inside a type body: it groups static
+// members, which land on the type's meta-type rather than on instances. Its
+// contents are ordinary declarations (methods, stored fields, let/pub
+// visibility, docstrings) processed against the meta scope by the enclosing
+// type declaration (see hoistStatics / inferStatics / evalStatics). Like
+// NewConstructorDecl, it is handled specially by its container; reaching its own
+// Infer means it appeared outside a type body, which is an error.
+type SelfBlockDecl struct {
+	InferredTypeHolder
+	BodyBlock *Block
+	Loc       *SourceLocation
+}
+
+var _ Node = &SelfBlockDecl{}
+var _ Evaluator = &SelfBlockDecl{}
+
+func (s *SelfBlockDecl) DeclaredSymbols() []string { return nil }
+
+func (s *SelfBlockDecl) ReferencedSymbols() []string {
+	if s.BodyBlock == nil {
+		return nil
+	}
+	return s.BodyBlock.ReferencedSymbols()
+}
+
+func (s *SelfBlockDecl) Body() hm.Expression { return s.BodyBlock }
+
+func (s *SelfBlockDecl) GetSourceLocation() *SourceLocation { return s.Loc }
+
+func (s *SelfBlockDecl) Walk(fn func(Node) bool) {
+	if !fn(s) {
+		return
+	}
+	if s.BodyBlock != nil {
+		s.BodyBlock.Walk(fn)
+	}
+}
+
+// Infer errors: a self { } block is only meaningful inside a type body, where
+// the enclosing declaration processes its members against the meta-type. At top
+// level it reaches this method.
+func (s *SelfBlockDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return nil, NewInferError(fmt.Errorf("self { } block is only valid inside a type body"), s)
+}
+
+// Eval is a no-op: static members are evaluated into the type's statics object
+// by the enclosing declaration (see evalStatics).
+func (s *SelfBlockDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return NullValue{}, nil
+}
+
 var _ Node = &ObjectDecl{}
 var _ Evaluator = &ObjectDecl{}
 
@@ -443,7 +494,7 @@ func localTypeIsQualifiedImport(env TypeScope, name string) bool {
 	return found && origin.Kind == BindingOriginImport && origin.Qualified
 }
 
-func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
+func declareLocalType(ctx context.Context, env TypeScope, name string, kind Kind) (*Type, error) {
 	if existing, found := env.LocalNamedType(name); found {
 		if localTypeShadowsImport(env, name) {
 			// Local declarations intentionally shadow unqualified imports.
@@ -457,6 +508,10 @@ func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
 	}
 
 	mod := NewType(name, kind)
+	// Stamp the declaring module so module-level `let` visibility can tell
+	// same-module access from foreign access. Nil ctx module (un-instrumented
+	// entry point) leaves it nil, which disables enforcement for this type.
+	mod.homeModule = moduleScopeFromContext(ctx)
 	env.AddObject(name, mod)
 	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
 	// scalar's namespace: staple Dang's members onto its type.
@@ -464,9 +519,13 @@ func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
 	return mod, nil
 }
 
-// findNewConstructor returns the NewConstructorDecl from the object body, if any
-func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
-	for _, form := range c.Value.Forms {
+// findNewConstructorIn returns the NewConstructorDecl among a body block's
+// forms, if any. Shared by object and scalar declarations.
+func findNewConstructorIn(block *Block) *NewConstructorDecl {
+	if block == nil {
+		return nil
+	}
+	for _, form := range block.Forms {
 		if newDecl, ok := form.(*NewConstructorDecl); ok {
 			return newDecl
 		}
@@ -474,15 +533,153 @@ func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
 	return nil
 }
 
-// bodyFormsWithoutNew returns the object body forms excluding the NewConstructorDecl
-func (c *ObjectDecl) bodyFormsWithoutNew() []Node {
+// formsWithoutNew returns a body block's instance-member forms: everything
+// except the NewConstructorDecl and any self { } blocks (whose members are
+// static and processed separately, against the meta-type). Shared by object and
+// scalar declarations.
+func formsWithoutNew(block *Block) []Node {
+	if block == nil {
+		return nil
+	}
 	var forms []Node
-	for _, form := range c.Value.Forms {
-		if _, ok := form.(*NewConstructorDecl); !ok {
+	for _, form := range block.Forms {
+		switch form.(type) {
+		case *NewConstructorDecl, *SelfBlockDecl:
+			// handled separately
+		default:
 			forms = append(forms, form)
 		}
 	}
 	return forms
+}
+
+// selfBlocksIn returns the self { } blocks among a body block's forms, in
+// source order. Static members live in these blocks.
+func selfBlocksIn(block *Block) []*SelfBlockDecl {
+	if block == nil {
+		return nil
+	}
+	var blocks []*SelfBlockDecl
+	for _, form := range block.Forms {
+		if sb, ok := form.(*SelfBlockDecl); ok {
+			blocks = append(blocks, sb)
+		}
+	}
+	return blocks
+}
+
+// staticForms flattens, in source order, the member forms of every self { }
+// block in body, skipping any nested self { } or new() forms (which are
+// rejected by validateStaticForms during hoisting).
+func staticForms(block *Block) []Node {
+	var forms []Node
+	for _, sb := range selfBlocksIn(block) {
+		if sb.BodyBlock == nil {
+			continue
+		}
+		for _, form := range sb.BodyBlock.Forms {
+			switch form.(type) {
+			case *SelfBlockDecl, *NewConstructorDecl:
+				// rejected in validateStaticForms; skip so downstream phases
+				// don't double-report the same structural error.
+			default:
+				forms = append(forms, form)
+			}
+		}
+	}
+	return forms
+}
+
+// validateStaticForms rejects forms that may not appear inside a self { } block:
+// a nested self { } (one meta level only) and new() (construction is not a
+// static). Called once, during hoisting, so the error is reported a single time.
+func validateStaticForms(block *Block) error {
+	for _, sb := range selfBlocksIn(block) {
+		if sb.BodyBlock == nil {
+			continue
+		}
+		for _, form := range sb.BodyBlock.Forms {
+			switch form.(type) {
+			case *SelfBlockDecl:
+				return NewInferError(fmt.Errorf("self { } cannot be nested"), form)
+			case *NewConstructorDecl:
+				return NewInferError(fmt.Errorf("new() cannot appear inside a self { } block"), form)
+			}
+		}
+	}
+	return nil
+}
+
+// hoistStatics registers the schemes of a type's static members (declared in
+// self { } blocks) onto its meta-type. The meta scope's lexical fallback is the
+// enclosing scope, so statics may reference outer types and the type's own name
+// (its constructor), but not its instance members — those live on a separate
+// table. Runs during the enclosing declaration's Hoist, pass 1.
+func hoistStatics(ctx context.Context, instanceType *Type, block *Block, env hm.Env, fresh hm.Fresher) error {
+	if err := validateStaticForms(block); err != nil {
+		return err
+	}
+	forms := staticForms(block)
+	if len(forms) == 0 {
+		return nil
+	}
+	meta := instanceType.MetaType()
+	// self inside a static resolves to the type-object (the statics namespace).
+	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
+	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	for _, form := range forms {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, metaScope, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// inferStatics infers the bodies of a type's static members against its
+// meta-type. Runs during the enclosing declaration's Infer.
+func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.Env, fresh hm.Fresher) error {
+	forms := staticForms(block)
+	if len(forms) == 0 {
+		return nil
+	}
+	meta := instanceType.MetaType()
+	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
+	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	_, err := InferFormsWithPhases(ctx, forms, metaScope, fresh)
+	return err
+}
+
+// evalStatics evaluates a type's static members into a fresh statics namespace
+// object (whose module is the meta-type) and records it on the type. Static
+// methods share the block's closure so bare sibling statics resolve, and self
+// resolves to the statics namespace. Runs during the enclosing declaration's
+// Eval. A no-op when the type declares no statics.
+func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope ValueScope) error {
+	forms := staticForms(block)
+	if len(forms) == 0 {
+		return nil
+	}
+	meta := instanceType.MetaType()
+	statics := NewObject(meta)
+	staticsScope := CreateOverlayValueScope(statics, scope)
+	staticsScope.EnterSelf(statics)
+	if _, err := EvaluateFormsWithPhases(ctx, forms, staticsScope); err != nil {
+		return err
+	}
+	instanceType.SetStatics(statics)
+	return nil
+}
+
+// findNewConstructor returns the NewConstructorDecl from the object body, if any
+func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
+	return findNewConstructorIn(c.Value)
+}
+
+// bodyFormsWithoutNew returns the object body forms excluding the NewConstructorDecl
+func (c *ObjectDecl) bodyFormsWithoutNew() []Node {
+	return formsWithoutNew(c.Value)
 }
 
 func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
@@ -491,7 +688,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ObjectDecl.Hoist: environment does not support module operations")
 	}
 
-	object, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, c.Name)
 	}
@@ -585,6 +782,11 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		}
 	}
 
+	// Hoist static members (self { } blocks) onto the object's meta-type.
+	if err := hoistStatics(ctx, object, c.Value, env, fresh); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -594,7 +796,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
 
-	object, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, c.Name)
 	}
@@ -642,6 +844,11 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Infer body forms (excluding new() which is handled separately)
 	bodyForms := c.bodyFormsWithoutNew()
 	if _, err := InferFormsWithPhases(ctx, bodyForms, inferTypeScope, fresh); err != nil {
+		return nil, err
+	}
+
+	// Infer static members (self { } blocks) against the meta-type.
+	if err := inferStatics(ctx, object, c.Value, env, fresh); err != nil {
 		return nil, err
 	}
 
@@ -933,6 +1140,13 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// Add the constructor to the evaluation environment
 		scope.Bind(c.Name.Name, constructor, c.Visibility)
 
+		// Evaluate static members (self { } blocks) into the type's statics
+		// namespace. Bound after the constructor so a static may reference the
+		// type's name (its constructor) through the shared closure.
+		if err := evalStatics(ctx, c.Inferred, c.Value, scope); err != nil {
+			return nil, err
+		}
+
 		return constructor, nil
 	})
 }
@@ -982,7 +1196,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		return fmt.Errorf("EnumDecl.Hoist: environment does not support module operations")
 	}
 
-	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	enumType, declareErr := declareLocalType(ctx, mod, e.Name.Name, EnumKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, e.Name)
 	}
@@ -1023,7 +1237,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
 	}
 
-	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	enumType, declareErr := declareLocalType(ctx, mod, e.Name.Name, EnumKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, e.Name)
 	}
@@ -1077,12 +1291,14 @@ func (e *EnumDecl) Walk(fn func(Node) bool) {
 type ScalarDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
+	Value      *Block // optional body: method members and an optional new() hook
 	Visibility Visibility
 	DocString  string
 	Directives []*DirectiveApplication
 	Loc        *SourceLocation
 
-	Inferred *Type
+	Inferred          *Type
+	ConstructorFnType *hm.FunctionType // set when the body declares new()
 }
 
 var _ Node = &ScalarDecl{}
@@ -1093,14 +1309,162 @@ func (s *ScalarDecl) DeclaredSymbols() []string {
 }
 
 func (s *ScalarDecl) ReferencedSymbols() []string {
-	return nil // Scalar declarations don't reference other symbols
+	var symbols []string
+	for _, directive := range s.Directives {
+		symbols = append(symbols, directive.ReferencedSymbols()...)
+	}
+	if s.Value != nil {
+		symbols = append(symbols, s.Value.ReferencedSymbols()...)
+	}
+	return symbols
 }
 
-func (s *ScalarDecl) Body() hm.Expression { return nil }
+func (s *ScalarDecl) Body() hm.Expression {
+	if s.Value == nil {
+		return nil
+	}
+	return s.Value
+}
 
 func (s *ScalarDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
 var _ Hoister = &ScalarDecl{}
+
+// validateScalarBodyForms enforces that a scalar body declares only methods
+// (function-shaped members) and at most one new() hook. Scalars carry no
+// state beyond their underlying string, so stored fields are rejected.
+func (s *ScalarDecl) validateScalarBodyForms() error {
+	sawNew := false
+	for _, form := range s.Value.Forms {
+		switch f := form.(type) {
+		case *NewConstructorDecl:
+			if sawNew {
+				return NewInferError(fmt.Errorf("scalar %s declares more than one new()", s.Name.Name), f)
+			}
+			sawNew = true
+		case *FieldDecl:
+			if f.Name.Name == "new" {
+				vis := "pub"
+				if f.Visibility == PrivateVisibility {
+					vis = "let"
+				}
+				return NewInferError(
+					fmt.Errorf("'new' is a constructor, not a method; use `new(...) { ... }` without `%s` or a return type", vis),
+					f,
+				)
+			}
+			if _, isFun := f.Value.(*FunDecl); !isFun {
+				return NewInferError(
+					fmt.Errorf("scalar member %q must be a method; scalars carry no fields beyond their underlying string", f.Name.Name),
+					f,
+				)
+			}
+		case *SelfBlockDecl:
+			// Static members live on the meta-type, validated and processed
+			// separately (see staticForms). Unlike instances, the type-object is
+			// real state, so static stored fields are allowed here.
+		default:
+			return NewInferError(fmt.Errorf("scalar bodies may only declare methods, new(), and a self { } block"), form)
+		}
+	}
+	return nil
+}
+
+// buildScalarConstructorType computes the type of the constructor function
+// derived from a scalar's new() hook: exactly one non-null String parameter,
+// returning the non-null scalar.
+func (s *ScalarDecl) buildScalarConstructorType(ctx context.Context, env hm.Env, newDecl *NewConstructorDecl, fresh hm.Fresher) (*hm.FunctionType, error) {
+	if newDecl.BlockParam != nil {
+		return nil, NewInferError(fmt.Errorf("scalar new() cannot take a block parameter"), newDecl)
+	}
+	if len(newDecl.Args) != 1 {
+		return nil, NewInferError(fmt.Errorf("scalar new() must take exactly one String! parameter"), newDecl)
+	}
+	arg := newDecl.Args[0]
+	if arg.Value != nil {
+		return nil, NewInferError(fmt.Errorf("scalar new() parameter cannot have a default"), arg)
+	}
+
+	fnDecl := FunctionBase{Args: newDecl.Args}
+	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
+	argEnv := env.Clone()
+	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s new(): %w", s.Name.Name, err)
+	}
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
+
+	argType, _ := argsRec.Fields[0].Value.Type()
+	if nn, ok := argType.(hm.NonNullType); !ok || nn.Type != StringType {
+		return nil, NewInferError(
+			fmt.Errorf("scalar new() parameter must be String!, got %s", argType),
+			arg,
+		)
+	}
+
+	return hm.NewFnType(argsRec, hm.NonNullType{Type: s.Inferred}), nil
+}
+
+// inferScalarNew infers the body of a scalar's new() hook. Unlike an object
+// constructor, the hook computes the scalar's canonical *underlying string*
+// (the runtime wraps it into the scalar value), so the body must return
+// String! — and `self` is unavailable, since no value exists yet.
+func (s *ScalarDecl) inferScalarNew(ctx context.Context, newDecl *NewConstructorDecl, env hm.Env, fresh hm.Fresher) error {
+	var selfErr error
+	newDecl.BodyBlock.Walk(func(n Node) bool {
+		if _, ok := n.(*SelfKeyword); ok {
+			selfErr = NewInferError(fmt.Errorf("self is not available in scalar new(); use the parameter instead"), n)
+			return false
+		}
+		return true
+	})
+	if selfErr != nil {
+		return selfErr
+	}
+
+	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
+	newEnv := env.Clone().(*OverlayTypeScope)
+	arg := newDecl.Args[0]
+	argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
+	}
+	newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
+
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(constructorCtx, returnTarget)
+	bodyType, err := newDecl.BodyBlock.Infer(bodyCtx, newEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("inferring new() body: %w", err)
+	}
+
+	expectedType := hm.NonNullType{Type: StringType}
+	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
+		errorNode := Node(newDecl.BodyBlock)
+		if len(newDecl.BodyBlock.Forms) > 0 {
+			errorNode = newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		}
+		return NewInferError(
+			fmt.Errorf("scalar new() must return String!, got %s", bodyType.Name()),
+			errorNode,
+		)
+	}
+	for _, ret := range collectReturnStatements(newDecl.BodyBlock, returnTarget) {
+		retType := returnValueType(ret)
+		if retType == nil {
+			continue
+		}
+		if _, err := hm.Assignable(retType, expectedType); err != nil {
+			return NewInferError(
+				fmt.Errorf("scalar new() must return String!, got %s", retType),
+				ret.Value,
+			)
+		}
+	}
+	return nil
+}
 
 func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(TypeScope)
@@ -1108,7 +1472,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ScalarDecl.Hoist: environment does not support module operations")
 	}
 
-	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, s.Name)
 	}
@@ -1116,18 +1480,73 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 
-	// Add the scalar type to the environment. A builtin scalar (JSON, ...)
+	if s.DocString != "" {
+		mod.SetDocString(s.Name.Name, s.DocString)
+		scalarType.SetTypeDocString(s.DocString)
+	}
+	if len(s.Directives) > 0 {
+		mod.SetDirectives(s.Name.Name, s.Directives)
+	}
+
+	// The scalar's value binding. A scalar with new() binds its constructor
+	// function instead (added in pass 1 below); a builtin scalar (JSON, ...)
 	// doubles as its namespace and is always present, so it binds non-null —
 	// otherwise member access like JSON.encode would inherit the binding's
 	// nullability and weaken String! to String.
-	scalarScheme := hm.NewScheme(nil, scalarType)
-	if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
-		scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
+	newDecl := findNewConstructorIn(s.Value)
+	if newDecl == nil {
+		scalarScheme := hm.NewScheme(nil, scalarType)
+		if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
+			scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
+		}
+		env.Add(s.Name.Name, scalarScheme)
+		mod.SetVisibility(s.Name.Name, s.Visibility)
 	}
-	env.Add(s.Name.Name, scalarScheme)
 
-	if s.DocString != "" {
-		mod.SetDocString(s.Name.Name, s.DocString)
+	if s.Value == nil {
+		return nil
+	}
+
+	// Pass 0 must only register the type name; see ObjectDecl.Hoist.
+	if pass == 0 {
+		return nil
+	}
+
+	if err := s.validateScalarBodyForms(); err != nil {
+		return err
+	}
+
+	inferTypeScope := &OverlayTypeScope{
+		primary: scalarType,
+		lexical: env.(TypeScope),
+	}
+
+	// self resolves to the non-null scalar inside method bodies.
+	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
+
+	if newDecl != nil {
+		ctorType, err := s.buildScalarConstructorType(ctx, inferTypeScope, newDecl, fresh)
+		if err != nil {
+			return err
+		}
+		s.ConstructorFnType = ctorType
+		env.Add(s.Name.Name, hm.NewScheme(nil, ctorType))
+		mod.SetVisibility(s.Name.Name, s.Visibility)
+	}
+
+	// Hoist member signatures onto the scalar type so methods can
+	// forward-reference each other and other types.
+	for _, form := range formsWithoutNew(s.Value) {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, inferTypeScope, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Hoist static members (self { } blocks) onto the scalar's meta-type.
+	if err := hoistStatics(ctx, scalarType, s.Value, env, fresh); err != nil {
+		return err
 	}
 
 	return nil
@@ -1139,32 +1558,137 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
 	}
 
-	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, s.Name)
 	}
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
+		scalarType.SetTypeDocString(s.DocString)
+	}
+	if len(s.Directives) > 0 {
+		mod.SetDirectives(s.Name.Name, s.Directives)
 	}
 
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 
+	// Validate directive applications
+	for _, directive := range s.Directives {
+		if _, err := directive.Infer(ctx, env, fresh); err != nil {
+			return nil, fmt.Errorf("ScalarDecl.Infer: directive validation: %w", err)
+		}
+	}
+
+	if s.Value == nil {
+		return scalarType, nil
+	}
+
+	// Body-form validation happens in Hoist pass 1 (which always precedes
+	// Infer for type declarations); re-validating here would double-report.
+
+	inferTypeScope := &OverlayTypeScope{
+		primary: scalarType,
+		lexical: env.(TypeScope),
+	}
+	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
+
+	if _, err := InferFormsWithPhases(ctx, formsWithoutNew(s.Value), inferTypeScope, fresh); err != nil {
+		return nil, err
+	}
+
+	// Infer static members (self { } blocks) against the meta-type.
+	if err := inferStatics(ctx, scalarType, s.Value, env, fresh); err != nil {
+		return nil, err
+	}
+
+	if newDecl := findNewConstructorIn(s.Value); newDecl != nil {
+		if err := s.inferScalarNew(ctx, newDecl, inferTypeScope, fresh); err != nil {
+			return nil, err
+		}
+	}
+
 	return scalarType, nil
 }
 
 func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	// Scalars are just type placeholders, similar to enums but with no values
-	// The actual scalar values come from GraphQL or are just strings
-	scalarModule := NewObject(s.Inferred)
-	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
-	// scalar's namespace: bind Dang's members onto its runtime object.
-	attachBuiltinMethods(scalarModule, s.Inferred)
+	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
+		newDecl := findNewConstructorIn(s.Value)
 
-	// Register the scalar type in the environment
-	scope.Bind(s.Name.Name, scalarModule, s.Visibility)
+		var evalScope ValueScope
+		if s.Value != nil {
+			// Evaluate method members into a methods object hung off the *Type,
+			// where Select.Eval dispatches them for ScalarValue receivers. The
+			// members' shared closure overlays the methods object itself, so
+			// sibling methods see each other by bare name.
+			methods := NewObject(s.Inferred)
+			evalScope = CreateOverlayValueScope(methods, scope)
+			for _, form := range formsWithoutNew(s.Value) {
+				if _, err := EvalNode(ctx, evalScope, form); err != nil {
+					return nil, err
+				}
+			}
+			// Methods are dynamic: a bare sibling call inside a method body
+			// re-dispatches through the receiver (see FunctionValue.Call).
+			for _, kv := range methods.Bindings(PrivateVisibility) {
+				if fnVal, ok := kv.Value.(FunctionValue); ok {
+					fnVal.IsDynamic = true
+					methods.Bind(kv.Key, fnVal, PublicVisibility)
+				}
+			}
+			s.Inferred.SetScalarMethods(methods)
+		}
 
-	return scalarModule, nil
+		// evalScalarStatics evaluates the self { } members into the scalar's
+		// statics namespace. Deferred until after the scalar's name is bound so
+		// a static stored field like `empty: Tag! = Tag("")` can construct the
+		// scalar. Closed over the outer scope, not the instance-methods scope, so
+		// statics never see instance members by bare name.
+		evalScalarStatics := func() error {
+			return evalStatics(ctx, s.Inferred, s.Value, scope)
+		}
+
+		if newDecl != nil {
+			// The new() hook computes the canonical underlying string; the
+			// runtime wraps it (see runScalarHook). It runs with no self —
+			// deliberately not IsDynamic, so a caller's dynamic scope can
+			// never be mistaken for a receiver.
+			argName := newDecl.Args[0].Name.Name
+			hookArgs := NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   argName,
+				Value: hm.NewScheme(nil, hm.NonNullType{Type: StringType}),
+			})
+			hook := FunctionValue{
+				Args:    []string{argName},
+				Body:    newDecl.BodyBlock,
+				Closure: evalScope,
+				FnType:  hm.NewFnType(hookArgs, hm.NonNullType{Type: StringType}),
+			}
+			s.Inferred.SetScalarHook(hook, argName)
+
+			ctor := ScalarConstructor{
+				ScalarType: s.Inferred,
+				FnType:     s.ConstructorFnType,
+				ArgName:    argName,
+			}
+			scope.Bind(s.Name.Name, ctor, s.Visibility)
+			if err := evalScalarStatics(); err != nil {
+				return nil, err
+			}
+			return ctor, nil
+		}
+
+		// No constructor: the scalar's name binds its namespace object. A
+		// scalar whose name matches a builtin scalar (e.g. JSON) doubles as
+		// that scalar's namespace: bind Dang's members onto its runtime object.
+		scalarModule := NewObject(s.Inferred)
+		attachBuiltinMethods(scalarModule, s.Inferred)
+		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
+		if err := evalScalarStatics(); err != nil {
+			return nil, err
+		}
+		return scalarModule, nil
+	})
 }
 
 func (s *ScalarDecl) Walk(fn func(Node) bool) {
@@ -1173,6 +1697,9 @@ func (s *ScalarDecl) Walk(fn func(Node) bool) {
 	}
 	for _, d := range s.Directives {
 		d.Walk(fn)
+	}
+	if s.Value != nil {
+		s.Value.Walk(fn)
 	}
 }
 
@@ -1218,7 +1745,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		return fmt.Errorf("InterfaceDecl.Hoist: environment does not support module operations")
 	}
 
-	iface, declareErr := declareLocalType(mod, i.Name.Name, InterfaceKind)
+	iface, declareErr := declareLocalType(ctx, mod, i.Name.Name, InterfaceKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, i.Name)
 	}
@@ -1426,7 +1953,7 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("UnionDecl.Hoist: environment does not support module operations")
 	}
 
-	unionMod, declareErr := declareLocalType(mod, u.Name.Name, UnionKind)
+	unionMod, declareErr := declareLocalType(ctx, mod, u.Name.Name, UnionKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, u.Name)
 	}

@@ -96,6 +96,10 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 }
 
 func TestConcurrentNewValueScopeDoesNotMutateStaticModuleOrigins(t *testing.T) {
+	// The Dang-source prelude infers against the real builtin registry;
+	// force its one-time load before stubbing the registry out.
+	loadPrelude()
+
 	savedBuiltins := builtins
 	builtins = newBuiltinRegistry()
 	t.Cleanup(func() {

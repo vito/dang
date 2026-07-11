@@ -33,8 +33,8 @@
 ## Type hints / casts: `::`
 - `expr :: Type!` annotates an expression's type (`TypeHint` node).
 - Binds only a bare `Term` on the left — wrap compound exprs in parens: `(a + b) :: T!`.
-- `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here.
-- Coercion source is limited: only **`String`** values coerce to custom scalars/enums. `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
+- `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here. The reverse degrade also works: `myUrl :: String!`, `p :: String!`.
+- Coercion source is limited: only **`String`** values coerce to custom scalars/enums (and custom scalars back to `String`). `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
 - Enum casts checked at **runtime**: `"NOPE" :: Status!` → `invalid enum value`.
 - Nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
@@ -44,9 +44,10 @@ Two uses to keep distinct:
 
 ## Coercion rules
 - Assignment / arguments: pure subtyping, **no** scalar coercion — a non-literal `String!` won't pass where `URL!` is expected (`cannot use String! as URL!`).
-- **Exception**: *literal* expressions (string/template literals, list literals of them) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` and ``fetchURL(url: `https://${host}`)`` both work.
-- `::` casts: explicit `String`/enum/`ID` coercion permitted.
-- List merges are pure — `String!` does not become `ID!` element-wise.
+- **Exception 1 (refine)**: *literal* expressions (string/template literals, list literals of them) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` and ``fetchURL(url: `https://${host}`)`` both work.
+- **Exception 2 (degrade)**: a **custom scalar value** (Path, ID, URL, Regexp, schema scalars — every non-primitive scalar except the `JSON`/`YAML`/`TOML` codec namespaces) auto-degrades to `String`/`String!` at the same value-handoff boundaries (call args, typed slots, returns, reassignment, `::`, case-clause values) — custom scalars are strings underneath. So `dir.file(p)` works where `file(path: String!)`. Any expression qualifies, not just literals — the mirror image of the literal rule. No transitivity: `Path!` still can't flow into `URL!`.
+- `::` casts: explicit `String`/enum/`ID` coercion permitted, both directions for scalars.
+- List merges are pure — `String!` does not become `ID!` element-wise, and `[p, "b"]` is `no common type between Path! and String!` (degrade applies at boundaries, not merges).
 
 ## Flow-sensitive typing (null narrowing)
 
@@ -125,9 +126,45 @@ scalar JSON
 - *Literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list literals, returns) — including backtick templates with `${...}`.
 - A *non-literal* String (a variable or `a + b`) does NOT auto-coerce — needs an explicit `::` cast: `fetchURL(url: myUrl :: URL!)`, `(base + domain) :: URL!`. Otherwise `cannot use String! as URL!`.
 - List merging is pure/invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!`.
-- Runtime materialization only supports `String -> custom scalar` (`42 :: URL!` is a type error).
+- Runtime materialization supports `String -> custom scalar` and `custom scalar -> String` only (`42 :: URL!` is a type error).
 - Scalars from GraphQL responses flow naturally; no cast needed.
-- Treat as opaque: equality, comparison, list membership, records/lists work; no string operations unless cast back to `String`.
+- Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
+- Equality, comparison against plain strings, list membership, records/lists all work: a custom scalar `==` a `String` compares the underlying strings (`urlValue == "https://…"`).
+- The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below (in Dang, in the interpreter's embedded prelude).
+
+### Scalar bodies: methods and the `new()` hook
+
+A `scalar` declaration may carry a body of **methods** and at most one
+**`new()` hook** — the string-refinement pattern (a scalar that normalizes/
+validates its underlying string and offers behavior):
+
+```dang
+scalar Slug {
+  new(raw: String!) {                # runs at EVERY materialization
+    raw.trimSpace.toLower.replace(" ", "-")
+  }
+  words: [String!]! { (self :: String!).split("-") }
+  first: String! { self.words[0] ?? "" }
+}
+```
+
+- **`new(raw: String!)`** takes exactly one non-null String parameter and its
+  body returns **`String!`** — the canonical underlying string; the runtime
+  wraps it into the scalar. It runs at every way a value comes to exist:
+  string literals in scalar-typed slots, `:: Slug!` casts, codec decode, and
+  the derived constructor. A `raise` in the hook surfaces as a recoverable
+  materialization error at the offending slot. `self` is unavailable inside
+  `new()` (no value exists yet).
+- Declaring `new()` makes the scalar's name callable as a **constructor
+  function**: `Slug(anyStringExpr)` — the entry point for non-literal
+  Strings, mirroring how `type` names double as constructors.
+- **Members must be methods** (computed members or functions, `let` for
+  private helpers) — stored fields are rejected; a scalar carries no state
+  beyond its string. Inside a method, `self` is the non-null scalar; get the
+  raw string via degrade (`let s: String! = self`) or `self :: String!`.
+  Sibling methods are callable bare or via `self.`.
+- Construction is total only if the hook never raises; equality is semantic
+  when the hook normalizes (`Slug("A b") == Slug("a-b")`).
 
 ### `ID!`
 - Its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop). But string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`).

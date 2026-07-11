@@ -1,0 +1,6 @@
+# A scalar's new() hook takes exactly one String! parameter.
+scalar Port {
+  new(raw: Int!) {
+    "80"
+  }
+}

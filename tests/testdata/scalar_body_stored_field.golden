@@ -1,0 +1,11 @@
+[1m[31mError:[0m scalar member "count" must be a method; scalars carry no fields beyond their underlying string
+  [2m[34m--> errors/scalar_body_stored_field.dang:4:3[0m
+ [2m    |[0m
+ [2m  2 | # may only declare methods (and new()), never stored fields.[0m
+ [2m  3 | scalar Slug {[0m
+ [2m[34m[1m  4 | [0m  count: Int! = 0
+[2m         [31m^^^^^^^^^^^^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

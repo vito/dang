@@ -1,0 +1,10 @@
+[1m[31mError:[0m invalid regexp "(": error parsing regexp: missing closing ): `(`
+  [2m[34m--> errors/regexp_decode_invalid.dang:3:1[0m
+ [2m    |[0m
+ [2m  1 | # Decoding an invalid pattern into a Regexp slot fails at materialization[0m
+ [2m  2 | # instead of producing a scalar that breaks at first use.[0m
+ [2m[34m[1m  3 | [0mJSON.decode(`"("`) :: Regexp!
+[2m       [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

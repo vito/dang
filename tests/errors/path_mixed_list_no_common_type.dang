@@ -1,0 +1,4 @@
+# List element merging is strict: Path and String elements do not unify
+# (degrade coercion applies only at value-handoff boundaries).
+let p = Path("a")
+let mixed = [p, "b"]

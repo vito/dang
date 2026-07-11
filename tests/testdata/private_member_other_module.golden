@@ -1,0 +1,10 @@
+[1m[31mError:[0m "cleanPath" is a private member of Path and cannot be accessed from another module
+  [2m[34m--> errors/private_member_other_module.dang:4:1[0m
+ [2m    |[0m
+ [2m  2 | # declared in the prelude, so its `let` helper cleanPath is reachable from[0m
+ [2m  3 | # Path's own methods but not from user code, which is a different module.[0m
+ [2m[34m[1m  4 | [0mPath("a/b").cleanPath("c")
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

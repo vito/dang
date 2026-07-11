@@ -203,6 +203,18 @@ type Type struct {
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
 
+	// Scalar-body runtime hooks: Dang-defined methods and the new()
+	// materialization hook for scalars declared with a body. Written once by
+	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).
+	scalarMethods *Object
+	scalarHook    FunctionValue
+	scalarHookArg string
+	hasScalarHook bool
+	// goScalarHook is the Go-native counterpart of scalarHook, for builtin
+	// scalars whose validation cannot be expressed in Dang (Regexp's compile
+	// check). Registered once at stdlib init.
+	goScalarHook func(raw string) (string, error)
+
 	// Interface tracking
 	interfaces   []TypeScope // Interfaces this type implements
 	implementers []TypeScope // Types that implement this interface (for interface modules)
@@ -216,6 +228,24 @@ type Type struct {
 	members []TypeScope // Member types of this union (for union modules)
 	unions  []TypeScope // Unions this type is a member of
 
+	// Metaclass support: a type T that declares static members (a self { }
+	// block) gets a companion meta-type describing the *name* T (as opposed to
+	// instances of T). Static members' schemes live on the meta-type's own
+	// scheme table, distinct from instance members on T, so `T.static` and
+	// `value.instance` resolve separately and can never collide. See the
+	// type-statics design.
+	meta    *Type   // companion meta-type; lazily created via MetaType
+	metaOf  *Type   // non-nil iff THIS is a meta-type, pointing to the instance type it describes
+	statics *Object // runtime namespace of static members; nil until a self { } block is evaluated
+
+	// homeModule identifies the compilation unit (directory module, single
+	// file, or the prelude) this type was declared in. It powers module-level
+	// visibility: a `let` member is reachable anywhere within its home module
+	// but rejected from another module. Stamped once at declareLocalType from
+	// the module scope threaded through the inference context; nil for types
+	// not created that way (builtins, schema-derived, anonymous records), for
+	// which visibility is never enforced. See moduleScope.
+	homeModule *moduleScope
 }
 
 func NewType(name string, kind Kind) *Type {
@@ -338,8 +368,11 @@ func init() {
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
-	// Install regex types so user code can refer to them by name.
+	// Install regex types so user code can refer to them by name, and the
+	// Regexp(...) constructor value so a pattern can be built explicitly
+	// (the runtime ScalarConstructor is bound in addBuiltinFunctions).
 	Prelude.AddObject("Regexp", RegexpType)
+	Prelude.Add("Regexp", hm.NewScheme(nil, regexpConstructorType()))
 	RegexpType.AddObject("Match", MatchType)
 
 	// Install Error interface with message field
@@ -392,8 +425,9 @@ func init() {
 }
 
 func NewPreludeTypeScope(name string) *OverlayTypeScope {
+	loadPrelude()
 	mod := NewType(name, ObjectKind)
-	return &OverlayTypeScope{mod, Prelude}
+	return &OverlayTypeScope{mod, preludeChain}
 }
 
 func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
@@ -1029,6 +1063,129 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	return fnType
 }
 
+// MetaType returns T's companion meta-type, creating it on first use. The
+// meta-type is nominal (Type.Eq compares named types by pointer identity) and
+// deliberately shares T's display name so member-not-found errors read
+// naturally ("field x not found in Foo"); it is never entered into any type
+// namespace, so the shared name cannot collide with a real lookup.
+func (e *Type) MetaType() *Type {
+	if e.meta == nil {
+		m := NewType(e.Named, ObjectKind)
+		m.metaOf = e
+		e.meta = m
+	}
+	return e.meta
+}
+
+// IsMeta reports whether this type is a meta-type (the type of a type *name*,
+// as opposed to instances of the type).
+func (e *Type) IsMeta() bool { return e.metaOf != nil }
+
+// InstanceType returns the type a meta-type describes, or nil when e is not a
+// meta-type.
+func (e *Type) InstanceType() *Type { return e.metaOf }
+
+// StaticScheme returns the scheme of a static member declared on e (in a
+// self { } block), if any. It consults only e's meta-type's own table, so a
+// static never shadows or is shadowed by an instance member or an outer
+// binding: the two live on separate tables by construction. Returns
+// (nil, false) when e declares no statics or has no such static.
+func (e *Type) StaticScheme(name string) (*hm.Scheme, bool) {
+	if e.meta == nil {
+		return nil, false
+	}
+	return e.meta.LocalSchemeOf(name)
+}
+
+// StaticVisibility reports the declared visibility of a static member, or
+// PrivateVisibility when there is no such static.
+func (e *Type) StaticVisibility(name string) Visibility {
+	if e.meta == nil {
+		return PrivateVisibility
+	}
+	if vis, ok := e.meta.visibility[name]; ok {
+		return vis
+	}
+	return PrivateVisibility
+}
+
+// Visibility reports the declared visibility of a member, walking the Parent
+// chain like SchemeOf so a runtime clone (whose own table is empty) resolves to
+// the original declaration. Defaults to PublicVisibility for an unknown member:
+// an unmarked declaration is public (visOrPublic), so only an explicit `let`
+// reads back private.
+func (e *Type) Visibility(name string) Visibility {
+	if v, ok := e.visibility[name]; ok {
+		return v
+	}
+	if pt, ok := e.Parent.(*Type); ok {
+		return pt.Visibility(name)
+	}
+	return PublicVisibility
+}
+
+// HomeModule returns the module this type was declared in, walking the Parent
+// chain (a clone shares its original's home). Nil for types not declared via
+// declareLocalType — builtins, schema-derived types, anonymous records — for
+// which module-level visibility is never enforced.
+func (e *Type) HomeModule() *moduleScope {
+	if e.homeModule != nil {
+		return e.homeModule
+	}
+	if pt, ok := e.Parent.(*Type); ok {
+		return pt.HomeModule()
+	}
+	return nil
+}
+
+// SetStatics records the runtime namespace object holding a type's evaluated
+// static members. Written once when a self { } block is evaluated.
+func (e *Type) SetStatics(statics *Object) { e.statics = statics }
+
+// Statics returns the runtime namespace of static members, or nil.
+func (e *Type) Statics() *Object { return e.statics }
+
+// SetScalarMethods records the runtime methods object for a scalar declared
+// with a body. Select.Eval dispatches ScalarValue receivers through it.
+// Written once during the scalar declaration's Eval and treated as frozen
+// afterwards (shared-Prelude discipline applies for prelude scalars).
+func (e *Type) SetScalarMethods(methods *Object) {
+	e.scalarMethods = methods
+}
+
+// ScalarMethods returns the scalar's Dang-defined methods object, or nil.
+func (e *Type) ScalarMethods() *Object {
+	return e.scalarMethods
+}
+
+// SetScalarHook records the scalar's new() hook: a String! -> String!
+// function run at every materialization of the scalar (literals, casts,
+// decode, and the derived constructor). argName is the hook's parameter name.
+func (e *Type) SetScalarHook(hook FunctionValue, argName string) {
+	e.scalarHook = hook
+	e.scalarHookArg = argName
+	e.hasScalarHook = true
+}
+
+// ScalarHook returns the scalar's new() hook and its parameter name;
+// ok is false when the scalar has no hook.
+func (e *Type) ScalarHook() (hook FunctionValue, argName string, ok bool) {
+	return e.scalarHook, e.scalarHookArg, e.hasScalarHook
+}
+
+// SetGoScalarHook records a Go-native new() hook: like a Dang new() hook it
+// validates raw and returns the canonical underlying string, and it runs at
+// the same materialization boundaries (see applyScalarHook). For builtin
+// scalars whose validation cannot be expressed in Dang.
+func (e *Type) SetGoScalarHook(hook func(raw string) (string, error)) {
+	e.goScalarHook = hook
+}
+
+// GoScalarHook returns the scalar's Go-native new() hook, or nil.
+func (e *Type) GoScalarHook() func(raw string) (string, error) {
+	return e.goScalarHook
+}
+
 // SetTypeDocString sets the documentation string for the type itself
 // (as opposed to its members, which use SetDocString).
 func (e *Type) SetTypeDocString(docString string) {
@@ -1116,7 +1273,9 @@ func (t *Type) Supertypes() []hm.Type {
 // AcceptsCoercionFrom implements hm.Coercible for explicit scalar/enum casts.
 // Enums and string-backed scalars (including ID and custom scalars) accept
 // coercion from String so runtime materialization can validate/construct the
-// target value. Primitive scalars do not accept value-level coercion.
+// target value. String additionally accepts the reverse "degrade" coercion
+// from any custom scalar. Primitive scalars otherwise do not accept
+// value-level coercion.
 func (t *Type) AcceptsCoercionFrom(other hm.Type) bool {
 	if t.Kind == EnumKind {
 		return other == StringType
@@ -1126,11 +1285,20 @@ func (t *Type) AcceptsCoercionFrom(other hm.Type) bool {
 		return false
 	}
 
+	// String accepts degrade coercion from any custom scalar — such values
+	// are strings underneath (ScalarValue), so they may flow into String
+	// slots at value-handoff boundaries. This is the mirror image of the
+	// literal→scalar rule below.
+	if t == StringType {
+		otherMod, ok := other.(*Type)
+		return ok && isDegradableScalar(otherMod)
+	}
+
 	// Primitive scalars are not coerced. ID is intentionally excluded here: Dang
 	// treats it as a distinct string-backed scalar that can be explicitly cast
 	// from String.
 	switch t {
-	case StringType, IntType, FloatType, BooleanType:
+	case IntType, FloatType, BooleanType:
 		return false
 	}
 

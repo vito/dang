@@ -1,0 +1,52 @@
+# Module-level visibility for `let` members (Go-package style). A `let` member
+# is private to the module that declares its type: reachable anywhere WITHIN
+# that module — any sibling type, any file, via self or a local value — and
+# rejected only across a module boundary (see errors/private_member_other_module).
+# An unmarked or `pub` member is public.
+
+# --- a let member is reachable on a value within the same module ---
+type Account {
+  let secret: String! = "hunter2"
+
+  reveal: String! { self.secret } # via self, inside its own type
+}
+
+assert { Account.reveal == "hunter2" }
+assert { Account.secret == "hunter2" } # via a value, same module
+
+# --- a let member is reachable from a DIFFERENT type in the same module ---
+# (this is what makes it module-level, not type-level, privacy)
+type Vault {
+  unlock(a: Account!): String! { a.secret } # another type reaches Account.secret
+}
+
+assert { Vault.unlock(Account) == "hunter2" }
+
+# --- let methods (private helpers) work the same way ---
+scalar Token {
+  new(raw: String!) { raw }
+
+  shout: String! { emphasize(self :: String!) } # bare-name sibling call
+
+  let emphasize(s: String!): String! { s.toUpper + "!" }
+}
+
+assert { Token("hi").shout == "HI!" }
+assert { (Token("hey").emphasize("x") :: String!) == "X!" } # reachable same module
+
+# --- a private (let) STATIC is reachable as Type.member within the module ---
+# Before this change a `let` static was reachable only by bare name inside the
+# self { } block; now it is module-visible like any other `let` member. From
+# another module it would fall through and error, as instance members do.
+type Money {
+  cents: Int! = 0
+  self {
+    let perDollar = 100
+    cents(dollars: Int!): Int! { dollars * perDollar } # static using a sibling static
+  }
+}
+
+assert { Money.perDollar == 100 } # Type.privateStatic, same module
+assert { Money.cents(3) == 300 } # public static still works
+
+print("Private member (module-level) tests passed!")
