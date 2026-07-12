@@ -178,13 +178,6 @@ type Dang {
   }
 
   """
-  Start a Dang coding agent.
-  """
-  coder: LLM! {
-    dev(source).agent(llm.withEnv(env.withCurrentModule))
-  }
-
-  """
   Update the tree-sitter test corpus.
   """
   treesitterUpdate: Changeset! {

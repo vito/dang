@@ -1,0 +1,10 @@
+name = "dang"
+engineVersion = "v0.21.6"
+source = "../.."
+
+[runtime]
+  source = "dang"
+
+[[dependencies]]
+  name = "apko"
+  source = "../../../mod/apko"
