@@ -60,6 +60,7 @@ node(id: "x").{{
 - the field set is delimited by the same double braces as any other selection: `... on User {{ name, email }}`
 - selects different field sets per concrete type; applies to a single value or to a list (maps over elements)
 - type conditions resolve against the receiver's (GraphQL) schema, not a local type that shadows the name
+- the type name may be module-qualified, matching an imported type: `... on Dagger.Editor` (or `... on Dagger.Editor!`)
 - can nest: `... on Post {{ title, author.{{name}} }}`, and selections-of-selections `edges.{{ node.{{ ... on User {{ ... }} }} }}`
 - the union-type result narrows in `case` (see [#interfaces-unions])
 

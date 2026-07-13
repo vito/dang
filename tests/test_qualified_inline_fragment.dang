@@ -1,0 +1,26 @@
+# Qualified inline fragments: narrow an imported union/interface value with a
+# module-qualified type name (... on Test.User) just like the unqualified form.
+
+import Test
+
+# node(id) returns the Node interface - narrow with a qualified lazy fragment
+let user_node = Test.node(id: "1").{{... on Test.User}}
+assert { user_node != null }
+assert { user_node.name == "John Doe" }
+
+# Non-null qualified assertion that succeeds
+user_node_nn: Test.User! = Test.node(id: "1").{{... on Test.User!}}
+assert { user_node_nn.name == "John Doe" }
+
+# Qualified narrowing that doesn't match returns null
+let not_a_post = Test.node(id: "1").{{... on Test.Post}}
+assert { not_a_post == null }
+
+# Qualified inline fragments with field sub-selections on a union list
+let results = Test.search(query: "John").{{
+  ... on Test.User {{ name }}
+  ... on Test.Post {{ title }}
+}}
+assert { results != null }
+
+print("Qualified inline fragment tests passed!")

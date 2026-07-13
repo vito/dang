@@ -1410,10 +1410,11 @@ func (f *FieldSelection) OutputKey() string {
 
 // InlineFragment represents a type-conditional selection like ... on User { name, email }
 type InlineFragment struct {
-	TypeName *Symbol
-	Fields   []*FieldSelection
-	NonNull  bool // Whether the type assertion is non-null (... on Container!)
-	Loc      *SourceLocation
+	TypeName  *Symbol
+	Qualifier string // Optional import/module qualifier (e.g. "Dagger" in ... on Dagger.Editor)
+	Fields    []*FieldSelection
+	NonNull   bool // Whether the type assertion is non-null (... on Container!)
+	Loc       *SourceLocation
 
 	Inferred *Type // The concrete type module for this fragment
 }

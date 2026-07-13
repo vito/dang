@@ -763,6 +763,30 @@
             },
             {
               "type": "FIELD",
+              "name": "qual",
+              "content": {
+                "type": "REPEAT",
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "p",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "id"
+                      }
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "dot_token"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "FIELD",
               "name": "type_name",
               "content": {
                 "type": "SYMBOL",
@@ -829,6 +853,30 @@
             {
               "type": "SYMBOL",
               "name": "on_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "qual",
+              "content": {
+                "type": "REPEAT",
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "p",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "id"
+                      }
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "dot_token"
+                    }
+                  ]
+                }
+              }
             },
             {
               "type": "FIELD",

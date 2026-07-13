@@ -36,6 +36,7 @@ node(id: "x").{{
 - Type-conditional selection on unions and interfaces; the result narrows in `case`.
 - After selection you only have the selected fields: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type.
 - Type conditions resolve against the receiver's (GraphQL) schema, not a local type shadowing the name.
+- The type name may be module-qualified to match an imported type: `... on Dagger.Editor` (or `... on Dagger.Editor!`).
 - The field set uses the same double braces as any selection (`... on User {{ name, email }}`).
 - Can nest: `... on Post {{ title, author.{{name}} }}`, and `edges.{{ node.{{ ... on User {{ ... }} }} }}`.
 

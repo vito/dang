@@ -3144,6 +3144,10 @@ func (f *Formatter) formatDotApply(d *DotApply) {
 
 func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 	f.write("... on ")
+	if frag.Qualifier != "" {
+		f.write(frag.Qualifier)
+		f.write(".")
+	}
 	f.write(frag.TypeName.Name)
 	if frag.NonNull {
 		f.write("!")
