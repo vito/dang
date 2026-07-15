@@ -655,6 +655,143 @@ func (FormatSuite) TestUnaryMinusFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestMapFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single-line map stays single-line",
+			input:    `let foo: Map[String!]! = ["key": "value"]`,
+			expected: "let foo: Map[String!]! = [\"key\": \"value\"]\n",
+		},
+		{
+			name: "single-entry multiline map gets trailing comma",
+			input: `let foo: Map[String!]! = [
+	"key": "value"
+]`,
+			expected: `let foo: Map[String!]! = [
+  "key": "value",
+]
+`,
+		},
+		{
+			name: "multi-entry multiline map gets one entry per line",
+			input: `let foo = [
+	"a": 1,
+	"b": 2
+]`,
+			expected: `let foo = [
+  "a": 1,
+  "b": 2,
+]
+`,
+		},
+		{
+			name: "comments stay inside multiline map",
+			input: `let foo = [
+	# comment inside map
+	"key": "value" # trailing comment
+]`,
+			expected: `let foo = [
+  # comment inside map
+  "key": "value", # trailing comment
+]
+`,
+		},
+		{
+			name: "opening comment stays on multiline map opening line",
+			input: `let foo = [# some comment
+"key": "value"]`,
+			expected: `let foo = [ # some comment
+  "key": "value",
+]
+`,
+		},
+		{
+			name: "same-line entries in multiline map stay together",
+			input: `let foo = [
+	"a": 1, "b": 2
+	"c": 3
+]`,
+			expected: `let foo = [
+  "a": 1, "b": 2,
+  "c": 3,
+]
+`,
+		},
+		{
+			name:  "long single-line map is split",
+			input: `let foo = ["alpha": "one", "beta": "two", "gamma": "three", "delta": "four", "epsilon": "five", "zeta": "six"]`,
+			expected: `let foo = [
+  "alpha": "one",
+  "beta": "two",
+  "gamma": "three",
+  "delta": "four",
+  "epsilon": "five",
+  "zeta": "six",
+]
+`,
+		},
+		{
+			name:  "trailing comment on long single-line map stays after map",
+			input: `let foo = ["alpha": "one", "beta": "two", "gamma": "three", "delta": "four", "epsilon": "five", "zeta": "six"] # keep this with the map`,
+			expected: `let foo = [
+  "alpha": "one",
+  "beta": "two",
+  "gamma": "three",
+  "delta": "four",
+  "epsilon": "five",
+  "zeta": "six",
+] # keep this with the map
+`,
+		},
+		{
+			name:  "nested long map is split with parent",
+			input: `let foo = ["outer": ["alpha": "one", "beta": "two", "gamma": "three", "delta": "four", "epsilon": "five", "zeta": "six"]]`,
+			expected: `let foo = [
+  "outer": [
+    "alpha": "one",
+    "beta": "two",
+    "gamma": "three",
+    "delta": "four",
+    "epsilon": "five",
+    "zeta": "six",
+  ],
+]
+`,
+		},
+		{
+			name:  "list containing long map splits both collections",
+			input: `let foo = [["alpha": "one", "beta": "two", "gamma": "three", "delta": "four", "epsilon": "five", "zeta": "six"]]`,
+			expected: `let foo = [
+  [
+    "alpha": "one",
+    "beta": "two",
+    "gamma": "three",
+    "delta": "four",
+    "epsilon": "five",
+    "zeta": "six",
+  ],
+]
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
@@ -1309,6 +1446,38 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			// one step deeper than the opening fence's scope; closing fence
 			// sits at the scope of the opening fence.
 			expected: "x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
+		},
+		{
+			name:  "long single-line list is split",
+			input: `let xs = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota"]`,
+			expected: `let xs = [
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "zeta",
+  "eta",
+  "theta",
+  "iota",
+]
+`,
+		},
+		{
+			name:  "trailing comment on long single-line list stays after list",
+			input: `let xs = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota"] # keep this with the list`,
+			expected: `let xs = [
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "zeta",
+  "eta",
+  "theta",
+  "iota",
+] # keep this with the list
+`,
 		},
 		{
 			name: "method args not split by multiline receiver",
