@@ -1118,7 +1118,7 @@ CommentToken <- '#' [^\n]* {
 
 // Vestigial recognition of the removed `try { } catch { }` block syntax.
 // It parses into a RescueExpr marked Legacy so `dang fmt` can rewrite it to
-// the postfix form, while inference rejects it with a migration hint
+// the postfix form, while inference warns with a migration hint
 // instead of a generic parse error. `try` is otherwise an ordinary
 // identifier.
 LegacyTryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:LegacyCatchClause Sep { return clause, nil })* last:LegacyCatchClause? _ '}' {

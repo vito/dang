@@ -35,7 +35,7 @@ type RescueExpr struct {
 	Fallback Node
 	// Legacy marks a node parsed from the removed `try { } catch { }`
 	// block syntax: the formatter rewrites it to the postfix form, and
-	// inference rejects it with a migration hint.
+	// inference warns with a migration hint.
 	Legacy bool
 	Loc    *SourceLocation
 }
@@ -70,10 +70,7 @@ func (t *RescueExpr) GetSourceLocation() *SourceLocation { return t.Loc }
 func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
 		if t.Legacy {
-			return nil, NewInferError(
-				fmt.Errorf("try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate"),
-				t,
-			)
+			EmitInferWarning(ctx, t, "try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate")
 		}
 
 		bodyType, err := t.Operand.Infer(ctx, env, fresh)

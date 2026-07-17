@@ -152,9 +152,10 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 // heal them into valid code. They run from a temp dir instead.
 func (DangSuite) TestRescueMigrationDiagnostics(ctx context.Context, t *testctx.T) {
 	tests := []struct {
-		name   string
-		source string
-		wants  []string
+		name     string
+		source   string
+		wants    []string
+		wantsErr bool
 	}{
 		{
 			name: "bare binding catch-all",
@@ -168,13 +169,14 @@ print(x)
 				"err: Error =>",
 				"else =>",
 			},
+			wantsErr: true,
 		},
 		{
 			name: "legacy try/catch",
 			source: `let x = try {
   raise "boom"
 } catch {
-  err => "caught: " + err.message
+  err: Error => "caught: " + err.message
 }
 print(x)
 `,
@@ -182,6 +184,7 @@ print(x)
 				"try/catch was replaced by postfix `rescue`",
 				"dang fmt -w",
 			},
+			wantsErr: false,
 		},
 	}
 
@@ -194,10 +197,21 @@ print(x)
 			path := filepath.Join(dir, "main.dang")
 			require.NoError(t, os.WriteFile(path, []byte(tt.source), 0644))
 
+			var stderr bytes.Buffer
+			ctx = ioctx.StderrToContext(ctx, &stderr)
+
 			err = dang.RunFile(ctx, path, false)
-			require.Error(t, err)
-			for _, want := range tt.wants {
-				require.Contains(t, err.Error(), want)
+			if tt.wantsErr {
+				require.Error(t, err)
+				for _, want := range tt.wants {
+					require.Contains(t, err.Error(), want)
+				}
+			} else {
+				require.NoError(t, err)
+				out := stderr.String()
+				for _, want := range tt.wants {
+					require.Contains(t, out, want)
+				}
 			}
 		})
 	}
