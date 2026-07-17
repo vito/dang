@@ -144,12 +144,17 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			} else if clause.IsElse {
 				// A binding on a catch-all can only come from the removed
 				// bare-binding form (`err =>`), which parses so it can be
-				// rejected with a targeted error here.
+				// rejected with a targeted error here. Legacy try/catch
+				// blocks predate the removal, so they warn instead and the
+				// binding behaves like `err: Error =>`.
 				if clause.Binding != "" {
-					return nil, NewInferError(
-						fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
-						clause,
-					)
+					if !t.Legacy {
+						return nil, NewInferError(
+							fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
+							clause,
+						)
+					}
+					EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
 				}
 				// Unlike case — whose nullable operands fall through every
 				// type pattern — a rescue's operand is always Error!, so an
@@ -166,7 +171,11 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				elseClause = clause
 				// Catch-all: else => ...
 				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					return clause.Expr.Infer(ctx, env.Clone(), fresh)
+					clauseEnv := env.Clone()
+					if clause.Binding != "" {
+						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, errorType))
+					}
+					return clause.Expr.Infer(ctx, clauseEnv, fresh)
 				})
 				if err != nil {
 					return nil, err

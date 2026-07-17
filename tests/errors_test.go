@@ -186,6 +186,25 @@ print(x)
 			},
 			wantsErr: false,
 		},
+		{
+			// The published go-sdk module's pattern: a legacy try/catch
+			// whose catch-all uses the removed bare-binding form. Both
+			// constructs warn, the binding is typed Error!, and the
+			// program still runs.
+			name: "legacy try/catch with bare catch-all",
+			source: `let x = try {
+  raise "boom"
+} catch {
+  err => "caught: " + err.message
+}
+print(x)
+`,
+			wants: []string{
+				"try/catch was replaced by postfix `rescue`",
+				"bare catch-all `err =>` is no longer supported",
+			},
+			wantsErr: false,
+		},
 	}
 
 	for _, tt := range tests {
