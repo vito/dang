@@ -385,6 +385,61 @@ type Test {
 	require.Same(t, StringType, functionReturnType(t, print))
 }
 
+func TestDeclareDirResolvesPositionalDirectiveArgs(t *testing.T) {
+	// Regression: the Dagger SDK installs module types from the declaration-only
+	// pass (DeclareDir) when self-calls are enabled, and reads directive
+	// arguments by name. Positional directive arguments must therefore have
+	// their keys resolved to the declared parameter names during declaration —
+	// otherwise a directive like @dp("./x") carries an empty key and the SDK
+	// silently drops it (breaking e.g. positional @defaultPath/@ignorePatterns).
+	ctx := context.Background()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+directive @dp(path: String!) on ARGUMENT_DEFINITION
+
+type Test {
+  read(source: String! @dp("./default")): String! {
+    source
+  }
+}
+`), 0o600))
+
+	env, err := DeclareDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	testVal, found := requireEvalGet(t, env, "Test")
+	require.True(t, found)
+	testCtor, ok := testVal.(*ConstructorFunction)
+	require.True(t, ok)
+
+	read, found := testCtor.ObjectType.LocalSchemeOf("read")
+	require.True(t, found)
+	readType, mono := read.Type()
+	require.True(t, mono)
+	readFn, ok := readType.(*hm.FunctionType)
+	require.True(t, ok)
+	argsRec, ok := readFn.Arg().(*RecordType)
+	require.True(t, ok)
+
+	// Locate the @dp application on the `source` argument.
+	var app *DirectiveApplication
+	for _, argDirs := range argsRec.Directives {
+		if argDirs.Key != "source" {
+			continue
+		}
+		for _, d := range argDirs.Value {
+			if d.Name == "dp" {
+				app = d
+			}
+		}
+	}
+	require.NotNil(t, app, "expected @dp directive on source arg")
+	require.Len(t, app.Args, 1)
+	// The positional argument must have its key resolved to the declared param
+	// name, so downstream consumers (the Dagger SDK) can read it by name.
+	require.Equal(t, "path", app.Args[0].Key)
+}
+
 func TestRunDirSameFileImportAndDeclaration(t *testing.T) {
 	// A file that both imports and declares the same name should evaluate the
 	// local declaration, not the import — the file's own decl wins. This used

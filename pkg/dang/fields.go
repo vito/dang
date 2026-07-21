@@ -141,6 +141,28 @@ func (s *FieldDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fres
 	return nil, nil
 }
 
+// inferDirectives validates the field's directive applications. Besides
+// checking arity and types, DirectiveApplication.Infer resolves positional
+// directive arguments to their declared parameter names, mutating each
+// application's Args keys in place (see validateArguments).
+//
+// The full-inference path (Infer) calls this for validation and propagates any
+// error. The declaration-only paths (DeclareSignature/DeclareKnownSignature)
+// call it too but only for the key-resolution side effect — the Dagger SDK
+// installs module types from the declaration-only pass when self-calls are
+// enabled and reads directive arguments by name, so without this a positional
+// directive like @defaultPath("./x") would carry an empty key and be silently
+// dropped. Those paths ignore the error to avoid double-reporting, since Infer
+// runs later in full inference and surfaces it exactly once.
+func (s *FieldDecl) inferDirectives(ctx context.Context, env hm.Env, fresh hm.Fresher) error {
+	for _, directive := range s.Directives {
+		if _, err := directive.Infer(ctx, env, fresh); err != nil {
+			return fmt.Errorf("directive validation: %w", err)
+		}
+	}
+	return nil
+}
+
 func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	fieldType, err := s.signatureType(ctx, env, fresh, false)
 	if err != nil {
@@ -160,6 +182,11 @@ func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh
 			e.SetDirectives(s.Name.Name, s.Directives)
 		}
 	}
+	// Resolve positional directive arguments during declaration so the Dagger
+	// SDK — which installs module types from the declaration-only pass — can
+	// read them by name. Validation errors are surfaced once by the
+	// body-inference phase (Infer), so ignore them here to avoid double-reporting.
+	_ = s.inferDirectives(ctx, env, fresh)
 	return fieldType, nil
 }
 
@@ -182,6 +209,11 @@ func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.F
 			e.SetDirectives(s.Name.Name, s.Directives)
 		}
 	}
+	// Resolve positional directive arguments during declaration so the Dagger
+	// SDK — which installs module types from the declaration-only pass — can
+	// read them by name. Validation errors are surfaced once by the
+	// body-inference phase (Infer), so ignore them here to avoid double-reporting.
+	_ = s.inferDirectives(ctx, env, fresh)
 	return fieldType, nil
 }
 
@@ -255,12 +287,9 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 	}
 
-	// Validate directive applications
-	for _, directive := range s.Directives {
-		_, err := directive.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("FieldDecl.Infer: directive validation: %w", err)
-		}
+	// Validate directive applications (also resolves positional directive args).
+	if err := s.inferDirectives(ctx, env, fresh); err != nil {
+		return nil, fmt.Errorf("FieldDecl.Infer: %w", err)
 	}
 
 	env.Add(s.Name.Name, hm.NewScheme(nil, definedType))
