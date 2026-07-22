@@ -3,8 +3,8 @@ package dangdocs
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/vito/booklit"
@@ -20,6 +20,32 @@ import (
 type literateSession struct {
 	typeScope  dang.TypeScope
 	valueScope dang.ValueScope
+
+	// blocks counts the session's evaluated blocks; each parses under the
+	// synthetic filename blockFilename(n), and sources records every block's
+	// text by that name. Error locations carry the defining block's filename,
+	// so a failure in one block can quote a function raised blocks earlier.
+	blocks  int
+	sources map[string]string
+}
+
+// blockFilename names the nth block of a session. The wasm replay
+// (cmd/dang-playground) numbers its session entries with the same scheme —
+// a page replay visits the same blocks in the same order — so any location
+// a message spells out matches what the build baked.
+func blockFilename(n int) string {
+	return fmt.Sprintf("snippet-%d", n)
+}
+
+// nextBlock assigns the next block filename and records its source.
+func (s *literateSession) nextBlock(source string) string {
+	s.blocks++
+	name := blockFilename(s.blocks)
+	if s.sources == nil {
+		s.sources = map[string]string{}
+	}
+	s.sources[name] = source
+	return name
 }
 
 // literateFencesPartial is the section partial under which \literate-fences
@@ -139,13 +165,24 @@ func (p Plugin) DangLiterateFailure(code booklit.Content) (booklit.Content, erro
 	return p.literateFailureBlock(code, `\dang-literate-failure block`)
 }
 
-// stageLabels mirrors playground.js's STAGE_LABEL: the baked error line must
+// stageLabels mirrors playground.js's STAGE_LABEL: the baked error header must
 // read exactly like the one renderReplOutput shows after a client-side
 // replay, label and all.
 var stageLabels = map[string]string{
 	"parse": "Parse error",
 	"type":  "Type error",
 	"eval":  "Runtime error",
+}
+
+// stripANSI removes ANSI SGR escape sequences from build-time captured
+// output: escape codes have no business in HTML, and warnings printed
+// during evaluation (WarnAtSource) color themselves for a terminal. The
+// wasm module strips its captured output the same way (cmd/dang-playground)
+// so a replay shows exactly what the build baked.
+var ansiSGR = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiSGR.ReplaceAllString(s, "")
 }
 
 // literateBlock evaluates and renders one literate snippet; label names the
@@ -186,13 +223,18 @@ func (p Plugin) literateFailureBlock(code booklit.Content, label string) (bookli
 	source := strings.TrimRight(code.String(), "\n")
 	sess := literateSessionFor(p.section)
 
-	stdout, stage, failure := literateFailEval(source, sess)
+	stdout, stage, failure, blockName := literateFailEval(source, sess)
 	if failure == nil {
 		return nil, fmt.Errorf("%s in %s: expected the snippet to fail, but it succeeded — use a plain ```dang fence", label, p.section.FilePath())
 	}
 
+	report := dang.ErrorReporter{
+		Filename: blockName,
+		Source:   source,
+		Sources:  sess.sources,
+	}.Report(failure)
 	partials := booklit.Partials{
-		"Error": booklit.String(stageLabels[stage] + ": " + failureMessage(failure)),
+		"Error": renderErrorReport(report, stageLabels[stage]),
 	}
 	if stdout != "" {
 		partials["Stdout"] = booklit.String(stdout)
@@ -206,20 +248,6 @@ func (p Plugin) literateFailureBlock(code booklit.Content, label string) (bookli
 	}, nil
 }
 
-// failureMessage extracts the bare message from a snippet's failure.
-// SourceError.Error() renders for a terminal — ANSI colors plus a quoted
-// source span — but the snippet already sits right above the baked error,
-// and escape codes have no business in HTML. The same unwrap lives in
-// dangLiterateFailEval (cmd/dang-playground) so a client-side replay shows
-// the identical line.
-func failureMessage(err error) string {
-	var srcErr *dang.SourceError
-	if errors.As(err, &srcErr) {
-		return srcErr.Inner.Error()
-	}
-	return err.Error()
-}
-
 // literateFailEval runs source the way literateEval does, but against
 // throwaway forks of the session's scopes: a cloned type scope (declarations
 // land in the discarded child layer) and a sealed child value scope (even
@@ -227,16 +255,21 @@ func failureMessage(err error) string {
 // failing block's partial state is unknowable, so it contributes nothing to
 // the page's chain — the same isolation dangLiterateFailEval
 // (cmd/dang-playground) applies when the page is replayed client-side. It
-// returns the captured output plus the failing stage ("parse" | "type" |
-// "eval") and error; a nil error means the snippet unexpectedly succeeded.
-func literateFailEval(source string, sess *literateSession) (string, string, error) {
-	parsed, err := dang.ParseWithRecovery("literate", []byte(source))
+// returns the captured output, the failing stage ("parse" | "type" |
+// "eval") and error, and the block's assigned filename; a nil error means
+// the snippet unexpectedly succeeded.
+func literateFailEval(source string, sess *literateSession) (string, string, error, string) {
+	// The block still takes its place in the session's numbering — the wasm
+	// replay counts every block of the chain the same way.
+	name := sess.nextBlock(source)
+
+	parsed, err := dang.ParseWithRecovery(name, []byte(source), dang.GlobalStore("filePath", name))
 	if err != nil {
-		return "", "parse", err
+		return "", "parse", err, name
 	}
 	file, ok := parsed.(*dang.FileBlock)
 	if !ok {
-		return "", "parse", fmt.Errorf("unexpected parse result")
+		return "", "parse", fmt.Errorf("unexpected parse result"), name
 	}
 	forms := file.Forms
 
@@ -245,19 +278,22 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 
 	fresh := hm.NewSimpleFresher()
 	if _, err := dang.InferFormsWithPhases(context.Background(), forms, typeScope, fresh); err != nil {
-		return "", "type", err
+		return "", "type", err, name
 	}
 
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(context.Background(), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
+	// Runtime faults that aren't raises only carry a location when an
+	// EvalContext supplies one, the same wiring RunFile does.
+	ctx = dang.WithEvalContext(ctx, dang.NewEvalContext(name, source))
 
 	for _, node := range forms {
 		if _, err := dang.EvalNode(ctx, valueScope, node); err != nil {
-			return strings.TrimRight(out.String(), "\n"), "eval", err
+			return strings.TrimRight(stripANSI(out.String()), "\n"), "eval", err, name
 		}
 	}
-	return strings.TrimRight(out.String(), "\n"), "", nil
+	return strings.TrimRight(stripANSI(out.String()), "\n"), "", nil, name
 }
 
 // literateEval parses, type-checks, and evaluates source against the
@@ -278,7 +314,9 @@ func literateEval(source string, sess *literateSession) (string, string, error) 
 // bundled in-process schema. The base context backs both phases so the import's
 // schema-module identity is shared between them.
 func literateEvalCtx(base context.Context, source string, sess *literateSession) (string, string, error) {
-	parsed, err := dang.ParseWithRecovery("literate", []byte(source))
+	name := sess.nextBlock(source)
+
+	parsed, err := dang.ParseWithRecovery(name, []byte(source), dang.GlobalStore("filePath", name))
 	if err != nil {
 		return "", "", err
 	}
@@ -296,6 +334,7 @@ func literateEvalCtx(base context.Context, source string, sess *literateSession)
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(base, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
+	ctx = dang.WithEvalContext(ctx, dang.NewEvalContext(name, source))
 
 	var last dang.Node
 	var lastVal dang.Value
@@ -312,5 +351,5 @@ func literateEvalCtx(base context.Context, source string, sess *literateSession)
 	if lastVal != nil && (last == nil || len(last.DeclaredSymbols()) == 0) {
 		value = dang.Repr(lastVal)
 	}
-	return strings.TrimRight(out.String(), "\n"), value, nil
+	return strings.TrimRight(stripANSI(out.String()), "\n"), value, nil
 }

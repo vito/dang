@@ -1,5 +1,5 @@
 [1m[31mError:[0m cannot use [String! | Int!]! as [String!]!
-  - Int! from the continue value at errors/nested_continue_value_type_mismatch.dang:4:5
+  - Int! from the continue value at 4:5
   [2m[34m--> errors/nested_continue_value_type_mismatch.dang:2:22[0m
  [2m    |[0m
  [2m  1 | # Nested continue expressions in a continue value still target the block invocation[0m

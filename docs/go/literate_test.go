@@ -149,7 +149,10 @@ func TestCodeBlockFailureRouting(t *testing.T) {
 		t.Fatalf("seeding session: %v", err)
 	}
 
-	// The failure block sees the session's state (x) and bakes its error.
+	// The failure block sees the session's state (x) and bakes its error as a
+	// structured report: a header labeled like playground.js's STAGE_LABEL
+	// (errorReportHtml must render the same DOM on replay), then the annotated
+	// source snippet with gutter and underline.
 	failed, err := render("dang-failure", "x.toUpper")
 	if err != nil {
 		t.Fatalf("dang-failure fence: %v", err)
@@ -158,8 +161,19 @@ func TestCodeBlockFailureRouting(t *testing.T) {
 	if errPartial == nil {
 		t.Fatal("dang-failure fence baked no Error partial")
 	}
-	if got := errPartial.String(); !strings.HasPrefix(got, "Type error: ") {
-		t.Errorf("baked error %q, want a %q prefix matching playground.js's STAGE_LABEL", got, "Type error: ")
+	baked := errPartial.String()
+	if want := `<span class="dang-error-label">Type error:</span>`; !strings.Contains(baked, want) {
+		t.Errorf("baked error %q missing header label %q", baked, want)
+	}
+	if want := `<span class="dang-error-arrow">  --&gt; 1:`; !strings.Contains(baked, want) {
+		t.Errorf("baked error %q missing location arrow %q", baked, want)
+	}
+	if !strings.Contains(baked, `dang-error-underline`) || !strings.Contains(baked, "^") {
+		t.Errorf("baked error %q missing the ^^^ underline", baked)
+	}
+	// The failing line is quoted (split across tok-* spans, so compare text).
+	if text := valueText(errPartial); !strings.Contains(text, "x.toUpper") {
+		t.Errorf("baked error text %q does not quote the failing source line", text)
 	}
 	if failed.Partials["Value"] != nil {
 		t.Errorf("dang-failure fence baked a Value: %v", failed.Partials["Value"])
@@ -194,6 +208,40 @@ func TestCodeBlockFailureRouting(t *testing.T) {
 	}
 	if styled, ok := content.(booklit.Styled); !ok || styled.Style != booklit.StyleCodeBlock {
 		t.Errorf("dang-failure outside literate scope: got %v, want %q", content, booklit.StyleCodeBlock)
+	}
+}
+
+// A failure whose raise site lives in an earlier fence quotes that fence's
+// source: blocks parse under per-block filenames and the session records
+// each block's text, so cross-fence locations resolve to the right snippet
+// instead of misquoting the failing fence (or dangling with no snippet).
+func TestFailureQuotesEarlierFence(t *testing.T) {
+	root := &booklit.Section{Path: "cross-fence-test.md"}
+	lit := &booklit.Section{Parent: root}
+	Plugin{section: lit}.LiterateFences()
+
+	render := func(language, source string) (booklit.Styled, error) {
+		t.Helper()
+		content, err := Plugin{section: lit}.CodeBlock(language, booklit.Preformatted{booklit.String(source)})
+		if err != nil {
+			return booklit.Styled{}, err
+		}
+		return content.(booklit.Styled), nil
+	}
+
+	if _, err := render("dang", `boom: String! { raise "kapow" }`); err != nil {
+		t.Fatalf("defining fence: %v", err)
+	}
+	failed, err := render("dang-failure", "boom")
+	if err != nil {
+		t.Fatalf("dang-failure fence: %v", err)
+	}
+	text := valueText(failed.Partials["Error"])
+	if !strings.Contains(text, "kapow") {
+		t.Fatalf("baked error %q missing the raised message", text)
+	}
+	if !strings.Contains(text, `raise "kapow"`) {
+		t.Errorf("baked error %q does not quote the raise site from the earlier fence", text)
 	}
 }
 
