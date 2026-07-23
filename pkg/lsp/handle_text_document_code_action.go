@@ -4,20 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleTextDocumentCodeAction(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params CodeActionParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentCodeAction(ctx context.Context, params CodeActionParams) (any, error) {
 	// Always return a (possibly empty) array rather than null, so clients don't
 	// treat a no-op as an error.
 	actions := []CodeAction{}

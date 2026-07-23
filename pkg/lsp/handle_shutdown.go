@@ -2,11 +2,10 @@ package lsp
 
 import (
 	"context"
-
-	"github.com/creachadair/jrpc2"
+	"encoding/json"
 )
 
-func (h *langHandler) handleShutdown(ctx context.Context, req *jrpc2.Request) (any, error) {
+func (h *langHandler) handleShutdown(ctx context.Context, params json.RawMessage) (any, error) {
 	// Service processes are cleaned up via the ServiceRegistry.
 	return nil, nil
 }
