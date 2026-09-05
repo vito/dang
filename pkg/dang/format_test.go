@@ -1270,6 +1270,22 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 }
 `,
 		},
+		{
+			name: "no blank line after opening paren with prefix directive",
+			input: `@cache(policy: FunctionCachePolicy.Never)
+go(
+	ws: Workspace!,
+): Changeset! {
+	ws
+}`,
+			expected: `@cache(policy: FunctionCachePolicy.Never)
+go(
+  ws: Workspace!,
+): Changeset! {
+  ws
+}
+`,
+		},
 	}
 
 	for _, tt := range tests {

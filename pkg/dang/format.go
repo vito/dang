@@ -1483,6 +1483,12 @@ func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl,
 
 	if multiline {
 		f.newline()
+		// Arguments start a nested list at the declaration line. In particular,
+		// don't let a prefix directive's line make the first argument look like
+		// it was separated from the opening parenthesis by a blank line.
+		if parentLine > 0 {
+			f.lastLine = parentLine
+		}
 		f.indented(func() {
 			for _, arg := range args {
 				f.emitCommentsForNode(arg)
