@@ -2,10 +2,9 @@ package lsp
 
 import (
 	"context"
-
-	"github.com/creachadair/jrpc2"
+	"encoding/json"
 )
 
-func (h *langHandler) handleWorkspaceDidChangeConfiguration(ctx context.Context, req *jrpc2.Request) (any, error) {
+func (h *langHandler) handleWorkspaceDidChangeConfiguration(ctx context.Context, params json.RawMessage) (any, error) {
 	return nil, nil
 }
