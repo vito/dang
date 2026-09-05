@@ -1224,6 +1224,26 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 }
 `,
 		},
+		{
+			name: "blank line between section comment and docstring",
+			input: `type Foo {
+  # ---- section ----
+
+  """
+  Docs for foo.
+  """
+  foo: String! { "foo" }
+}`,
+			expected: `type Foo {
+  # ---- section ----
+
+  """
+  Docs for foo.
+  """
+  foo: String! { "foo" }
+}
+`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1599,6 +1619,46 @@ func (FormatSuite) TestLogicalOpFormatting(ctx context.Context, t *testctx.T) {
 			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
 		})
 	}
+}
+
+func (FormatSuite) TestBinaryOpFormatting(ctx context.Context, t *testctx.T) {
+	input := `let runnerHost = "docker-image://" + image
+  + "?container=" + name
+  + "&volume=" + name
+  + "&cleanup=false"`
+	expected := `let runnerHost = "docker-image://" + image
+  + "?container=" + name
+  + "&volume=" + name
+  + "&cleanup=false"
+`
+
+	result, err := FormatFile([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+
+	result2, err := FormatFile([]byte(result))
+	require.NoError(t, err)
+	require.Equal(t, expected, result2, "formatting should be idempotent")
+}
+
+func (FormatSuite) TestMultilineAssignmentFormatting(ctx context.Context, t *testctx.T) {
+	input := "let prereleaseIdentifier =\n  `([0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*|0|[1-9][0-9]*)`"
+	expected := input + "\n"
+
+	result, err := FormatFile([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+
+	result2, err := FormatFile([]byte(result))
+	require.NoError(t, err)
+	require.Equal(t, expected, result2, "formatting should be idempotent")
+
+	chainInput := `let ran = runner
+  .withExec(["dagger"])`
+	chainExpected := chainInput + "\n"
+	chainResult, err := FormatFile([]byte(chainInput))
+	require.NoError(t, err)
+	require.Equal(t, chainExpected, chainResult)
 }
 
 func (FormatSuite) TestImportFormatting(ctx context.Context, t *testctx.T) {

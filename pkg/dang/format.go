@@ -322,14 +322,46 @@ func (f *Formatter) emitCommentsForNode(node Node) {
 	}
 }
 
+// docStringStartLineBefore finds the opening fence of the docstring attached
+// before line. Docstring locations are not retained in the AST, so recover the
+// span from the source when deciding whether a preceding blank line was real.
+func (f *Formatter) docStringStartLineBefore(line int) int {
+	if len(f.source) == 0 {
+		return 0
+	}
+	end := f.lineColumnToOffset(line, 1)
+	if end <= 0 {
+		return 0
+	}
+	marker := []byte(`"""`)
+	close := bytes.LastIndex(f.source[:end], marker)
+	if close < 0 {
+		return 0
+	}
+	open := bytes.LastIndex(f.source[:close], marker)
+	if open < 0 {
+		return 0
+	}
+	return bytes.Count(f.source[:open], []byte("\n")) + 1
+}
+
 // emitCommentsBeforeNode emits comments before a node, optionally suppressing
 // the blank line that would normally be added for a gap (used when node has docstring)
 func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
 	f.emitStandaloneComments(line)
 
-	// If there's a blank line between the last comment and the node, preserve it
-	// BUT not if the node has a docstring (which fills the gap)
-	if !hasDocString && f.lastLine > 0 && line > f.lastLine+1 {
+	// If the node has a docstring, measure the gap to its opening fence rather
+	// than to the declaration line. The docstring normally fills that apparent
+	// gap, but a blank line before the fence should still be preserved.
+	gapLine := line
+	if hasDocString {
+		docLine := f.docStringStartLineBefore(line)
+		if docLine == 0 {
+			return
+		}
+		gapLine = docLine
+	}
+	if f.lastLine > 0 && gapLine > f.lastLine+1 {
 		f.newline()
 	}
 }
@@ -861,6 +893,32 @@ func nodeEndLine(node Node) int {
 	return loc.Line
 }
 
+// nodeStartLine returns the lexical start of an expression. Chain nodes store
+// the location of their suffix, so walk back to the receiver for their true
+// start line.
+func nodeStartLine(node Node) int {
+	switch n := node.(type) {
+	case *FunCall:
+		return nodeStartLine(n.Fun)
+	case *Select:
+		if n.Receiver != nil {
+			return nodeStartLine(n.Receiver)
+		}
+	case *DotApply:
+		return nodeStartLine(n.Receiver)
+	case *ObjectSelection:
+		if n.Receiver != nil {
+			return nodeStartLine(n.Receiver)
+		}
+	case *Index:
+		return nodeStartLine(n.Receiver)
+	}
+	if loc := node.GetSourceLocation(); loc != nil {
+		return loc.Line
+	}
+	return 0
+}
+
 func isTypeDecl(node Node) bool {
 	switch n := node.(type) {
 	case *ObjectDecl:
@@ -1328,8 +1386,27 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 			// matching the grammar (Type <directives> = value).
 			// pub foo: Type @directive = value OR pub foo @directive = value
 			f.formatSuffixDirectives(s.Directives, nameLine)
-			f.write(" = ")
-			f.formatNode(s.Value)
+			valuePrecedingLine := nameLine
+			if typeLine := typeNodeLine(s.Type_); typeLine > valuePrecedingLine {
+				valuePrecedingLine = typeLine
+			}
+			for _, directive := range s.Directives {
+				if !directive.IsPrefix && nodeEndLine(directive) > valuePrecedingLine {
+					valuePrecedingLine = nodeEndLine(directive)
+				}
+			}
+			valueLine := nodeStartLine(s.Value)
+			if valuePrecedingLine > 0 && valueLine > valuePrecedingLine {
+				f.write(" =")
+				f.newline()
+				f.indented(func() {
+					f.writeIndent()
+					f.formatNode(s.Value)
+				})
+			} else {
+				f.write(" = ")
+				f.formatNode(s.Value)
+			}
 		}
 	} else {
 		// No value - just type with suffix directives
@@ -3395,18 +3472,33 @@ func (f *Formatter) formatBinaryOp(left, right Node, op string) {
 		f.write(")")
 	}
 
-	f.write(" ")
-	f.write(op)
-	f.write(" ")
-
 	// Check if right operand needs parentheses (for right-associativity issues)
 	rightNeedsParens := needsParensForPrecedence(right, op, false)
-	if rightNeedsParens {
-		f.write("(")
+	formatRight := func() {
+		if rightNeedsParens {
+			f.write("(")
+		}
+		f.formatNode(right)
+		if rightNeedsParens {
+			f.write(")")
+		}
 	}
-	f.formatNode(right)
-	if rightNeedsParens {
-		f.write(")")
+
+	leftEnd := nodeEndLine(left)
+	rightLoc := right.GetSourceLocation()
+	if leftEnd > 0 && rightLoc != nil && rightLoc.Line > leftEnd {
+		f.indented(func() {
+			f.newline()
+			f.writeIndent()
+			f.write(op)
+			f.write(" ")
+			formatRight()
+		})
+	} else {
+		f.write(" ")
+		f.write(op)
+		f.write(" ")
+		formatRight()
 	}
 }
 
