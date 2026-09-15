@@ -1,0 +1,32 @@
+# Local declarations need constructor signatures just like module-level types.
+parseLocal(data: String!): String! {
+  type Record {
+    value: String!
+    suffix: String! = "!"
+    optional: String
+  }
+  let decoded: Record! = JSON.decode(data)
+  assert { decoded.optional == null }
+  let direct = Record(value: "direct")
+  assert { direct.value == "direct" }
+  decoded.value + decoded.suffix
+}
+
+assert { parseLocal("{\"value\":\"hello\"}") == "hello!" }
+
+parseExplicit(data: String!): String! {
+  type Record {
+    value: String!
+
+    new(input: String!) {
+      self.value = input + "!"
+      self
+    }
+  }
+  let decoded: Record! = JSON.decode(data)
+  let direct = Record(input: "direct")
+  assert { direct.value == "direct!" }
+  decoded.value
+}
+
+assert { parseExplicit("{\"input\":\"hello\"}") == "hello!" }

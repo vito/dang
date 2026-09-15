@@ -830,6 +830,15 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
 
+	// Function bodies infer declarations in source order rather than through
+	// the module's hoisting phases. Initialize local constructor and member
+	// signatures before inferring their bodies as well.
+	if c.ConstructorFnType == nil {
+		if err := c.Hoist(ctx, env, fresh, 1); err != nil {
+			return nil, err
+		}
+	}
+
 	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, c.Name)

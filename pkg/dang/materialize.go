@@ -687,7 +687,7 @@ func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, 
 func parameterTypes(val Value) map[string]hm.Type {
 	result := map[string]hm.Type{}
 	ft, ok := val.Type().(*hm.FunctionType)
-	if !ok {
+	if !ok || ft == nil {
 		return result
 	}
 	rec, ok := ft.Arg().(*RecordType)
