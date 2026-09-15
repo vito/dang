@@ -429,7 +429,7 @@ func renderType(t hm.Type) string {
 	if tv, ok := t.(hm.TypeVariable); ok && tv == hm.TypeVariable('n') {
 		return "Null"
 	}
-	return strings.ReplaceAll(fmt.Sprintf("%s", t), "?", "")
+	return strings.ReplaceAll(t.String(), "?", "")
 }
 
 func renderDefault(v dang.Value) string {

@@ -19,7 +19,7 @@ type Dang {
     }
     args += ["-o", "/bin/dang", "./cmd/dang"]
 
-    base.withExec(args).file("/bin/dang")
+    development.withExec(args).file("/bin/dang")
   }
 
   """
@@ -40,7 +40,7 @@ type Dang {
   are absent.
   """
   docs: Changeset! @check {
-    let built = base
+    let built = development
       .withWorkdir("/src/docs")
       .withExec(["bash", "./build.sh"])
       .directory("/src/docs")
@@ -71,7 +71,7 @@ type Dang {
     """
     accountId: String! = "3f0bfdb3be67e29173fa82412c7afd07",
   ): Void {
-    base
+    development
       .withWorkdir("/src/docs")
       .withExec(["bash", "./build-highlight-assets.sh", "--grammar-only"])
       .withExec(["npm", "install", "-g", "wrangler"])
@@ -94,14 +94,6 @@ type Dang {
   }
 
   """
-  Runs all code generation procedures, e.g. go generate, tree-sitter generate.
-  """
-  @generate
-  generate: Changeset! {
-    generated.directory(".").changes(base.directory("/src"))
-  }
-
-  """
   Reformat every Dang source file in place with `dang fmt`, returning the
   changeset.
 
@@ -116,7 +108,7 @@ type Dang {
   """
   @generate
   fmt: Changeset! {
-    base
+    development
       .withFile("/usr/bin/dang", binary)
       .withExec([
         "bash", "-c",
@@ -127,14 +119,14 @@ type Dang {
         """,
       ])
       .directory(".")
-      .changes(base.directory("."))
+      .changes(development.directory("."))
   }
 
   """
   Run `go mod tidy` for each Go module in the repo.
   """
   tidy: Changeset! {
-    base
+    development
       .withExec([
         "sh", "-c",
         """
@@ -144,7 +136,7 @@ type Dang {
         """,
       ])
       .directory(".")
-      .changes(base.directory("."))
+      .changes(development.directory("."))
   }
 
   """
@@ -166,7 +158,7 @@ type Dang {
     dang -d ./my-module
   """
   dang(args: [String!]!): Void {
-    base
+    development
       .withFile("/usr/bin/dang", binary)
       .withExec(
         ["dang"] + args,
@@ -194,38 +186,25 @@ type Dang {
   }
 
   """
-  Run the linter.
-  """
-  lint: Void @check {
-    base
-      .withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint")
-      .withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache"))
-      .withExec(["golangci-lint", "run"])
-      .sync
-
-    null
-  }
-
-  """
   Bump the pinned Dang version in each editor plugin.
   """
   bumpEditors(repo: GitRepository! @defaultPath(path: "/.git")): Changeset! {
     let commit = repo.head.commit
-    base
+    development
       .withExec([
         "sed",
         "-i", "editors/zed/extension.toml",
         "-e", "s/commit = \".*\"/commit = \"" + commit + "\"/",
       ])
       .directory(".")
-      .changes(base.directory("."))
+      .changes(development.directory("."))
   }
 
   """
   Enter a terminal for debugging the Neovim LSP setup.
   """
   nvimDebug: Container! {
-    base
+    development
       .withFile("/usr/bin/dang", binary)
       .withFile(
         "/root/.config/nvim/init.vim",
@@ -235,13 +214,27 @@ type Dang {
       .terminal(experimentalPrivilegedNesting: true)
   }
 
-  let base: Container! {
+  """
+  Go check dependencies, including the Dang binary used by the LSP tests.
+  """
+  base: Container! {
+    toolchain.withFile("/usr/bin/dang", binary(race: true))
+  }
+
+  let development: Container! {
+    toolchain
+      .withDirectory("/src", source)
+      .withWorkdir("/src")
+  }
+
+  let toolchain: Container! {
     apko
       .wolfi([
         "bash",
         "curl",
         "git",
-        "go", "golangci-lint",
+        # Keep the checks on Go 1.26; current gRPC dependencies fail on Go 1.27.
+        "go-1.26",
         "nodejs", "npm",
         "neovim",
         "clang",
@@ -257,16 +250,13 @@ type Dang {
       .withExec(["npm", "install", "-g", "--allow-scripts=tree-sitter-cli", "tree-sitter-cli@v0.26.10"])
       .withEnvVariable("GOBIN", "/go/bin")
       .withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true)
-      .withDirectory("/src", source)
-      .withWorkdir("/src")
-      .withExec(["go", "install", "github.com/dagger/otel-go/cmd/otelgotest"])
   }
 
   """
   Base with ./hack/generate ran.
   """
   generated: Container! {
-    base.withExec(["./hack/generate"])
+    development.withExec(["./hack/generate"])
   }
 
   test: Test! {
@@ -280,7 +270,6 @@ type Test {
   """
   Run go tests.
   """
-  @check
   @cache(policy: FunctionCachePolicy.Never)
   go(
     """
@@ -293,27 +282,7 @@ type Test {
       # install dang binary for LSP tests
       .withFile("/usr/bin/dang", dang.binary(race: true))
       .withExec(
-        ["otelgotest"] + args,
-        experimentalPrivilegedNesting: true,
-      )
-  }
-
-  """
-  Run the docs Go module's tests.
-
-  The docs site renderer lives in a separate Go module
-  (github.com/vito/dang/docs), so the root `go test ./...` above never reaches
-  it. Without this check its linker/literate/highlight tests rot unnoticed.
-  """
-  @check
-  @cache(policy: FunctionCachePolicy.Never)
-  docsGo: Container! {
-    dang
-      .generated
-      .withWorkdir("/src/docs")
-      .withEnvVariable("CGO_ENABLED", "1")
-      .withExec(
-        ["otelgotest", "./..."],
+        ["go", "test"] + args,
         experimentalPrivilegedNesting: true,
       )
   }
