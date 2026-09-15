@@ -164,6 +164,13 @@ func renderCode(section *booklit.Section, language, source string, links []linkS
 // inherit the result line's color (.dang-playground-result, green). Without a
 // grammar (or cgo) it degrades to escaped plain text.
 func highlightResult(value string) booklit.Content {
+	return booklit.Styled{Style: "raw-html", Content: booklit.String(highlightResultHTML(value))}
+}
+
+// highlightResultHTML is highlightResult's raw HTML form: escaped text in
+// bare tok-* spans. It also backs the quoted source lines and field values
+// in baked error reports (errorreport.go).
+func highlightResultHTML(value string) string {
 	classes := classifyCode("dang", value)
 	classAt := func(i int) string {
 		if classes == nil {
@@ -187,5 +194,5 @@ func highlightResult(value string) booklit.Content {
 		}
 		i = j
 	}
-	return booklit.Styled{Style: "raw-html", Content: booklit.String(raw.String())}
+	return raw.String()
 }

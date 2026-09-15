@@ -1,6 +1,6 @@
 [1m[31mError:[0m return type mismatch: declared Int!, inferred Int! | String!
-  - Int! from the rescue operand at errors/rescue_widen_return_mismatch.dang:11:3
-  - String! from the rescue clause at errors/rescue_widen_return_mismatch.dang:12:5
+  - Int! from the rescue operand at 11:3
+  - String! from the rescue clause at 12:5
   [2m[34m--> errors/rescue_widen_return_mismatch.dang:10:24[0m
  [2m    |[0m
  [2m  8 | }[0m
