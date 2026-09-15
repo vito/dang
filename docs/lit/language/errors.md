@@ -517,10 +517,10 @@ went wrong upstream.
 ## Migrating from `try`/`catch`
 
 `rescue` replaced Dang's original `try { } catch { }` blocks. The legacy
-syntax still parses, so old code fails with a pointer rather than a
-puzzle — type-checking rejects it with the migration path spelled out:
+syntax still parses and runs, with a warning that explains the migration
+path:
 
-```dang-failure
+```dang
 try { halve(7) } catch { err => 0 }
 ```
 

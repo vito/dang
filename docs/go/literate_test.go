@@ -185,6 +185,8 @@ func TestCodeBlockFailureRouting(t *testing.T) {
 	// A succeeding snippet in a dang-failure fence fails the build.
 	if _, err := render("dang-failure", "1 + 1"); err == nil {
 		t.Error("dang-failure fence with a succeeding snippet did not error")
+	} else if !strings.Contains(err.Error(), "1 + 1") {
+		t.Errorf("failure diagnostic does not identify the snippet: %v", err)
 	}
 
 	// Outside a literate scope, dang-failure is just a highlighted block.

@@ -188,7 +188,7 @@ func (p Plugin) literateFailureBlock(code booklit.Content, label string) (bookli
 
 	stdout, stage, failure := literateFailEval(source, sess)
 	if failure == nil {
-		return nil, fmt.Errorf("%s in %s: expected the snippet to fail, but it succeeded — use a plain ```dang fence", label, p.section.FilePath())
+		return nil, fmt.Errorf("%s in %s: expected the snippet to fail, but it succeeded — use a plain ```dang fence\n\n%s", label, p.section.FilePath(), source)
 	}
 
 	partials := booklit.Partials{
