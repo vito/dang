@@ -71,8 +71,11 @@ func collectUnionNotes(notes *strings.Builder, t hm.Type) {
 			if !ok || origin.Loc == nil {
 				continue
 			}
-			fmt.Fprintf(notes, "\n  - %s from the %s at %s:%d:%d",
-				opt, origin.Desc, origin.Loc.Filename, origin.Loc.Line, origin.Loc.Column)
+			// line:col only — the note sits under an error that already names
+			// the file, and synthetic unit names (REPL entries, docs snippets)
+			// have no business in a message.
+			fmt.Fprintf(notes, "\n  - %s from the %s at %d:%d",
+				opt, origin.Desc, origin.Loc.Line, origin.Loc.Column)
 		}
 	}
 }

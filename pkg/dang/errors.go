@@ -280,7 +280,11 @@ func WarnAtSource(ctx context.Context, loc *SourceLocation, message string) {
 			}
 			evalCtx.warnedDeprecations[key] = true
 		}
-		source = evalCtx.Source
+		// Same guard as CreateSourceError: a call site in another unit must
+		// not have this unit's source quoted under its line numbers.
+		if loc == nil || loc.Filename == "" || loc.Filename == evalCtx.Filename {
+			source = evalCtx.Source
+		}
 	}
 
 	if source == "" && loc != nil && loc.Filename != "" {
@@ -333,7 +337,15 @@ func (ctx *EvalContext) CreateSourceError(err error, node SourceLocatable) error
 		return err
 	}
 
-	return NewSourceError(err, location, ctx.Source)
+	// Only attach this unit's source when the location is actually in it — a
+	// node from another unit (a REPL entry or literate block calling a
+	// function defined earlier) must not get the current unit's text quoted
+	// under its line numbers.
+	source := ctx.Source
+	if location.Filename != "" && location.Filename != ctx.Filename {
+		source = ""
+	}
+	return NewSourceError(err, location, source)
 }
 
 // ConvertInferError converts an InferError to a SourceError with source context

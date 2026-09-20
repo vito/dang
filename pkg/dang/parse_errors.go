@@ -47,7 +47,7 @@ func EnhanceParseError(pegErr error, filename string, source []byte) error {
 	tsMu.Unlock()
 
 	if tree == nil {
-		return pegErr
+		return pegSourceError(pegErr, filename, source)
 	}
 	defer tree.Close()
 
@@ -58,7 +58,7 @@ func EnhanceParseError(pegErr error, filename string, source []byte) error {
 	collectTSErrors(root, source, &errors)
 
 	if len(errors) == 0 {
-		return pegErr
+		return pegSourceError(pegErr, filename, source)
 	}
 
 	// Use the first (earliest) error to produce the diagnostic.
