@@ -29,3 +29,13 @@ includeExtraFiles = ["tests/**", "editors/**", "treesitter/**", "pkg/dang/*.peg"
 lint = ["!editors/zed/grammars"]
 test = ["!editors/zed/grammars"]
 generate = ["!editors/zed/grammars"]
+
+[modules.committer]
+source = "github.com/vito/agents/committer"
+
+[modules.contributor]
+source = "github.com/vito/agents/contributor"
+settings.githubToken = "cmd://gh auth token"
+
+[modules.staff]
+source = "github.com/vito/agents/staff"
