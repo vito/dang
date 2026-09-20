@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"regexp"
 	"strconv"
+	"unicode/utf8"
 )
 
 // ParseWithComments parses source and returns the AST along with a map of
@@ -38,19 +39,19 @@ func (c current) Loc() *SourceLocation {
 		Filename: fn,
 		Line:     c.pos.line,
 		Column:   c.pos.col,
-		Length:   len(string(c.text[:textEnd])),
+		Length:   utf8.RuneCount(c.text[:textEnd]),
 	}
 	lineCount := bytes.Count(c.text, []byte("\n"))
 	var endLine = start.Line + lineCount
 	var endCol int
 	if lineCount == 0 {
-		// Single line: end column is start column + length of text
-		endCol = start.Column + len(c.text)
+		// Match the parser's rune-based start column.
+		endCol = start.Column + utf8.RuneCount(c.text)
 	} else {
 		// Multi-line: end column is the length after the last newline + 1 (1-indexed)
 		lastNewline := bytes.LastIndexByte(c.text, '\n')
 		if lastNewline != -1 {
-			endCol = len(c.text) - lastNewline // Already 1-indexed since we're counting from after the newline
+			endCol = utf8.RuneCount(c.text[lastNewline+1:]) + 1
 		} else {
 			// Shouldn't happen since lineCount > 0, but fallback
 			endCol = 1

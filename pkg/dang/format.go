@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -160,11 +161,11 @@ func (f *Formatter) lineColumnToOffset(line, col int) int {
 		offset++
 	}
 
-	// Add column offset (1-indexed)
-	offset += col - 1
-
-	if offset > len(f.source) {
-		return len(f.source)
+	// Parser columns count runes, not bytes. Decode each column so source
+	// slices stay aligned after non-ASCII text.
+	for column := 1; column < col && offset < len(f.source); column++ {
+		_, size := utf8.DecodeRune(f.source[offset:])
+		offset += size
 	}
 	return offset
 }

@@ -209,6 +209,58 @@ func (FormatSuite) TestVisibilityFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestUnicodeSourcePreservation(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "template containing multibyte characters",
+			input: "let x = `é — 😀 ${name}` + `!`",
+		},
+		{
+			name:  "template after multibyte characters",
+			input: "let x = `publish — ` + `the lease is required (${oldHead}).`",
+		},
+		{
+			name:  "template after unicode string",
+			input: "let x = \"é😀\" + `hello ${name}`",
+		},
+		{
+			name:  "multiline template followed by unicode template",
+			input: "let x = ```\nhello ${name}\n``` + `世界 ${name}`",
+		},
+		{
+			name:  "triple quoted string after unicode",
+			input: "let x = \"é\" + \"\"\"世界\"\"\"",
+		},
+		{
+			name:  "nofmt preserves unicode node",
+			input: "#nofmt\nlet x=\"é — 😀\" + foo.bar()\nlet y = 1",
+		},
+		{
+			name:  "nofmt preserves multiline unicode node",
+			input: "#nofmt\nlet x=foo(\n  \"世界😀\")\nlet y = 1",
+		},
+		{
+			name:  "trailing nofmt preserves unicode node",
+			input: "let x=\"é — 😀\" + foo.bar() #nofmt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			formatted, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.input+"\n", formatted)
+
+			again, err := FormatFile([]byte(formatted))
+			require.NoError(t, err, "formatted source must still parse")
+			require.Equal(t, formatted, again, "formatting must be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
