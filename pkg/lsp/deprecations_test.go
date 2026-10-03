@@ -68,11 +68,11 @@ func (LSPSuite) TestDeprecationCodeActionReplacesCallee(ctx context.Context, t *
 	// Request actions for a cursor sitting inside the toJSON token.
 	cursor := lsp.Position{Line: 0, Character: len("let s = ") + 2}
 	var actions []codeActionResult
-	require.NoError(t, h.client.CallResult(ctx, "textDocument/codeAction", lsp.CodeActionParams{
+	h.call(ctx, t, "textDocument/codeAction", lsp.CodeActionParams{
 		TextDocument: lsp.TextDocumentIdentifier{URI: uri},
 		Range:        lsp.Range{Start: cursor, End: cursor},
 		Context:      lsp.CodeActionContext{Only: []lsp.CodeActionKind{lsp.QuickFix}},
-	}, &actions))
+	}, &actions)
 
 	require.Len(t, actions, 1)
 	action := actions[0]
@@ -100,11 +100,11 @@ func (LSPSuite) TestDeprecationCodeActionSkipsUnrelatedRange(ctx context.Context
 
 	pos := lsp.Position{Line: 1, Character: 0}
 	var actions []codeActionResult
-	require.NoError(t, h.client.CallResult(ctx, "textDocument/codeAction", lsp.CodeActionParams{
+	h.call(ctx, t, "textDocument/codeAction", lsp.CodeActionParams{
 		TextDocument: lsp.TextDocumentIdentifier{URI: uri},
 		Range:        lsp.Range{Start: pos, End: pos},
 		Context:      lsp.CodeActionContext{},
-	}, &actions))
+	}, &actions)
 
 	require.Empty(t, actions, "no deprecated call overlaps the requested range")
 }

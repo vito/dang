@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,7 +16,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/creachadair/jrpc2"
+	jsonrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -35,15 +36,9 @@ func NewHandler(rootCtx context.Context) *langHandler {
 	return handler
 }
 
-// SetServer sets the server instance for the handler.
-func (h *langHandler) SetServer(srv *jrpc2.Server) {
-	h.server = srv
-}
-
 type langHandler struct {
 	rootCtx  context.Context
 	files    map[DocumentURI]*File
-	server   *jrpc2.Server
 	rootPath string
 	folders  []string
 
@@ -734,7 +729,8 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 }
 
 func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, diagnostics []Diagnostic, version int) {
-	if h.server == nil {
+	pusher, ok := jsonrpc.PusherFromContext(ctx)
+	if !ok {
 		return
 	}
 
@@ -742,7 +738,7 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, d
 		diagnostics = []Diagnostic{}
 	}
 
-	err := h.server.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
+	err := pusher.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: diagnostics,
 		Version:     version,
@@ -879,46 +875,27 @@ func (h *langHandler) addFolder(folder string) {
 	}
 }
 
-// Assign implements jrpc2.Assigner
-func (h *langHandler) Assign(ctx context.Context, method string) jrpc2.Handler {
-	switch method {
-	case "initialize":
-		return h.handleInitialize
-	case "initialized":
-		return func(ctx context.Context, req *jrpc2.Request) (any, error) {
-			return nil, nil
-		}
-	case "shutdown":
-		return h.handleShutdown
-	case "textDocument/didOpen":
-		return h.handleTextDocumentDidOpen
-	case "textDocument/didChange":
-		return h.handleTextDocumentDidChange
-	case "textDocument/didSave":
-		return h.handleTextDocumentDidSave
-	case "textDocument/didClose":
-		return h.handleTextDocumentDidClose
-	case "textDocument/completion":
-		return h.handleTextDocumentCompletion
-	case "textDocument/definition":
-		return h.handleTextDocumentDefinition
-	case "textDocument/hover":
-		return h.handleTextDocumentHover
-	case "textDocument/codeAction":
-		return h.handleTextDocumentCodeAction
-	case "textDocument/rename":
-		return h.handleTextDocumentRename
-	case "textDocument/formatting":
-		return h.handleTextDocumentFormatting
-	case "workspace/symbol":
-		return h.handleWorkspaceSymbol
-	case "workspace/didChangeConfiguration":
-		return h.handleWorkspaceDidChangeConfiguration
-	case "workspace/workspaceFolders":
-		return h.handleWorkspaceWorkspaceFolders
-	case "workspace/didChangeWorkspaceFolders":
-		return h.handleWorkspaceDidChangeWorkspaceFolders
-	}
-
-	return nil
+// Register wires every LSP method onto the dispatcher; typed registration
+// replaces the previous jrpc2.Assigner implementation.
+func (h *langHandler) Register(rpc *jsonrpc.JSONRPC) error {
+	return errors.Join(
+		jsonrpc.RegisterTyped(rpc, "initialize", h.handleInitialize),
+		jsonrpc.RegisterTyped(rpc, "initialized",
+			func(ctx context.Context, _ json.RawMessage) (any, error) { return nil, nil }),
+		jsonrpc.RegisterTyped(rpc, "shutdown", h.handleShutdown),
+		jsonrpc.RegisterTyped(rpc, "textDocument/didOpen", h.handleTextDocumentDidOpen),
+		jsonrpc.RegisterTyped(rpc, "textDocument/didChange", h.handleTextDocumentDidChange),
+		jsonrpc.RegisterTyped(rpc, "textDocument/didSave", h.handleTextDocumentDidSave),
+		jsonrpc.RegisterTyped(rpc, "textDocument/didClose", h.handleTextDocumentDidClose),
+		jsonrpc.RegisterTyped(rpc, "textDocument/completion", h.handleTextDocumentCompletion),
+		jsonrpc.RegisterTyped(rpc, "textDocument/definition", h.handleTextDocumentDefinition),
+		jsonrpc.RegisterTyped(rpc, "textDocument/hover", h.handleTextDocumentHover),
+		jsonrpc.RegisterTyped(rpc, "textDocument/codeAction", h.handleTextDocumentCodeAction),
+		jsonrpc.RegisterTyped(rpc, "textDocument/rename", h.handleTextDocumentRename),
+		jsonrpc.RegisterTyped(rpc, "textDocument/formatting", h.handleTextDocumentFormatting),
+		jsonrpc.RegisterTyped(rpc, "workspace/symbol", h.handleWorkspaceSymbol),
+		jsonrpc.RegisterTyped(rpc, "workspace/didChangeConfiguration", h.handleWorkspaceDidChangeConfiguration),
+		jsonrpc.RegisterTyped(rpc, "workspace/workspaceFolders", h.handleWorkspaceWorkspaceFolders),
+		jsonrpc.RegisterTyped(rpc, "workspace/didChangeWorkspaceFolders", h.handleWorkspaceDidChangeWorkspaceFolders),
+	)
 }

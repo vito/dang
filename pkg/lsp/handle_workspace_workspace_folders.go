@@ -2,11 +2,10 @@ package lsp
 
 import (
 	"context"
-
-	"github.com/creachadair/jrpc2"
+	"encoding/json"
 )
 
-func (h *langHandler) handleWorkspaceWorkspaceFolders(ctx context.Context, req *jrpc2.Request) (any, error) {
+func (h *langHandler) handleWorkspaceWorkspaceFolders(ctx context.Context, params json.RawMessage) (any, error) {
 	h.mu.Lock()
 	folderPaths := append([]string(nil), h.folders...)
 	h.mu.Unlock()

@@ -2,25 +2,17 @@ package lsp
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/creachadair/jrpc2"
+	jsonrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
 	"github.com/vito/dang/v2/pkg/dang"
 )
 
-func (h *langHandler) handleTextDocumentFormatting(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params DocumentFormattingParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentFormatting(ctx context.Context, params DocumentFormattingParams) (any, error) {
 	// Wait for file to be fully processed
 	f := h.waitForFile(params.TextDocument.URI)
 	if f == nil {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "document not found: %v", params.TextDocument.URI)
+		return nil, jsonrpc.NewRPCError(jsonrpc.InvalidParamsErrorCode, fmt.Errorf("document not found: %v", params.TextDocument.URI))
 	}
 
 	// Format the file content

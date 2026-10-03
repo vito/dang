@@ -7,21 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params HoverParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentHover(ctx context.Context, params HoverParams) (any, error) {
 	f := h.waitForFile(params.TextDocument.URI)
 	if f == nil {
 		return nil, nil
