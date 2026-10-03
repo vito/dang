@@ -129,6 +129,25 @@ directive @expectedType(name: String!) on ARGUMENT_DEFINITION | FIELD_DEFINITION
 	require.Equal(t, []string{"FIELD_DEFINITION"}, customDir.Locations)
 }
 
+// An interface implementing another interface must keep that edge through
+// the SDL path, as live introspection does; otherwise a list mixing two
+// implementers infers the wrong common supertype.
+func TestSchemaFromSDLInterfaceImplementsInterface(t *testing.T) {
+	sdl := `
+interface Node { id: ID! }
+interface Syncer implements Node { id: ID! sync: ID! }
+type Timer implements Node & Syncer { id: ID! sync: ID! }
+type Query { timer: Timer! }
+`
+	schema, err := SchemaFromSDL(sdl, "test.graphqls")
+	require.NoError(t, err)
+
+	syncer := schema.Types.Get("Syncer")
+	require.NotNil(t, syncer)
+	require.Len(t, syncer.Interfaces, 1)
+	require.Equal(t, "Node", syncer.Interfaces[0].Name)
+}
+
 func TestSchemaFromSDLFile(t *testing.T) {
 	// Test loading the actual test server schema
 	schema, err := SchemaFromSDLFile("../../tests/gqlserver/schema.graphqls")
