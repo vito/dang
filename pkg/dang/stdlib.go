@@ -19,6 +19,7 @@ func registerStdlib() {
 	registerAssert()
 	registerRegexp()
 	registerTime()
+	registerRace()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").

@@ -1,0 +1,52 @@
+# SPIKE: [T]!.race (docs/proposals/concurrency-and-time.md)
+
+# the first block to finish wins
+let winner = [200, 1, 100].race { ms =>
+  sleep(`${ms}ms`)
+  ms
+}
+assert { winner == 1 }
+
+# losers are cancelled and awaited, not run to completion: this finishes in
+# milliseconds, not a minute
+let fast = ["60s", "1ms"].race { d =>
+  sleep(d)
+  d
+}
+assert { fast == "1ms" }
+
+# instantly-ready contenders: any of them may win (the order among
+# near-simultaneous finishers is unspecified; see the proposal's fairness
+# section)
+assert { ["a", "b", "c"].contains(["a", "b", "c"].race { x => x }) }
+
+# a contender that raises first makes the race raise
+let failed = ["1ms", "60s"].race { d =>
+  sleep(d)
+  raise "boom"
+} rescue { e: Error => e.message }
+assert { failed == "boom" }
+
+# ...but a slow failure loses to a fast success
+let survived = [50, 1].race { ms =>
+  sleep(`${ms}ms`)
+  if (ms == 50) {
+    raise "too slow to matter"
+  }
+  ms
+}
+assert { survived == 1 }
+
+# a race over nothing can never finish, so it raises instead of hanging
+let empty = ([] :: [String!]!).race { x => x } rescue "empty"
+assert { empty == "empty" }
+
+# race composes with timeout: every contender is cancelled at the deadline
+assert { timeout("10ms") { ["60s", "60s"].race { d => sleep(d) } } == null }
+
+# break inside a contender exits the race with its value
+let broke = [1, 60000].race { ms =>
+  sleep(`${ms}ms`)
+  break "broke"
+}
+assert { broke == "broke" }
