@@ -757,6 +757,15 @@ func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspectio
 			field.ParentObject = it
 			it.Fields = append(it.Fields, field)
 		}
+		// An interface may implement other interfaces (`interface Syncer
+		// implements Node`); live introspection reports these, so the SDL
+		// path must too, or the subtype lattice loses the edge.
+		for _, iface := range t.Interfaces {
+			it.Interfaces = append(it.Interfaces, &introspection.Type{
+				Kind: introspection.TypeKindInterface,
+				Name: iface,
+			})
+		}
 	case ast.Union:
 		it.Kind = introspection.TypeKindUnion
 		for _, memberName := range t.Types {
