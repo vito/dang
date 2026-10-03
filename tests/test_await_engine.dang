@@ -1,0 +1,101 @@
+# Engine-side awaitables, driven from Dang with no new syntax.
+#
+# The Await import is a fake slice of the Dagger API proposed in
+# docs/proposals/concurrency-engine-side.md: the server owns every race and
+# every clock; Dang only calls fields and branches on what they return.
+#
+# Each scenario is a function so its statements run in order (top-level
+# declarations are hoisted).
+
+import Await
+
+# sleep is just a blocking field
+assert { sleep("5ms") }
+
+# Race two evaluators: the fast one wins, the loser is cancelled and has
+# unwound before awaitAny returns (structured, engine-side).
+raceBuilds: Boolean! {
+  let before = cancellations
+  let slow = build(name: "slow", duration: "10s")
+  let fast = build(name: "fast", duration: "5ms")
+  assert { awaitAny([slow, fast]) == 1 }
+  cancellations == before + 1
+}
+assert { raceBuilds }
+
+# A failure wins a FIRST_SETTLED race and raises; FIRST_SUCCESS skips it.
+failureModes: Boolean! {
+  let broken = build(name: "broken", duration: "1ms", fail: true)
+  let ok = build(name: "ok", duration: "30ms")
+  let raised = { awaitAny([broken, ok]); false } rescue true
+  assert { raised }
+  awaitAny([broken, ok], mode: FIRST_SUCCESS) == 1
+}
+assert { failureModes }
+
+# Time-box: null when the timeout wins; the build is cancelled.
+timeBox: Boolean! {
+  let budget = awaitAny([build(name: "huge", duration: "10s")], timeout: "20ms")
+  budget == null
+}
+assert { timeBox }
+
+# A deadline is just another awaitable, in a mixed list.
+deadline: Boolean! {
+  awaitAny([build(name: "huge", duration: "10s"), timer(after: "10ms")]) == 1
+}
+assert { deadline }
+
+# Awaitables observe; losing a race loses nothing. Naming "the first event
+# after 0" does not block, and the event is still there after a lost race.
+observe: Boolean! {
+  let box = mailbox(name: "observe")
+  let first = box.next(after: 0)
+  assert { awaitAny([first, timer(after: "10ms")]) == 1 }
+  assert { box.send("late") == 1 }
+  assert { awaitAny([first, timer(after: "10s")]) == 0 }
+  assert { first.text == "late" }
+  # Already-true facts win in index order, deterministically.
+  awaitAny([timer(after: "10s"), first, timer(after: "0s")]) == 1
+}
+assert { observe }
+
+# The first of N answers, with a cap: index the original list.
+firstOfN: String {
+  let asks = [build(name: "r1", duration: "10s"), build(name: "r2", duration: "15ms")]
+  let winner = awaitAny(asks, timeout: "1s")
+  if (winner != null) { asks[winner].name } else { "no answer" }
+}
+assert { firstOfN == "r2" }
+
+# The factory loop: one mailbox aggregates clocks and messages; the program
+# only ever reads the next event after its cursor.
+factoryLoop: Boolean! {
+  let factory = mailbox(name: "factory")
+  assert { factory.schedule(label: "poll", after: "0s", every: "20ms") }
+  assert { factory.schedule(label: "stop", after: "70ms") }
+  assert { factory.send("hello") >= 1 }
+
+  let cursor = 0
+  let polls = 0
+  let greeting = ""
+  loop {
+    let ev = factory.next(after: cursor).{{ seq, kind, label, text }}
+    cursor = ev.seq
+    case (ev.kind) {
+      "MESSAGE" => {
+        greeting = ev.text
+      }
+      "TICK" => case (ev.label) {
+        "poll" => {
+          polls += 1
+        }
+        "stop" => break
+      }
+    }
+  }
+  greeting == "hello" and polls >= 2 and cursor >= 4
+}
+assert { factoryLoop }
+
+print("engine-side awaitables: ok")
