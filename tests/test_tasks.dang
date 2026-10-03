@@ -94,14 +94,15 @@ loop {
     async { sleep("10ms"); Tick(n) },
     async { if (n < 2) { sleep("1h") }; Msg("stop") },
   ].race
-  # (Type-pattern arms run in a sealed scope, so compute a value in the arm
-  # and update loop state outside it.)
-  let line = case (wake) {
-    t: Tick => "tick " + toString(t.n)
-    m: Msg => m.text
+  case (wake) {
+    t: Tick => {
+      log += ["tick " + toString(t.n)]
+      n += 1
+    }
+    m: Msg => {
+      log += [m.text]
+      break
+    }
   }
-  log += [line]
-  if (line == "stop") { break }
-  n += 1
 }
 assert { log == ["tick 0", "tick 1", "stop"] }
