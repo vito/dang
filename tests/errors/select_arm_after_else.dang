@@ -1,0 +1,7 @@
+# Nothing may follow the else arm.
+let r = select {
+  sleep("1ms") if (false) => "never"
+  else => "idle"
+  sleep("1ms") => "unreachable"
+}
+print(r)

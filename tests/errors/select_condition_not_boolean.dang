@@ -1,0 +1,5 @@
+# An arm's enabling condition must be a Boolean!, like if.
+let r = select {
+  sleep("1ms") if ("yes") => "never"
+}
+print(r)

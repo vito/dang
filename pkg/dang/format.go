@@ -682,6 +682,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatConditional(n)
 	case *Case:
 		f.formatCase(n)
+	case *SelectExpr:
+		f.formatSelectExpr(n)
 	case *Break:
 		f.formatBreak(n)
 	case *Continue:
@@ -1903,6 +1905,8 @@ func (f *Formatter) isMultilineNode(node Node) bool {
 		return wasMultiline(n)
 	case *Case:
 		return true
+	case *SelectExpr:
+		return true
 	case *FunCall:
 		// Check if it's a chain that should be split
 		return f.isChainedCall(n) && f.estimateLength(n) > maxLineLength-f.col
@@ -2930,6 +2934,49 @@ func (f *Formatter) formatCase(c *Case) {
 	f.write("}")
 }
 
+func (f *Formatter) formatSelectExpr(s *SelectExpr) {
+	f.write("select {")
+	if s.Loc != nil {
+		f.nl(s.Loc.Line)
+	} else {
+		f.newline()
+	}
+	f.indented(func() {
+		if len(s.Arms) > 0 && s.Arms[0].Loc != nil {
+			f.lastLine = s.Arms[0].Loc.Line - 1
+		}
+		for _, arm := range s.Arms {
+			if arm.Loc != nil {
+				f.emitCommentsBeforeNode(arm.Loc.Line, false)
+				f.lastLine = arm.Loc.Line
+			}
+			f.writeIndent()
+			if arm.IsElse {
+				f.write("else")
+			} else {
+				if arm.Binding != "" {
+					f.write(arm.Binding)
+					f.write(" = ")
+				}
+				f.formatNode(arm.Guard)
+				if arm.Cond != nil {
+					f.write(" if (")
+					f.formatNode(arm.Cond)
+					f.write(")")
+				}
+			}
+			f.write(" => ")
+			f.formatNode(arm.Body)
+			if arm.Loc != nil {
+				f.emitTrailingComment(arm.Loc.Line)
+			}
+			f.newline()
+		}
+	})
+	f.writeIndent()
+	f.write("}")
+}
+
 func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 	f.formatRescueOperand(t)
 
@@ -3034,7 +3081,7 @@ func rescueOperandSafe(n Node) bool {
 		return false
 	}
 	switch n.(type) {
-	case *Default, *RescueExpr, *Conditional, *Case, *Raise, *Return,
+	case *Default, *RescueExpr, *Conditional, *Case, *SelectExpr, *Raise, *Return,
 		*Break, *Continue, *TypeHint, *Reassignment:
 		return false
 	}
