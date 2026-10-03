@@ -99,6 +99,12 @@ func (t *AppliedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 					return nil, err
 				}
 				return MapType{val}, nil
+			case "Task":
+				res, err := t.singleArg(ctx, env, fresh, "Task")
+				if err != nil {
+					return nil, err
+				}
+				return TaskType{res}, nil
 			}
 		}
 		return nil, fmt.Errorf("type %s does not take type arguments", t.Base.Name)
@@ -232,6 +238,63 @@ func (t MapType) Supertypes() []hm.Type {
 	for i, t := range innerSupers {
 		// Generalize into map type for each supertype
 		innerSupers[i] = MapType{t}
+	}
+	return innerSupers
+}
+
+// TaskType is the type of a running computation started by `async { }` whose
+// result has the wrapped type. Like MapType it has a single type parameter,
+// so structural unification (hm.assignable via Types()) needs no special case.
+type TaskType struct {
+	hm.Type
+}
+
+var _ hm.Type = TaskType{}
+
+func (t TaskType) Name() string {
+	return fmt.Sprintf("Task[%s]", t.Type)
+}
+
+func (t TaskType) Apply(subs hm.Subs) hm.Substitutable {
+	return TaskType{t.Type.Apply(subs).(hm.Type)}
+}
+
+func (t TaskType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return TaskType{normalized}, nil
+}
+
+func (t TaskType) Types() hm.Types {
+	ts := hm.BorrowTypes(1)
+	ts[0] = t.Type
+	return ts
+}
+
+func (t TaskType) String() string {
+	return fmt.Sprintf("Task[%s]", t.Type)
+}
+
+func (t TaskType) Format(s fmt.State, c rune) {
+	_, _ = fmt.Fprintf(s, "Task[%"+string(c)+"]", t.Type)
+}
+
+func (t TaskType) Eq(other hm.Type) bool {
+	if ot, ok := other.(TaskType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
+// Supertypes lifts the result type's supertypes, so a Task[Tick!] widens to a
+// Task[Wake!] when Tick is a member of union Wake — which lets a list literal
+// of differently-typed tasks unify to [Task[Wake!]!]! for `race`.
+func (t TaskType) Supertypes() []hm.Type {
+	innerSupers := t.Type.Supertypes()
+	for i, t := range innerSupers {
+		innerSupers[i] = TaskType{t}
 	}
 	return innerSupers
 }

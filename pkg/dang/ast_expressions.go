@@ -828,6 +828,30 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return methodType, nil
 		}
 
+		// Methods on tasks (`t.await`, `t.cancel`, `t.timeout(d)`): the
+		// result type substitutes for 'a', as a list's element type does.
+		if taskRes, nullableTask, ok := taskReceiverResult(lt); ok {
+			def, found := LookupMethod(TaskTypeModule, d.Field.Name)
+			if !found {
+				tv := fresh.Fresh()
+				d.SetInferredType(tv)
+				return tv, fmt.Errorf("task does not have method %q", d.Field.Name)
+			}
+			methodType := instantiateListMethod(def, taskRes)
+			if d.AutoCall {
+				var err error
+				methodType, _, err = autoCallFnType(methodType)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if nullableTask {
+				d.NullableReceiver = true
+			}
+			d.SetInferredType(methodType)
+			return methodType, nil
+		}
+
 		// GraphQL object lists are not directly iterable: callers must first
 		// select fields on the elements (e.g. value.{id}) to convert them
 		// into a regular list. Detect this case before falling through to
@@ -1084,6 +1108,17 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 					}
 				}
 				return nil, fmt.Errorf("map value does not have method %q", d.Field.Name)
+
+			case TaskValue:
+				methodKey := GetMethodKey(TaskTypeModule, d.Field.Name)
+				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
+					if builtinFn, ok := method.(BuiltinFunction); ok {
+						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					}
+				}
+				return nil, fmt.Errorf("task value does not have method %q", d.Field.Name)
 
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
@@ -3411,6 +3446,12 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 		fnType.SetBlock(blockType)
 	}
 
+	// Task-list combinators (`race`, `awaitAll`, `eachCompleted`) name the
+	// element's result type as 't': for a [Task[X]] receiver, 't' is X.
+	if res, ok := taskResultType(elemType); ok {
+		return substituteTypeVar(fnType, 't', res)
+	}
+
 	return fnType
 }
 
@@ -3433,6 +3474,8 @@ func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Ty
 		return ListType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case MapType:
 		return MapType{Type: substituteTypeVar(typ.Type, tv, replacement)}
+	case TaskType:
+		return TaskType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case *hm.FunctionType:
 		newFnType := hm.NewFnType(
 			substituteTypeVar(typ.Arg(), tv, replacement),

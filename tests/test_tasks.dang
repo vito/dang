@@ -1,0 +1,107 @@
+# Structured concurrency: async { } starts a Task bound to the enclosing task
+# scope; combinators are ordinary methods on tasks and lists of tasks.
+
+# async/await
+let t = async { 20 + 22 }
+assert { t.await == 42 }
+assert { t.isDone }
+
+# Tasks run concurrently: two 50ms sleeps finish in ~50ms, not 100ms. (Not
+# timed here; the losers below would hang for an hour if they weren't.)
+let both = [async { sleep("50ms"); 1 }, async { sleep("50ms"); 2 }].awaitAll
+assert { both == [1, 2] }
+
+# race: the first to finish wins; the loser (an hour-long sleep) is cancelled
+# and awaited, so this line returns in milliseconds.
+let winner = [async { sleep("1h"); "slow" }, async { sleep("10ms"); "fast" }].race
+assert { winner == "fast" }
+
+# timeout: null when the deadline wins; the task is cancelled.
+let late = async { sleep("1h"); 1 }.timeout("10ms")
+assert { late == null }
+let early = async { 7 }.timeout("1h")
+assert { early == 7 }
+
+# Errors surface where the task is awaited, and are rescuable there.
+let boom = async { raise "boom" }
+assert { (boom.await rescue "rescued") == "rescued" }
+
+# race: an error that finishes first wins too.
+let failed = [async { raise "first" }, async { sleep("1h"); "never" }].race rescue "caught"
+assert { failed == "caught" }
+
+# awaitAll fails fast: the failure cancels the hour-long sibling.
+let allFailed = [async { sleep("1h"); 1 }, async { raise "bad" }].awaitAll rescue [0]
+assert { allFailed == [0] }
+
+# A tasks { } scope cancels un-awaited tasks on exit: this does not take an hour.
+let scoped = tasks {
+  async { sleep("1h") }
+  "done"
+}
+assert { scoped == "done" }
+
+# ...and a failure nobody awaited is raised when the scope exits, rather than
+# vanishing.
+let unobserved = tasks {
+  async { raise "ignored?" }
+  sleep("20ms")
+  "finished"
+} rescue "not ignored"
+assert { unobserved == "not ignored" }
+
+# Writes inside a task stay private to it, like a {{ }} field.
+let counter = 0
+async { counter = 99 }.await
+assert { counter == 0 }
+
+# Tasks are values: helpers can return them and callers compose them.
+after(d: String!, v: Int!): Task[Int!]! {
+  async { sleep(d); v }
+}
+assert { [after("1h", 1), after("10ms", 2)].race == 2 }
+
+# awaitAny returns the finished task and leaves the others running, so a loop
+# can keep long waits in flight across iterations.
+let pending = [after("30ms", 3), after("10ms", 1), after("20ms", 2)]
+let order = [] :: [Int!]!
+loop {
+  if (pending.isEmpty) { break }
+  let done = pending.awaitAny
+  order += [done.await]
+  pending = pending.filter { p => p != done }
+}
+assert { order == [1, 2, 3] }
+
+# eachCompleted visits values in completion order; break stops early.
+let seen = [] :: [Int!]!
+[after("30ms", 3), after("10ms", 1), after("20ms", 2)].eachCompleted { v =>
+  seen += [v]
+  if (v == 2) { break }
+}
+assert { seen == [1, 2] }
+
+# Heterogeneous races through a declared union: each task tags its result,
+# and a case in the caller's own control flow dispatches.
+type Tick { n: Int! }
+type Msg { text: String! }
+union Wake = Tick | Msg
+
+let log = [] :: [String!]!
+let n = 0
+loop {
+  let wake = [
+    async { sleep("10ms"); Tick(n) },
+    async { if (n < 2) { sleep("1h") }; Msg("stop") },
+  ].race
+  # (Type-pattern arms run in a sealed scope, so compute a value in the arm
+  # and update loop state outside it.)
+  let line = case (wake) {
+    t: Tick => "tick " + toString(t.n)
+    m: Msg => m.text
+  }
+  log += [line]
+  if (line == "stop") { break }
+  n += 1
+}
+assert { log == ["tick 0", "tick 1", "stop"] }

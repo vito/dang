@@ -2484,7 +2484,10 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Now evaluate the program
 	valueScope := NewValueScope(typeScope)
 
+	// The program is the root task scope: no task outlives it.
+	ctx, closeTasks := ContextWithTaskScope(ctx)
 	result, err := EvalNodeWithContext(ctx, valueScope, node, evalCtx)
+	err = closeTasks(err)
 	if err != nil {
 		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
 			return translated
@@ -2803,7 +2806,11 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 	// Per-file evaluation matches type inference: each file's imports populate
 	// a fresh per-file env, composed with the shared valueScope so cross-file
 	// declarations stay visible to siblings while imported names don't leak.
-	if err := evaluateDirectoryFiles(ctx, blocks, valueScope); err != nil {
+	// Module initialization is a root task scope. Hosts that call into the
+	// returned scope later (e.g. one module function per request) open their
+	// own with ContextWithTaskScope.
+	ctx, closeTasks := ContextWithTaskScope(ctx)
+	if err := closeTasks(evaluateDirectoryFiles(ctx, blocks, valueScope)); err != nil {
 		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
 			return nil, translated
 		}
