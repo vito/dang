@@ -306,6 +306,11 @@ func valuesEqual(left, right Value) bool {
 			}
 			return true
 		}
+	case TaskValue:
+		// Identity: two task values are equal when they are the same task.
+		if r, ok := right.(TaskValue); ok {
+			return l.st == r.st
+		}
 	case *Object:
 		// Value semantics for anonymous records, nominal identity for named
 		// types. See objectsEqual and issue #150.
