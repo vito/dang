@@ -375,8 +375,10 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() {
 				if matchesType(exprVal, clause.resolvedMemberType) {
-					// Create a child scope with the binding
-					childScope := scope.Derive(true)
+					// Create a child scope with the binding. It is unsealed, like
+					// a value clause's scope, so the clause can update enclosing
+					// bindings (e.g. loop state) the same way.
+					childScope := scope.Derive(false)
 					childScope.Bind(clause.Binding, exprVal, PrivateVisibility)
 					return EvalNode(ctx, childScope, clause.Expr)
 				}
