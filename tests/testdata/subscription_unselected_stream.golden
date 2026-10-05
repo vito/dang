@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot call stream method "each" directly on a stream of GraphQL objects; select the fields each event should carry first, e.g. stream.{{id}}.each
+  [2m[34m--> errors/subscription_unselected_stream.dang:6:1[0m
+ [2m    |[0m
+ [2m  4 | # what the operation selected, so, as with a list of objects, the stream has[0m
+ [2m  5 | # to be given a selection before it can be consumed.[0m
+ [2m[34m[1m  6 | [0mSubscription.ticks(n: 1).each { t => t }
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

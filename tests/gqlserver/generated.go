@@ -40,6 +40,8 @@ type Config struct {
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Subscription() SubscriptionResolver
+	Tick() TickResolver
 	User() UserResolver
 }
 
@@ -49,6 +51,13 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	MessageEvent struct {
+		Author func(childComplexity int) int
+		ID     func(childComplexity int) int
+		Seq    func(childComplexity int) int
+		Text   func(childComplexity int) int
+	}
+
 	Mutation struct {
 		CreateUser func(childComplexity int, input CreateUserInput) int
 		DeleteUser func(childComplexity int, id string) int
@@ -76,39 +85,40 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AddBigInt         func(childComplexity int, a string, b string) int
-		AverageRating     func(childComplexity int) int
-		EchoFloat         func(childComplexity int, value float64) int
-		FavoriteNodeID    func(childComplexity int) int
-		FavoriteUserID    func(childComplexity int) int
-		FavoriteUserIDs   func(childComplexity int) int
-		FetchMultipleURLs func(childComplexity int, urls []string) int
-		FetchURL          func(childComplexity int, url string) int
-		FetchURLNullable  func(childComplexity int, url *string) int
-		FormatTimestamp   func(childComplexity int, ts string) int
-		Hello             func(childComplexity int, name string) int
-		Homepage          func(childComplexity int) int
-		Node              func(childComplexity int, id string) int
-		NodeLabel         func(childComplexity int, node string) int
-		Nodes             func(childComplexity int) int
-		Now               func(childComplexity int) int
-		ParseJSON         func(childComplexity int, data string) int
-		PostTitles        func(childComplexity int) int
-		Posts             func(childComplexity int, authorID *string, limit *int) int
-		PrimaryUser       func(childComplexity int) int
-		Search            func(childComplexity int, query string) int
-		SearchConnection  func(childComplexity int, query string) int
-		SecondaryUser     func(childComplexity int) int
-		ServerInfo        func(childComplexity int) int
-		SortedUsers       func(childComplexity int, sort UserSort) int
-		Status            func(childComplexity int) int
-		Timestamped       func(childComplexity int) int
-		User              func(childComplexity int, id string) int
-		UserName          func(childComplexity int, user string) int
-		UserNames         func(childComplexity int, users []string) int
-		UserProfile       func(childComplexity int, userID *string, includeStats *bool) int
-		Users             func(childComplexity int) int
-		UsersByStatus     func(childComplexity int, status Status) int
+		ActiveSubscriptions func(childComplexity int) int
+		AddBigInt           func(childComplexity int, a string, b string) int
+		AverageRating       func(childComplexity int) int
+		EchoFloat           func(childComplexity int, value float64) int
+		FavoriteNodeID      func(childComplexity int) int
+		FavoriteUserID      func(childComplexity int) int
+		FavoriteUserIDs     func(childComplexity int) int
+		FetchMultipleURLs   func(childComplexity int, urls []string) int
+		FetchURL            func(childComplexity int, url string) int
+		FetchURLNullable    func(childComplexity int, url *string) int
+		FormatTimestamp     func(childComplexity int, ts string) int
+		Hello               func(childComplexity int, name string) int
+		Homepage            func(childComplexity int) int
+		Node                func(childComplexity int, id string) int
+		NodeLabel           func(childComplexity int, node string) int
+		Nodes               func(childComplexity int) int
+		Now                 func(childComplexity int) int
+		ParseJSON           func(childComplexity int, data string) int
+		PostTitles          func(childComplexity int) int
+		Posts               func(childComplexity int, authorID *string, limit *int) int
+		PrimaryUser         func(childComplexity int) int
+		Search              func(childComplexity int, query string) int
+		SearchConnection    func(childComplexity int, query string) int
+		SecondaryUser       func(childComplexity int) int
+		ServerInfo          func(childComplexity int) int
+		SortedUsers         func(childComplexity int, sort UserSort) int
+		Status              func(childComplexity int) int
+		Timestamped         func(childComplexity int) int
+		User                func(childComplexity int, id string) int
+		UserName            func(childComplexity int, user string) int
+		UserNames           func(childComplexity int, users []string) int
+		UserProfile         func(childComplexity int, userID *string, includeStats *bool) int
+		Users               func(childComplexity int) int
+		UsersByStatus       func(childComplexity int, status Status) int
 	}
 
 	SearchResultConnection struct {
@@ -126,6 +136,21 @@ type ComplexityRoot struct {
 		TotalUsers func(childComplexity int) int
 		Uptime     func(childComplexity int) int
 		Version    func(childComplexity int) int
+	}
+
+	StateEvent struct {
+		Seq    func(childComplexity int) int
+		Status func(childComplexity int) int
+	}
+
+	Subscription struct {
+		Events func(childComplexity int, after *int) int
+		Ticks  func(childComplexity int, n int, every *string, stall *string, failAt *int) int
+	}
+
+	Tick struct {
+		Label func(childComplexity int) int
+		N     func(childComplexity int) int
 	}
 
 	User struct {
@@ -188,6 +213,14 @@ type QueryResolver interface {
 	SortedUsers(ctx context.Context, sort UserSort) ([]*User, error)
 	AverageRating(ctx context.Context) (float64, error)
 	EchoFloat(ctx context.Context, value float64) (float64, error)
+	ActiveSubscriptions(ctx context.Context) (int, error)
+}
+type SubscriptionResolver interface {
+	Ticks(ctx context.Context, n int, every *string, stall *string, failAt *int) (<-chan *Tick, error)
+	Events(ctx context.Context, after *int) (<-chan Event, error)
+}
+type TickResolver interface {
+	Label(ctx context.Context, obj *Tick) (string, error)
 }
 type UserResolver interface {
 	Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error)
@@ -213,6 +246,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "MessageEvent.author":
+		if e.complexity.MessageEvent.Author == nil {
+			break
+		}
+
+		return e.complexity.MessageEvent.Author(childComplexity), true
+	case "MessageEvent.id":
+		if e.complexity.MessageEvent.ID == nil {
+			break
+		}
+
+		return e.complexity.MessageEvent.ID(childComplexity), true
+	case "MessageEvent.seq":
+		if e.complexity.MessageEvent.Seq == nil {
+			break
+		}
+
+		return e.complexity.MessageEvent.Seq(childComplexity), true
+	case "MessageEvent.text":
+		if e.complexity.MessageEvent.Text == nil {
+			break
+		}
+
+		return e.complexity.MessageEvent.Text(childComplexity), true
 
 	case "Mutation.createUser":
 		if e.complexity.Mutation.CreateUser == nil {
@@ -317,6 +375,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.PostConnection.Posts(childComplexity), true
 
+	case "Query.activeSubscriptions":
+		if e.complexity.Query.ActiveSubscriptions == nil {
+			break
+		}
+
+		return e.complexity.Query.ActiveSubscriptions(childComplexity), true
 	case "Query.addBigInt":
 		if e.complexity.Query.AddBigInt == nil {
 			break
@@ -662,6 +726,55 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.ServerInfo.Version(childComplexity), true
 
+	case "StateEvent.seq":
+		if e.complexity.StateEvent.Seq == nil {
+			break
+		}
+
+		return e.complexity.StateEvent.Seq(childComplexity), true
+	case "StateEvent.status":
+		if e.complexity.StateEvent.Status == nil {
+			break
+		}
+
+		return e.complexity.StateEvent.Status(childComplexity), true
+
+	case "Subscription.events":
+		if e.complexity.Subscription.Events == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_events_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Subscription.Events(childComplexity, args["after"].(*int)), true
+	case "Subscription.ticks":
+		if e.complexity.Subscription.Ticks == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_ticks_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Subscription.Ticks(childComplexity, args["n"].(int), args["every"].(*string), args["stall"].(*string), args["failAt"].(*int)), true
+
+	case "Tick.label":
+		if e.complexity.Tick.Label == nil {
+			break
+		}
+
+		return e.complexity.Tick.Label(childComplexity), true
+	case "Tick.n":
+		if e.complexity.Tick.N == nil {
+			break
+		}
+
+		return e.complexity.Tick.N(childComplexity), true
+
 	case "User.age":
 		if e.complexity.User.Age == nil {
 			break
@@ -807,6 +920,23 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			ctx = graphql.WithUnmarshalerMap(ctx, inputUnmarshalMap)
 			data := ec._Mutation(ctx, opCtx.Operation.SelectionSet)
 			var buf bytes.Buffer
+			data.MarshalGQL(&buf)
+
+			return &graphql.Response{
+				Data: buf.Bytes(),
+			}
+		}
+	case ast.Subscription:
+		next := ec._Subscription(ctx, opCtx.Operation.SelectionSet)
+
+		var buf bytes.Buffer
+		return func(ctx context.Context) *graphql.Response {
+			buf.Reset()
+			data := next(ctx)
+
+			if data == nil {
+				return nil
+			}
 			data.MarshalGQL(&buf)
 
 			return &graphql.Response{
@@ -1164,6 +1294,43 @@ func (ec *executionContext) field_Query_usersByStatus_args(ctx context.Context, 
 	return args, nil
 }
 
+func (ec *executionContext) field_Subscription_events_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "after", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Subscription_ticks_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "n", ec.unmarshalNInt2int)
+	if err != nil {
+		return nil, err
+	}
+	args["n"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "every", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["every"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "stall", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["stall"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "failAt", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["failAt"] = arg3
+	return args, nil
+}
+
 func (ec *executionContext) field_User_posts_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1241,6 +1408,140 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _MessageEvent_id(ctx context.Context, field graphql.CollectedField, obj *MessageEvent) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_MessageEvent_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_MessageEvent_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MessageEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MessageEvent_seq(ctx context.Context, field graphql.CollectedField, obj *MessageEvent) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_MessageEvent_seq,
+		func(ctx context.Context) (any, error) {
+			return obj.Seq, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_MessageEvent_seq(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MessageEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MessageEvent_text(ctx context.Context, field graphql.CollectedField, obj *MessageEvent) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_MessageEvent_text,
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_MessageEvent_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MessageEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MessageEvent_author(ctx context.Context, field graphql.CollectedField, obj *MessageEvent) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_MessageEvent_author,
+		func(ctx context.Context) (any, error) {
+			return obj.Author, nil
+		},
+		nil,
+		ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐUser,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_MessageEvent_author(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MessageEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
+			case "age":
+				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
+			case "posts":
+				return ec.fieldContext_User_posts(ctx, field)
+			case "sync":
+				return ec.fieldContext_User_sync(ctx, field)
+			case "alwaysFails":
+				return ec.fieldContext_User_alwaysFails(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _Mutation_createUser(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -3097,6 +3398,35 @@ func (ec *executionContext) fieldContext_Query_echoFloat(ctx context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_activeSubscriptions(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_activeSubscriptions,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().ActiveSubscriptions(ctx)
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_activeSubscriptions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3436,6 +3766,210 @@ func (ec *executionContext) fieldContext_ServerInfo_totalPosts(_ context.Context
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StateEvent_seq(ctx context.Context, field graphql.CollectedField, obj *StateEvent) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_StateEvent_seq,
+		func(ctx context.Context) (any, error) {
+			return obj.Seq, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_StateEvent_seq(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StateEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StateEvent_status(ctx context.Context, field graphql.CollectedField, obj *StateEvent) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_StateEvent_status,
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		ec.marshalNStatus2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐStatus,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_StateEvent_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StateEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Status does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Subscription_ticks(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
+	return graphql.ResolveFieldStream(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Subscription_ticks,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Subscription().Ticks(ctx, fc.Args["n"].(int), fc.Args["every"].(*string), fc.Args["stall"].(*string), fc.Args["failAt"].(*int))
+		},
+		nil,
+		ec.marshalNTick2ᚖgithubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐTick,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Subscription_ticks(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Subscription",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "n":
+				return ec.fieldContext_Tick_n(ctx, field)
+			case "label":
+				return ec.fieldContext_Tick_label(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Tick", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Subscription_ticks_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Subscription_events(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
+	return graphql.ResolveFieldStream(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Subscription_events,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Subscription().Events(ctx, fc.Args["after"].(*int))
+		},
+		nil,
+		ec.marshalNEvent2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐEvent,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Subscription_events(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Subscription",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Subscription_events_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Tick_n(ctx context.Context, field graphql.CollectedField, obj *Tick) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Tick_n,
+		func(ctx context.Context) (any, error) {
+			return obj.N, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Tick_n(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Tick",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Tick_label(ctx context.Context, field graphql.CollectedField, obj *Tick) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Tick_label,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Tick().Label(ctx, obj)
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Tick_label(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Tick",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5449,6 +5983,29 @@ func (ec *executionContext) unmarshalInputUserSort(ctx context.Context, obj any)
 
 // region    ************************** interface.gotpl ***************************
 
+func (ec *executionContext) _Event(ctx context.Context, sel ast.SelectionSet, obj Event) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case MessageEvent:
+		return ec._MessageEvent(ctx, sel, &obj)
+	case *MessageEvent:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MessageEvent(ctx, sel, obj)
+	case StateEvent:
+		return ec._StateEvent(ctx, sel, &obj)
+	case *StateEvent:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._StateEvent(ctx, sel, obj)
+	default:
+		panic(fmt.Errorf("unexpected type %T", obj))
+	}
+}
+
 func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj Node) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -5460,6 +6017,13 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._Post(ctx, sel, obj)
+	case MessageEvent:
+		return ec._MessageEvent(ctx, sel, &obj)
+	case *MessageEvent:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MessageEvent(ctx, sel, obj)
 	case User:
 		return ec._User(ctx, sel, &obj)
 	case *User:
@@ -5514,6 +6078,60 @@ func (ec *executionContext) _Timestamped(ctx context.Context, sel ast.SelectionS
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
+
+var messageEventImplementors = []string{"MessageEvent", "Event", "Node"}
+
+func (ec *executionContext) _MessageEvent(ctx context.Context, sel ast.SelectionSet, obj *MessageEvent) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, messageEventImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MessageEvent")
+		case "id":
+			out.Values[i] = ec._MessageEvent_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "seq":
+			out.Values[i] = ec._MessageEvent_seq(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "text":
+			out.Values[i] = ec._MessageEvent_text(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "author":
+			out.Values[i] = ec._MessageEvent_author(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
 
 var mutationImplementors = []string{"Mutation"}
 
@@ -6459,6 +7077,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "activeSubscriptions":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_activeSubscriptions(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -6609,6 +7249,147 @@ func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var stateEventImplementors = []string{"StateEvent", "Event"}
+
+func (ec *executionContext) _StateEvent(ctx context.Context, sel ast.SelectionSet, obj *StateEvent) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, stateEventImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StateEvent")
+		case "seq":
+			out.Values[i] = ec._StateEvent_seq(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "status":
+			out.Values[i] = ec._StateEvent_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var subscriptionImplementors = []string{"Subscription"}
+
+func (ec *executionContext) _Subscription(ctx context.Context, sel ast.SelectionSet) func(ctx context.Context) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, subscriptionImplementors)
+	ctx = graphql.WithFieldContext(ctx, &graphql.FieldContext{
+		Object: "Subscription",
+	})
+	if len(fields) != 1 {
+		ec.Errorf(ctx, "must subscribe to exactly one stream")
+		return nil
+	}
+
+	switch fields[0].Name {
+	case "ticks":
+		return ec._Subscription_ticks(ctx, fields[0])
+	case "events":
+		return ec._Subscription_events(ctx, fields[0])
+	default:
+		panic("unknown field " + strconv.Quote(fields[0].Name))
+	}
+}
+
+var tickImplementors = []string{"Tick"}
+
+func (ec *executionContext) _Tick(ctx context.Context, sel ast.SelectionSet, obj *Tick) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, tickImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Tick")
+		case "n":
+			out.Values[i] = ec._Tick_n(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "label":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Tick_label(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7223,6 +8004,16 @@ func (ec *executionContext) unmarshalNCreateUserInput2githubᚗcomᚋvitoᚋdang
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) marshalNEvent2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐEvent(ctx context.Context, sel ast.SelectionSet, v Event) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Event(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v any) (float64, error) {
 	res, err := graphql.UnmarshalFloatContext(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -7649,6 +8440,20 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	}
 
 	return ret
+}
+
+func (ec *executionContext) marshalNTick2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐTick(ctx context.Context, sel ast.SelectionSet, v Tick) graphql.Marshaler {
+	return ec._Tick(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNTick2ᚖgithubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐTick(ctx context.Context, sel ast.SelectionSet, v *Tick) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Tick(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNTimestamp2string(ctx context.Context, v any) (string, error) {

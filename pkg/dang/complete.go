@@ -218,6 +218,8 @@ func builtinModuleFor(t hm.Type) *Type {
 		return ListTypeModule
 	case MapType:
 		return MapTypeModule
+	case StreamType:
+		return StreamTypeModule
 	}
 	if mod, ok := t.(*Type); ok {
 		switch mod {

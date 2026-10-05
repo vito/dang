@@ -15,7 +15,11 @@ import (
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
+	"github.com/99designs/gqlgen/graphql/handler/lru"
+	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/introspection"
 )
@@ -37,7 +41,7 @@ func StartServer() (*Server, error) {
 	port := listener.Addr().(*net.TCPAddr).Port
 
 	// Create GraphQL handler
-	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: &Resolver{}}))
+	srv := newHandler()
 
 	// Dang asks GraphQL servers for applied directive metadata using Dagger's
 	// "extended introspection" fields. gqlgen only implements the standard
@@ -72,6 +76,24 @@ func StartServer() (*Server, error) {
 	}()
 
 	return server, nil
+}
+
+// newHandler builds gqlgen's default server with the graphql-sse transport
+// (distinct connections mode) in front: a POST carrying
+// `Accept: text/event-stream` is answered as an SSE stream of `next` events
+// and a final `complete`, which is how Dang sends subscription operations.
+// Transports are tried in order and POST would claim the same request, so SSE
+// has to come first.
+func newHandler() *handler.Server {
+	srv := handler.New(NewExecutableSchema(Config{Resolvers: &Resolver{}}))
+	srv.AddTransport(transport.SSE{})
+	srv.AddTransport(transport.Options{})
+	srv.AddTransport(transport.GET{})
+	srv.AddTransport(transport.POST{})
+	srv.AddTransport(transport.MultipartForm{})
+	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
+	srv.Use(extension.Introspection{})
+	return srv
 }
 
 // loadIntrospectionSchema converts this test server's SDL into Dang's

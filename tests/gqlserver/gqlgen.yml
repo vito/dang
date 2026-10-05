@@ -15,6 +15,10 @@ resolver:
   layout: single-file
   filename: resolvers.go
 
+models:
+  Tick:
+    model: github.com/vito/dang/v2/tests/gqlserver.Tick
+
 directives:
   expectedType:
     skip_runtime: true

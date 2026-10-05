@@ -127,6 +127,8 @@ func (r *queryResolver) NodeLabel(ctx context.Context, node string) (string, err
 		return "User:" + n.Name, nil
 	case *Post:
 		return "Post:" + n.Title, nil
+	case *MessageEvent:
+		return "MessageEvent:" + n.Text, nil
 	default:
 		return "", fmt.Errorf("node not found")
 	}
@@ -385,6 +387,73 @@ func (r *queryResolver) EchoFloat(ctx context.Context, value float64) (float64, 
 	return value, nil
 }
 
+// ActiveSubscriptions is the resolver for the activeSubscriptions field.
+func (r *queryResolver) ActiveSubscriptions(ctx context.Context) (int, error) {
+	// A client-side cancel reaches the resolver goroutine asynchronously;
+	// give it a moment to wind down before answering.
+	deadline := time.Now().Add(2 * time.Second)
+	for activeSubscriptions.Load() != 0 && time.Now().Before(deadline) {
+		if !sleepCtx(ctx, 5*time.Millisecond) {
+			break
+		}
+	}
+	return int(activeSubscriptions.Load()), nil
+}
+
+// Ticks is the resolver for the ticks field.
+func (r *subscriptionResolver) Ticks(ctx context.Context, n int, every *string, stall *string, failAt *int) (<-chan *Tick, error) {
+	if n < 0 {
+		return nil, fmt.Errorf("n must be non-negative, got %d", n)
+	}
+	interval, err := parseOptionalDuration("every", every)
+	if err != nil {
+		return nil, err
+	}
+	hold, err := parseOptionalDuration("stall", stall)
+	if err != nil {
+		return nil, err
+	}
+	return stream(ctx, func(send func(*Tick) bool) {
+		for i := 0; i < n; i++ {
+			if i > 0 && !sleepCtx(ctx, interval) {
+				return
+			}
+			if !send(&Tick{N: i, fail: failAt != nil && *failAt == i}) {
+				return
+			}
+		}
+		sleepCtx(ctx, hold)
+	}), nil
+}
+
+// Events is the resolver for the events field.
+func (r *subscriptionResolver) Events(ctx context.Context, after *int) (<-chan Event, error) {
+	cursor := 0
+	if after != nil {
+		cursor = *after
+	}
+	return stream(ctx, func(send func(Event) bool) {
+		sent := 0
+		for _, ev := range eventLog {
+			if ev.GetSeq() <= cursor {
+				continue
+			}
+			if sent == eventsPerConnection || !send(ev) {
+				return
+			}
+			sent++
+		}
+	}), nil
+}
+
+// Label is the resolver for the label field.
+func (r *tickResolver) Label(ctx context.Context, obj *Tick) (string, error) {
+	if obj.fail {
+		return "", fmt.Errorf("tick %d failed", obj.N)
+	}
+	return fmt.Sprintf("tick %d", obj.N), nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user
@@ -421,11 +490,19 @@ func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// Subscription returns SubscriptionResolver implementation.
+func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
+
+// Tick returns TickResolver implementation.
+func (r *Resolver) Tick() TickResolver { return &tickResolver{r} }
+
 // User returns UserResolver implementation.
 func (r *Resolver) User() UserResolver { return &userResolver{r} }
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }
+type tickResolver struct{ *Resolver }
 type userResolver struct{ *Resolver }
 
 // !!! WARNING !!!

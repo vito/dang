@@ -1,0 +1,155 @@
+import Test
+
+# Subscriptions: a subscription root field names a cold stream; nothing is
+# sent until a terminal (.each, .first, .toList) consumes it. Events are
+# GraphQL objects, so, as with a list of objects, the stream has to be given
+# a selection (.{{ }}) first: that selection is the operation's selection set,
+# and each event arrives as the selected record. See
+# docs/proposals/subscriptions.md.
+
+# --- each: the loop -------------------------------------------------------
+
+let seen = [] :: [Int!]!
+Subscription.ticks(n: 3).{{n}}.each { t => seen += [t.n] }
+assert { seen == [0, 1, 2] }
+
+let labels = [] :: [String!]!
+Subscription.ticks(n: 2).{{label}}.each { t => labels += [t.label] }
+assert { labels == ["tick 0", "tick 1"] }
+
+# a completed .each yields null; break v yields v
+assert { Subscription.ticks(n: 2).{{n}}.each { t => t.n } == null }
+let found = Subscription.ticks(n: 10).{{n}}.each { t =>
+  if (t.n == 3) {
+    break t.n * 100
+  }
+}
+assert { found == 300 }
+
+# continue skips to the next event
+let odds = [] :: [Int!]!
+Subscription.ticks(n: 5).{{n}}.each { t =>
+  if (t.n % 2 == 0) {
+    continue
+  }
+  odds += [t.n]
+}
+assert { odds == [1, 3] }
+
+# return leaves the enclosing function, cancelling the stream on the way
+firstAbove(limit: Int!): Int {
+  Subscription.ticks(n: 10).{{n}}.each { t =>
+    if (t.n > limit) {
+      return t.n
+    }
+  }
+  null
+}
+assert { firstAbove(4) == 5 }
+assert { firstAbove(100) == null }
+
+# --- first / toList / take ---------------------------------------------------
+
+assert { Subscription.ticks(n: 3).{{n}}.first.n == 0 }
+assert { Subscription.ticks(n: 0).{{n}}.first == null }
+
+assert { Subscription.ticks(n: 3).{{n}}.toList.length == 3 }
+assert { Subscription.ticks(n: 100).{{n}}.take(3).toList.length == 3 }
+assert { Subscription.ticks(n: 2).{{n}}.take(5).toList.length == 2 }
+
+# a stream is a cold recipe: consuming it twice subscribes twice
+let threeTicks = Subscription.ticks(n: 3).{{n, label}}
+assert { threeTicks.toList.length == 3 }
+assert { threeTicks.toList.map { t => t.label } == ["tick 0", "tick 1", "tick 2"] }
+
+# the selection is the operation's selection set: only what was selected
+# arrives, and aliases and nested selections work as on a query
+let aliased = Subscription.ticks(n: 1).{{num: n}}.first
+assert { aliased.num == 0 }
+
+# --- errors -----------------------------------------------------------------
+
+# the server rejects the subscription before the first event
+let rejected = Subscription.ticks(n: -1).{{n}}.toList rescue { e: GraphQLError => e.message }
+assert { rejected == "n must be non-negative, got -1" }
+
+# an event carrying errors fails the terminal, after the events before it
+let before = [] :: [Int!]!
+let failed = Subscription.ticks(n: 5, failAt: 2).{{n, label}}.each { t => before += [t.n] } rescue { e: GraphQLError => e.message }
+assert { failed == "tick 2 failed" }
+assert { before == [0, 1] }
+
+# --- cancellation -------------------------------------------------------------
+
+# A stream that would stay open for a minute: leaving the loop early cancels
+# the subscription instead of waiting it out.
+let quick = Subscription.ticks(n: 2, stall: "60s").{{n}}.each { t =>
+  if (t.n == 1) {
+    break "broke out"
+  }
+}
+assert { quick == "broke out" }
+assert { Subscription.ticks(n: 1, stall: "60s").{{n}}.first.n == 0 }
+assert { Subscription.ticks(n: 1000, every: "10ms").{{n}}.take(2).toList.length == 2 }
+
+# ...and the cancel reaches the server: no resolver is left running.
+assert { activeSubscriptions == 0 }
+
+# --- dispatching on an interface-typed event ----------------------------------
+
+# Inline fragments say what each member carries; the event arrives as that
+# member, so case type patterns dispatch on it.
+let texts = [] :: [String!]!
+let statuses = [] :: [Status!]!
+Subscription.events.{{
+  ... on MessageEvent {{ text }}
+  ... on StateEvent {{ status }}
+}}.each { ev =>
+  case (ev) {
+    m: MessageEvent => { texts += [m.text] }
+    s: StateEvent => { statuses += [s.status] }
+  }
+}
+assert { texts == ["hello"] }
+assert { statuses == [Status.ACTIVE] }
+
+# Nested selections reach through object-typed fields, and an event's `id` is
+# what to pass on wherever its ID is expected: pushed events have no chain.
+let author = Subscription.events.{{
+  ... on MessageEvent {{ id, author.{{name}} }}
+  ... on StateEvent {{ seq }}
+}}.each { ev =>
+  case (ev) {
+    m: MessageEvent => break m.id + ": " + m.author.name
+  }
+}
+assert { author == "msg-1: John Doe" }
+
+# --- reconnecting: the after: cursor idiom ----------------------------------
+
+# Each events connection replays at most two entries and then completes. The
+# caller owns the cursor and resubscribes from it; the stream itself never
+# reconnects. A connection that completes without delivering anything new
+# means the log is exhausted.
+let log = [] :: [Int!]!
+let cursor = 0
+loop {
+  let before = cursor
+  Subscription.events(after: cursor).{{
+    ... on MessageEvent {{ seq }}
+    ... on StateEvent {{ seq }}
+  }}.each { ev =>
+    let seq = case (ev) {
+      m: MessageEvent => m.seq
+      s: StateEvent => s.seq
+    }
+    log += [seq]
+    cursor = seq
+  }
+  if (cursor == before) {
+    break
+  }
+}
+assert { log == [1, 2, 3, 4, 5] }
+
+print("subscription tests passed!")

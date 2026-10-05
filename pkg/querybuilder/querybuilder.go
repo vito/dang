@@ -44,8 +44,9 @@ type QueryBuilder struct {
 
 	prev *QueryBuilder
 
-	client     graphql.Client
-	isMutation bool
+	client         graphql.Client
+	isMutation     bool
+	isSubscription bool
 }
 
 // Query creates a new QueryBuilder
@@ -63,6 +64,13 @@ func Mutation() *QueryBuilder {
 	return &QueryBuilder{isMutation: true}
 }
 
+// Subscription creates a new QueryBuilder for a subscription operation. A
+// subscription selects exactly one root field; it is sent with Subscribe, not
+// Execute.
+func Subscription() *QueryBuilder {
+	return &QueryBuilder{isSubscription: true}
+}
+
 // Type alias for backward compatibility
 type Selection = QueryBuilder
 
@@ -76,18 +84,20 @@ func (q *QueryBuilder) path() []*QueryBuilder {
 
 func (q *QueryBuilder) Root() *QueryBuilder {
 	return &QueryBuilder{
-		client:     q.client,
-		isMutation: q.isMutation,
+		client:         q.client,
+		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
 	}
 }
 
 func (q *QueryBuilder) SelectWithAlias(alias, name string) *QueryBuilder {
 	sel := &QueryBuilder{
-		name:       name,
-		prev:       q,
-		alias:      alias,
-		client:     q.client,
-		isMutation: q.isMutation,
+		name:           name,
+		prev:           q,
+		alias:          alias,
+		client:         q.client,
+		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
 	}
 	return sel
 }
@@ -105,6 +115,7 @@ func (q *QueryBuilder) InlineFragment(typeName string) *QueryBuilder {
 		prev:           q,
 		client:         q.client,
 		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
 	}
 }
 
@@ -140,20 +151,22 @@ func (q *QueryBuilder) SelectFields(fields ...string) *QueryBuilder {
 		sels[i] = selectionField{name: f}
 	}
 	return &QueryBuilder{
-		prev:       q,
-		client:     q.client,
-		isMutation: q.isMutation,
-		selections: sels,
+		prev:           q,
+		client:         q.client,
+		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
+		selections:     sels,
 	}
 }
 
 // SelectNested selects a field with nested sub-selections
 func (q *QueryBuilder) SelectNested(field string, subSelection *QueryBuilder) *QueryBuilder {
 	return &QueryBuilder{
-		prev:       q,
-		client:     q.client,
-		isMutation: q.isMutation,
-		selections: []selectionField{{name: field, sub: subSelection}},
+		prev:           q,
+		client:         q.client,
+		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
+		selections:     []selectionField{{name: field, sub: subSelection}},
 	}
 }
 
@@ -167,10 +180,11 @@ func (q *QueryBuilder) SelectMixed(simpleFields []string, nestedSelections map[s
 		sels = append(sels, selectionField{name: name, sub: sub})
 	}
 	return &QueryBuilder{
-		prev:       q,
-		client:     q.client,
-		isMutation: q.isMutation,
-		selections: sels,
+		prev:           q,
+		client:         q.client,
+		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
+		selections:     sels,
 	}
 }
 
@@ -184,10 +198,11 @@ func (q *QueryBuilder) SelectAliased(fields []SelectionField) *QueryBuilder {
 		sels[i] = selectionField{alias: f.Alias, name: f.Name, sub: f.Sub}
 	}
 	return &QueryBuilder{
-		prev:       q,
-		client:     q.client,
-		isMutation: q.isMutation,
-		selections: sels,
+		prev:           q,
+		client:         q.client,
+		isMutation:     q.isMutation,
+		isSubscription: q.isSubscription,
+		selections:     sels,
 	}
 }
 
@@ -400,6 +415,10 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 	if q.client == nil {
 		debug.PrintStack()
 		return fmt.Errorf("no client configured for selection")
+	}
+
+	if q.isSubscription {
+		return fmt.Errorf("subscription operations are sent with Subscribe, not Execute")
 	}
 
 	query, err := q.Build(ctx)

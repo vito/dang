@@ -19,6 +19,7 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vito/dang/v2/pkg/gqlsse"
 	"github.com/vito/dang/v2/pkg/introspection"
 	"github.com/vito/dang/v2/pkg/ioctx"
 )
@@ -334,7 +335,7 @@ func makeClient(endpoint, authorization string, headers map[string]string) (grap
 			headers:       expandedHeaders,
 		},
 	}
-	return graphql.NewClient(endpoint, httpClient), nil
+	return gqlsse.NewClient(endpoint, httpClient), nil
 }
 
 // serviceProcess implements graphql.Client by lazily starting a service
@@ -377,6 +378,29 @@ func NewDaggerServiceProcess(ctx context.Context) graphql.Client {
 const maxServiceDepth = 10
 
 func (s *serviceProcess) MakeRequest(ctx context.Context, req *graphql.Request, resp *graphql.Response) error {
+	delegate, err := s.client(ctx)
+	if err != nil {
+		return err
+	}
+	return delegate.MakeRequest(ctx, req, resp)
+}
+
+// Subscribe implements gqlsse.Subscriber by delegating to the started
+// service's client.
+func (s *serviceProcess) Subscribe(ctx context.Context, req *graphql.Request) (gqlsse.Stream, error) {
+	delegate, err := s.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sub, ok := delegate.(gqlsse.Subscriber)
+	if !ok {
+		return nil, fmt.Errorf("service %v: GraphQL client %T cannot carry subscriptions", s.cmd, delegate)
+	}
+	return sub.Subscribe(ctx, req)
+}
+
+// client starts the service on first use and returns its client.
+func (s *serviceProcess) client(ctx context.Context) (graphql.Client, error) {
 	s.once.Do(func() {
 		// Use the long-lived context for starting the process so it
 		// isn't killed when the first request context is cancelled.
@@ -387,9 +411,9 @@ func (s *serviceProcess) MakeRequest(ctx context.Context, req *graphql.Request, 
 		s.delegate, s.initErr = s.start(startCtx)
 	})
 	if s.initErr != nil {
-		return fmt.Errorf("starting service %v: %w", s.cmd, s.initErr)
+		return nil, fmt.Errorf("starting service %v: %w", s.cmd, s.initErr)
 	}
-	return s.delegate.MakeRequest(ctx, req, resp)
+	return s.delegate, nil
 }
 
 func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {

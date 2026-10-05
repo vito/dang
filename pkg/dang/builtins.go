@@ -762,6 +762,11 @@ func MapOf(t hm.Type) hm.Type {
 	return MapType{Type: t}
 }
 
+// StreamOf creates a stream type with the given element type
+func StreamOf(t hm.Type) hm.Type {
+	return StreamType{Type: t}
+}
+
 // Optional returns a nullable type with a default value
 func Optional(t hm.Type, defaultVal Value) (hm.Type, Value) {
 	// If t is already non-null, unwrap it to make it nullable

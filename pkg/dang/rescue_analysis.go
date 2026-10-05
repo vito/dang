@@ -174,6 +174,10 @@ func schemaObjectModule(t hm.Type) *Type {
 		return schemaObjectModule(tt.Type)
 	case GraphQLListType:
 		return schemaObjectModule(tt.Type)
+	case StreamType:
+		return schemaObjectModule(tt.Type)
+	case GraphQLStreamType:
+		return schemaObjectModule(tt.Type)
 	case MapType:
 		return schemaObjectModule(tt.Type)
 	case *hm.UnionType:

@@ -11,6 +11,7 @@ import (
 	"github.com/dagger/testctx"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/gqlsse"
 	"github.com/vito/dang/v2/pkg/ioctx"
 	"github.com/vito/dang/v2/tests/gqlserver"
 	"gotest.tools/v3/golden"
@@ -34,7 +35,7 @@ func (DangSuite) TestErrorMessages(ctx context.Context, t *testctx.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = testGraphQLServer.Stop() })
 
-	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
+	client := gqlsse.NewClient(testGraphQLServer.QueryURL(), nil)
 
 	for _, dangFile := range dangFiles {
 		// Extract test name from filename

@@ -123,6 +123,10 @@ func (r *queryResolver) findNodeByID(id string) (Node, error) {
 			return post, nil
 		}
 	}
+	// Subscription events with an ID stay loadable after they are pushed.
+	if ev := findEventNode(id); ev != nil {
+		return ev, nil
+	}
 	return nil, nil
 }
 

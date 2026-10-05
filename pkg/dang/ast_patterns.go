@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/introspection"
 )
 
 // Case represents a case expression that evaluates branches based on equality
@@ -365,6 +366,13 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, fmt.Errorf("evaluating case expression: %w", err)
 		}
 
+		if c.hasTypePatterns() {
+			exprVal, err = resolveAbstractGraphQLValue(ctx, exprVal)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating case expression: %w", err)
+			}
+		}
+
 		// Try each clause in order
 		for i, clause := range c.Clauses {
 			// Else clauses always match
@@ -375,8 +383,10 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() {
 				if matchesType(exprVal, clause.resolvedMemberType) {
-					// Create a child scope with the binding
-					childScope := scope.Derive(true)
+					// Create a child scope with the binding. It is unsealed, like
+					// a value clause's scope, so the clause can update enclosing
+					// bindings (e.g. loop state) the same way.
+					childScope := scope.Derive(false)
 					childScope.Bind(clause.Binding, exprVal, PrivateVisibility)
 					return EvalNode(ctx, childScope, clause.Expr)
 				}
@@ -406,6 +416,56 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		// exactly this fallthrough.
 		return NullValue{}, nil
 	})
+}
+
+func (c *Case) hasTypePatterns() bool {
+	for _, clause := range c.Clauses {
+		if clause.IsTypePattern() {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveAbstractGraphQLValue narrows a lazy GraphQL handle whose static type
+// is an interface or union to its concrete runtime type, so type patterns can
+// match it. Values selected through inline fragments already carry their
+// concrete type; a handle loaded from an @expectedType ID of an abstract type
+// (or any other lazy abstract chain) does not, and costs one __typename query.
+// A handle with a KnownID is reloaded by that ID, keeping its identity pinned:
+// later selections re-address the same object instead of re-running the chain.
+func resolveAbstractGraphQLValue(ctx context.Context, val Value) (Value, error) {
+	gqlVal, ok := val.(GraphQLValue)
+	if !ok || gqlVal.Schema == nil || gqlVal.QueryChain == nil {
+		return val, nil
+	}
+	schemaType := gqlVal.Schema.Types.Get(gqlVal.TypeName)
+	if schemaType == nil {
+		return val, nil
+	}
+	if schemaType.Kind != introspection.TypeKindInterface && schemaType.Kind != introspection.TypeKindUnion {
+		return val, nil
+	}
+	var typeName string
+	if err := gqlVal.QueryChain.Select("__typename").Client(gqlVal.Client).Bind(&typeName).Execute(ctx); err != nil {
+		return nil, fmt.Errorf("resolving concrete type of %s: %w", gqlVal.TypeName, err)
+	}
+	if typeName == "" || typeName == gqlVal.TypeName {
+		return val, nil
+	}
+	if gqlVal.KnownID != "" {
+		loaded, err := loadObjectFromID(gqlVal.KnownID, typeName, gqlVal.Schema, gqlVal.TypeScope, gqlVal.Client)
+		if err != nil {
+			return nil, err
+		}
+		if loaded != nil {
+			return loaded, nil
+		}
+	}
+	narrowed := gqlVal
+	narrowed.TypeName = typeName
+	narrowed.QueryChain = gqlVal.QueryChain.InlineFragment(typeName)
+	return narrowed, nil
 }
 
 // matchesType checks if a value's concrete type matches the given pattern

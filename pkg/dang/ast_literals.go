@@ -20,8 +20,10 @@ var (
 	FloatType      = NewType("Float", ScalarKind)
 	ListTypeModule = NewType("List", ScalarKind)
 	MapTypeModule  = NewType("Map", ScalarKind)
-	ErrorType      = NewType("Error", InterfaceKind)
-	BasicErrorType = NewType("BasicError", ObjectKind)
+	// StreamTypeModule hosts the builtin methods of Stream[a] values.
+	StreamTypeModule = NewType("Stream", ScalarKind)
+	ErrorType        = NewType("Error", InterfaceKind)
+	BasicErrorType   = NewType("BasicError", ObjectKind)
 
 	// The built-in error taxonomy: every caught failure is classified into
 	// one of these (or arrives as the user's own raised Error implementer).

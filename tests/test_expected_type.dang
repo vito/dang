@@ -59,4 +59,13 @@ let syncedNode = case (syncedNodes[0]) {
 }
 assert { syncedNode == "John Doe" }
 
+# A promoted ID whose expected type is abstract (an interface or union) is
+# resolved to its concrete type, so `case` type patterns can dispatch on it
+# without an inline-fragment selection.
+let promotedLabel = case (favoriteNodeID) {
+  u: User => "user " + u.name
+  else => "other"
+}
+assert { promotedLabel == "user John Doe" }
+
 print("expectedType directive tests passed!")

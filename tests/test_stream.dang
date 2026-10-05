@@ -1,0 +1,83 @@
+# Stream[a]: a cold sequence consumed by terminals. GraphQL subscriptions are
+# the real source (test_subscription.dang); List.toStream drives the same
+# terminals from plain values.
+
+let s = [1, 2, 3, 4].toStream
+
+# a stream can be named in a type
+let typed: Stream[Int!]! = s
+assert { typed.toList == [1, 2, 3, 4] }
+
+# each: the loop
+let sum = 0
+s.each { x => sum += x }
+assert { sum == 10 }
+
+# completes with null; break v yields v
+assert { s.each { x => x } == null }
+assert { s.each { x => if (x == 3) { break x * 10 } } == 30 }
+
+# continue skips; return leaves the enclosing function
+let evens = [] :: [Int!]!
+s.each { x =>
+  if (x % 2 == 1) {
+    continue
+  }
+  evens += [x]
+}
+assert { evens == [2, 4] }
+
+firstOver(limit: Int!): Int {
+  [1, 2, 3, 4].toStream.each { x =>
+    if (x > limit) {
+      return x
+    }
+  }
+  null
+}
+assert { firstOver(2) == 3 }
+assert { firstOver(9) == null }
+
+# writes from type-pattern case clauses in the loop body reach outer state
+type Ping { n: Int! }
+type Pong { n: Int! }
+union Ball = Ping | Pong
+let balls = ([Ping(1), Pong(2), Ping(3)] :: [Ball!]!).toStream
+let pings = 0
+let pongs = [] :: [Int!]!
+balls.each { b =>
+  case (b) {
+    p: Ping => { pings += p.n }
+    q: Pong => { pongs += [q.n] }
+  }
+}
+assert { pings == 4 }
+assert { pongs == [2] }
+
+# first, toList, take
+assert { s.first == 1 }
+assert { ([] :: [Int!]!).toStream.first == null }
+assert { s.take(2).toList == [1, 2] }
+assert { s.take(0).toList == [] }
+assert { s.take(10).toList == [1, 2, 3, 4] }
+
+# cold: consuming twice starts over
+assert { s.toList == s.toList }
+
+# a stream of records selects per value
+let people = [{{name: "a", age: 1}}, {{name: "b", age: 2}}].toStream
+assert { people.{{name}}.toList.map { p => p.name } == ["a", "b"] }
+
+# ...and a stream of a union selects per member with inline fragments
+let ns = balls.{{
+  ... on Ping {{ n }}
+  ... on Pong {{ n }}
+}}.toList.map { b =>
+  case (b) {
+    p: Ping => p.n
+    q: Pong => q.n * 10
+  }
+}
+assert { ns == [1, 20, 3] }
+
+print("stream tests passed!")

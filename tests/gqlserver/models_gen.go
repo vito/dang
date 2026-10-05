@@ -9,6 +9,11 @@ import (
 	"strconv"
 )
 
+type Event interface {
+	IsEvent()
+	GetSeq() int
+}
+
 type Node interface {
 	IsNode()
 	GetID() string
@@ -28,6 +33,19 @@ type CreateUserInput struct {
 	Email string `json:"email"`
 	Age   *int   `json:"age,omitempty"`
 }
+
+type MessageEvent struct {
+	ID     string `json:"id"`
+	Seq    int    `json:"seq"`
+	Text   string `json:"text"`
+	Author *User  `json:"author"`
+}
+
+func (MessageEvent) IsEvent()         {}
+func (this MessageEvent) GetSeq() int { return this.Seq }
+
+func (MessageEvent) IsNode()            {}
+func (this MessageEvent) GetID() string { return this.ID }
 
 type Mutation struct {
 }
@@ -78,6 +96,19 @@ type ServerInfo struct {
 	Uptime     string `json:"uptime"`
 	TotalUsers int    `json:"totalUsers"`
 	TotalPosts int    `json:"totalPosts"`
+}
+
+type StateEvent struct {
+	Seq    int    `json:"seq"`
+	Status Status `json:"status"`
+}
+
+func (StateEvent) IsEvent()         {}
+func (this StateEvent) GetSeq() int { return this.Seq }
+
+// Served over graphql-sse (distinct connections mode): POST with
+// Accept: text/event-stream.
+type Subscription struct {
 }
 
 type UpdateUserInput struct {
