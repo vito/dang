@@ -1,5 +1,11 @@
-type Cat { name: String! }
-type Dog { name: String! }
+type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
 union Pet = Cat | Dog
 
 let count = 0
@@ -10,6 +16,7 @@ let last = ""
       count += 1
       last = c.name
     }
+
     d: Dog => { last = d.name }
   }
 }
