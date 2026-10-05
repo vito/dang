@@ -56,7 +56,9 @@ type Apko {
         apko
           .withMountedCache("/apkache/", cacheVolume("apko"), owner: apko.user)
           .withNewFile("/config.yml", contents: toString(config))
-          .withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest", "layout.tar"])
+          # Skip SBOMs: nothing consumes them, and apko's SBOM validation
+          # rejects some upstream packages (e.g. libLLVM PURL casing).
+          .withExec(["apko", "build", "--sbom=false", "--cache-dir", "/apkache/", "/config.yml", "latest", "layout.tar"])
           .file("layout.tar"),
       )
   }
