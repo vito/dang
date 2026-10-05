@@ -59,6 +59,53 @@ type Query {
   # Float round-trip: a Float result reused as a Float argument.
   averageRating: Float!
   echoFloat(value: Float!): Float!
+  """
+  How many subscription resolvers are running right now, after giving any
+  that were just cancelled a moment to wind down. Lets tests observe that
+  cancelling a stream client-side reaches the server.
+  """
+  activeSubscriptions: Int!
+}
+
+"""
+Served over graphql-sse (distinct connections mode): POST with
+Accept: text/event-stream.
+"""
+type Subscription {
+  """
+  Emits n ticks (n = 0, 1, ...), `every` apart (a Go duration, default 0s),
+  then holds the stream open for `stall` (default 0s) before completing.
+  A negative n fails before the first event. With failAt, that tick's
+  `label` fails, so the event arrives carrying errors.
+  """
+  ticks(n: Int!, every: String, stall: String, failAt: Int): Tick!
+  """
+  A fixed log of five events. Each connection replays at most two entries
+  with seq > after, then completes, as a dropped connection would; the
+  caller reconnects with the last seq it saw.
+  """
+  events(after: Int): Event!
+}
+
+type Tick {
+  n: Int!
+  label: String!
+}
+
+interface Event {
+  seq: Int!
+}
+
+type MessageEvent implements Event & Node {
+  id: String!
+  seq: Int!
+  text: String!
+  author: User!
+}
+
+type StateEvent implements Event {
+  seq: Int!
+  status: Status!
 }
 
 enum UserSortField {
