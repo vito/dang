@@ -265,15 +265,19 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		errVal := extractErrorValue(err)
 		armCtx := context.WithValue(ctx, inFlightErrorKey{}, raisedErrorFor(err, errVal))
 
+		// Arms run in unsealed child scopes, like a block's, so they can
+		// update enclosing bindings (e.g. a retry counter). An arm's error
+		// binding is still bound privately in its own child scope.
+
 		// Fallback form: any error yields the fallback value.
 		if t.Fallback != nil {
-			return EvalNode(armCtx, scope.Derive(true), t.Fallback)
+			return EvalNode(armCtx, scope.Derive(false), t.Fallback)
 		}
 
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
 			if clause.IsElse {
-				childScope := scope.Derive(true)
+				childScope := scope.Derive(false)
 				if clause.Binding != "" {
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
@@ -282,7 +286,7 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
-					childScope := scope.Derive(true)
+					childScope := scope.Derive(false)
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(armCtx, childScope, clause.Expr)
 				}

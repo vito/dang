@@ -1,0 +1,42 @@
+# A type-pattern arm can update enclosing bindings.
+let retries = 0
+let lastMessage = ""
+[1, 2, 3].each { i =>
+  { raise `attempt ${toString(i)}` } rescue {
+    err: Error => {
+      retries += 1
+      lastMessage = err.message
+      null
+    }
+  }
+}
+assert { retries == 3 }
+assert { lastMessage == "attempt 3" }
+
+# So can an else arm.
+let misses = 0
+{ raise "boom" } rescue {
+  a: AssertionError => null
+  else => {
+    misses += 1
+    null
+  }
+}
+assert { misses == 1 }
+
+# And the fallback form.
+let fallbacks = 0
+{ raise "boom" } rescue (
+  {
+    fallbacks += 1
+    null
+  }
+)
+assert { fallbacks == 1 }
+
+# The error binding itself stays local to its arm.
+let err = "outer"
+{ raise "inner" } rescue {
+  err: Error => err.message
+}
+assert { err == "outer" }
