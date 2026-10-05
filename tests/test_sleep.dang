@@ -4,11 +4,21 @@
 assert { sleep("1ms") == null }
 
 # timeout yields the block's value when it finishes in time
-assert { timeout("5s") { sleep("1ms"); 42 } == 42 }
+assert {
+  timeout("5s") {
+    sleep("1ms")
+    42
+  } == 42
+}
 
 # ...and null when the deadline cuts it off; the 60s sleep is cancelled, not
 # waited out
-assert { timeout("10ms") { sleep("60s"); 42 } == null }
+assert {
+  timeout("10ms") {
+    sleep("60s")
+    42
+  } == null
+}
 
 # a loop that sleeps is cancelled mid-sleep
 assert { timeout("10ms") { loop { sleep("1ms") } } == null }
@@ -29,7 +39,9 @@ loop {
 assert { ticks == 3 }
 
 # errors raised inside the block are not mistaken for the deadline
-let boom = timeout("5s") { raise "boom" } rescue { e: Error => e.message }
+let boom = timeout("5s") { raise "boom" } rescue {
+  e: Error => e.message
+}
 assert { boom == "boom" }
 
 # invalid durations raise
