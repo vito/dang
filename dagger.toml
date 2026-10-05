@@ -9,7 +9,7 @@ source = "dagger.io/sdk/dang"
 source = "dagger.io/go"
 
 [modules.editor]
-source = "github.com/vito/editor"
+source = "github.com/vito/editor@main"
 
 [sdks.dang]
 module = "dang-sdk"
@@ -22,7 +22,7 @@ clients = ["./mod/apko"]
 is-module = true
 
 [modules.go.settings]
-base = "dang:base"
+base = "dag+container://base"
 # Runtime-loaded fixtures, editor plugins, and tree-sitter inputs are not Go files.
 includeExtraFiles = ["tests/**", "editors/**", "treesitter/**", "pkg/dang/*.peg"]
 # Zed downloads its own grammar checkout here; it is not a project module.
@@ -31,11 +31,11 @@ test = ["!editors/zed/grammars"]
 generate = ["!editors/zed/grammars"]
 
 [modules.committer]
-source = "github.com/vito/agents/committer"
+source = "github.com/vito/agents/committer@main"
 
 [modules.contributor]
-source = "github.com/vito/agents/contributor"
+source = "github.com/vito/agents/contributor@main"
 settings.githubToken = "cmd://gh auth token"
 
 [modules.staff]
-source = "github.com/vito/agents/staff"
+source = "github.com/vito/agents/staff@main"
