@@ -99,6 +99,12 @@ func (t *AppliedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 					return nil, err
 				}
 				return MapType{val}, nil
+			case "Stream":
+				elem, err := t.singleArg(ctx, env, fresh, "Stream")
+				if err != nil {
+					return nil, err
+				}
+				return StreamType{elem}, nil
 			}
 		}
 		return nil, fmt.Errorf("type %s does not take type arguments", t.Base.Name)
@@ -236,6 +242,61 @@ func (t MapType) Supertypes() []hm.Type {
 	return innerSupers
 }
 
+// StreamType is a lazy, cold sequence of values of the wrapped type, consumed
+// by terminals (.each, .first, .toList). A GraphQL subscription root field of
+// leaf type T has type Stream[T]!; one of object type is a GraphQLStreamType
+// until a selection says what each event carries.
+type StreamType struct {
+	hm.Type
+}
+
+var _ hm.Type = StreamType{}
+
+func (t StreamType) Name() string {
+	return fmt.Sprintf("Stream[%s]", t.Type)
+}
+
+func (t StreamType) Apply(subs hm.Subs) hm.Substitutable {
+	return StreamType{t.Type.Apply(subs).(hm.Type)}
+}
+
+func (t StreamType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return StreamType{normalized}, nil
+}
+
+func (t StreamType) Types() hm.Types {
+	ts := hm.BorrowTypes(1)
+	ts[0] = t.Type
+	return ts
+}
+
+func (t StreamType) String() string {
+	return fmt.Sprintf("Stream[%s]", t.Type)
+}
+
+func (t StreamType) Format(s fmt.State, c rune) {
+	_, _ = fmt.Fprintf(s, "Stream[%"+string(c)+"]", t.Type)
+}
+
+func (t StreamType) Eq(other hm.Type) bool {
+	if ot, ok := other.(StreamType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
+func (t StreamType) Supertypes() []hm.Type {
+	innerSupers := t.Type.Supertypes()
+	for i, t := range innerSupers {
+		innerSupers[i] = StreamType{t}
+	}
+	return innerSupers
+}
+
 // GraphQLListType represents a list returned from GraphQL that contains objects.
 // Unlike ListType, it cannot be directly iterated - it must first be converted
 // to a ListType via object selection (.{fields}) to avoid N+1 query problems.
@@ -283,6 +344,58 @@ func (t GraphQLListType) Eq(other hm.Type) bool {
 }
 
 func (t GraphQLListType) Supertypes() []hm.Type {
+	return nil
+}
+
+// GraphQLStreamType is a subscription field whose events are GraphQL objects.
+// Like GraphQLListType it cannot be consumed directly: a pushed event carries
+// only what the operation selected and cannot be re-queried afterwards, so an
+// object selection (.{{fields}}, or inline fragments) must first say what each
+// event carries, turning it into a StreamType of records.
+type GraphQLStreamType struct {
+	hm.Type
+}
+
+var _ hm.Type = GraphQLStreamType{}
+
+func (t GraphQLStreamType) Name() string {
+	return fmt.Sprintf("Stream[%s]", t.Type)
+}
+
+func (t GraphQLStreamType) Apply(subs hm.Subs) hm.Substitutable {
+	return GraphQLStreamType{t.Type.Apply(subs).(hm.Type)}
+}
+
+func (t GraphQLStreamType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return GraphQLStreamType{normalized}, nil
+}
+
+func (t GraphQLStreamType) Types() hm.Types {
+	ts := hm.BorrowTypes(1)
+	ts[0] = t.Type
+	return ts
+}
+
+func (t GraphQLStreamType) String() string {
+	return fmt.Sprintf("Stream[%s]", t.Type)
+}
+
+func (t GraphQLStreamType) Format(s fmt.State, c rune) {
+	_, _ = fmt.Fprintf(s, "Stream[%"+string(c)+"]", t.Type)
+}
+
+func (t GraphQLStreamType) Eq(other hm.Type) bool {
+	if ot, ok := other.(GraphQLStreamType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
+func (t GraphQLStreamType) Supertypes() []hm.Type {
 	return nil
 }
 

@@ -198,6 +198,9 @@ type GraphQLFunction struct {
 	TypeScope  TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
+	// IsSubscription is true for a subscription root field: calling it
+	// builds a cold Stream instead of a query.
+	IsSubscription bool
 }
 
 func (g GraphQLFunction) Type() hm.Type {
@@ -223,6 +226,9 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 		if g.IsMutation {
 			root = querybuilder.Mutation()
 		}
+		if g.IsSubscription {
+			root = querybuilder.Subscription()
+		}
 		// Check if this is a method call (contains a dot) or a top-level function
 		if strings.Contains(g.Name, ".") {
 			// This is a method call like "container.from" - we need to build a nested query
@@ -247,6 +253,12 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 			}
 			query = query.Arg(arg.Name, goVal)
 		}
+	}
+
+	// A subscription root field names a stream; nothing is sent until a
+	// terminal consumes it.
+	if g.IsSubscription {
+		return newSubscriptionStream(g, query), nil
 	}
 
 	// For functions that return scalar types, execute the query immediately
@@ -637,6 +649,42 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				mutModule.Bind(f.Name, mutFunc, PublicVisibility)
 			}
 			env.Bind("Mutation", mutModule, PublicVisibility)
+		}
+
+		// Collect subscription fields into a Subscription module. Each field
+		// is typed as a stream of its declared type (see subscriptionFieldType)
+		// and evaluates to a cold StreamValue.
+		if schema.SubscriptionType != nil && t.Name == schema.SubscriptionType.Name {
+			subTypeScope, found := typeScope.NamedType(t.Name)
+			if !found {
+				continue
+			}
+			subModule := NewObject(subTypeScope)
+			for _, f := range t.Fields {
+				ret, err := gqlFieldToTypeNode(typeScope, f)
+				if err != nil {
+					continue
+				}
+				args := NewRecordType("")
+				for _, arg := range f.Args {
+					argType, err := gqlInputToTypeNode(typeScope, arg)
+					if err != nil {
+						continue
+					}
+					args.Add(arg.Name, hm.NewScheme(nil, argType))
+				}
+				subModule.Bind(f.Name, GraphQLFunction{
+					Name:           f.Name,
+					TypeName:       t.Name,
+					Field:          f,
+					FnType:         hm.NewFnType(args, subscriptionFieldType(f, ret, schema)),
+					Client:         client,
+					Schema:         schema,
+					TypeScope:      typeScope,
+					IsSubscription: true,
+				}, PublicVisibility)
+			}
+			env.Bind(t.Name, subModule, PublicVisibility)
 		}
 	}
 }

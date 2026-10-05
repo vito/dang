@@ -516,6 +516,12 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
 			env.SetVisibility(t.Name, PublicVisibility)
 		}
+		// Likewise the Subscription type: Subscription.fieldName(...) names a
+		// stream of the field's values.
+		if schema.SubscriptionType != nil && t.Name == schema.SubscriptionType.Name {
+			env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
+			env.SetVisibility(t.Name, PublicVisibility)
+		}
 	}
 
 	// Make enum types available as values in the module
@@ -659,6 +665,11 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			ret, err := gqlFieldToTypeNode(env, f)
 			if err != nil {
 				panic(err)
+			}
+			// A subscription root field pushes values of its declared type:
+			// calling it yields a stream of them.
+			if schema.SubscriptionType != nil && t.Name == schema.SubscriptionType.Name {
+				ret = subscriptionFieldType(f, ret, schema)
 			}
 
 			args := NewRecordType("")

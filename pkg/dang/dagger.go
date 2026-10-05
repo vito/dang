@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
+	"github.com/vito/dang/v2/pkg/gqlsse"
 	"github.com/vito/dang/v2/pkg/introspection"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -168,7 +169,7 @@ func newDaggerClient(params *daggerSessionParams) graphql.Client {
 	}
 	httpClient := &http.Client{Transport: transport}
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/query", params.Port)
-	return graphql.NewClient(endpoint, httpClient)
+	return gqlsse.NewClient(endpoint, httpClient)
 }
 
 // DaggerModuleSchema introspects a Dagger module's schema via raw GraphQL.

@@ -1,0 +1,5 @@
+import Test
+
+# A subscription operation selects exactly one root field, so fanning out
+# over the Subscription namespace is a compile error.
+let both = Subscription.{{ticks(n: 1), events}}

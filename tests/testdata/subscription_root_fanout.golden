@@ -1,0 +1,10 @@
+[1m[31mError:[0m a subscription selects exactly one root field: subscribe to each field with its own call, e.g. Subscription.ticks(...), and select per-event fields on the stream with .{{ }}
+  [2m[34m--> errors/subscription_root_fanout.dang:5:25[0m
+ [2m    |[0m
+ [2m  3 | # A subscription operation selects exactly one root field, so fanning out[0m
+ [2m  4 | # over the Subscription namespace is a compile error.[0m
+ [2m[34m[1m  5 | [0mlet both = Subscription.{{ticks(n: 1), events}}
+[2m                               [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

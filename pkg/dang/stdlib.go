@@ -18,6 +18,7 @@ func registerStdlib() {
 	registerCodecs()
 	registerAssert()
 	registerRegexp()
+	registerStream()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").

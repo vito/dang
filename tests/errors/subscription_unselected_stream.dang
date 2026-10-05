@@ -1,0 +1,6 @@
+import Test
+
+# A subscription's events are GraphQL objects: a pushed event carries only
+# what the operation selected, so, as with a list of objects, the stream has
+# to be given a selection before it can be consumed.
+Subscription.ticks(n: 1).each { t => t }

@@ -747,29 +747,20 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 
-		// Check if receiver is a list type - handle methods on lists specially.
-		// Supports both non-null lists ([T!]!) and nullable lists ([T!]).
-		var listElemType hm.Type
-		var nullableList bool
-		if nn, ok := lt.(hm.NonNullType); ok {
-			if listType, ok := nn.Type.(ListType); ok {
-				listElemType = listType.Type
-			}
-		} else if listType, ok := lt.(ListType); ok {
-			listElemType = listType.Type
-			nullableList = true
-		}
-		if listElemType != nil {
-			// Look up method definition
-			def, found := LookupMethod(ListTypeModule, d.Field.Name)
+		// Builtin generic containers (lists, maps, streams) dispatch methods
+		// through their method modules, with the element type substituted for
+		// the methods' type variable 'a'. Supports both non-null (e.g. [T!]!)
+		// and nullable (e.g. [T!]) receivers.
+		if container, ok := builtinContainerOf(lt); ok {
+			def, found := LookupMethod(container.module, d.Field.Name)
 			if !found {
 				tv := fresh.Fresh()
 				d.SetInferredType(tv)
-				return tv, fmt.Errorf("list does not have method %q", d.Field.Name)
+				return tv, fmt.Errorf("%s does not have method %q", container.label, d.Field.Name)
 			}
 
 			// Build method type with element type substituted for type variable
-			methodType := instantiateListMethod(def, listElemType)
+			methodType := instantiateListMethod(def, container.elem)
 
 			if d.AutoCall {
 				var err error
@@ -779,9 +770,9 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				}
 			}
 
-			// For nullable list receivers, mark as nullable so the call site
+			// For nullable receivers, mark as nullable so the call site
 			// propagates null and makes the return type nullable.
-			if nullableList {
+			if container.nullable {
 				d.NullableReceiver = true
 			}
 
@@ -789,60 +780,23 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return methodType, nil
 		}
 
-		// Check if receiver is a map type - handle methods on maps specially.
-		// Supports both non-null maps (Map[T!]!) and nullable maps (Map[T!]).
-		var mapValType hm.Type
-		var nullableMap bool
-		if nn, ok := lt.(hm.NonNullType); ok {
-			if mapType, ok := nn.Type.(MapType); ok {
-				mapValType = mapType.Type
-			}
-		} else if mapType, ok := lt.(MapType); ok {
-			mapValType = mapType.Type
-			nullableMap = true
-		}
-		if mapValType != nil {
-			def, found := LookupMethod(MapTypeModule, d.Field.Name)
-			if !found {
-				tv := fresh.Fresh()
-				d.SetInferredType(tv)
-				return tv, fmt.Errorf("map does not have method %q", d.Field.Name)
-			}
-
-			// Build method type with the value type substituted for 'a'.
-			methodType := instantiateListMethod(def, mapValType)
-
-			if d.AutoCall {
-				var err error
-				methodType, _, err = autoCallFnType(methodType)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if nullableMap {
-				d.NullableReceiver = true
-			}
-
-			d.SetInferredType(methodType)
-			return methodType, nil
-		}
-
-		// GraphQL object lists are not directly iterable: callers must first
-		// select fields on the elements (e.g. value.{id}) to convert them
-		// into a regular list. Detect this case before falling through to
-		// the env path, which would surface a confusing internal error.
-		var gqlListReceiver bool
-		if nn, ok := lt.(hm.NonNullType); ok {
-			_, gqlListReceiver = nn.Type.(GraphQLListType)
-		} else {
-			_, gqlListReceiver = lt.(GraphQLListType)
-		}
-		if gqlListReceiver {
+		// GraphQL object lists and streams are not directly consumable:
+		// callers must first select fields on the elements (e.g. value.{id})
+		// to convert them into a regular list or stream. Detect this case
+		// before falling through to the env path, which would surface a
+		// confusing internal error.
+		bareReceiver, _ := stripNonNull(lt)
+		switch bareReceiver.(type) {
+		case GraphQLListType:
 			if _, found := LookupMethod(ListTypeModule, d.Field.Name); found {
 				return nil, fmt.Errorf("cannot call list method %q directly on a GraphQL object list; select fields first, e.g. value.{id}.%s", d.Field.Name, d.Field.Name)
 			}
 			return nil, fmt.Errorf("cannot select %q from a GraphQL object list; select fields on its elements first, e.g. value.{id}", d.Field.Name)
+		case GraphQLStreamType:
+			if _, found := LookupMethod(StreamTypeModule, d.Field.Name); found {
+				return nil, fmt.Errorf("cannot call stream method %q directly on a stream of GraphQL objects; select the fields each event should carry first, e.g. stream.{{id}}.%s", d.Field.Name, d.Field.Name)
+			}
+			return nil, fmt.Errorf("cannot select %q from a stream of GraphQL objects; select the fields each event should carry first, e.g. stream.{{id}}", d.Field.Name)
 		}
 
 		// Check if receiver is nullable or non-null
@@ -1057,33 +1011,20 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				}
 				return nil, fmt.Errorf("float value does not have method %q", d.Field.Name)
 
-			case ListValue:
-				// Handle methods on list values by looking them up in the evaluation environment
-				// The builtin is registered with a special name
-				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field.Name)
+			case ListValue, MapValue, StreamValue:
+				// Methods on builtin containers are registered under a
+				// per-container key (e.g. _list_each_builtin) and bound to
+				// the receiver as self.
+				module, label := builtinContainerModuleOf(rec)
+				methodKey := GetMethodKey(module, d.Field.Name)
 				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
-						// Create a bound method that will pass the list as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 					}
 				}
-				return nil, fmt.Errorf("list value does not have method %q", d.Field.Name)
-
-			case MapValue:
-				// Handle methods on map values by looking them up in the evaluation environment
-				// The builtin is registered with a special name
-				methodKey := fmt.Sprintf("_map_%s_builtin", d.Field.Name)
-				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
-					return nil, err
-				} else if found {
-					if builtinFn, ok := method.(BuiltinFunction); ok {
-						// Create a bound method that will pass the map as self
-						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
-					}
-				}
-				return nil, fmt.Errorf("map value does not have method %q", d.Field.Name)
+				return nil, fmt.Errorf("%s value does not have method %q", label, d.Field.Name)
 
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
@@ -1463,6 +1404,52 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 			return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
 		}
 
+		// A subscription operation selects exactly one root field, so the
+		// Subscription namespace cannot be fanned out over like an object.
+		if isSubscriptionRootType(receiverType) {
+			return nil, NewInferError(fmt.Errorf(
+				"a subscription selects exactly one root field: subscribe to each field with its own call, e.g. Subscription.%s(...), and select per-event fields on the stream with .{{ }}",
+				o.firstFieldName()), o)
+		}
+
+		// A selection on a stream selects fields on each of its values. On a
+		// stream of GraphQL objects (a subscription field) it is the only way
+		// in: the selection becomes the operation's selection set, and each
+		// event arrives as the selected record, or, with inline fragments, as
+		// a member of the narrowed union those fragments describe.
+		if elem, nonNull, isGraphQL, ok := streamElemOf(receiverType); ok {
+			var elemType hm.Type
+			if len(o.InlineFragments) > 0 {
+				if isGraphQL {
+					for _, frag := range o.InlineFragments {
+						if len(frag.Fields) == 0 {
+							return nil, NewInferError(fmt.Errorf("inline fragment on %s selects no fields: a pushed event cannot be re-addressed later, so select what each event should carry, e.g. ... on %s {{ id }}", frag.TypeName.Name, frag.TypeName.Name), frag.TypeName)
+						}
+					}
+				}
+				t, err := o.inferInlineFragments(ctx, elem, env, fresh)
+				if err != nil {
+					return nil, err
+				}
+				elemType = t
+			} else {
+				t, err := o.inferSelectionType(ctx, elem, env, fresh)
+				if err != nil {
+					return nil, err
+				}
+				elemType = t
+				if _, ok := elem.(hm.NonNullType); ok {
+					elemType = hm.NonNullType{Type: t}
+				}
+			}
+			var resultType hm.Type = StreamType{elemType}
+			if nonNull {
+				resultType = hm.NonNullType{Type: resultType}
+			}
+			o.SetInferredType(resultType)
+			return resultType, nil
+		}
+
 		// Handle inline fragments (union/interface selection)
 		if len(o.InlineFragments) > 0 {
 			return o.inferInlineFragments(ctx, receiverType, env, fresh)
@@ -1805,6 +1792,13 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 			return NullValue{}, nil
 		}
 
+		// A selection on a stream applies to each value. On a subscription it
+		// becomes the operation's selection set, so only the selected fields
+		// are pushed.
+		if streamVal, ok := receiverVal.(StreamValue); ok {
+			return o.evalStreamSelection(ctx, scope, streamVal)
+		}
+
 		// Handle inline fragments on GraphQL values
 		if len(o.InlineFragments) > 0 {
 			if gqlVal, ok := receiverVal.(GraphQLValue); ok {
@@ -1905,24 +1899,8 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 		return nil, fmt.Errorf("GraphQL inline fragments: no query chain")
 	}
 
-	// Build inline fragment query string
-	// We need: { __typename ... on User { name email } ... on Post { title author { name } } }
-	var fragParts []string
-	fragParts = append(fragParts, "__typename")
-	for _, frag := range o.InlineFragments {
-		var fieldParts []string
-		for _, field := range frag.Fields {
-			if field.Selection != nil {
-				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
-			} else {
-				fieldParts = append(fieldParts, field.Name)
-			}
-		}
-		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
-	}
-
 	// Use SelectMultiple to inject the raw fragment selection
-	query = query.SelectMultiple(fragParts...)
+	query = query.SelectMultiple(o.inlineFragmentSelectionParts()...)
 
 	// Execute the query
 	var result any
@@ -2035,6 +2013,25 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 	}
 
 	return NullValue{}, nil
+}
+
+// inlineFragmentSelectionParts renders the selection an inline-fragment
+// ObjectSelection sends: __typename, then one `... on T { fields }` per
+// fragment, e.g. { __typename ... on User { name email } ... on Post { title author { name } } }.
+func (o *ObjectSelection) inlineFragmentSelectionParts() []string {
+	parts := []string{"__typename"}
+	for _, frag := range o.InlineFragments {
+		var fieldParts []string
+		for _, field := range frag.Fields {
+			if field.Selection != nil {
+				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
+			} else {
+				fieldParts = append(fieldParts, field.Name)
+			}
+		}
+		parts = append(parts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
+	}
+	return parts
 }
 
 // inlineFragmentTypeNames returns a comma-separated list of type names from inline fragments.
@@ -3433,6 +3430,10 @@ func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Ty
 		return ListType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case MapType:
 		return MapType{Type: substituteTypeVar(typ.Type, tv, replacement)}
+	case StreamType:
+		return StreamType{Type: substituteTypeVar(typ.Type, tv, replacement)}
+	case GraphQLStreamType:
+		return GraphQLStreamType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case *hm.FunctionType:
 		newFnType := hm.NewFnType(
 			substituteTypeVar(typ.Arg(), tv, replacement),

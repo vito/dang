@@ -193,9 +193,19 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *Type, issues []string
 			return walkAssignment(haveMT.Type, wantMT.Type)
 		}
 	}
+	if haveST, haveOk := have.(StreamType); haveOk {
+		if wantST, wantOk := want.(StreamType); wantOk {
+			return walkAssignment(haveST.Type, wantST.Type)
+		}
+	}
 	if haveGLT, haveOk := have.(GraphQLListType); haveOk {
 		if wantGLT, wantOk := want.(GraphQLListType); wantOk {
 			return walkAssignment(haveGLT.Type, wantGLT.Type)
+		}
+	}
+	if haveGST, haveOk := have.(GraphQLStreamType); haveOk {
+		if wantGST, wantOk := want.(GraphQLStreamType); wantOk {
+			return walkAssignment(haveGST.Type, wantGST.Type)
 		}
 	}
 	hMod, hOk := have.(*Type)

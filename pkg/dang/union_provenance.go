@@ -65,6 +65,8 @@ func collectUnionNotes(notes *strings.Builder, t hm.Type) {
 		collectUnionNotes(notes, tt.Type)
 	case MapType:
 		collectUnionNotes(notes, tt.Type)
+	case StreamType:
+		collectUnionNotes(notes, tt.Type)
 	case *hm.UnionType:
 		for i, opt := range tt.Options {
 			origin, ok := tt.OptionSource(i).(unionOrigin)
