@@ -18,6 +18,7 @@ func registerStdlib() {
 	registerCodecs()
 	registerAssert()
 	registerRegexp()
+	registerTime()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").
@@ -50,6 +51,13 @@ func registerStdlib() {
 			fn := *args.Block
 
 			for {
+				// Check for cancellation between iterations so a loop that
+				// never touches the network (no sleep, no GraphQL) can still
+				// be stopped by a failing `{{ }}` sibling, a lost race, or a
+				// timeout.
+				if ctx.Err() != nil {
+					return nil, context.Cause(ctx)
+				}
 				if _, err := callFunc(ctx, fn); err != nil {
 					return nil, err
 				}
