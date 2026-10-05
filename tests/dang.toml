@@ -6,6 +6,12 @@ service = ["go", "run", "./gqlserver/service"]
 schema = "./gqlserver/schema.graphqls"
 service = ["go", "run", "./gqlserver/service"]
 
+# A fake slice of a Dagger-style engine API for engine-side awaitables
+# (docs/proposals/concurrency-engine-side.md). Dormant unless imported.
+[imports.Await]
+schema = "./awaitserver/schema.graphqls"
+service = ["go", "run", "./awaitserver/service"]
+
 # A native Dang module (not a GraphQL schema): imported from source.
 [imports.Lib]
 path = "./importlib"
