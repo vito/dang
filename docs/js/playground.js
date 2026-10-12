@@ -161,7 +161,10 @@
       } catch (e) {
         if (window.console) console.warn("dang playground: injection query unavailable:", e);
       }
-      ts = { parser: parser, query: query, injQuery: injQuery, mod: mod };
+      // retryWrap mirrors highlight.go's signaturePrefix/Suffix: fragments
+      // that don't parse bare (declaration signatures, error-snippet windows)
+      // retry inside a synthetic interface body.
+      ts = { parser: parser, query: query, injQuery: injQuery, mod: mod, retryWrap: ["interface _ {\n", "\n}"] };
       return ts;
     })().catch(function (err) {
       // Highlighting is best-effort; fall back to plain text on failure.
@@ -256,32 +259,72 @@
     return null;
   }
 
+  // captureSpans parses src inside optional affixes and returns highlight
+  // spans translated back to src's coordinates, plus the number of characters
+  // covered by ERROR/MISSING nodes within src — the same measure
+  // docs/go/highlight.go's capture uses to decide the wrap retry.
+  function captureSpans(langObj, src, prefix, suffix) {
+    var tree = langObj.parser.parse(prefix + src + suffix);
+    var errChars = errorChars(tree.rootNode, prefix.length, prefix.length + src.length);
+    var caps = langObj.query.captures(tree.rootNode);
+    var spans = [];
+    for (var i = 0; i < caps.length; i++) {
+      var c = caps[i];
+      var s = c.node.startIndex - prefix.length, e = c.node.endIndex - prefix.length;
+      if (e <= 0 || s >= src.length) continue;
+      spans.push({
+        start: Math.max(s, 0),
+        end: Math.min(e, src.length),
+        name: c.name,
+      });
+    }
+    tree.delete();
+    return { spans: spans, errChars: errChars };
+  }
+
+  // errorChars sums the characters of ERROR/MISSING nodes intersecting
+  // [start, end); mirrors errorBytes in docs/go/highlight.go.
+  function errorChars(node, start, end) {
+    if (node.isError || node.isMissing) {
+      var s = node.startIndex, e = node.endIndex;
+      if (e < start || s > end) return 0;
+      // A zero-width MISSING node still poisons the parse it appears in.
+      return Math.max(Math.min(e, end) - Math.max(s, start), 1);
+    }
+    var total = 0;
+    for (var i = 0; i < node.childCount; i++) {
+      total += errorChars(node.child(i), start, end);
+    }
+    return total;
+  }
+
   // classify(langObj, src) -> a token class per character (null where unstyled),
   // using langObj's parser + highlight query. langObj.wrap, when set, is a
   // synthetic prefix that makes a bare fragment parse (e.g. Go's "package p\n");
-  // its captures are shifted back so they line up with src.
+  // its captures are shifted back so they line up with src. langObj.retryWrap
+  // ([prefix, suffix]) retries a source that didn't fully parse inside the
+  // synthetic wrapper and keeps whichever parse recovered more — mirroring
+  // classify in docs/go/highlight.go (the two must stay in lockstep), so
+  // fragments like error-snippet windows highlight the same here as baked.
   function classify(langObj, src) {
     var names = new Array(src.length).fill(null);
     if (!langObj || !langObj.parser) return names;
-    var wrap = langObj.wrap || "";
-    var tree = langObj.parser.parse(wrap + src);
-    var caps = langObj.query.captures(tree.rootNode);
-    // Wider captures first, narrower (and later) override.
-    caps.sort(function (a, b) {
-      var d = a.node.startIndex - b.node.startIndex;
-      if (d) return d;
-      return (b.node.endIndex - b.node.startIndex) - (a.node.endIndex - a.node.startIndex);
-    });
-    for (var i = 0; i < caps.length; i++) {
-      var c = caps[i], cls = tokenClass(c.name);
-      if (!cls) continue; // unmapped captures (e.g. @error) stay unstyled
-      var s = c.node.startIndex - wrap.length, e = c.node.endIndex - wrap.length;
-      if (e <= 0 || s >= src.length) continue;
-      if (s < 0) s = 0;
-      if (e > src.length) e = src.length;
-      for (var j = s; j < e; j++) names[j] = cls;
+    var res = captureSpans(langObj, src, langObj.wrap || "", "");
+    if (res.errChars > 0 && langObj.retryWrap) {
+      var wrapped = captureSpans(langObj, src, langObj.retryWrap[0], langObj.retryWrap[1]);
+      if (wrapped.errChars < res.errChars) res = wrapped;
     }
-    tree.delete();
+    // Wider captures first, narrower (and later) override.
+    res.spans.sort(function (a, b) {
+      var d = a.start - b.start;
+      if (d) return d;
+      return (b.end - b.start) - (a.end - a.start);
+    });
+    for (var i = 0; i < res.spans.length; i++) {
+      var sp = res.spans[i], cls = tokenClass(sp.name);
+      if (!cls) continue; // unmapped captures (e.g. @error) stay unstyled
+      for (var j = sp.start; j < sp.end; j++) names[j] = cls;
+    }
     return names;
   }
 
@@ -335,6 +378,35 @@
     return out;
   }
 
+  // Highlight an error snippet's quoted source lines as one Dang fragment
+  // (so multi-line tokens keep their context), returning per-line HTML.
+  // Mirrors highlightSnippetLines in docs/go/errorreport.go (the two must
+  // stay in lockstep); without tree-sitter the lines come back escaped
+  // but unstyled.
+  function highlightLinesHtml(lines) {
+    var joined = lines.join("\n");
+    var names;
+    if (ts) {
+      names = classify(ts, joined);
+      applyInjections(joined, names);
+    } else {
+      names = new Array(joined.length).fill(null);
+    }
+    var out = [], offset = 0;
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li], html = "", k = offset;
+      while (k < offset + line.length) {
+        var cls = names[k], start = k;
+        while (k < offset + line.length && names[k] === cls) k++;
+        var chunk = escapeHtml(joined.slice(start, k));
+        html += cls ? '<span class="' + cls + '">' + chunk + "</span>" : chunk;
+      }
+      out.push(html);
+      offset += line.length + 1; // the joining newline
+    }
+    return out;
+  }
+
   // ── editor autosizing ─────────────────────────────────────────────────────
   //
   // Every editor textarea autosizes to its content by measuring scrollHeight.
@@ -360,6 +432,80 @@
 
   var STAGE_LABEL = { parse: "Parse error", type: "Type error", eval: "Runtime error", auth: "GitHub error" };
 
+  // Append a failed result's error to the output container. A structured
+  // report (res.report, from the wasm module) renders as annotated source
+  // sections — the DOM must match what the docs build bakes via
+  // renderErrorReport in docs/go/errorreport.go (the two must stay in
+  // lockstep) — with a plain label + message line as the fallback (e.g. the
+  // synthesized "expected this block to fail" error, or GitHub auth
+  // failures).
+  function renderError(out, res) {
+    out.classList.add("is-error");
+    var err = document.createElement("div");
+    err.className = "dang-playground-error";
+    var label = STAGE_LABEL[res.stage] || "Error";
+    var sections = res.report && res.report.sections;
+    if (sections && sections.length) {
+      err.innerHTML = errorReportHtml(sections, label);
+    } else {
+      err.textContent = label + ": " + res.error;
+    }
+    out.appendChild(err);
+  }
+
+  function errorReportHtml(sections, stageLabel) {
+    var html = "";
+    for (var i = 0; i < sections.length; i++) {
+      var sec = sections[i];
+      var label = stageLabel + ":";
+      if (sec.role === "cause") label = "caused by:";
+      else if (sec.role === "sibling") label = "also failed:";
+      html += '<div class="dang-error-section">';
+      html += '<div class="dang-error-title"><span class="dang-error-label">' +
+        escapeHtml(label) + "</span> " + escapeHtml(sec.message) + "</div>";
+      var fields = sec.fields || [];
+      for (var f = 0; f < fields.length; f++) {
+        html += '<div class="dang-error-field">  ' + escapeHtml(fields[f].name) + ": " +
+          highlightHtml(fields[f].value) + "</div>";
+      }
+      if (sec.location) {
+        html += '<pre class="dang-error-snippet">' +
+          errorSnippetHtml(sec.location, sec.snippet) + "</pre>";
+      }
+      html += "</div>";
+    }
+    return html;
+  }
+
+  // The location arrow and quoted source window, line for line the text the
+  // terminal's formatSourceAnnotation prints (sans filename — snippets parse
+  // under a synthetic name and the source sits right above). With no
+  // resolvable snippet it degrades to the bare arrow.
+  function errorSnippetHtml(loc, snip) {
+    var html = '<span class="dang-error-arrow">' +
+      escapeHtml("  --> " + loc.line + ":" + loc.column) + "</span>";
+    if (!snip) return html;
+    var pipe = '<span class="dang-error-gutter">     |</span>';
+    html += "\n" + pipe + "\n";
+    var lines = highlightLinesHtml(snip.lines);
+    for (var i = 0; i < lines.length; i++) {
+      var num = snip.startLine + i;
+      var gutter = " " + String(num).padStart(3) + " | ";
+      if (num === loc.line) {
+        html += '<span class="dang-error-gutter is-hl">' + gutter + "</span>" + lines[i] + "\n";
+        // Underline indent mirrors formatSourceAnnotation: 1 leading space +
+        // 3 gutter + " | " + column-1.
+        html += " ".repeat(1 + 3 + 3 + loc.column - 1) +
+          '<span class="dang-error-underline">' + "^".repeat(Math.max(1, loc.length)) + "</span>\n";
+      } else {
+        html += '<span class="dang-error-gutter">' + gutter + "</span>" +
+          '<span class="dang-error-dim">' + lines[i] + "</span>\n";
+      }
+    }
+    html += pipe;
+    return html;
+  }
+
   function renderOutput(out, res) {
     out.innerHTML = "";
     out.classList.remove("is-error", "is-empty");
@@ -371,18 +517,15 @@
       out.appendChild(pre);
     }
 
-    var line = document.createElement("div");
     if (res.ok) {
+      var line = document.createElement("div");
       line.className = "dang-playground-result";
       // Highlight the result like the input (highlightHtml escapes it).
       line.innerHTML = "=&gt; " + highlightHtml(res.value);
+      out.appendChild(line);
     } else {
-      out.classList.add("is-error");
-      line.className = "dang-playground-error";
-      var label = STAGE_LABEL[res.stage] || "Error";
-      line.textContent = label + ": " + res.error;
+      renderError(out, res);
     }
-    out.appendChild(line);
   }
 
   // ── widget construction ───────────────────────────────────────────────────
@@ -628,12 +771,7 @@
         out.appendChild(line);
       }
     } else {
-      out.classList.add("is-error");
-      var err = document.createElement("div");
-      err.className = "dang-playground-error";
-      var label = STAGE_LABEL[res.stage] || "Error";
-      err.textContent = label + ": " + res.error;
-      out.appendChild(err);
+      renderError(out, res);
     }
     if (!out.firstChild) out.classList.add("is-empty");
   }
