@@ -80,11 +80,12 @@ type langHandler struct {
 // the disk read entirely. For open buffers (no mtime), text is the
 // fingerprint.
 type parsedFile struct {
-	block *dang.FileBlock
-	text  string // populated only when sourced from an open buffer
-	mtime time.Time
-	size  int64
-	open  bool // true if sourced from an open buffer
+	block   *dang.FileBlock
+	text    string // populated only when sourced from an open buffer
+	mtime   time.Time
+	size    int64
+	open    bool         // true if sourced from an open buffer
+	edition dang.Edition // edition the block was parsed as
 }
 
 // File is
@@ -434,11 +435,15 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 // re-introspect on cache hit.
 func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 	uri := toURI(path)
+	// The edition is part of the fingerprint: editing dang.toml's edition
+	// changes how an otherwise unchanged file parses.
+	edition := editionForFile(path)
 
 	h.mu.Lock()
 	openFile := h.files[uri]
 	cached, hit := h.parseCache[path]
 	h.mu.Unlock()
+	hit = hit && cached.edition == edition
 
 	if openFile != nil {
 		openFile.mu.Lock()
@@ -447,7 +452,7 @@ func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 		if hit && cached.open && cached.text == text {
 			return cached.block, nil
 		}
-		return h.parseAndStore(path, text, parsedFile{open: true, text: text})
+		return h.parseAndStore(path, text, parsedFile{open: true, text: text, edition: edition})
 	}
 
 	info, err := os.Stat(path)
@@ -462,11 +467,22 @@ func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size()})
+	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size(), edition: edition})
+}
+
+// editionForFile returns the edition governing the file at path, from the
+// nearest dang.toml. A broken dang.toml is reported elsewhere (import
+// resolution), so here it just falls back to the default edition.
+func editionForFile(path string) dang.Edition {
+	edition, err := dang.EditionForDir(filepath.Dir(path))
+	if err != nil {
+		slog.Warn("failed to determine edition", "path", path, "error", err)
+	}
+	return edition
 }
 
 func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.FileBlock, error) {
-	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path))
+	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path), dang.WithEdition(entry.edition))
 	if err != nil {
 		return nil, err
 	}

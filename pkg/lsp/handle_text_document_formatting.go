@@ -23,8 +23,12 @@ func (h *langHandler) handleTextDocumentFormatting(ctx context.Context, req *jrp
 		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "document not found: %v", params.TextDocument.URI)
 	}
 
-	// Format the file content
-	formatted, err := dang.FormatFile([]byte(f.Text))
+	// Format the file content in the edition its dang.toml declares
+	edition := dang.DefaultEdition
+	if path, err := fromURI(params.TextDocument.URI); err == nil {
+		edition = editionForFile(path)
+	}
+	formatted, err := dang.FormatFileWithEdition([]byte(f.Text), edition)
 	if err != nil {
 		// If formatting fails (e.g., parse error), return empty edits
 		// The parse error will already be shown as a diagnostic

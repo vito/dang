@@ -3315,7 +3315,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(EditionFromContext(ctx)))
 	if err != nil {
 		return err
 	}
@@ -3534,7 +3534,7 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Fi
 
 	blocks := make([]*FileBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
-		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(EditionFromContext(ctx)))
 		if err != nil {
 			return ctx, nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}

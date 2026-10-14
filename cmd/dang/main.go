@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strings"
 
@@ -322,7 +323,12 @@ func formatFile(path string, write, list bool) error {
 		return err
 	}
 
-	formatted, err := dang.FormatFile(source)
+	edition, err := dang.EditionForDir(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+
+	formatted, err := dang.FormatFileWithEdition(source, edition)
 	if err != nil {
 		return err
 	}

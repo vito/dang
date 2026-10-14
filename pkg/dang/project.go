@@ -25,8 +25,21 @@ import (
 
 // ProjectConfig represents a dang.toml project configuration file.
 type ProjectConfig struct {
+	// Edition is the Dang edition the project's source is written in, e.g.
+	// `edition = "1"`. Empty means DefaultEdition; use EffectiveEdition.
+	Edition Edition `toml:"edition,omitempty"`
+
 	// Imports maps import names to their source configurations.
 	Imports map[string]*ImportSource `toml:"imports"`
+}
+
+// EffectiveEdition returns the declared edition, or DefaultEdition if none
+// is declared. Safe to call on a nil config.
+func (c *ProjectConfig) EffectiveEdition() Edition {
+	if c == nil || c.Edition == "" {
+		return DefaultEdition
+	}
+	return c.Edition
 }
 
 // ImportSource describes where an import's GraphQL schema comes from.
