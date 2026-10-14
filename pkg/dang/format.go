@@ -36,6 +36,10 @@ type Formatter struct {
 	commentMap map[int]string
 	// Set of line numbers whose comments have already been emitted.
 	emittedComments map[int]bool
+
+	// Edition whose syntax to emit (e.g. object selection braces). Empty
+	// means DefaultEdition.
+	edition Edition
 }
 
 // Format formats a node and returns the formatted source code
@@ -45,9 +49,15 @@ func Format(node Node) string {
 	return f.buf.String()
 }
 
-// FormatFile parses and formats a Dang source file
+// FormatFile parses and formats a Dang source file written in DefaultEdition.
 func FormatFile(source []byte) (string, error) {
-	result, commentMap, err := ParseWithComments("format", source)
+	return FormatFileWithEdition(source, DefaultEdition)
+}
+
+// FormatFileWithEdition parses and formats a Dang source file written in the
+// given edition, emitting that edition's syntax.
+func FormatFileWithEdition(source []byte, edition Edition) (string, error) {
+	result, commentMap, err := ParseWithComments("format", source, WithEdition(edition))
 	if err != nil {
 		return "", err
 	}
@@ -61,6 +71,7 @@ func FormatFile(source []byte) (string, error) {
 		source:          source,
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
+		edition:         edition,
 	}
 	f.formatNode(result.(*FileBlock))
 
@@ -3124,9 +3135,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 	// Check if the selection was originally multiline
 	multiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
 
+	openBrace, closeBrace := f.edition.selectionBraces()
+
 	// Handle inline fragments
 	if len(o.InlineFragments) > 0 {
-		f.write("{{")
+		f.write(openBrace)
 		if multiline {
 			f.newline()
 			f.indented(func() {
@@ -3163,11 +3176,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 				f.formatInlineFragment(frag)
 			}
 		}
-		f.write("}}")
+		f.write(closeBrace)
 		return
 	}
 
-	f.write("{{")
+	f.write(openBrace)
 	if multiline {
 		f.newline()
 		f.indented(func() {
@@ -3211,7 +3224,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 			f.formatFieldSelection(field)
 		}
 	}
-	f.write("}}")
+	f.write(closeBrace)
 }
 
 func (f *Formatter) formatDotApply(d *DotApply) {
@@ -3235,7 +3248,8 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 		f.write("!")
 	}
 	if len(frag.Fields) > 0 {
-		f.write(" {{")
+		openBrace, closeBrace := f.edition.selectionBraces()
+		f.write(" " + openBrace)
 		for i, field := range frag.Fields {
 			if i > 0 {
 				f.write(",")
@@ -3243,7 +3257,7 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 			f.write(" ")
 			f.formatFieldSelection(field)
 		}
-		f.write(" }}")
+		f.write(" " + closeBrace)
 	}
 }
 

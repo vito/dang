@@ -3315,7 +3315,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(EditionFromContext(ctx)))
 	if err != nil {
 		return err
 	}

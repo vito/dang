@@ -155,7 +155,7 @@ AutoCallSymbol <- name:Id {
 }
 
 // Handle Select followed by optional (), or ObjectSelection
-SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / BlockArg / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / DotBlockArg / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
   switch sel := selection.(type) {
   case *ObjectSelection:
     // Object selection: obj.{{field1, field2}}
@@ -235,13 +235,27 @@ IndexOrCall <- left:Term ImmediateBracket _ index:Form _ ']' args:ArgValues? {
 }
 ImmediateBracket <- '['
 
-ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ "}}" {
+// Edition-dependent selection syntax. Edition 1 spells object selection with
+// single braces (`recv.{ a, b }`) and has no dot-block application; later
+// editions use double braces (`recv.{{ a, b }}`), freeing `recv.{ ... }` for
+// DotBlockArg. Both spellings produce the same ObjectSelection node.
+SingleBraceSelection <- &{ return editionFromStore(c.globalStore).singleBraceSelection(), nil }
+SelectionOpen <- SingleBraceSelection '{' / !SingleBraceSelection "{{"
+SelectionClose <- SingleBraceSelection '}' / !SingleBraceSelection "}}"
+
+// Dot-block application: `recv.{ x => ... }`. Unavailable in edition 1, where
+// that syntax is object selection.
+DotBlockArg <- !SingleBraceSelection b:BlockArg {
+  return b, nil
+}
+
+ObjectSelection <- SelectionOpen _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ SelectionClose {
   return &ObjectSelection{
     Receiver: nil,
     InlineFragments: sliceOfPrepend[*InlineFragment](first, rest),
     Loc: c.Loc(),
   }, nil
-} / "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
+} / SelectionOpen _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ SelectionClose {
   return &ObjectSelection{
     Receiver: nil, // Will be set by parent SelectOrCall
     Fields: sliceOfAppend[*FieldSelection](fields, last),
@@ -249,7 +263,7 @@ ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { retu
   }, nil
 }
 
-InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })* typeName:Symbol _ "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
+InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })* typeName:Symbol _ SelectionOpen _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ SelectionClose {
   return &InlineFragment{
     TypeName:  typeName.(*Symbol),
     Qualifier: qualifierString(qual),

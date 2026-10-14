@@ -39,8 +39,11 @@ type syntaxRegion struct{ start, end uintptr }
 
 var syntaxFilenameField, _ = reflect.TypeFor[SourceLocation]().FieldByName("Filename")
 
+// The edition is part of the key: the same source parses differently in
+// different editions.
 type parseBlueprintKey struct {
-	digest [32]byte
+	digest  [32]byte
+	edition Edition
 }
 
 type blueprintEntry struct {
@@ -99,26 +102,27 @@ func WithSyntaxCache(ctx context.Context, cache *SyntaxCache) context.Context {
 }
 
 func parseFileWithSyntaxCache(ctx context.Context, filename string) (any, error) {
+	edition := EditionFromContext(ctx)
 	cache, _ := ctx.Value(syntaxCacheKey{}).(*SyntaxCache)
 	if cache == nil {
-		return ParseFileWithRecovery(filename, GlobalStore("filePath", filename))
+		return ParseFileWithRecovery(filename, GlobalStore("filePath", filename), WithEdition(edition))
 	}
-	return parseFileBlueprintWithCache(filename, cache)
+	return parseFileBlueprintWithCache(filename, edition, cache)
 }
 
-func parseFileBlueprintWithCache(filename string, cache *SyntaxCache) (any, error) {
+func parseFileBlueprintWithCache(filename string, edition Edition, cache *SyntaxCache) (any, error) {
 	source, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	key := parseBlueprintKey{digest: sha256.Sum256(source)}
+	key := parseBlueprintKey{digest: sha256.Sum256(source), edition: edition}
 	if blueprint, ok := cache.get(key); ok {
 		copied, err := blueprint.copy(reflect.ValueOf(filename))
 		if err == nil {
 			return copied.Interface().(*FileBlock), nil
 		}
 	}
-	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename))
+	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename), WithEdition(edition))
 	if err != nil {
 		return nil, err
 	}

@@ -13,7 +13,7 @@ func BenchmarkSyntaxCache(b *testing.B) {
 		filename = filepath.Join("..", "..", "tests", "test_comprehensive.dang")
 	}
 	cache := NewSyntaxCache()
-	if _, err := parseFileBlueprintWithCache(filename, cache); err != nil {
+	if _, err := parseFileBlueprintWithCache(filename, DefaultEdition, cache); err != nil {
 		b.Fatal(err)
 	}
 	if cache.entries.Len() != 1 {
@@ -28,10 +28,10 @@ func BenchmarkSyntaxCache(b *testing.B) {
 			return ParseFileWithRecovery(filename, GlobalStore("filePath", filename))
 		}},
 		{"Prepare", func(filename string) (any, error) {
-			return parseFileBlueprintWithCache(filename, NewSyntaxCache())
+			return parseFileBlueprintWithCache(filename, DefaultEdition, NewSyntaxCache())
 		}},
 		{"Reuse", func(filename string) (any, error) {
-			return parseFileBlueprintWithCache(filename, cache)
+			return parseFileBlueprintWithCache(filename, DefaultEdition, cache)
 		}},
 	} {
 		b.Run(scenario.name, func(b *testing.B) {

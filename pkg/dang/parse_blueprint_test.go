@@ -19,7 +19,7 @@ import (
 var parseBlueprints = NewSyntaxCache()
 
 func parseFileBlueprint(filename string) (any, error) {
-	return parseFileBlueprintWithCache(filename, parseBlueprints)
+	return parseFileBlueprintWithCache(filename, DefaultEdition, parseBlueprints)
 }
 
 func TestParseBlueprintFreshSyntax(t *testing.T) {
@@ -33,7 +33,7 @@ func TestParseBlueprintFreshSyntax(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := firstValue.(*FileBlock)
-	if _, ok := parseBlueprints.get(parseBlueprintKey{digest: sha256.Sum256(source)}); !ok {
+	if _, ok := parseBlueprints.get(parseBlueprintKey{digest: sha256.Sum256(source), edition: DefaultEdition}); !ok {
 		t.Fatal("source was not cached")
 	}
 	first.Forms[0].(*ImportDecl).Name.Name = "Other"
@@ -99,19 +99,19 @@ func TestParseBlueprintEvictionAndOversize(t *testing.T) {
 		}
 	}
 	cache := newSyntaxCache(1, 1<<20)
-	got, err := parseFileBlueprintWithCache(first, cache)
+	got, err := parseFileBlueprintWithCache(first, DefaultEdition, cache)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got.(*FileBlock).Forms = nil
-	if _, err := parseFileBlueprintWithCache(second, cache); err != nil {
+	if _, err := parseFileBlueprintWithCache(second, DefaultEdition, cache); err != nil {
 		t.Fatal(err)
 	}
-	key := parseBlueprintKey{digest: sha256.Sum256([]byte("value: Int! = 1\n"))}
+	key := parseBlueprintKey{digest: sha256.Sum256([]byte("value: Int! = 1\n")), edition: DefaultEdition}
 	if _, ok := cache.get(key); ok {
 		t.Fatal("first file was not evicted")
 	}
-	reparsed, err := parseFileBlueprintWithCache(first, cache)
+	reparsed, err := parseFileBlueprintWithCache(first, DefaultEdition, cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestParseBlueprintEvictionAndOversize(t *testing.T) {
 	}
 	// A file whose instructions exceed the budget remains valid source.
 	tiny := newSyntaxCache(1, 1)
-	oversized, err := parseFileBlueprintWithCache(first, tiny)
+	oversized, err := parseFileBlueprintWithCache(first, DefaultEdition, tiny)
 	if err != nil || !reflect.DeepEqual(oversized, want) {
 		t.Fatalf("oversized source no longer parses: %v", err)
 	}

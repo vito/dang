@@ -411,7 +411,7 @@ func (r *replComponent) HandleKeyPress(ctx tuist.Context, ev uv.KeyPressEvent) b
 func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	ev := r.activeEntryView()
 
-	result, err := dang.ParseWithRecovery("repl", []byte(expr))
+	result, err := dang.ParseWithRecovery("repl", []byte(expr), dang.WithEdition(dang.EditionFromContext(r.ctx)))
 	if err != nil {
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		ev.Update()
