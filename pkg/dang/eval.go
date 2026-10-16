@@ -1180,28 +1180,18 @@ func nullProbeSelection(schema *introspection.Schema, typeName string) (fields [
 
 // resolveNull probes a handle that may be null (see GraphQLFunction.Call)
 // with a single query against the end of its chain, returning null or a
-// handle known to be non-null.
+// handle known to be non-null. what names the field for error messages.
 //
-// Like the Dagger Go SDK, the probe fetches the object's `id` along with its
-// `__typename` when it has one, and loads the object from that ID, so later
-// selections start from the loader instead of re-running the whole chain, and
-// passing the object as an ID-typed argument costs nothing. Without a loader
-// the original chain is kept, still with its ID known. Either way the handle
-// is narrowed to its concrete type, so an interface- or union-typed field
-// matches `case` type patterns by what it actually is. what names the field
-// for error messages.
+// An object, interface or union handle is probed with resolveObject, so it
+// comes back loaded by ID and narrowed to its concrete type.
 func (g GraphQLValue) resolveNull(ctx context.Context, what string) (Value, error) {
-	fail := func(err error) (Value, error) {
-		return nil, fmt.Errorf("executing GraphQL query for %s: %w", what, err)
-	}
-
 	if g.Field != nil && isListTypeRef(g.Field.TypeRef) {
 		// Lists are only probed for a null they inherit from an unprobed
 		// nullable step; each element's __typename is the cheapest valid
 		// selection.
 		var result any
 		if err := g.QueryChain.Select("__typename").Bind(&result).Client(g.Client).Execute(ctx); err != nil {
-			return fail(err)
+			return nil, fmt.Errorf("executing GraphQL query for %s: %w", what, err)
 		}
 		if result == nil {
 			return NullValue{}, nil
@@ -1209,12 +1199,40 @@ func (g GraphQLValue) resolveNull(ctx context.Context, what string) (Value, erro
 		g.MaybeNull = false
 		return g, nil
 	}
+	return g.resolveObject(ctx, what)
+}
 
+// isAbstract reports whether the handle is typed as a GraphQL interface or
+// union, so its concrete type is not known without asking the server. List
+// handles never are: their elements are reached through a projection, which
+// reports each element's type itself.
+func (g GraphQLValue) isAbstract() bool {
+	if g.Schema == nil || (g.Field != nil && isListTypeRef(g.Field.TypeRef)) {
+		return false
+	}
+	t := g.Schema.Types.Get(g.TypeName)
+	return t != nil && (t.Kind == introspection.TypeKindInterface || t.Kind == introspection.TypeKindUnion)
+}
+
+// resolveObject runs a single query against the end of the handle's chain
+// for the object's `__typename`, and its `id` when it has a loadable one (see
+// nullProbeSelection). It returns null if the server resolved the object to
+// null, or else a non-null handle of the object's concrete type. It backs
+// both the null probe (resolveNull) and `case` on an interface or union
+// handle (see Case.Eval). what names the field for error messages.
+//
+// Like the Dagger Go SDK, the object is then loaded from its ID, so later
+// selections start from the loader instead of re-running the whole chain, and
+// passing the object as an ID-typed argument costs nothing. Without a loader
+// the original chain is kept, still with its ID known. Either way the handle
+// is narrowed to its concrete type, so an interface- or union-typed handle
+// matches `case` type patterns by what it actually is.
+func (g GraphQLValue) resolveObject(ctx context.Context, what string) (Value, error) {
 	fields, idType := nullProbeSelection(g.Schema, g.TypeName)
 	var result map[string]any
 	probe := g.QueryChain.SelectMultiple(fields...).Bind(&result).Client(g.Client)
 	if err := probe.Execute(ctx); err != nil {
-		return fail(err)
+		return nil, fmt.Errorf("executing GraphQL query for %s: %w", what, err)
 	}
 	if result == nil {
 		return NullValue{}, nil

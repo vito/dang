@@ -36,6 +36,23 @@ func (c *recordingClient) Queries() []string {
 	return append([]string(nil), c.queries...)
 }
 
+// runRecordingQueries runs source against the test GraphQL server, imported
+// as Test, and returns every query it sent, in order.
+func runRecordingQueries(ctx context.Context, t *testctx.T, source string) []string {
+	cfg, err := gqlserver.ImportConfig("Test")
+	require.NoError(t, err)
+	client := &recordingClient{inner: cfg.Client}
+	cfg.Client = client
+
+	path := filepath.Join(t.TempDir(), "test.dang")
+	require.NoError(t, os.WriteFile(path, []byte("import Test\n\n"+source), 0o600))
+
+	ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
+	ctx = dang.ContextWithImportConfigs(ctx, cfg)
+	require.NoError(t, dang.RunFile(ctx, path, false))
+	return client.Queries()
+}
+
 // A handle that may be null — a nullable object field, or anything selected
 // off one — is probed for null only when it escapes the chain: where it is
 // selected from, the leaf or `{{ }}` projection that runs the chain reveals
@@ -45,18 +62,7 @@ func (c *recordingClient) Queries() []string {
 // vito/dang#186.
 func (DangSuite) TestNullableObjectFieldQueries(ctx context.Context, t *testctx.T) {
 	run := func(t *testctx.T, source string) []string {
-		cfg, err := gqlserver.ImportConfig("Test")
-		require.NoError(t, err)
-		client := &recordingClient{inner: cfg.Client}
-		cfg.Client = client
-
-		path := filepath.Join(t.TempDir(), "test.dang")
-		require.NoError(t, os.WriteFile(path, []byte("import Test\n\n"+source), 0o600))
-
-		ctx := ioctx.StdoutToContext(ctx, NewTWriter(t))
-		ctx = dang.ContextWithImportConfigs(ctx, cfg)
-		require.NoError(t, dang.RunFile(ctx, path, false))
-		return client.Queries()
+		return runRecordingQueries(ctx, t, source)
 	}
 
 	t.Run("sends one query for a leaf off a nullable field", func(ctx context.Context, t *testctx.T) {
@@ -203,6 +209,107 @@ assert { node(id: "nope") == null }
 		queries := run(t, `
 let u = Mutation.updateUser(id: "User:2", input: UpdateUserInput(name: "Jane Smith"))
 assert { u.name == "Jane Smith" }
+`)
+		require.Len(t, queries, 1)
+		require.True(t, strings.HasPrefix(queries[0], "mutation "), queries[0])
+		require.NotContains(t, queries[0], "__typename")
+	})
+}
+
+// `case` matches a GraphQL interface or union handle by its concrete type. A
+// handle that only knows its abstract type, such as a non-null interface
+// field, which is never probed for null, is resolved with the same `{ id
+// __typename }` query as the null probe, and loaded by ID; but only when a
+// type pattern needs it.
+func (DangSuite) TestCaseOnAbstractHandleQueries(ctx context.Context, t *testctx.T) {
+	run := func(t *testctx.T, source string) []string {
+		return runRecordingQueries(ctx, t, source)
+	}
+
+	t.Run("resolves a non-null interface field once", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let r = case (favoriteNode) {
+  u: User => "user " + u.name
+  p: Post => "post " + p.title + " by " + p.author.name
+}
+assert { r == "post Second Post by Jane Smith" }
+`)
+		require.Equal(t, []string{
+			`query Query {favoriteNode{id __typename}}`,
+			// The arm selects through the loader, not the original chain.
+			`query Query {node(id:"Post:2"){... on Post{title}}}`,
+			`query Query {node(id:"Post:2"){... on Post{author{name}}}}`,
+		}, queries)
+	})
+
+	t.Run("resolves a non-null union field once", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let r = case (featured) {
+  u: User => u.name
+  p: Post => p.title
+}
+assert { r == "Jane Smith" }
+`)
+		require.Equal(t, []string{
+			`query Query {featured{__typename ... on User { id } ... on Post { id }}}`,
+			`query Query {node(id:"User:2"){... on User{name}}}`,
+		}, queries)
+	})
+
+	t.Run("does not resolve without type patterns", func(ctx context.Context, t *testctx.T) {
+		// Value clauses compare against the handle itself.
+		queries := run(t, `
+let f = favoriteNode
+let r = case (f) {
+  f => "same"
+  else => "other"
+}
+assert { r == "same" }
+`)
+		require.Empty(t, queries)
+	})
+
+	t.Run("does not resolve when the first pattern is the abstract type", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let r = case (favoriteNode) {
+  n: Node => n.id
+}
+assert { r == "Post:2" }
+`)
+		require.Equal(t, []string{
+			`query Query {favoriteNode{id}}`,
+		}, queries)
+	})
+
+	t.Run("does not resolve an already concrete handle", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let describe(n: Node): String! {
+  case (n) {
+    u: User => "user " + u.name
+    p: Post => "post " + p.title
+    else => "unknown"
+  }
+}
+
+assert { describe(favoriteNode.{{... on Post!}}) == "post Second Post" }
+assert { describe(node(id: "User:1")) == "user John Doe" }
+`)
+		require.Equal(t, []string{
+			`query Query {favoriteNode{__typename}}`,
+			`query Query {favoriteNode{... on Post{title}}}`,
+			// The nullable node field was probed for null already.
+			`query Query {node(id:"User:1"){id __typename}}`,
+			`query Query {node(id:"User:1"){... on User{name}}}`,
+		}, queries)
+	})
+
+	t.Run("does not resolve a mutation-returned handle", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let r = case (Mutation.touchNode(id: "Post:1")) {
+  p: Post => "post " + p.title
+  n: Node => "node " + toString(n.id)
+}
+assert { r == "node Post:1" }
 `)
 		require.Len(t, queries, 1)
 		require.True(t, strings.HasPrefix(queries[0], "mutation "), queries[0])

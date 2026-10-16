@@ -1,0 +1,90 @@
+# `case` on a GraphQL interface or union handle matches the object's concrete
+# type, whether or not the field it came from is nullable.
+
+import Test
+
+let describe(n: Node): String! {
+  case (n) {
+    u: User => "user " + u.name
+    p: Post => "post " + p.title
+    else => "unknown"
+  }
+}
+
+# A non-null interface field: favoriteNode is post "Post:2"
+assert { describe(favoriteNode) == "post Second Post" }
+
+# The binding is the concrete handle, so it selects Post fields and chains on
+let favoriteAuthor = case (favoriteNode) {
+  p: Post => p.title + " by " + p.author.name
+  else => "not a post"
+}
+assert { favoriteAuthor == "Second Post by Jane Smith" }
+
+# A non-null union field: featured is user "User:2"
+let featuredLabel = case (featured) {
+  u: User => "user " + u.name
+  p: Post => "post " + p.title
+}
+assert { featuredLabel == "user Jane Smith" }
+
+# ...and the bound handle can be passed along, as an ID argument too
+let featuredUser = case (featured) {
+  u: User => u
+  p: Post => p.author
+}
+assert { userName(user: featuredUser) == "Jane Smith" }
+assert { featuredUser.posts(first: 1).posts.{{title}}[0].title == "Second Post" }
+
+# An interface handle loaded from an @expectedType ID matches too
+assert { describe(favoriteNodeID) == "user John Doe" }
+
+# Nullable interface fields match the same way, and null falls through
+assert { describe(node(id: "User:1")) == "user John Doe" }
+assert { describe(node(id: "Post:3")) == "post Third Post" }
+assert { describe(node(id: "nope")) == "unknown" }
+
+let nullable = case (node(id: "nope")) {
+  null => "nothing"
+  p: Post => "post " + p.title
+  else => "other"
+}
+assert { nullable == "nothing" }
+
+# Interface patterns still match, first or after concrete patterns
+let asNode = case (favoriteNode) {
+  n: Node => "node " + toString(n.id)
+}
+assert { asNode == "node Post:2" }
+
+let viaInterface = case (favoriteNode) {
+  u: User => "user " + u.name
+  n: Node => "node " + toString(n.id)
+}
+assert { viaInterface == "node Post:2" }
+
+# No pattern matches: else
+let unmatched = case (favoriteNode) {
+  u: User => "user " + u.name
+  else => "not a user"
+}
+assert { unmatched == "not a user" }
+
+# A handle reached through a mutation keeps its interface type: resolving it
+# would re-send the mutation. It matches interface patterns and else only;
+# an inline fragment narrows it instead.
+let touched = Mutation.touchNode(id: "Post:1")
+let touchedKind = case (touched) {
+  p: Post => "post " + p.title
+  n: Node => "node " + toString(n.id)
+}
+assert { touchedKind == "node Post:1" }
+
+let touchedPost = case (touched) {
+  p: Post => p.title
+  else => "unresolved"
+}
+assert { touchedPost == "unresolved" }
+assert { touched.{{... on Post!}}.title == "First Post" }
+
+print("GraphQL abstract case tests passed!")
