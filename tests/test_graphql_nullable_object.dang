@@ -6,11 +6,11 @@ import Test
 
 # A nullable root field returning null is null
 assert { maybeUser(id: "nope") == null }
-assert { maybeUser(id: "1") != null }
-assert { maybeUser(id: "1").name == "John Doe" }
+assert { maybeUser(id: "User:1") != null }
+assert { maybeUser(id: "User:1").name == "John Doe" }
 
-# A nullable field on an object: user "1" has no manager
-let m = user(id: "1").manager
+# A nullable field on an object: user "User:1" has no manager
+let m = user(id: "User:1").manager
 assert { m == null }
 
 # Flow narrowing takes the null branch
@@ -18,7 +18,7 @@ let managerName = if (m == null) { "nobody" } else { m.name }
 assert { managerName == "nobody" }
 
 # A guard clause narrows the non-null case
-let nameOfManager(id: String!): String! {
+let nameOfManager(id: ID!): String! {
   let mgr = user(id: id).manager
   if (mgr == null) {
     raise "no manager"
@@ -26,61 +26,64 @@ let nameOfManager(id: String!): String! {
   mgr.name
 }
 
-assert { nameOfManager("2") == "John Doe" }
-assert { (nameOfManager("1") rescue "raised") == "raised" }
+assert { nameOfManager("User:2") == "John Doe" }
+assert { (nameOfManager("User:1") rescue "raised") == "raised" }
 
 # ?? falls back on null, and keeps a non-null handle
-assert { (user(id: "1").manager ?? user(id: "2")).name == "Jane Smith" }
-assert { (user(id: "2").manager ?? user(id: "2")).name == "John Doe" }
+assert { (user(id: "User:1").manager ?? user(id: "User:2")).name == "Jane Smith" }
+assert { (user(id: "User:2").manager ?? user(id: "User:2")).name == "John Doe" }
 
 # ! raises on null
-assert { (user(id: "1").manager!.name rescue "raised") == "raised" }
-assert { user(id: "2").manager!.name == "John Doe" }
+assert { (user(id: "User:1").manager!.name rescue "raised") == "raised" }
+assert { user(id: "User:2").manager!.name == "John Doe" }
 
 # Null value patterns match
-let describe(id: String!): String! {
+let describe(id: ID!): String! {
   case (user(id: id).manager) {
     null => "unmanaged"
     else => "managed"
   }
 }
 
-assert { describe("1") == "unmanaged" }
-assert { describe("2") == "managed" }
+assert { describe("User:1") == "unmanaged" }
+assert { describe("User:2") == "managed" }
 
 # Chaining through a non-null manager still works
-assert { user(id: "2").manager.name == "John Doe" }
-assert { user(id: "2").manager.manager == null }
+assert { user(id: "User:2").manager.name == "John Doe" }
+assert { user(id: "User:2").manager.manager == null }
 
 # Selecting through a null receiver propagates null
-assert { user(id: "1").manager.name == null }
+assert { user(id: "User:1").manager.name == null }
 
 # Selecting through nullable fields leaves the null check to the leaf, which
 # is null when any step of the chain is
-assert { user(id: "2").manager.manager.name == null }
+assert { user(id: "User:2").manager.manager.name == null }
 assert { maybeUser(id: "nope").emails == null }
-assert { user(id: "1").manager.posts(first: 1).pageInfo.hasNextPage == null }
-assert { user(id: "2").manager.posts(first: 1).pageInfo.hasNextPage == true }
+assert { user(id: "User:1").manager.posts(first: 1).pageInfo.hasNextPage == null }
+assert { user(id: "User:2").manager.posts(first: 1).pageInfo.hasNextPage == true }
 
 # Anything selected off a null field is null too once it escapes the chain,
 # even a non-null field or a list
-let noPosts = user(id: "1").manager.posts
+let noPosts = user(id: "User:1").manager.posts
 assert { noPosts == null }
-assert { user(id: "1").manager.posts.posts == null }
-let somePosts = user(id: "2").manager.posts
+assert { user(id: "User:1").manager.posts.posts == null }
+let somePosts = user(id: "User:2").manager.posts
 assert { somePosts != null }
 assert { somePosts.pageInfo.hasNextPage == false }
-assert { (user(id: "1").manager.posts ?? primaryUser.posts).pageInfo.hasPreviousPage == false }
+assert { (user(id: "User:1").manager.posts ?? primaryUser.posts).pageInfo.hasPreviousPage == false }
 
 # An escaping handle is loaded by ID, and still works as an ID argument
-let found = maybeUser(id: "2")
+let found = maybeUser(id: "User:2")
 assert { found.name == "Jane Smith" }
 assert { userName(user: found!) == "Jane Smith" }
 
+# Its id round-trips into lookups
+assert { user(id: found!.id).name == "Jane Smith" }
+
 # Nullable interface fields resolve too
 assert { node(id: "nope") == null }
-assert { node(id: "1") != null }
-assert { node(id: "1").id == "1" }
+assert { node(id: "User:1") != null }
+assert { node(id: "User:1").id == "User:1" }
 
 # ...as their concrete type, so type patterns match
 let kind(n: Node): String! {
@@ -91,24 +94,25 @@ let kind(n: Node): String! {
   }
 }
 
-assert { kind(node(id: "1")) == "user John Doe" }
-assert { kind(node(id: "3")) == "post Third Post" }
+assert { kind(node(id: "User:1")) == "user John Doe" }
+assert { kind(node(id: "Post:1")) == "post First Post" }
+assert { kind(node(id: "Post:3")) == "post Third Post" }
 assert { kind(node(id: "nope")) == "unknown" }
 
 # A projection off a nullable field reveals the null on its own
-assert { user(id: "1").manager.{{name}} == null }
-assert { user(id: "2").manager.{{name}}.name == "John Doe" }
+assert { user(id: "User:1").manager.{{name}} == null }
+assert { user(id: "User:2").manager.{{name}}.name == "John Doe" }
 assert { maybeUser(id: "nope").{{name}} == null }
 
 # Inline fragments off a null field propagate null too
 assert { node(id: "nope").{{... on User}} == null }
 assert { node(id: "nope").{{... on User!}} == null }
 assert { node(id: "nope").{{... on User {{ name }}}} == null }
-assert { node(id: "1").{{... on User}}.name == "John Doe" }
+assert { node(id: "User:1").{{... on User}}.name == "John Doe" }
 
 # Mutations returning a nullable object are left lazy (a probe would re-send
 # the mutation), but still work
-let updated = Mutation.updateUser(id: "2", input: UpdateUserInput(name: "Jane Smith"))
+let updated = Mutation.updateUser(id: "User:2", input: UpdateUserInput(name: "Jane Smith"))
 assert { updated.name == "Jane Smith" }
 
 print("GraphQL nullable object tests passed!")

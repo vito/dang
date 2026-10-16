@@ -23,7 +23,7 @@ let searchAge = case (searchResults[0]) {
 assert { searchAge == 30 }
 
 # node returns Test.Node, whose User implementer is Test.User.
-let nodeResult = node(id: "1").{{
+let nodeResult = node(id: "User:1").{{
   ... on User {{ name, age }}
 }}
 

@@ -4,16 +4,16 @@
 import Test
 
 # node(id) returns the Node interface - narrow with a qualified lazy fragment
-let user_node = Test.node(id: "1").{{... on Test.User}}
+let user_node = Test.node(id: "User:1").{{... on Test.User}}
 assert { user_node != null }
 assert { user_node.name == "John Doe" }
 
 # Non-null qualified assertion that succeeds
-user_node_nn: Test.User! = Test.node(id: "1").{{... on Test.User!}}
+user_node_nn: Test.User! = Test.node(id: "User:1").{{... on Test.User!}}
 assert { user_node_nn.name == "John Doe" }
 
 # Qualified narrowing that doesn't match returns null
-let not_a_post = Test.node(id: "1").{{... on Test.Post}}
+let not_a_post = Test.node(id: "User:1").{{... on Test.Post}}
 assert { not_a_post == null }
 
 # Qualified inline fragments with field sub-selections on a union list

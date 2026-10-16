@@ -61,10 +61,10 @@ func (DangSuite) TestNullableObjectFieldQueries(ctx context.Context, t *testctx.
 
 	t.Run("sends one query for a leaf off a nullable field", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-assert { user(id: "1").name == "John Doe" }
+assert { user(id: "User:1").name == "John Doe" }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"1"){name}}`,
+			`query Query {user(id:"User:1"){name}}`,
 		}, queries)
 	})
 
@@ -81,35 +81,35 @@ assert { maybeUser(id: "nope").emails == null }
 
 	t.Run("resolves a chain of nullable fields with one query", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-assert { user(id: "2").manager.name == "John Doe" }
-assert { user(id: "2").manager.manager.name == null }
+assert { user(id: "User:2").manager.name == "John Doe" }
+assert { user(id: "User:2").manager.manager.name == null }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"2"){manager{name}}}`,
-			`query Query {user(id:"2"){manager{manager{name}}}}`,
+			`query Query {user(id:"User:2"){manager{name}}}`,
+			`query Query {user(id:"User:2"){manager{manager{name}}}}`,
 		}, queries)
 	})
 
 	t.Run("probes an escaping handle and loads it by ID", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-let u = maybeUser(id: "1")
+let u = maybeUser(id: "User:1")
 assert { u != null }
 assert { u.name == "John Doe" }
 `)
 		require.Equal(t, []string{
-			`query Query {maybeUser(id:"1"){id __typename}}`,
+			`query Query {maybeUser(id:"User:1"){id __typename}}`,
 			// Later selections start from the loader, not the original chain.
-			`query Query {node(id:"1"){... on User{name}}}`,
+			`query Query {node(id:"User:1"){... on User{name}}}`,
 		}, queries)
 	})
 
 	t.Run("probes an escaping null handle", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-let m = user(id: "1").manager
+let m = user(id: "User:1").manager
 assert { m == null }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"1"){manager{id __typename}}}`,
+			`query Query {user(id:"User:1"){manager{id __typename}}}`,
 		}, queries)
 	})
 
@@ -117,29 +117,29 @@ assert { m == null }
 		// posts is non-null, but selected off an unprobed nullable field, so
 		// it may still be null. It has no id, so the probe is __typename.
 		queries := run(t, `
-let none = user(id: "1").manager.posts
+let none = user(id: "User:1").manager.posts
 assert { none == null }
-let some = user(id: "2").manager.posts
+let some = user(id: "User:2").manager.posts
 assert { some != null }
 assert { some.pageInfo.hasNextPage == false }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"1"){manager{posts{__typename}}}}`,
-			`query Query {user(id:"2"){manager{posts{__typename}}}}`,
-			`query Query {user(id:"2"){manager{posts{pageInfo{hasNextPage}}}}}`,
+			`query Query {user(id:"User:1"){manager{posts{__typename}}}}`,
+			`query Query {user(id:"User:2"){manager{posts{__typename}}}}`,
+			`query Query {user(id:"User:2"){manager{posts{pageInfo{hasNextPage}}}}}`,
 		}, queries)
 	})
 
 	t.Run("skips the probe for a projection", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-let r = user(id: "2").manager.{{name}}
+let r = user(id: "User:2").manager.{{name}}
 assert { r.name == "John Doe" }
-let n = user(id: "1").manager.{{name}}
+let n = user(id: "User:1").manager.{{name}}
 assert { n == null }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"2"){manager{name}}}`,
-			`query Query {user(id:"1"){manager{name}}}`,
+			`query Query {user(id:"User:2"){manager{name}}}`,
+			`query Query {user(id:"User:1"){manager{name}}}`,
 		}, queries)
 	})
 
@@ -156,23 +156,23 @@ assert { maybeUser(id: "nope").{{name}} == null }
 		// Only the call being selected from skips its probe; a nullable object
 		// field evaluated in its arguments is still resolved first.
 		queries := run(t, `
-let r = user(id: (user(id: "2").manager ?? primaryUser).id).{{name}}
+let r = user(id: (user(id: "User:2").manager ?? primaryUser).id).{{name}}
 assert { r.name == "John Doe" }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"2"){manager{id __typename}}}`,
-			`query Query {node(id:"1"){... on User{id}}}`,
-			`query Query {user(id:"1"){name}}`,
+			`query Query {user(id:"User:2"){manager{id __typename}}}`,
+			`query Query {node(id:"User:1"){... on User{id}}}`,
+			`query Query {user(id:"User:1"){name}}`,
 		}, queries)
 	})
 
 	t.Run("passes a probed handle as an ID for free", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-assert { userName(user: maybeUser(id: "2")!) == "Jane Smith" }
+assert { userName(user: maybeUser(id: "User:2")!) == "Jane Smith" }
 `)
 		require.Equal(t, []string{
-			`query Query {maybeUser(id:"2"){id __typename}}`,
-			`query Query {userName(user:"2")}`,
+			`query Query {maybeUser(id:"User:2"){id __typename}}`,
+			`query Query {userName(user:"User:2")}`,
 		}, queries)
 	})
 
@@ -186,22 +186,22 @@ let describe(n: Node): String! {
   }
 }
 
-assert { describe(node(id: "1")) == "user John Doe" }
-assert { describe(node(id: "3")) == "post Third Post" }
+assert { describe(node(id: "User:1")) == "user John Doe" }
+assert { describe(node(id: "Post:3")) == "post Third Post" }
 assert { node(id: "nope") == null }
 `)
 		require.Equal(t, []string{
-			`query Query {node(id:"1"){id __typename}}`,
-			`query Query {node(id:"1"){... on User{name}}}`,
-			`query Query {node(id:"3"){id __typename}}`,
-			`query Query {node(id:"3"){... on Post{title}}}`,
+			`query Query {node(id:"User:1"){id __typename}}`,
+			`query Query {node(id:"User:1"){... on User{name}}}`,
+			`query Query {node(id:"Post:3"){id __typename}}`,
+			`query Query {node(id:"Post:3"){... on Post{title}}}`,
 			`query Query {node(id:"nope"){id __typename}}`,
 		}, queries)
 	})
 
 	t.Run("does not probe mutations", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
-let u = Mutation.updateUser(id: "2", input: UpdateUserInput(name: "Jane Smith"))
+let u = Mutation.updateUser(id: "User:2", input: UpdateUserInput(name: "Jane Smith"))
 assert { u.name == "Jane Smith" }
 `)
 		require.Len(t, queries, 1)

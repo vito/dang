@@ -30,21 +30,21 @@ let raiseCaught = { raise "boom" } rescue {
 assert { raiseCaught == "boom" }
 
 # failed GraphQL requests are GraphQLError, carrying the response path
-let gqlPath = user(id: "1").alwaysFails rescue {
+let gqlPath = user(id: "User:1").alwaysFails rescue {
   e: GraphQLError => e.path
   e: Error => ["wrong type"]
 }
 assert { gqlPath == ["user", "alwaysFails"] }
 
 # extensions arrive as JSON text, ready for JSON.decode
-let gqlExtensions = user(id: "1").alwaysFails rescue {
+let gqlExtensions = user(id: "User:1").alwaysFails rescue {
   e: GraphQLError => e.extensions
   e: Error => "wrong type"
 }
 assert { gqlExtensions == "{\"code\":\"ALWAYS_FAILS\"}" }
 
 # the response message is the server's own, without client-side wrapping
-let gqlMessage = user(id: "1").alwaysFails rescue {
+let gqlMessage = user(id: "User:1").alwaysFails rescue {
   e: GraphQLError => e.message
   e: Error => "wrong type"
 }

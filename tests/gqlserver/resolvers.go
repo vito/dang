@@ -16,7 +16,7 @@ type Resolver struct{}
 
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput) (*User, error) {
-	newID := strconv.Itoa(len(users) + 1)
+	newID := "User:" + strconv.Itoa(len(users)+1)
 	user := &User{
 		ID:     newID,
 		Name:   input.Name,
@@ -428,13 +428,13 @@ func (r *userResolver) AlwaysFails(ctx context.Context, obj *User) (string, erro
 
 // Manager is the resolver for the manager field.
 func (r *userResolver) Manager(ctx context.Context, obj *User) (*User, error) {
-	// User "1" sits at the top and has no manager; everyone else reports
-	// to user "1".
-	if obj.ID == "1" {
+	// User "User:1" sits at the top and has no manager; everyone else
+	// reports to user "User:1".
+	if obj.ID == "User:1" {
 		return nil, nil
 	}
 	for _, user := range users {
-		if user.ID == "1" {
+		if user.ID == "User:1" {
 			return user, nil
 		}
 	}

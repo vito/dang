@@ -353,7 +353,7 @@ client-side wrapping, and its `path` and `extensions` make the failure
 inspectable without parsing text:
 
 ```dang-static
-user(id: "1").alwaysFails rescue {
+user(id: "User:1").alwaysFails rescue {
   e: GraphQLError => `${e.message} (at ${toString(e.path)})`
 }
 ```

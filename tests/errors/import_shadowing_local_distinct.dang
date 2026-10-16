@@ -30,5 +30,5 @@ union SearchResult = Cat | Dog
 let userShouldFail: User! = Test.primaryUser
 let statusShouldFail: Status! = Test.status
 let urlShouldFail: URL! = Test.homepage
-let nodeShouldFail: Node = Test.node(id: "1")
+let nodeShouldFail: Node = Test.node(id: "User:1")
 let searchShouldFail: [SearchResult!]! = Test.search(query: "John")

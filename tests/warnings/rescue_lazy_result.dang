@@ -18,10 +18,10 @@ let synced = primaryUser.sync rescue null
 let record = primaryUser.{{name}} rescue null
 
 # no warning: a nullable object field is probed for null where written
-let manager = user(id: "2").manager rescue null
+let manager = user(id: "User:2").manager rescue null
 
 # no warning: so is a handle selected off one, where it escapes the chain
-let managerPosts = user(id: "2").manager.posts rescue null
+let managerPosts = user(id: "User:2").manager.posts rescue null
 
 assert { name == "John Doe" }
 print("done")

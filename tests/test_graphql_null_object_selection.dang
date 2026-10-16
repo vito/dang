@@ -9,23 +9,23 @@ let missing = maybeUser(id: "nope").{{name}}
 assert { missing == null }
 
 # Top level, non-null path still works
-let found = maybeUser(id: "1").{{name}}
+let found = maybeUser(id: "User:1").{{name}}
 assert { found != null }
 assert { found.name == "John Doe" }
 
-# Nested: user "1" has no manager
-let john = user(id: "1").{{name, manager.{{name}}}}
+# Nested: user "User:1" has no manager
+let john = user(id: "User:1").{{name, manager.{{name}}}}
 assert { john.name == "John Doe" }
 assert { john.manager == null }
 
-# Nested, non-null: user "2" is managed by user "1"
-let jane = user(id: "2").{{name, manager.{{name}}}}
+# Nested, non-null: user "User:2" is managed by user "User:1"
+let jane = user(id: "User:2").{{name, manager.{{name}}}}
 assert { jane.name == "Jane Smith" }
 assert { jane.manager != null }
 assert { jane.manager.name == "John Doe" }
 
 # Nested twice: the null sits one level deeper
-let chain = user(id: "2").{{manager.{{name, manager.{{name}}}}}}
+let chain = user(id: "User:2").{{manager.{{name, manager.{{name}}}}}}
 assert { chain.manager.name == "John Doe" }
 assert { chain.manager.manager == null }
 
@@ -35,12 +35,12 @@ assert { managerName == "nobody" }
 
 # Projecting further down a chain through a null field is null as well, since
 # the null passes up through every step selected off it
-let deepMissing = user(id: "1").manager.posts.{{pageInfo.{{hasNextPage}}}}
+let deepMissing = user(id: "User:1").manager.posts.{{pageInfo.{{hasNextPage}}}}
 assert { deepMissing == null }
-let deepFound = user(id: "2").manager.posts.{{pageInfo.{{hasNextPage}}}}
+let deepFound = user(id: "User:2").manager.posts.{{pageInfo.{{hasNextPage}}}}
 assert { deepFound.pageInfo.hasNextPage == false }
-assert { user(id: "1").manager.posts.posts.{{title}} == null }
-let titles = user(id: "2").manager.posts.posts.{{title}}
+assert { user(id: "User:1").manager.posts.posts.{{title}} == null }
+let titles = user(id: "User:2").manager.posts.posts.{{title}}
 assert { titles!.length == 4 }
 assert { titles![0].title == "First Post" }
 
