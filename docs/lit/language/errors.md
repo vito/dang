@@ -429,12 +429,13 @@ bail(1)
 ## Rescue where failures happen {#rescue-laziness}
 
 `rescue` catches what fails *while the operand runs* — which, for GraphQL
-values, is less than it looks. Selecting an object-typed field only extends
-a lazy query chain (see [#graphql]): no request is sent, so nothing can
-fail, until a **leaf** field (one whose underlying schema type is a scalar
-or enum — including `@expectedType`-mapped fields like Dagger's `sync`) or
-a `.{{ }}` selection forces the chain. Failures happen at leaves and
-braces, not where the chain is built.
+values, is less than it looks. Selecting a non-null object-typed field
+only extends a lazy query chain (see [#graphql]): no request is sent, so
+nothing can fail, until a **leaf** field (one whose underlying schema type
+is a scalar or enum — including `@expectedType`-mapped fields like Dagger's
+`sync`), a nullable object field (which is checked for null on the spot;
+see [#nullable-object-fields]), or a `.{{ }}` selection forces the chain.
+Failures happen at those points, not where the chain is built.
 
 A rescue wrapped around pure chain-building therefore guards nothing, and
 the compiler says so:

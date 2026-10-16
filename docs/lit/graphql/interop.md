@@ -90,9 +90,26 @@ users.{{ name, email }}
 - root `Mutation` fields are functions like queries
 - the result is whatever the schema declares
 - side effects happen when the call executes, which is when its value is **forced**
-- the laziness/forcing rules below apply to mutations exactly as they do to queries
+- the laziness/forcing rules below apply to mutations as they do to queries, with one exception: nullable object fields reached through a mutation are not checked for null (see [#nullable-object-fields])
 
 > Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. See [#mutation] for how forcing interacts with side effects.
+
+## Nullable object fields {#nullable-object-fields}
+
+```dang
+let parent = me.parent   # parent: Agent (nullable)
+if (parent == null) {
+  raise "no parent"
+}
+parent.id
+```
+
+- a field returning a **nullable** object, interface or union (`parent: Agent`, not `Agent!`) is resolved when it's selected, the way a scalar field is: Dang sends a small `__typename` query, so the value is either `null` or a handle known to be non-null
+- so `== null`, `??`, `!`, `null` patterns in `case`, and flow narrowing ([#flow-typing]) all behave as written
+- **non-null** object fields (`Agent!`) can't be null, so they stay lazy and cost nothing until forced
+- this matches the Dagger SDKs, which also run nullable object fields right away and keep non-null ones lazy
+- a nullable field followed directly by `.{{ }}` skips the extra query, since the selection itself reveals the null: `me.parent.{{ id, name }}` is one round-trip and yields `null` when there is no parent
+- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select through them with `.{{ }}` to see the null
 
 ## Object equality
 
