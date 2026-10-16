@@ -104,12 +104,25 @@ if (parent == null) {
 parent.id
 ```
 
-- a field returning a **nullable** object, interface or union (`parent: Agent`, not `Agent!`) is resolved when it's selected, the way a scalar field is: Dang sends a small `__typename` query, so the value is either `null` or a handle known to be non-null
+- a field returning a **nullable** object, interface or union (`parent: Agent`, not `Agent!`) may be `null`, so a handle to it is checked before it **escapes** the chain — when it's bound with `let`, passed as an argument, returned, compared, and so on. The check is one small query, so the value is either `null` or a handle known to be non-null
 - so `== null`, `??`, `!`, `null` patterns in `case`, and flow narrowing ([#flow-typing]) all behave as written
-- **non-null** object fields (`Agent!`) can't be null, so they stay lazy and cost nothing until forced
-- this matches the Dagger SDKs, which also run nullable object fields right away and keep non-null ones lazy
-- a nullable field followed directly by `.{{ }}` skips the extra query, since the selection itself reveals the null: `me.parent.{{ id, name }}` is one round-trip and yields `null` when there is no parent
-- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select through them with `.{{ }}` to see the null
+- a field that is only **selected through** isn't checked: whatever runs the chain reveals the null itself. A leaf field selected off a null object is `null` (`me.parent.name`, one round-trip), and so is a `.{{ }}` selection (`me.parent.{{ id, name }}`, one round-trip)
+- anything selected off an unchecked nullable field may be null too, even a non-null field: `let d = a.maybeB.c.d` sends one check, for `d`, at the end of the chain; `a.maybeB.c.name` sends none
+- the check fetches the object's `id` along with its `__typename`, when the type has an `id` (a non-null `ID`, `String` or ID scalar). The object is then **loaded by that ID**, the way the Dagger Go SDK does it: later selections start from the loader instead of re-running the chain (`node(id: "…") { ... on Agent { name } }`), and passing the object as an ID argument costs no extra query
+- the loader is the schema's Relay-style `node(id:)` root field, which current Dagger engines expose, or else a per-type `load<T>FromID(id:)` field as in older Dagger schemas. Without a loader the original chain is kept, with its ID remembered. Without an `id`, the check is just `__typename`
+- the checked handle has the object's **concrete** type, even when the field returns an interface or union, so `case` type patterns match what the object actually is:
+
+```dang
+case (node(id: someID)) {
+  u: User => u.name
+  p: Post => p.title
+  else => "nothing there"
+}
+```
+
+- **non-null** object fields (`Agent!`) on a chain without nullable steps can't be null, so they stay lazy and cost nothing until forced
+- this matches the Dagger SDKs, which also run nullable object fields right away (fetching their IDs) and keep non-null ones lazy
+- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null
 
 ## Object equality
 
