@@ -27,6 +27,8 @@ type Query {
   hello(name: String!): String!
   users: [User!]!
   user(id: String!): User
+  # Like user, but returns null (with no error) when the user is not found.
+  maybeUser(id: String!): User
   primaryUser: User!
   secondaryUser: User!
   userName(user: ID! @expectedType(name: "User")): String!
@@ -93,6 +95,9 @@ type User implements Node {
   # Always returns a server-side error; used to test error reporting for a
   # field nested inside an object selection.
   alwaysFails: String! @goField(forceResolver: true)
+  # Nullable object field: user "1" has no manager (null, no error); every
+  # other user's manager is user "1".
+  manager: User @goField(forceResolver: true)
 }
 
 type Post implements Node & Timestamped {

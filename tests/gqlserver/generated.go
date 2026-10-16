@@ -88,6 +88,7 @@ type ComplexityRoot struct {
 		FormatTimestamp   func(childComplexity int, ts string) int
 		Hello             func(childComplexity int, name string) int
 		Homepage          func(childComplexity int) int
+		MaybeUser         func(childComplexity int, id string) int
 		Node              func(childComplexity int, id string) int
 		NodeLabel         func(childComplexity int, node string) int
 		Nodes             func(childComplexity int) int
@@ -133,6 +134,7 @@ type ComplexityRoot struct {
 		AlwaysFails func(childComplexity int) int
 		Emails      func(childComplexity int) int
 		ID          func(childComplexity int) int
+		Manager     func(childComplexity int) int
 		Name        func(childComplexity int) int
 		Posts       func(childComplexity int, first *int, after *string, last *int, before *string) int
 		Status      func(childComplexity int) int
@@ -158,6 +160,7 @@ type QueryResolver interface {
 	Hello(ctx context.Context, name string) (string, error)
 	Users(ctx context.Context) ([]*User, error)
 	User(ctx context.Context, id string) (*User, error)
+	MaybeUser(ctx context.Context, id string) (*User, error)
 	PrimaryUser(ctx context.Context) (*User, error)
 	SecondaryUser(ctx context.Context) (*User, error)
 	UserName(ctx context.Context, user string) (string, error)
@@ -193,6 +196,7 @@ type UserResolver interface {
 	Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error)
 	Sync(ctx context.Context, obj *User) (string, error)
 	AlwaysFails(ctx context.Context, obj *User) (string, error)
+	Manager(ctx context.Context, obj *User) (*User, error)
 }
 
 type executableSchema struct {
@@ -424,6 +428,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Homepage(childComplexity), true
+	case "Query.maybeUser":
+		if e.complexity.Query.MaybeUser == nil {
+			break
+		}
+
+		args, err := ec.field_Query_maybeUser_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.MaybeUser(childComplexity, args["id"].(string)), true
 	case "Query.node":
 		if e.complexity.Query.Node == nil {
 			break
@@ -686,6 +701,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.ID(childComplexity), true
+	case "User.manager":
+		if e.complexity.User.Manager == nil {
+			break
+		}
+
+		return e.complexity.User.Manager(childComplexity), true
 	case "User.name":
 		if e.complexity.User.Name == nil {
 			break
@@ -1022,6 +1043,17 @@ func (ec *executionContext) field_Query_hello_args(ctx context.Context, rawArgs 
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_maybeUser_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_nodeLabel_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1283,6 +1315,8 @@ func (ec *executionContext) fieldContext_Mutation_createUser(ctx context.Context
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1342,6 +1376,8 @@ func (ec *executionContext) fieldContext_Mutation_updateUser(ctx context.Context
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1644,6 +1680,8 @@ func (ec *executionContext) fieldContext_Post_author(_ context.Context, field gr
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1841,6 +1879,8 @@ func (ec *executionContext) fieldContext_Query_users(_ context.Context, field gr
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1889,6 +1929,8 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1901,6 +1943,67 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_user_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_maybeUser(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_maybeUser,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().MaybeUser(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalOUser2ᚖgithubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐUser,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_maybeUser(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
+			case "age":
+				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
+			case "posts":
+				return ec.fieldContext_User_posts(ctx, field)
+			case "sync":
+				return ec.fieldContext_User_sync(ctx, field)
+			case "alwaysFails":
+				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_maybeUser_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -1947,6 +2050,8 @@ func (ec *executionContext) fieldContext_Query_primaryUser(_ context.Context, fi
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1994,6 +2099,8 @@ func (ec *executionContext) fieldContext_Query_secondaryUser(_ context.Context, 
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -2950,6 +3057,8 @@ func (ec *executionContext) fieldContext_Query_usersByStatus(ctx context.Context
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -3009,6 +3118,8 @@ func (ec *executionContext) fieldContext_Query_sortedUsers(ctx context.Context, 
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -3691,6 +3802,55 @@ func (ec *executionContext) fieldContext_User_alwaysFails(_ context.Context, fie
 	return fc, nil
 }
 
+func (ec *executionContext) _User_manager(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_manager,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.User().Manager(ctx, obj)
+		},
+		nil,
+		ec.marshalOUser2ᚖgithubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐUser,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_manager(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
+			case "age":
+				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
+			case "posts":
+				return ec.fieldContext_User_posts(ctx, field)
+			case "sync":
+				return ec.fieldContext_User_sync(ctx, field)
+			case "alwaysFails":
+				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _UserProfile_user(ctx context.Context, field graphql.CollectedField, obj *UserProfile) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3731,6 +3891,8 @@ func (ec *executionContext) fieldContext_UserProfile_user(_ context.Context, fie
 				return ec.fieldContext_User_sync(ctx, field)
 			case "alwaysFails":
 				return ec.fieldContext_User_alwaysFails(ctx, field)
+			case "manager":
+				return ec.fieldContext_User_manager(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -5808,6 +5970,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "maybeUser":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_maybeUser(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "primaryUser":
 			field := field
 
@@ -6750,6 +6931,39 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "manager":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_manager(ctx, field, obj)
 				return res
 			}
 

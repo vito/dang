@@ -95,6 +95,7 @@ type User struct {
 	Posts       *PostConnection `json:"posts"`
 	Sync        string          `json:"sync"`
 	AlwaysFails string          `json:"alwaysFails"`
+	Manager     *User           `json:"manager,omitempty"`
 }
 
 func (User) IsNode()            {}

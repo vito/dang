@@ -78,6 +78,17 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
 	return nil, fmt.Errorf("user not found")
 }
 
+// MaybeUser is the resolver for the maybeUser field.
+func (r *queryResolver) MaybeUser(ctx context.Context, id string) (*User, error) {
+	for _, user := range users {
+		if user.ID == id {
+			return user, nil
+		}
+	}
+	// Not found is a plain null, not an error.
+	return nil, nil
+}
+
 // PrimaryUser is the resolver for the primaryUser field.
 func (r *queryResolver) PrimaryUser(ctx context.Context) (*User, error) {
 	if len(users) == 0 {
@@ -413,6 +424,21 @@ func (r *userResolver) AlwaysFails(ctx context.Context, obj *User) (string, erro
 			"code": "ALWAYS_FAILS",
 		},
 	}
+}
+
+// Manager is the resolver for the manager field.
+func (r *userResolver) Manager(ctx context.Context, obj *User) (*User, error) {
+	// User "1" sits at the top and has no manager; everyone else reports
+	// to user "1".
+	if obj.ID == "1" {
+		return nil, nil
+	}
+	for _, user := range users {
+		if user.ID == "1" {
+			return user, nil
+		}
+	}
+	return nil, nil
 }
 
 // Mutation returns MutationResolver implementation.
