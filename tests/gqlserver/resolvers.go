@@ -58,6 +58,18 @@ func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, err
 	return false, fmt.Errorf("user not found")
 }
 
+// TouchNode is the resolver for the touchNode field.
+func (r *mutationResolver) TouchNode(ctx context.Context, id string) (Node, error) {
+	node, err := (&queryResolver{r.Resolver}).findNodeByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return nil, fmt.Errorf("node %q not found", id)
+	}
+	return node, nil
+}
+
 // Hello is the resolver for the hello field.
 func (r *queryResolver) Hello(ctx context.Context, name string) (string, error) {
 	return fmt.Sprintf("Hello, %s!", name), nil
@@ -290,6 +302,16 @@ func (r *queryResolver) Node(ctx context.Context, id string) (Node, error) {
 // Nodes is the resolver for the nodes field.
 func (r *queryResolver) Nodes(ctx context.Context) ([]Node, error) {
 	return r.getAllNodes(), nil
+}
+
+// FavoriteNode is the resolver for the favoriteNode field.
+func (r *queryResolver) FavoriteNode(ctx context.Context) (Node, error) {
+	return posts[1], nil
+}
+
+// Featured is the resolver for the featured field.
+func (r *queryResolver) Featured(ctx context.Context) (SearchResult, error) {
+	return users[1], nil
 }
 
 // Timestamped is the resolver for the timestamped field.

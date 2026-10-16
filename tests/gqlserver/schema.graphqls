@@ -51,6 +51,10 @@ type Query {
   # Returns null (with no error) for an unknown ID.
   node(id: ID!): Node
   nodes: [Node!]!
+  # Non-null interface and union fields, which are never checked for null:
+  # favoriteNode is post "Post:2", featured is user "User:2".
+  favoriteNode: Node!
+  featured: SearchResult!
   timestamped: [Timestamped!]!
   # Additional queries for scalar coercion testing
   formatTimestamp(ts: Timestamp!): String!
@@ -86,6 +90,9 @@ type Mutation {
   createUser(input: CreateUserInput!): User!
   updateUser(id: ID!, input: UpdateUserInput!): User
   deleteUser(id: ID!): Boolean!
+  # Returns the node with the given ID through its interface type, for
+  # matching on a mutation-returned interface handle. Changes nothing.
+  touchNode(id: ID!): Node!
 }
 
 type User implements Node {

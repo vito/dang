@@ -52,6 +52,7 @@ type ComplexityRoot struct {
 	Mutation struct {
 		CreateUser func(childComplexity int, input CreateUserInput) int
 		DeleteUser func(childComplexity int, id string) int
+		TouchNode  func(childComplexity int, id string) int
 		UpdateUser func(childComplexity int, id string, input UpdateUserInput) int
 	}
 
@@ -79,9 +80,11 @@ type ComplexityRoot struct {
 		AddBigInt         func(childComplexity int, a string, b string) int
 		AverageRating     func(childComplexity int) int
 		EchoFloat         func(childComplexity int, value float64) int
+		FavoriteNode      func(childComplexity int) int
 		FavoriteNodeID    func(childComplexity int) int
 		FavoriteUserID    func(childComplexity int) int
 		FavoriteUserIDs   func(childComplexity int) int
+		Featured          func(childComplexity int) int
 		FetchMultipleURLs func(childComplexity int, urls []string) int
 		FetchURL          func(childComplexity int, url string) int
 		FetchURLNullable  func(childComplexity int, url *string) int
@@ -155,6 +158,7 @@ type MutationResolver interface {
 	CreateUser(ctx context.Context, input CreateUserInput) (*User, error)
 	UpdateUser(ctx context.Context, id string, input UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id string) (bool, error)
+	TouchNode(ctx context.Context, id string) (Node, error)
 }
 type QueryResolver interface {
 	Hello(ctx context.Context, name string) (string, error)
@@ -179,6 +183,8 @@ type QueryResolver interface {
 	FetchURL(ctx context.Context, url string) (string, error)
 	Node(ctx context.Context, id string) (Node, error)
 	Nodes(ctx context.Context) ([]Node, error)
+	FavoriteNode(ctx context.Context) (Node, error)
+	Featured(ctx context.Context) (SearchResult, error)
 	Timestamped(ctx context.Context) ([]Timestamped, error)
 	FormatTimestamp(ctx context.Context, ts string) (string, error)
 	ParseJSON(ctx context.Context, data string) (string, error)
@@ -240,6 +246,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.DeleteUser(childComplexity, args["id"].(string)), true
+	case "Mutation.touchNode":
+		if e.complexity.Mutation.TouchNode == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_touchNode_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.TouchNode(childComplexity, args["id"].(string)), true
 	case "Mutation.updateUser":
 		if e.complexity.Mutation.UpdateUser == nil {
 			break
@@ -349,6 +366,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.EchoFloat(childComplexity, args["value"].(float64)), true
+	case "Query.favoriteNode":
+		if e.complexity.Query.FavoriteNode == nil {
+			break
+		}
+
+		return e.complexity.Query.FavoriteNode(childComplexity), true
 	case "Query.favoriteNodeID":
 		if e.complexity.Query.FavoriteNodeID == nil {
 			break
@@ -367,6 +390,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.FavoriteUserIDs(childComplexity), true
+	case "Query.featured":
+		if e.complexity.Query.Featured == nil {
+			break
+		}
+
+		return e.complexity.Query.Featured(childComplexity), true
 	case "Query.fetchMultipleURLs":
 		if e.complexity.Query.FetchMultipleURLs == nil {
 			break
@@ -934,6 +963,17 @@ func (ec *executionContext) field_Mutation_deleteUser_args(ctx context.Context, 
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_touchNode_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_updateUser_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1431,6 +1471,47 @@ func (ec *executionContext) fieldContext_Mutation_deleteUser(ctx context.Context
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteUser_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_touchNode(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_touchNode,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().TouchNode(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNNode2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐNode,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_touchNode(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_touchNode_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -2689,6 +2770,64 @@ func (ec *executionContext) fieldContext_Query_nodes(_ context.Context, field gr
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_favoriteNode(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_favoriteNode,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().FavoriteNode(ctx)
+		},
+		nil,
+		ec.marshalNNode2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐNode,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_favoriteNode(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_featured(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_featured,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().Featured(ctx)
+		},
+		nil,
+		ec.marshalNSearchResult2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐSearchResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_featured(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SearchResult does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5714,6 +5853,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "touchNode":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_touchNode(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -6367,6 +6513,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_nodes(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "favoriteNode":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_favoriteNode(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "featured":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_featured(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
