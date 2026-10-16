@@ -2059,6 +2059,9 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 			// Return a GraphQLValue for the concrete type, with an inline fragment
 			// added to the query chain so subsequent field selections are scoped
 			// to the concrete type (e.g. node(id:...){... on Container{field}}).
+			// The __typename query just showed the object is there, so the
+			// handle is no longer MaybeNull; it is still the same object, so a
+			// known ID carries over.
 			return GraphQLValue{
 				Name:       gqlVal.Name,
 				TypeName:   typeName,
@@ -2069,6 +2072,7 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 				TypeScope:  gqlVal.TypeScope,
 				QueryChain: query.InlineFragment(typeName),
 				IsMutation: gqlVal.IsMutation,
+				KnownID:    gqlVal.KnownID,
 			}, nil
 		}
 	}

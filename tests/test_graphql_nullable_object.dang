@@ -72,7 +72,7 @@ assert { somePosts != null }
 assert { somePosts.pageInfo.hasNextPage == false }
 assert { (user(id: "1").manager.posts ?? primaryUser.posts).pageInfo.hasPreviousPage == false }
 
-# An escaping handle still works as an ID argument
+# An escaping handle is loaded by ID, and still works as an ID argument
 let found = maybeUser(id: "2")
 assert { found.name == "Jane Smith" }
 assert { userName(user: found!) == "Jane Smith" }
@@ -81,6 +81,19 @@ assert { userName(user: found!) == "Jane Smith" }
 assert { node(id: "nope") == null }
 assert { node(id: "1") != null }
 assert { node(id: "1").id == "1" }
+
+# ...as their concrete type, so type patterns match
+let kind(n: Node): String! {
+  case (n) {
+    u: User => "user " + u.name
+    p: Post => "post " + p.title
+    else => "unknown"
+  }
+}
+
+assert { kind(node(id: "1")) == "user John Doe" }
+assert { kind(node(id: "3")) == "post Third Post" }
+assert { kind(node(id: "nope")) == "unknown" }
 
 # A projection off a nullable field reveals the null on its own
 assert { user(id: "1").manager.{{name}} == null }

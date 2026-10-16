@@ -39,7 +39,8 @@ func (c *recordingClient) Queries() []string {
 // A handle that may be null — a nullable object field, or anything selected
 // off one — is probed for null only when it escapes the chain: where it is
 // selected from, the leaf or `{{ }}` projection that runs the chain reveals
-// the null itself. Mutations are never probed, since that would re-send
+// the null itself. A probe fetches `id` and `__typename`, and the handle is
+// then loaded by ID. Mutations are never probed, since that would re-send
 // them. These tests pin down exactly which requests go out. See
 // vito/dang#186.
 func (DangSuite) TestNullableObjectFieldQueries(ctx context.Context, t *testctx.T) {
@@ -89,15 +90,16 @@ assert { user(id: "2").manager.manager.name == null }
 		}, queries)
 	})
 
-	t.Run("probes an escaping handle once", func(ctx context.Context, t *testctx.T) {
+	t.Run("probes an escaping handle and loads it by ID", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let u = maybeUser(id: "1")
 assert { u != null }
 assert { u.name == "John Doe" }
 `)
 		require.Equal(t, []string{
-			`query Query {maybeUser(id:"1"){__typename}}`,
-			`query Query {maybeUser(id:"1"){name}}`,
+			`query Query {maybeUser(id:"1"){id __typename}}`,
+			// Later selections start from the loader, not the original chain.
+			`query Query {node(id:"1"){... on User{name}}}`,
 		}, queries)
 	})
 
@@ -107,7 +109,7 @@ let m = user(id: "1").manager
 assert { m == null }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"1"){manager{__typename}}}`,
+			`query Query {user(id:"1"){manager{id __typename}}}`,
 		}, queries)
 	})
 
@@ -158,9 +160,42 @@ let r = user(id: (user(id: "2").manager ?? primaryUser).id).{{name}}
 assert { r.name == "John Doe" }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"2"){manager{__typename}}}`,
-			`query Query {user(id:"2"){manager{id}}}`,
+			`query Query {user(id:"2"){manager{id __typename}}}`,
+			`query Query {node(id:"1"){... on User{id}}}`,
 			`query Query {user(id:"1"){name}}`,
+		}, queries)
+	})
+
+	t.Run("passes a probed handle as an ID for free", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+assert { userName(user: maybeUser(id: "2")!) == "Jane Smith" }
+`)
+		require.Equal(t, []string{
+			`query Query {maybeUser(id:"2"){id __typename}}`,
+			`query Query {userName(user:"2")}`,
+		}, queries)
+	})
+
+	t.Run("narrows a nullable interface field to its concrete type", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let describe(n: Node): String! {
+  case (n) {
+    u: User => "user " + u.name
+    p: Post => "post " + p.title
+    else => "unknown"
+  }
+}
+
+assert { describe(node(id: "1")) == "user John Doe" }
+assert { describe(node(id: "3")) == "post Third Post" }
+assert { node(id: "nope") == null }
+`)
+		require.Equal(t, []string{
+			`query Query {node(id:"1"){id __typename}}`,
+			`query Query {node(id:"1"){... on User{name}}}`,
+			`query Query {node(id:"3"){id __typename}}`,
+			`query Query {node(id:"3"){... on Post{title}}}`,
+			`query Query {node(id:"nope"){id __typename}}`,
 		}, queries)
 	})
 

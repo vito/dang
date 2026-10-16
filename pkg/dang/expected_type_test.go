@@ -159,6 +159,91 @@ func TestExpectedTypeDirectiveKeepsIDResultWithoutNodeField(t *testing.T) {
 	require.Equal(t, StringValue{Val: "cv-id"}, val)
 }
 
+// Older Dagger schemas have no node(id:), but a load<T>FromID root field per
+// type, taking that type's own ID scalar. Objects load through it, with no
+// inline fragment needed, as long as the ID has the type the loader takes.
+func TestLoadObjectFromIDUsesPerTypeLoader(t *testing.T) {
+	schema := legacyLoaderTestSchema()
+	env := TypeScopeFromSchema("Dagger", schema)
+	client := graphql.NewClient("http://dang.test/query", nil)
+
+	fields, idType := nullProbeSelection(schema, "CacheVolume")
+	require.Equal(t, []string{"id", "__typename"}, fields)
+	require.Equal(t, "CacheVolumeID", idType)
+
+	val, err := loadObjectFromTypedID("cv-id", idType, "CacheVolume", schema, env, client)
+	require.NoError(t, err)
+	gqlVal, ok := val.(GraphQLValue)
+	require.True(t, ok, "expected a GraphQL handle, got %T", val)
+	require.Equal(t, "CacheVolume", gqlVal.TypeName)
+	require.Equal(t, "cv-id", gqlVal.KnownID)
+
+	query, err := gqlVal.QueryChain.Select("id").Build(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, `{loadCacheVolumeFromID(id:"cv-id"){id}}`, query)
+
+	// An ID of another type can't be fed to the loader.
+	val, err = loadObjectFromTypedID("cv-id", "ID", "CacheVolume", schema, env, client)
+	require.NoError(t, err)
+	require.Nil(t, val)
+}
+
+// When a schema has both, node(id:) wins.
+func TestIDLoaderPrefersNode(t *testing.T) {
+	schema := legacyLoaderTestSchema()
+	node := nodeLoaderTestField()
+	node.Args[0].TypeRef.OfType.Name = "CacheVolumeID"
+	schema.Types.Get("Query").Fields = append(schema.Types.Get("Query").Fields, node)
+
+	loader, fragment := idLoaderFor(schema, "CacheVolume", "CacheVolumeID")
+	require.NotNil(t, loader)
+	require.Equal(t, "node", loader.Name)
+	require.True(t, fragment)
+
+	// ...unless it takes a different kind of ID.
+	node.Args[0].TypeRef.OfType.Name = "ID"
+	loader, fragment = idLoaderFor(schema, "CacheVolume", "CacheVolumeID")
+	require.NotNil(t, loader)
+	require.Equal(t, "loadCacheVolumeFromID", loader.Name)
+	require.False(t, fragment)
+}
+
+// legacyLoaderTestSchema is expectedTypeTestSchema in the style of older Dagger
+// engines: CacheVolume is identified by its own CacheVolumeID scalar and loaded
+// with loadCacheVolumeFromID.
+func legacyLoaderTestSchema() *introspection.Schema {
+	schema := expectedTypeTestSchema()
+	schema.Types = append(schema.Types, &introspection.Type{
+		Kind: introspection.TypeKindScalar,
+		Name: "CacheVolumeID",
+	})
+	schema.Types.Get("CacheVolume").Fields[0].TypeRef.OfType.Name = "CacheVolumeID"
+	query := schema.Types.Get("Query")
+	query.Fields = append(query.Fields, &introspection.Field{
+		Name: "loadCacheVolumeFromID",
+		Args: introspection.InputValues{
+			{
+				Name: "id",
+				TypeRef: &introspection.TypeRef{
+					Kind: introspection.TypeKindNonNull,
+					OfType: &introspection.TypeRef{
+						Kind: introspection.TypeKindScalar,
+						Name: "CacheVolumeID",
+					},
+				},
+			},
+		},
+		TypeRef: &introspection.TypeRef{
+			Kind: introspection.TypeKindNonNull,
+			OfType: &introspection.TypeRef{
+				Kind: introspection.TypeKindObject,
+				Name: "CacheVolume",
+			},
+		},
+	})
+	return schema
+}
+
 func idTypeRef() *introspection.TypeRef {
 	return &introspection.TypeRef{
 		Kind: introspection.TypeKindNonNull,
