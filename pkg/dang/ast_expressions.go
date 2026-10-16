@@ -2477,6 +2477,15 @@ func buildSelectionString(sel *ObjectSelection) string {
 }
 
 func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeScope TypeScope, client graphql.Client) (Value, error) {
+	// A nullable object (or list) field the server resolved to null stays
+	// null, rather than becoming an empty record that compares unequal to
+	// null and lacks every selected field. This covers the top-level result,
+	// nested object and list fields, and null items within lists, since they
+	// all recurse through here.
+	if result == nil {
+		return NullValue{}, nil
+	}
+
 	// Check if the result is a list/slice
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
