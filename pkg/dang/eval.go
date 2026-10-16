@@ -1080,9 +1080,14 @@ func nodeLoaderField(schema *introspection.Schema) *introspection.Field {
 }
 
 // loadableIDField returns t's `id` field when it identifies the object for an
-// ID loader: a non-null, string-valued scalar (`ID!`, `String!`, or a custom
-// scalar such as Dagger's legacy `ContainerID!`) that takes no required
-// arguments. Returns nil otherwise.
+// ID loader: a non-null `ID!`, or a non-null custom scalar such as Dagger's
+// legacy per-type `ContainerID!` (which goes with `load<T>FromID`), that takes
+// no required arguments. Returns nil otherwise.
+//
+// Built-in scalars other than `ID` don't count, `String!` included: loading
+// through `node(id:)` relies on the Relay convention that IDs are unique
+// across every type, which only a schema declaring its IDs as `ID` promises.
+// A `String!` id might be a per-type key that would load the wrong object.
 func loadableIDField(t *introspection.Type) *introspection.Field {
 	if t == nil {
 		return nil
@@ -1096,7 +1101,7 @@ func loadableIDField(t *introspection.Type) *introspection.Field {
 			return nil
 		}
 		switch f.TypeRef.OfType.Name {
-		case "Int", "Float", "Boolean":
+		case "String", "Int", "Float", "Boolean":
 			return nil
 		}
 		if !hasZeroRequiredArgs(f) {

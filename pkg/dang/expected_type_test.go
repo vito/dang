@@ -2,6 +2,10 @@ package dang
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Khan/genqlient/graphql"
@@ -9,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/querybuilder"
 )
 
 func TestAssignableRejectsImplicitScalarCoercion(t *testing.T) {
@@ -206,6 +211,103 @@ func TestIDLoaderPrefersNode(t *testing.T) {
 	require.NotNil(t, loader)
 	require.Equal(t, "loadCacheVolumeFromID", loader.Name)
 	require.False(t, fragment)
+}
+
+// Only an ID that promises to identify an object is loadable: `ID!`, or a
+// custom ID scalar like Dagger's legacy `CacheVolumeID!`. Other built-in
+// scalars, `String!` included, and nullable IDs are not.
+func TestLoadableIDFieldRequiresIDOrCustomScalar(t *testing.T) {
+	for _, tc := range []struct {
+		scalar   string
+		nonNull  bool
+		loadable bool
+	}{
+		{"ID", true, true},
+		{"CacheVolumeID", true, true},
+		{"ID", false, false},
+		{"String", true, false},
+		{"Int", true, false},
+		{"Float", true, false},
+		{"Boolean", true, false},
+	} {
+		typeRef := &introspection.TypeRef{Kind: introspection.TypeKindScalar, Name: tc.scalar}
+		if tc.nonNull {
+			typeRef = &introspection.TypeRef{Kind: introspection.TypeKindNonNull, OfType: typeRef}
+		}
+		typ := &introspection.Type{
+			Kind:   introspection.TypeKindObject,
+			Name:   "CacheVolume",
+			Fields: []*introspection.Field{{Name: "id", TypeRef: typeRef}},
+		}
+		if tc.loadable {
+			require.NotNil(t, loadableIDField(typ), "%s (non-null: %v)", tc.scalar, tc.nonNull)
+		} else {
+			require.Nil(t, loadableIDField(typ), "%s (non-null: %v)", tc.scalar, tc.nonNull)
+		}
+	}
+}
+
+// A `String!` id may only be unique within its type, so it isn't trusted to
+// load the object, even through a node(id:) that takes a String: the null
+// probe checks `__typename` alone and the handle keeps its original chain,
+// with no known ID.
+func TestNullProbeDoesNotLoadStringID(t *testing.T) {
+	schema := expectedTypeTestSchema()
+	schema.Types.Get("CacheVolume").Fields[0].TypeRef.OfType.Name = "String"
+	node := nodeLoaderTestField()
+	node.Args[0].TypeRef.OfType.Name = "String"
+	query := schema.Types.Get("Query")
+	query.Fields = append(query.Fields, node)
+	env := TypeScopeFromSchema("Dagger", schema)
+
+	fields, idType := nullProbeSelection(schema, "CacheVolume")
+	require.Equal(t, []string{"__typename"}, fields)
+	require.Empty(t, idType)
+
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		queries = append(queries, req.Query)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":{"cacheVolume":{"__typename":"CacheVolume"}}}`)
+	}))
+	defer srv.Close()
+	client := graphql.NewClient(srv.URL, srv.Client())
+
+	cacheVolumeType, found := env.NamedType("CacheVolume")
+	require.True(t, found)
+	handle := GraphQLValue{
+		Name:       "cacheVolume",
+		TypeName:   "CacheVolume",
+		Field:      query.Fields[0],
+		ValType:    cacheVolumeType,
+		Client:     client,
+		Schema:     schema,
+		TypeScope:  env,
+		QueryChain: querybuilder.Query().Client(client).Select("cacheVolume").Arg("key", "k"),
+		MaybeNull:  true,
+	}
+
+	ctx := context.Background()
+	val, err := handle.resolveNull(ctx, "cacheVolume")
+	require.NoError(t, err)
+	require.Equal(t, []string{`query Query {cacheVolume(key:"k"){__typename}}`}, queries)
+
+	gqlVal, ok := val.(GraphQLValue)
+	require.True(t, ok, "expected a GraphQL handle, got %T", val)
+	require.Equal(t, "CacheVolume", gqlVal.TypeName)
+	require.Empty(t, gqlVal.KnownID)
+	require.False(t, gqlVal.MaybeNull)
+
+	built, err := gqlVal.QueryChain.Select("id").Build(ctx)
+	require.NoError(t, err)
+	require.Equal(t, `{cacheVolume(key:"k"){id}}`, built)
 }
 
 // legacyLoaderTestSchema is expectedTypeTestSchema in the style of older Dagger
