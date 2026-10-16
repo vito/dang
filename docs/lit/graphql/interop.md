@@ -110,19 +110,10 @@ parent.id
 - anything selected off an unchecked nullable field may be null too, even a non-null field: `let d = a.maybeB.c.d` sends one check, for `d`, at the end of the chain; `a.maybeB.c.name` sends none
 - the check fetches the object's `id` along with its `__typename`, when the type has an `id` (a non-null `ID` or custom ID scalar, like Dagger's legacy `ContainerID`; not `String`, which doesn't promise IDs unique across types). The object is then **loaded by that ID**, the way the Dagger Go SDK does it: later selections start from the loader instead of re-running the chain (`node(id: "…") { ... on Agent { name } }`), and passing the object as an ID argument costs no extra query
 - the loader is the schema's Relay-style `node(id:)` root field, which current Dagger engines expose, or else a per-type `load<T>FromID(id:)` field as in older Dagger schemas. Without a loader the original chain is kept, with its ID remembered. Without an `id`, the check is just `__typename`
-- the checked handle has the object's **concrete** type, even when the field returns an interface or union, so `case` type patterns match what the object actually is:
-
-```dang
-case (node(id: someID)) {
-  u: User => u.name
-  p: Post => p.title
-  else => "nothing there"
-}
-```
-
+- the checked handle has the object's **concrete** type, even when the field returns an interface or union. `case` type patterns match it without another query; on any GraphQL interface or union value, nullable or not, they match the concrete type (see [#interfaces-unions])
 - **non-null** object fields (`Agent!`) on a chain without nullable steps can't be null, so they stay lazy and cost nothing until forced
 - this matches the Dagger SDKs, which also run nullable object fields right away (fetching their IDs) and keep non-null ones lazy
-- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null
+- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null. For the same reason `case` doesn't ask for the concrete type of an interface or union value reached through a mutation (see [#interfaces-unions])
 
 ## Object equality
 
