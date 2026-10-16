@@ -17,5 +17,8 @@ let synced = primaryUser.sync rescue null
 # no warning: a `.{{ }}` selection executes where written
 let record = primaryUser.{{name}} rescue null
 
+# no warning: a nullable object field is probed for null where written
+let manager = user(id: "2").manager rescue null
+
 assert { name == "John Doe" }
 print("done")

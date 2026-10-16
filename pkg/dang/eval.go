@@ -198,6 +198,28 @@ type GraphQLFunction struct {
 	TypeScope  TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
+
+	// skipNullProbe is set when the call's result is immediately sub-selected
+	// with `.{{ }}`: that projection query reveals a null on its own, so the
+	// __typename probe for nullable object fields would be a wasted round
+	// trip. See withoutNullProbe.
+	skipNullProbe bool
+}
+
+// withoutNullProbe asks a GraphQL field function to skip the null probe of
+// nullable object fields (see GraphQLFunction.Call) when skip is set. Callers
+// pass the flag of the node being evaluated, so it only reaches the one call
+// whose result feeds a `.{{ }}` projection, never nested evaluation such as
+// the receiver or argument expressions. Other values pass through unchanged.
+func withoutNullProbe(val Value, skip bool) Value {
+	if !skip {
+		return val
+	}
+	if g, ok := val.(GraphQLFunction); ok {
+		g.skipNullProbe = true
+		return g
+	}
+	return val
 }
 
 func (g GraphQLFunction) Type() hm.Type {
@@ -259,6 +281,28 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 		}
 
 		return graphQLResultToValue(result, g.Field.TypeRef, g.Field.Directives.ExpectedType(), g.Schema, g.TypeScope, g.Client)
+	}
+
+	// A nullable object, interface or union field has to be resolved now, the
+	// way scalars are: a lazy handle is never null, so `== null`, `??`, `!`,
+	// null patterns and flow narrowing would all see a value, and the null
+	// would only surface later as an unrelated error. Probing `__typename` is
+	// the cheapest selection valid on every such type. Non-null fields can't
+	// be null, so they stay lazy, as do lists; this mirrors the Dagger SDKs,
+	// which execute nullable object fields eagerly and keep the rest lazy.
+	//
+	// Known gap: fields reached through a mutation are not probed. Every
+	// query built off a mutation chain re-sends the mutation, so a probe would
+	// run it twice; such fields stay lazy and never compare equal to null.
+	if !g.IsMutation && !g.skipNullProbe && isNullableObjectType(g.Field.TypeRef, g.Schema) {
+		var typeName *string
+		probe := query.Select("__typename").Bind(&typeName).Client(g.Client)
+		if err := probe.Execute(ctx); err != nil {
+			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
+		}
+		if typeName == nil {
+			return NullValue{}, nil
+		}
 	}
 
 	// For non-scalar types, return a GraphQLValue that can be further selected
@@ -779,6 +823,27 @@ func applyDefaults(args map[string]Value, def BuiltinDef) map[string]Value {
 		}
 	}
 	return result
+}
+
+// isNullableObjectType reports whether typeRef is a nullable, non-list object,
+// interface or union type: a field returning one may resolve to null, which a
+// lazy handle can't represent.
+func isNullableObjectType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
+	if typeRef == nil || schema == nil {
+		return false
+	}
+	if typeRef.Kind == introspection.TypeKindNonNull || typeRef.Kind == introspection.TypeKindList {
+		return false
+	}
+	t := schema.Types.Get(typeRef.Name)
+	if t == nil {
+		return false
+	}
+	switch t.Kind {
+	case introspection.TypeKindObject, introspection.TypeKindInterface, introspection.TypeKindUnion:
+		return true
+	}
+	return false
 }
 
 func isObjectLikeType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {

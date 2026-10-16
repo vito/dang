@@ -11,12 +11,13 @@ import (
 
 // Static laziness analysis for rescue expressions.
 //
-// GraphQL field access is lazy: selecting an object-typed field only extends
-// a pending query chain; nothing is sent until a leaf field forces it — a
-// field whose underlying schema type is a scalar or enum, including
-// @expectedType-mapped fields like Dagger's `sync` — or a `.{{ }}` selection
-// runs. Failures therefore happen at those execution points, not where the
-// chain is built. Two consequences worth diagnosing:
+// GraphQL field access is lazy: selecting a non-null object-typed field only
+// extends a pending query chain; nothing is sent until a leaf field forces it
+// — a field whose underlying schema type is a scalar or enum, including
+// @expectedType-mapped fields like Dagger's `sync`, or a nullable object
+// field, which is probed for null — or a `.{{ }}` selection runs. Failures
+// therefore happen at those execution points, not where the chain is built.
+// Two consequences worth diagnosing:
 //
 //   - a rescue whose operand only builds a chain can never fire, and
 //   - a still-lazy handle that leaves a rescue carries its failures past the
@@ -198,14 +199,26 @@ func schemaObjectModule(t hm.Type) *Type {
 // classifyField consults the introspection schema for a field's underlying
 // return type — the same test eval uses to decide whether calling the field
 // executes the accumulated query (scalar/enum leaf) or extends it (object).
+//
+// Nullable object, interface and union fields execute too: eval probes them
+// for null on the spot (see GraphQLFunction.Call), so failures in the chain
+// surface there, and the handle they return has already run its pipeline.
+// Root mutation fields are the exception, left lazy so the mutation isn't
+// sent twice. (Nullable fields selected further down a mutation chain are
+// lazy at runtime as well, but can't be told apart here; classifying them as
+// executing only errs toward fewer warnings.)
 func classifyField(schema *introspection.Schema, typeName, fieldName string) gqlFieldClass {
 	it := schema.Types.Get(typeName)
 	if it == nil {
 		return notGQLField
 	}
+	isMutation := schema.MutationType != nil && schema.MutationType.Name == typeName
 	for _, f := range it.Fields {
 		if f.Name == fieldName {
 			if isScalarType(f.TypeRef, schema) {
+				return gqlLeafField
+			}
+			if !isMutation && isNullableObjectType(f.TypeRef, schema) {
 				return gqlLeafField
 			}
 			return gqlChainField

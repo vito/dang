@@ -1,0 +1,79 @@
+# Test that nullable GraphQL object fields resolve to null when the server
+# returns null, instead of staying lazy handles that never compare equal to it.
+# See https://github.com/vito/dang/issues/186
+
+import Test
+
+# A nullable root field returning null is null
+assert { maybeUser(id: "nope") == null }
+assert { maybeUser(id: "1") != null }
+assert { maybeUser(id: "1").name == "John Doe" }
+
+# A nullable field on an object: user "1" has no manager
+let m = user(id: "1").manager
+assert { m == null }
+
+# Flow narrowing takes the null branch
+let managerName = if (m == null) { "nobody" } else { m.name }
+assert { managerName == "nobody" }
+
+# A guard clause narrows the non-null case
+let nameOfManager(id: String!): String! {
+  let mgr = user(id: id).manager
+  if (mgr == null) {
+    raise "no manager"
+  }
+  mgr.name
+}
+
+assert { nameOfManager("2") == "John Doe" }
+assert { (nameOfManager("1") rescue "raised") == "raised" }
+
+# ?? falls back on null, and keeps a non-null handle
+assert { (user(id: "1").manager ?? user(id: "2")).name == "Jane Smith" }
+assert { (user(id: "2").manager ?? user(id: "2")).name == "John Doe" }
+
+# ! raises on null
+assert { (user(id: "1").manager!.name rescue "raised") == "raised" }
+assert { user(id: "2").manager!.name == "John Doe" }
+
+# Null value patterns match
+let describe(id: String!): String! {
+  case (user(id: id).manager) {
+    null => "unmanaged"
+    else => "managed"
+  }
+}
+
+assert { describe("1") == "unmanaged" }
+assert { describe("2") == "managed" }
+
+# Chaining through a non-null manager still works
+assert { user(id: "2").manager.name == "John Doe" }
+assert { user(id: "2").manager.manager == null }
+
+# Selecting through a null receiver propagates null
+assert { user(id: "1").manager.name == null }
+
+# Nullable interface fields resolve too
+assert { node(id: "nope") == null }
+assert { node(id: "1") != null }
+assert { node(id: "1").id == "1" }
+
+# A projection off a nullable field reveals the null on its own
+assert { user(id: "1").manager.{{name}} == null }
+assert { user(id: "2").manager.{{name}}.name == "John Doe" }
+assert { maybeUser(id: "nope").{{name}} == null }
+
+# Inline fragments off a null field propagate null too
+assert { node(id: "nope").{{... on User}} == null }
+assert { node(id: "nope").{{... on User!}} == null }
+assert { node(id: "nope").{{... on User {{ name }}}} == null }
+assert { node(id: "1").{{... on User}}.name == "John Doe" }
+
+# Mutations returning a nullable object are left lazy (a probe would re-send
+# the mutation), but still work
+let updated = Mutation.updateUser(id: "2", input: UpdateUserInput(name: "Jane Smith"))
+assert { updated.name == "Jane Smith" }
+
+print("GraphQL nullable object tests passed!")
