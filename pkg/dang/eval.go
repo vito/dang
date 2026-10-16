@@ -199,24 +199,30 @@ type GraphQLFunction struct {
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
 
-	// skipNullProbe is set when the call's result is immediately sub-selected
-	// with `.{{ }}`: that projection query reveals a null on its own, so the
-	// __typename probe for nullable object fields would be a wasted round
-	// trip. See withoutNullProbe.
-	skipNullProbe bool
+	// MaybeNull is inherited from the receiver: the chain runs through a
+	// nullable object field that was never probed, so the server may resolve
+	// it, and thus anything selected off it, to null. See GraphQLValue.
+	MaybeNull bool
+
+	// selectedThrough is set when the call's result is immediately selected
+	// from (`.field`, `.method(...)` or `.{{ }}`): whatever runs the chain
+	// then reveals a null on its own, so probing for it here would be a
+	// wasted round trip. See withSelectedThrough.
+	selectedThrough bool
 }
 
-// withoutNullProbe asks a GraphQL field function to skip the null probe of
-// nullable object fields (see GraphQLFunction.Call) when skip is set. Callers
-// pass the flag of the node being evaluated, so it only reaches the one call
-// whose result feeds a `.{{ }}` projection, never nested evaluation such as
-// the receiver or argument expressions. Other values pass through unchanged.
-func withoutNullProbe(val Value, skip bool) Value {
-	if !skip {
+// withSelectedThrough marks a GraphQL field function as being called for a
+// receiver that is immediately selected from (see GraphQLFunction.Call) when
+// selected is set. Callers pass the flag of the node being evaluated, so it
+// only reaches the one call whose result feeds the selection, never nested
+// evaluation such as the receiver or argument expressions. Other values pass
+// through unchanged.
+func withSelectedThrough(val Value, selected bool) Value {
+	if !selected {
 		return val
 	}
 	if g, ok := val.(GraphQLFunction); ok {
-		g.skipNullProbe = true
+		g.selectedThrough = true
 		return g
 	}
 	return val
@@ -280,33 +286,22 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
 
+		// On a MaybeNull chain, a null that came back without an error is the
+		// unprobed nullable field's null, passed up the path to this leaf by
+		// the query builder: had the leaf itself resolved null in spite of
+		// being non-null, the server would have reported an error and nulled
+		// out the nearest nullable parent instead. So the leaf is null too,
+		// as the type checker already assumes for a selection through a
+		// nullable receiver.
+		if result == nil && g.MaybeNull {
+			return NullValue{}, nil
+		}
+
 		return graphQLResultToValue(result, g.Field.TypeRef, g.Field.Directives.ExpectedType(), g.Schema, g.TypeScope, g.Client)
 	}
 
-	// A nullable object, interface or union field has to be resolved now, the
-	// way scalars are: a lazy handle is never null, so `== null`, `??`, `!`,
-	// null patterns and flow narrowing would all see a value, and the null
-	// would only surface later as an unrelated error. Probing `__typename` is
-	// the cheapest selection valid on every such type. Non-null fields can't
-	// be null, so they stay lazy, as do lists; this mirrors the Dagger SDKs,
-	// which execute nullable object fields eagerly and keep the rest lazy.
-	//
-	// Known gap: fields reached through a mutation are not probed. Every
-	// query built off a mutation chain re-sends the mutation, so a probe would
-	// run it twice; such fields stay lazy and never compare equal to null.
-	if !g.IsMutation && !g.skipNullProbe && isNullableObjectType(g.Field.TypeRef, g.Schema) {
-		var typeName *string
-		probe := query.Select("__typename").Bind(&typeName).Client(g.Client)
-		if err := probe.Execute(ctx); err != nil {
-			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
-		}
-		if typeName == nil {
-			return NullValue{}, nil
-		}
-	}
-
 	// For non-scalar types, return a GraphQLValue that can be further selected
-	return GraphQLValue{
+	val := GraphQLValue{
 		Name:       g.Name,
 		TypeName:   getTypeName(g.Field.TypeRef),
 		Field:      g.Field,
@@ -316,7 +311,31 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 		TypeScope:  g.TypeScope,  // Pass along the type environment
 		QueryChain: query,        // Pass the query chain for further building
 		IsMutation: g.IsMutation, // Propagate mutation flag
-	}, nil
+		MaybeNull:  g.MaybeNull || isNullableObjectType(g.Field.TypeRef, g.Schema),
+	}
+
+	// A handle that may be null has to be resolved before it escapes the
+	// chain, the way scalars are: a lazy handle is never null, so `== null`,
+	// `??`, `!`, null patterns and flow narrowing would all see a value, and
+	// the null would only surface later as an unrelated error. That covers a
+	// nullable object, interface or union field, and anything selected off
+	// an unprobed one, including lists. Everything else stays lazy; this
+	// mirrors the Dagger SDKs, which execute nullable object fields eagerly
+	// and keep the rest lazy.
+	//
+	// The probe is skipped while the handle is selected through, as in
+	// `a.maybeB.c.name` or `a.maybeB.{{name}}`: the leaf or projection that
+	// eventually runs the chain reveals the null itself, so the probe would
+	// be a wasted round trip. The handle is marked MaybeNull instead, and the
+	// first call off it that escapes the chain probes once, at its end.
+	//
+	// Known gap: fields reached through a mutation are not probed. Every
+	// query built off a mutation chain re-sends the mutation, so a probe would
+	// run it twice; such fields stay lazy and never compare equal to null.
+	if !val.MaybeNull || g.selectedThrough || g.IsMutation {
+		return val, nil
+	}
+	return val.resolveNull(ctx, g.TypeName+"."+g.Name)
 }
 
 func (g GraphQLFunction) ParameterNames() []string {
@@ -351,6 +370,14 @@ type GraphQLValue struct {
 	// back the same ID, so remembering it saves a round trip whenever the value
 	// flows into an ID-typed argument.
 	KnownID string
+
+	// MaybeNull marks a handle whose chain runs through a nullable object
+	// field that was left unprobed because the handle was selected through
+	// (see GraphQLFunction.Call). The server may resolve it to null, so a
+	// null leaf off this chain is null rather than an error, and a handle
+	// that escapes the chain is probed first. Values selected off this one
+	// inherit it; probing clears it.
+	MaybeNull bool
 }
 
 func (g GraphQLValue) Type() hm.Type {
@@ -438,6 +465,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		TypeScope:  g.TypeScope,  // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
 		IsMutation: g.IsMutation, // Propagate mutation flag
+		MaybeNull:  g.MaybeNull,  // Propagate unprobed nullable steps
 	}, nil
 }
 
@@ -965,6 +993,24 @@ func nodeLoaderField(schema *introspection.Schema) *introspection.Field {
 		return field
 	}
 	return nil
+}
+
+// resolveNull probes a handle that may be null (see GraphQLFunction.Call)
+// with a single query against the end of its chain, returning null or a
+// handle known to be non-null. `__typename` is the cheapest selection valid
+// on every object, interface and union type, and on each element of a list
+// of them. what names the field for error messages.
+func (g GraphQLValue) resolveNull(ctx context.Context, what string) (Value, error) {
+	var result any
+	probe := g.QueryChain.Select("__typename").Bind(&result).Client(g.Client)
+	if err := probe.Execute(ctx); err != nil {
+		return nil, fmt.Errorf("executing GraphQL query for %s: %w", what, err)
+	}
+	if result == nil {
+		return NullValue{}, nil
+	}
+	g.MaybeNull = false
+	return g, nil
 }
 
 func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType string, schema *introspection.Schema, typeScope TypeScope, client graphql.Client) (Value, error) {

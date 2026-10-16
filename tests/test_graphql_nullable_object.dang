@@ -55,6 +55,28 @@ assert { user(id: "2").manager.manager == null }
 # Selecting through a null receiver propagates null
 assert { user(id: "1").manager.name == null }
 
+# Selecting through nullable fields leaves the null check to the leaf, which
+# is null when any step of the chain is
+assert { user(id: "2").manager.manager.name == null }
+assert { maybeUser(id: "nope").emails == null }
+assert { user(id: "1").manager.posts(first: 1).pageInfo.hasNextPage == null }
+assert { user(id: "2").manager.posts(first: 1).pageInfo.hasNextPage == true }
+
+# Anything selected off a null field is null too once it escapes the chain,
+# even a non-null field or a list
+let noPosts = user(id: "1").manager.posts
+assert { noPosts == null }
+assert { user(id: "1").manager.posts.posts == null }
+let somePosts = user(id: "2").manager.posts
+assert { somePosts != null }
+assert { somePosts.pageInfo.hasNextPage == false }
+assert { (user(id: "1").manager.posts ?? primaryUser.posts).pageInfo.hasPreviousPage == false }
+
+# An escaping handle still works as an ID argument
+let found = maybeUser(id: "2")
+assert { found.name == "Jane Smith" }
+assert { userName(user: found!) == "Jane Smith" }
+
 # Nullable interface fields resolve too
 assert { node(id: "nope") == null }
 assert { node(id: "1") != null }

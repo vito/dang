@@ -63,10 +63,10 @@ type FunCall struct {
 	BlockArg *BlockArg // Optional block argument for bidirectional inference
 	Loc      *SourceLocation
 
-	// projected marks a call whose result is immediately sub-selected with
-	// `.{{ }}`, which skips the null probe of nullable GraphQL object fields.
-	// See markProjectionReceiver.
-	projected bool
+	// selectedThrough marks a call whose result is immediately selected from
+	// (`.field`, `.method(...)` or `.{{ }}`), which defers the null probe of
+	// GraphQL object fields to whatever runs the chain. See markSelectedThrough.
+	selectedThrough bool
 }
 
 var _ Node = (*FunCall)(nil)
@@ -353,7 +353,7 @@ func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		}
 
 		// Dispatch to appropriate function call handler
-		val, err := c.callFunction(ctx, scope, withoutNullProbe(funVal, c.projected), argValues)
+		val, err := c.callFunction(ctx, scope, withSelectedThrough(funVal, c.selectedThrough), argValues)
 		if err != nil && blockCallFrame != nil {
 			var breakEx *BreakException
 			if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, blockCallFrame) {
@@ -582,9 +582,9 @@ type Symbol struct {
 	AutoCall bool
 	Loc      *SourceLocation
 
-	// projected marks an auto-called symbol whose result is immediately
-	// sub-selected with `.{{ }}`. See markProjectionReceiver.
-	projected bool
+	// selectedThrough marks an auto-called symbol whose result is immediately
+	// selected from. See markSelectedThrough.
+	selectedThrough bool
 }
 
 var _ Node = (*Symbol)(nil)
@@ -654,7 +654,7 @@ func (s *Symbol) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed as symbols
 		if s.AutoCall && isAutoCallableFn(val) {
-			return autoCallFn(ctx, scope, withoutNullProbe(val, s.projected))
+			return autoCallFn(ctx, scope, withSelectedThrough(val, s.selectedThrough))
 		}
 
 		return val, nil
@@ -679,9 +679,9 @@ type Select struct {
 	staticOwner *Type
 	Loc         *SourceLocation
 
-	// projected marks an auto-called selection whose result is immediately
-	// sub-selected with `.{{ }}`. See markProjectionReceiver.
-	projected bool
+	// selectedThrough marks an auto-called selection whose result is
+	// immediately selected from. See markSelectedThrough.
+	selectedThrough bool
 }
 
 var _ Node = (*Select)(nil)
@@ -755,6 +755,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 
 		// Handle normal receiver
+		markSelectedThrough(d.Receiver)
 		lt, err := d.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
@@ -1108,7 +1109,7 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed as symbols
 		if d.AutoCall && isAutoCallableFn(val) {
-			return autoCallFn(ctx, scope, withoutNullProbe(val, d.projected))
+			return autoCallFn(ctx, scope, withSelectedThrough(val, d.selectedThrough))
 		}
 
 		return val, nil
@@ -1470,7 +1471,7 @@ func (o *ObjectSelection) GetSourceLocation() *SourceLocation { return o.Loc }
 
 func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(o, func() (hm.Type, error) {
-		markProjectionReceiver(o.Receiver)
+		markSelectedThrough(o.Receiver)
 
 		// Infer the type of the receiver
 		receiverType, err := o.Receiver.Infer(ctx, env, fresh)
@@ -1523,21 +1524,24 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 	})
 }
 
-// markProjectionReceiver flags the call that produces a `.{{ }}` receiver, so
-// that a nullable GraphQL object field called there skips its __typename null
-// probe: the projection query itself reveals a null, saving a round trip.
-// Only the outermost call is flagged — the receiver's own receiver and its
-// argument expressions are separate nodes and keep probing as usual.
-func markProjectionReceiver(node Node) {
+// markSelectedThrough flags the call that produces the receiver of a selection
+// — `.field`, `.method(...)` or `.{{ }}` — so that a GraphQL object field
+// called there skips its null probe. Whatever runs the chain later reveals
+// the null instead: a leaf field resolves to null, a `.{{ }}` projection
+// returns null, and a handle that escapes the chain is probed once at its end
+// (see GraphQLFunction.Call). Only the outermost call is flagged — the
+// receiver's own receiver is flagged by its own selection, and argument
+// expressions are separate nodes that keep probing as usual.
+func markSelectedThrough(node Node) {
 	switch n := node.(type) {
 	case *Grouped:
-		markProjectionReceiver(n.Expr)
+		markSelectedThrough(n.Expr)
 	case *FunCall:
-		n.projected = true
+		n.selectedThrough = true
 	case *Select:
-		n.projected = true
+		n.selectedThrough = true
 	case *Symbol:
-		n.projected = true
+		n.selectedThrough = true
 	}
 }
 
@@ -1984,7 +1988,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 	}
 
 	// Query __typename to discover the concrete type. The receiver may be a
-	// nullable field left unprobed (see markProjectionReceiver), so a null
+	// nullable field left unprobed (see markSelectedThrough), so a null
 	// here propagates like any other null receiver.
 	var typeName *string
 	err := query.Select("__typename").Client(gqlVal.Client).Bind(&typeName).Execute(ctx)
@@ -2008,6 +2012,11 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue
 	err := query.Select("__typename").Client(gqlVal.Client).Bind(&result).Execute(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GraphQL lazy inline fragments list: querying __typename: %w", err)
+	}
+	if result == nil {
+		// The list sits on a chain through a nullable field that was left
+		// unprobed (see markSelectedThrough), and that field was null.
+		return NullValue{}, nil
 	}
 
 	resultSlice, ok := result.([]any)
@@ -2273,17 +2282,17 @@ func (o *ObjectSelection) evalFieldSelection(recv Value, field *FieldSelection, 
 		AutoCall: len(field.Args) == 0,
 		Loc:      field.Loc,
 	}
-	// A nested selection projects the field's result right away.
-	projected := field.Selection != nil
-	selectNode.projected = projected
+	// A nested selection selects through the field's result right away.
+	selectedThrough := field.Selection != nil
+	selectNode.selectedThrough = selectedThrough
 
 	var node Node = selectNode
 	if len(field.Args) > 0 {
 		node = &FunCall{
-			Fun:       selectNode,
-			Args:      field.Args,
-			Loc:       field.Loc,
-			projected: projected,
+			Fun:             selectNode,
+			Args:            field.Args,
+			Loc:             field.Loc,
+			selectedThrough: selectedThrough,
 		}
 	}
 

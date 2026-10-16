@@ -11,13 +11,14 @@ import (
 
 // Static laziness analysis for rescue expressions.
 //
-// GraphQL field access is lazy: selecting a non-null object-typed field only
-// extends a pending query chain; nothing is sent until a leaf field forces it
-// — a field whose underlying schema type is a scalar or enum, including
-// @expectedType-mapped fields like Dagger's `sync`, or a nullable object
-// field, which is probed for null — or a `.{{ }}` selection runs. Failures
-// therefore happen at those execution points, not where the chain is built.
-// Two consequences worth diagnosing:
+// GraphQL field access is lazy: selecting an object-typed field only extends
+// a pending query chain; nothing is sent until a leaf field forces it — a
+// field whose underlying schema type is a scalar or enum, including
+// @expectedType-mapped fields like Dagger's `sync` — or a `.{{ }}` selection
+// runs, or a handle that may be null escapes the chain and is probed for
+// null (a nullable object field, or anything selected off one, that is not
+// itself selected from). Failures therefore happen at those execution points,
+// not where the chain is built. Two consequences worth diagnosing:
 //
 //   - a rescue whose operand only builds a chain can never fire, and
 //   - a still-lazy handle that leaves a rescue carries its failures past the
@@ -106,23 +107,24 @@ func trailingChainField(env hm.Env, operand Node) (string, *Type) {
 	collectResultTails(operand, &tails)
 	for _, tail := range tails {
 		var sel *Select
+		var selectedThrough bool
 		switch n := tail.(type) {
 		case *Select:
-			sel = n
+			sel, selectedThrough = n, n.selectedThrough
 		case *FunCall:
 			if fn, ok := n.Fun.(*Select); ok {
-				sel = fn
+				sel, selectedThrough = fn, n.selectedThrough
 			} else if fn, ok := n.Fun.(*Symbol); ok {
-				if classifyGQLSymbol(fn) == gqlChainField {
+				if classifyGQLSymbol(fn, n.selectedThrough) == gqlChainField {
 					return fn.Name, schemaObjectModule(fn.GetInferredType())
 				}
 			}
 		case *Symbol:
-			if classifyGQLSymbol(n) == gqlChainField {
+			if classifyGQLSymbol(n, n.selectedThrough) == gqlChainField {
 				return n.Name, schemaObjectModule(n.GetInferredType())
 			}
 		}
-		if sel != nil && classifyGQLSelect(sel) == gqlChainField {
+		if sel != nil && classifyGQLSelect(sel, selectedThrough) == gqlChainField {
 			return sel.Field.Name, schemaObjectModule(sel.GetInferredType())
 		}
 	}
@@ -200,36 +202,54 @@ func schemaObjectModule(t hm.Type) *Type {
 // return type — the same test eval uses to decide whether calling the field
 // executes the accumulated query (scalar/enum leaf) or extends it (object).
 //
-// Nullable object, interface and union fields execute too: eval probes them
-// for null on the spot (see GraphQLFunction.Call), so failures in the chain
-// surface there, and the handle they return has already run its pipeline.
-// Root mutation fields are the exception, left lazy so the mutation isn't
-// sent twice. (Nullable fields selected further down a mutation chain are
-// lazy at runtime as well, but can't be told apart here; classifying them as
-// executing only errs toward fewer warnings.)
-func classifyField(schema *introspection.Schema, typeName, fieldName string) gqlFieldClass {
-	it := schema.Types.Get(typeName)
-	if it == nil {
+// An object field executes too when its handle may be null and escapes the
+// chain: eval probes it for null on the spot (see GraphQLFunction.Call), so
+// failures in the chain surface there, and the handle it returns has already
+// run its pipeline. That is a nullable object, interface or union field, or
+// any object field selected off one (chainMaybeNull), called where it is not
+// itself selected from (selectedThrough), since a selection defers the probe
+// to whatever runs the chain. Root mutation fields are never probed, so the
+// mutation isn't sent twice. (Fields further down a mutation chain aren't
+// probed at runtime either, but are classified as executing here; that only
+// errs toward fewer warnings.)
+func classifyField(schema *introspection.Schema, typeName, fieldName string, selectedThrough, chainMaybeNull bool) gqlFieldClass {
+	f := schemaField(schema, typeName, fieldName)
+	if f == nil {
 		return notGQLField
 	}
-	isMutation := schema.MutationType != nil && schema.MutationType.Name == typeName
+	if isScalarType(f.TypeRef, schema) {
+		return gqlLeafField
+	}
+	if selectedThrough {
+		return gqlChainField
+	}
+	if schema.MutationType != nil && schema.MutationType.Name == typeName {
+		return gqlChainField
+	}
+	if chainMaybeNull || isNullableObjectType(f.TypeRef, schema) {
+		return gqlLeafField
+	}
+	return gqlChainField
+}
+
+// schemaField looks up a field of a schema type, or returns nil.
+func schemaField(schema *introspection.Schema, typeName, fieldName string) *introspection.Field {
+	it := schema.Types.Get(typeName)
+	if it == nil {
+		return nil
+	}
 	for _, f := range it.Fields {
 		if f.Name == fieldName {
-			if isScalarType(f.TypeRef, schema) {
-				return gqlLeafField
-			}
-			if !isMutation && isNullableObjectType(f.TypeRef, schema) {
-				return gqlLeafField
-			}
-			return gqlChainField
+			return f
 		}
 	}
-	return notGQLField
+	return nil
 }
 
 // classifyGQLSelect classifies a field selection against its receiver's
-// inferred type.
-func classifyGQLSelect(sel *Select) gqlFieldClass {
+// inferred type. selectedThrough is the flag of the node that calls the
+// field: the Select itself when auto-called, or the FunCall applying it.
+func classifyGQLSelect(sel *Select, selectedThrough bool) gqlFieldClass {
 	if sel.Receiver == nil {
 		return notGQLField
 	}
@@ -237,7 +257,7 @@ func classifyGQLSelect(sel *Select) gqlFieldClass {
 	if mod == nil {
 		return notGQLField
 	}
-	return classifyField(mod.SourceSchema, mod.Named, sel.Field.Name)
+	return classifyField(mod.SourceSchema, mod.Named, sel.Field.Name, selectedThrough, chainMayBeNull(sel.Receiver))
 }
 
 // classifyGQLSymbol classifies a bare name that may resolve to a root Query
@@ -246,12 +266,60 @@ func classifyGQLSelect(sel *Select) gqlFieldClass {
 // schema's Query type carries the field. (A local binding that happens to
 // shadow a root field with the same name and type classifies the same way;
 // both readings are infallible, so the distinction doesn't matter here.)
-func classifyGQLSymbol(sym *Symbol) gqlFieldClass {
+func classifyGQLSymbol(sym *Symbol, selectedThrough bool) gqlFieldClass {
 	mod := schemaObjectModule(sym.GetInferredType())
 	if mod == nil || mod.SourceSchema.QueryType.Name == "" {
 		return notGQLField
 	}
-	return classifyField(mod.SourceSchema, mod.SourceSchema.QueryType.Name, sym.Name)
+	return classifyField(mod.SourceSchema, mod.SourceSchema.QueryType.Name, sym.Name, selectedThrough, false)
+}
+
+// chainMayBeNull reports whether a receiver chain runs through a nullable
+// object field. Receivers are always selected through, so such a field is
+// left unprobed and anything selected off it may be null at runtime.
+func chainMayBeNull(node Node) bool {
+	switch n := node.(type) {
+	case *Grouped:
+		return chainMayBeNull(n.Expr)
+	case *Select:
+		return selectMayBeNull(n)
+	case *FunCall:
+		switch fn := n.Fun.(type) {
+		case *Select:
+			return selectMayBeNull(fn)
+		case *Symbol:
+			return rootFieldMayBeNull(fn.Name, n.GetInferredType())
+		}
+	case *Symbol:
+		return rootFieldMayBeNull(n.Name, n.GetInferredType())
+	}
+	return false
+}
+
+func selectMayBeNull(sel *Select) bool {
+	if sel.Receiver == nil {
+		return false
+	}
+	mod := schemaObjectModule(inferredTypeOf(sel.Receiver))
+	if mod == nil {
+		return false
+	}
+	if f := schemaField(mod.SourceSchema, mod.Named, sel.Field.Name); f != nil &&
+		isNullableObjectType(f.TypeRef, mod.SourceSchema) {
+		return true
+	}
+	return chainMayBeNull(sel.Receiver)
+}
+
+// rootFieldMayBeNull reports whether name, called with result type t, is a
+// nullable object-returning root Query field.
+func rootFieldMayBeNull(name string, t hm.Type) bool {
+	mod := schemaObjectModule(t)
+	if mod == nil || mod.SourceSchema.QueryType.Name == "" {
+		return false
+	}
+	f := schemaField(mod.SourceSchema, mod.SourceSchema.QueryType.Name, name)
+	return f != nil && isNullableObjectType(f.TypeRef, mod.SourceSchema)
 }
 
 // inferredTypeOf returns the node's cached inferred type, or nil when the
@@ -347,7 +415,7 @@ func rescueOperandCanFail(env hm.Env, node Node) bool {
 	case *Continue:
 		return false
 	case *Symbol:
-		switch classifyGQLSymbol(n) {
+		switch classifyGQLSymbol(n, n.selectedThrough) {
 		case gqlChainField:
 			return false
 		case gqlLeafField:
@@ -367,7 +435,7 @@ func rescueOperandCanFail(env hm.Env, node Node) bool {
 		// an auto-callable function: assume it can fail.
 		return true
 	case *Select:
-		switch classifyGQLSelect(n) {
+		switch classifyGQLSelect(n, n.selectedThrough) {
 		case gqlChainField:
 			return rescueOperandCanFail(env, n.Receiver)
 		case gqlLeafField:
@@ -391,7 +459,7 @@ func rescueOperandCanFail(env hm.Env, node Node) bool {
 	case *FunCall:
 		switch fn := n.Fun.(type) {
 		case *Select:
-			if classifyGQLSelect(fn) == gqlChainField {
+			if classifyGQLSelect(fn, n.selectedThrough) == gqlChainField {
 				// Building the query cannot fail; the receiver and argument
 				// values still evaluate here. Object-handle arguments are
 				// serialized only when the parent chain executes, so they
@@ -402,7 +470,7 @@ func rescueOperandCanFail(env hm.Env, node Node) bool {
 				return callArgsCanFail(env, n)
 			}
 		case *Symbol:
-			if classifyGQLSymbol(fn) == gqlChainField {
+			if classifyGQLSymbol(fn, n.selectedThrough) == gqlChainField {
 				return callArgsCanFail(env, n)
 			}
 		}
@@ -493,24 +561,24 @@ func tailLeavesLazyHandle(env hm.Env, tail Node) *Type {
 		// `.{{ }}` executes where written.
 		return nil
 	case *Select:
-		if classifyGQLSelect(n) == gqlLeafField {
+		if classifyGQLSelect(n, n.selectedThrough) == gqlLeafField {
 			// Executes here even when the Dang-visible type is an object
-			// (@expectedType-mapped leaves like `sync`).
+			// (@expectedType-mapped leaves like `sync`, or a probed handle).
 			return nil
 		}
 	case *FunCall:
 		switch fn := n.Fun.(type) {
 		case *Select:
-			if classifyGQLSelect(fn) == gqlLeafField {
+			if classifyGQLSelect(fn, n.selectedThrough) == gqlLeafField {
 				return nil
 			}
 		case *Symbol:
-			if classifyGQLSymbol(fn) == gqlLeafField {
+			if classifyGQLSymbol(fn, n.selectedThrough) == gqlLeafField {
 				return nil
 			}
 		}
 	case *Symbol:
-		if classifyGQLSymbol(n) == gqlLeafField {
+		if classifyGQLSymbol(n, n.selectedThrough) == gqlLeafField {
 			return nil
 		}
 	}

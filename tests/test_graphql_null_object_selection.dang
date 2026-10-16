@@ -33,6 +33,17 @@ assert { chain.manager.manager == null }
 let managerName = if (john.manager == null) { "nobody" } else { john.manager.name }
 assert { managerName == "nobody" }
 
+# Projecting further down a chain through a null field is null as well, since
+# the null passes up through every step selected off it
+let deepMissing = user(id: "1").manager.posts.{{pageInfo.{{hasNextPage}}}}
+assert { deepMissing == null }
+let deepFound = user(id: "2").manager.posts.{{pageInfo.{{hasNextPage}}}}
+assert { deepFound.pageInfo.hasNextPage == false }
+assert { user(id: "1").manager.posts.posts.{{title}} == null }
+let titles = user(id: "2").manager.posts.posts.{{title}}
+assert { titles!.length == 4 }
+assert { titles![0].title == "First Post" }
+
 # Lists: each user sub-selects its manager, mixing null and non-null
 let everyone = users.{{name, manager.{{name}}}}
 assert { everyone.length == 2 }

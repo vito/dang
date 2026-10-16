@@ -36,10 +36,12 @@ func (c *recordingClient) Queries() []string {
 	return append([]string(nil), c.queries...)
 }
 
-// Nullable object fields are probed for null with a `__typename` query when
-// called, except where the probe would be redundant (a `{{ }}` projection
-// reveals the null itself) or harmful (re-sending a mutation). These tests pin
-// down exactly which requests go out. See vito/dang#186.
+// A handle that may be null — a nullable object field, or anything selected
+// off one — is probed for null only when it escapes the chain: where it is
+// selected from, the leaf or `{{ }}` projection that runs the chain reveals
+// the null itself. Mutations are never probed, since that would re-send
+// them. These tests pin down exactly which requests go out. See
+// vito/dang#186.
 func (DangSuite) TestNullableObjectFieldQueries(ctx context.Context, t *testctx.T) {
 	run := func(t *testctx.T, source string) []string {
 		cfg, err := gqlserver.ImportConfig("Test")
@@ -56,14 +58,73 @@ func (DangSuite) TestNullableObjectFieldQueries(ctx context.Context, t *testctx.
 		return client.Queries()
 	}
 
-	t.Run("probes a nullable object field", func(ctx context.Context, t *testctx.T) {
+	t.Run("sends one query for a leaf off a nullable field", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+assert { user(id: "1").name == "John Doe" }
+`)
+		require.Equal(t, []string{
+			`query Query {user(id:"1"){name}}`,
+		}, queries)
+	})
+
+	t.Run("resolves a leaf off a null field to null", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+assert { maybeUser(id: "nope").name == null }
+assert { maybeUser(id: "nope").emails == null }
+`)
+		require.Equal(t, []string{
+			`query Query {maybeUser(id:"nope"){name}}`,
+			`query Query {maybeUser(id:"nope"){emails}}`,
+		}, queries)
+	})
+
+	t.Run("resolves a chain of nullable fields with one query", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+assert { user(id: "2").manager.name == "John Doe" }
+assert { user(id: "2").manager.manager.name == null }
+`)
+		require.Equal(t, []string{
+			`query Query {user(id:"2"){manager{name}}}`,
+			`query Query {user(id:"2"){manager{manager{name}}}}`,
+		}, queries)
+	})
+
+	t.Run("probes an escaping handle once", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let u = maybeUser(id: "1")
+assert { u != null }
+assert { u.name == "John Doe" }
+`)
+		require.Equal(t, []string{
+			`query Query {maybeUser(id:"1"){__typename}}`,
+			`query Query {maybeUser(id:"1"){name}}`,
+		}, queries)
+	})
+
+	t.Run("probes an escaping null handle", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let m = user(id: "1").manager
 assert { m == null }
 `)
 		require.Equal(t, []string{
-			`query Query {user(id:"1"){__typename}}`,
 			`query Query {user(id:"1"){manager{__typename}}}`,
+		}, queries)
+	})
+
+	t.Run("probes an escaping deep chain once", func(ctx context.Context, t *testctx.T) {
+		// posts is non-null, but selected off an unprobed nullable field, so
+		// it may still be null. It has no id, so the probe is __typename.
+		queries := run(t, `
+let none = user(id: "1").manager.posts
+assert { none == null }
+let some = user(id: "2").manager.posts
+assert { some != null }
+assert { some.pageInfo.hasNextPage == false }
+`)
+		require.Equal(t, []string{
+			`query Query {user(id:"1"){manager{posts{__typename}}}}`,
+			`query Query {user(id:"2"){manager{posts{__typename}}}}`,
+			`query Query {user(id:"2"){manager{posts{pageInfo{hasNextPage}}}}}`,
 		}, queries)
 	})
 
@@ -75,11 +136,7 @@ let n = user(id: "1").manager.{{name}}
 assert { n == null }
 `)
 		require.Equal(t, []string{
-			// The receiver of .manager is still probed...
-			`query Query {user(id:"2"){__typename}}`,
-			// ...but manager itself goes straight to the projection.
 			`query Query {user(id:"2"){manager{name}}}`,
-			`query Query {user(id:"1"){__typename}}`,
 			`query Query {user(id:"1"){manager{name}}}`,
 		}, queries)
 	})
@@ -93,15 +150,18 @@ assert { maybeUser(id: "nope").{{name}} == null }
 		}, queries)
 	})
 
-	t.Run("probes argument expressions of a projection", func(ctx context.Context, t *testctx.T) {
-		// Only the call feeding the projection skips its probe; a nullable
-		// object field evaluated in its arguments is still resolved first.
+	t.Run("probes argument expressions", func(ctx context.Context, t *testctx.T) {
+		// Only the call being selected from skips its probe; a nullable object
+		// field evaluated in its arguments is still resolved first.
 		queries := run(t, `
 let r = user(id: (user(id: "2").manager ?? primaryUser).id).{{name}}
 assert { r.name == "John Doe" }
 `)
-		require.Contains(t, queries, `query Query {user(id:"2"){manager{__typename}}}`)
-		require.Equal(t, `query Query {user(id:"1"){name}}`, queries[len(queries)-1])
+		require.Equal(t, []string{
+			`query Query {user(id:"2"){manager{__typename}}}`,
+			`query Query {user(id:"2"){manager{id}}}`,
+			`query Query {user(id:"1"){name}}`,
+		}, queries)
 	})
 
 	t.Run("does not probe mutations", func(ctx context.Context, t *testctx.T) {
