@@ -1464,6 +1464,11 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 		}
 	}
 
+	ctx, err := enterCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	fnScope := f.Closure.Derive(false)
 
 	if f.IsDynamic {
@@ -2057,6 +2062,11 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 		return b.Method.Call(ctx, scope, args)
 	}
 
+	ctx, err := enterCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Derive(true)
 	fnScope := CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
@@ -2110,6 +2120,11 @@ func (b BoundScalarMethod) MarshalJSON() ([]byte, error) {
 }
 
 func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	ctx, err := enterCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// EnterSelf installs a fresh, unshared cell on the derived scope, so the
 	// (possibly process-shared) closure's own cell is never touched.
 	fnScope := b.Method.Closure.Derive(false)
@@ -2245,6 +2260,10 @@ func (c *ConstructorFunction) String() string {
 }
 
 func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	ctx, err := enterCall(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ctx = contextWithFunctionControlBoundary(ctx)
 
 	// Create a new instance of the object
