@@ -343,13 +343,15 @@ func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			blockCallFrame = NewControlFrame(BlockCallFrame)
 			defer blockCallFrame.Deactivate()
 
-			blockCtx := contextWithBlockCallFrame(ctx, blockCallFrame)
-			blockVal, err := c.BlockArg.Eval(blockCtx, scope)
+			frame := deriveFrame(ctx)
+			frame.blockCallFrame = blockCallFrame
+			blockVal, err := c.BlockArg.Eval(withFrame(ctx, frame), scope)
 			if err != nil {
 				return nil, err
 			}
-			// Store block in context for builtin functions to access
-			ctx = context.WithValue(blockCtx, blockArgContextKey, blockVal)
+			// Store block in the frame for the callee (builtin or not) to access
+			frame.blockArg = blockVal
+			ctx = withFrame(ctx, frame)
 		}
 
 		// Dispatch to appropriate function call handler

@@ -37,54 +37,28 @@ func (f *ControlFrame) Deactivate() {
 	}
 }
 
-const (
-	returnFrameContextKey    contextKey = "returnFrame"
-	breakFrameContextKey     contextKey = "breakFrame"
-	continueFrameContextKey  contextKey = "continueFrame"
-	blockCallFrameContextKey contextKey = "blockCallFrame"
-)
-
 func currentReturnFrame(ctx context.Context) *ControlFrame {
-	frame, _ := ctx.Value(returnFrameContextKey).(*ControlFrame)
-	return frame
+	return currentFrame(ctx).returnFrame
 }
 
 func currentBreakFrame(ctx context.Context) *ControlFrame {
-	frame, _ := ctx.Value(breakFrameContextKey).(*ControlFrame)
-	return frame
+	return currentFrame(ctx).breakFrame
 }
 
 func currentContinueFrame(ctx context.Context) *ControlFrame {
-	frame, _ := ctx.Value(continueFrameContextKey).(*ControlFrame)
-	return frame
+	return currentFrame(ctx).continueFrame
 }
 
 func currentBlockCallFrame(ctx context.Context) *ControlFrame {
-	frame, _ := ctx.Value(blockCallFrameContextKey).(*ControlFrame)
-	return frame
+	return currentFrame(ctx).blockCallFrame
 }
 
-func contextWithReturnFrame(ctx context.Context, frame *ControlFrame) context.Context {
-	return context.WithValue(ctx, returnFrameContextKey, frame)
-}
-
-func contextWithBreakFrame(ctx context.Context, frame *ControlFrame) context.Context {
-	return context.WithValue(ctx, breakFrameContextKey, frame)
-}
-
-func contextWithContinueFrame(ctx context.Context, frame *ControlFrame) context.Context {
-	return context.WithValue(ctx, continueFrameContextKey, frame)
-}
-
-func contextWithBlockCallFrame(ctx context.Context, frame *ControlFrame) context.Context {
-	return context.WithValue(ctx, blockCallFrameContextKey, frame)
-}
-
-func contextWithFunctionControlBoundary(ctx context.Context) context.Context {
-	ctx = contextWithBreakFrame(ctx, nil)
-	ctx = contextWithContinueFrame(ctx, nil)
-	ctx = contextWithBlockCallFrame(ctx, nil)
-	return ctx
+// enterFunctionControlBoundary makes f the frame of a function body: break,
+// continue and block calls never target anything outside the function.
+func (f *evalFrame) enterFunctionControlBoundary() {
+	f.breakFrame = nil
+	f.continueFrame = nil
+	f.blockCallFrame = nil
 }
 
 func controlFrameMatches(target, frame *ControlFrame) bool {

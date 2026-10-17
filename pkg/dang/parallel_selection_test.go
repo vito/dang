@@ -70,7 +70,8 @@ func TestEvalParallelFastPaths(t *testing.T) {
 
 	// n == 1: runs inline on the caller's context (no extra cancel wrapper) and
 	// returns the single result.
-	callerCtx := context.WithValue(context.Background(), forceChainKey{}, "marker")
+	type markerKey struct{}
+	callerCtx := context.WithValue(context.Background(), markerKey{}, "marker")
 	var sawCtx context.Context
 	got, err = evalParallel(callerCtx, 1, func(ctx context.Context, i int) (int, error) {
 		sawCtx = ctx
