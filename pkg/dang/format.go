@@ -1017,7 +1017,11 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 		}
 	}
 
-	f.write("type ")
+	if c.Kind == InputKind {
+		f.write("input ")
+	} else {
+		f.write("type ")
+	}
 	f.write(c.Name.Name)
 
 	// Implements clause

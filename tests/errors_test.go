@@ -236,6 +236,111 @@ print(x)
 	}
 }
 
+// TestInputDeclarationDiagnostics checks that `input` declarations reject
+// anything beyond public data fields of input types.
+func (DangSuite) TestInputDeclarationDiagnostics(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name   string
+		source string
+		wants  []string
+	}{
+		{
+			name: "method",
+			source: `input Filter {
+  name: String!
+  shout: String! { name.toUpper }
+}
+`,
+			wants: []string{`input Filter cannot declare methods; "shout" must be a data field`},
+		},
+		{
+			name: "private field",
+			source: `input Filter {
+  let secret: String! = "x"
+}
+`,
+			wants: []string{"input Filter cannot declare private fields; drop `let` from \"secret\""},
+		},
+		{
+			name: "constructor",
+			source: `input Filter {
+  name: String!
+  new(n: String!) { self.name = n; self }
+}
+`,
+			wants: []string{"input Filter cannot declare a new() constructor"},
+		},
+		{
+			name: "statics",
+			source: `input Filter {
+  name: String!
+  self { all: [String!]! = [] }
+}
+`,
+			wants: []string{"input Filter cannot declare static members"},
+		},
+		{
+			name: "object field",
+			source: `type User {
+  name: String!
+}
+
+input Filter {
+  owner: User!
+}
+`,
+			wants: []string{`input Filter: field "owner" has type User!, which is not an input type`},
+		},
+		{
+			name: "list of objects field",
+			source: `type User {
+  name: String!
+}
+
+input Filter {
+  owners: [User!]! = []
+}
+`,
+			wants: []string{`input Filter: field "owners" has type [User!]!, which is not an input type`},
+		},
+		{
+			name: "not assignable to object",
+			source: `type User {
+  name: String!
+}
+
+input Filter {
+  name: String!
+}
+
+greet(user: User!): String! { user.name }
+
+print(greet(Filter("x")))
+`,
+			wants: []string{"Filter!", "User!"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			dir, err := os.MkdirTemp("", "dang-input-decl")
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+			path := filepath.Join(dir, "main.dang")
+			require.NoError(t, os.WriteFile(path, []byte(tt.source), 0644))
+
+			err = dang.RunFile(ctx, path, false)
+			require.Error(t, err)
+			for _, want := range tt.wants {
+				require.Contains(t, err.Error(), want)
+			}
+			// Each case has exactly one problem, reported once.
+			require.NotContains(t, err.Error(), "inference errors:")
+		})
+	}
+}
+
 // TestDangModuleImportCycle checks that native Dang import cycles are reported
 // as a clean error rather than looping forever. A directory that must ERROR fits
 // neither the golden harness (the cycle message embeds absolute module dirs) nor

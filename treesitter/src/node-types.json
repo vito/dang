@@ -1240,6 +1240,10 @@
             "named": true
           },
           {
+            "type": "input_decl",
+            "named": true
+          },
+          {
             "type": "interface_decl",
             "named": true
           },
@@ -2125,6 +2129,72 @@
         },
         {
           "type": "spread_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "input_decl",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "d": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "input_token",
           "named": true
         }
       ]
@@ -4941,6 +5011,10 @@
   },
   {
     "type": "import_token",
+    "named": true
+  },
+  {
+    "type": "input_token",
     "named": true
   },
   {

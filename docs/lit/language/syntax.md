@@ -31,6 +31,7 @@
 ## Reserved words
 
 - `pub`, `let`, `type`, `interface`, `enum`, `union`, `scalar`, `new`, `implements`
+- `input` only before a type name (`input Foo { ... }`); elsewhere it's an ordinary identifier (see [#inputs])
 - `if`, `else`, `case`, `break`, `continue`, `return`
 - `raise`, `rescue` (`try` and `catch` are no longer reserved — see [#errors] for migrating legacy `try`/`catch`)
 - `pub` is optional and being retired — a declaration is public by default; see [#fields]

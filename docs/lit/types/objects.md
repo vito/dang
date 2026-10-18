@@ -167,4 +167,23 @@ type Person implements Named & Identifiable { name: String!; id: String! }
 - references also resolve across files in a directory module, order-independently
 - defaults can reference sibling fields (evaluated with `self` bound)
 
+## Input objects (`input`) {#inputs}
+
+```dang
+input Pagination {
+  limit: Int! = 20
+  after: String
+}
+
+listPeople(page: Pagination!): String! { `first ${page.limit} after ${page.after ?? "start"}` }
+
+listPeople(Pagination(after: "abc"))   # "first 20 after abc"
+```
+
+- declares a type and a constructor, like `type`; the constructor is always the implicit one (see [#objects])
+- the Dang counterpart of a GraphQL input type: a bundle of data passed *into* a call
+- members are public data fields only — no methods or computed fields, no `let`, no `new`, no `self { }` block
+- field types must themselves be inputs: scalars, enums, other `input`s, and lists of them; an object, interface, or union field is an error (`... is not an input type`)
+- `input` is only a keyword before a type name on the same line, so it still works as an ordinary identifier (`echo(input: String!)`)
+
 > Meta: user-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax. Schema input types are constructed exactly like local types: `CreateUserInput(name: "Alice", email: "...")` passed as `Mutation.createUser(input: ...)`. See [#interop].

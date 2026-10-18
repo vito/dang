@@ -31,7 +31,7 @@ SemiToken <- ';'
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / NewConstructorDecl / SelfBlockDecl / FieldDecl / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / InputDecl / NewConstructorDecl / SelfBlockDecl / FieldDecl / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
     if docstring != nil {
@@ -330,6 +330,23 @@ ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil }
   }, nil
 }
 TypeToken <- "type" !WordChar
+
+// An input object: a named bundle of data fields, the Dang counterpart of a
+// GraphQL input type. It shares ObjectDecl's representation (fields, defaults,
+// derived constructor) and is told apart by Kind. `input` is a common
+// identifier, so the name must follow on the same line; a bare `input` on its
+// own line stays an expression.
+InputDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* InputToken _inlineSpace name:Symbol suffixDirectives:DirectiveApplication* _ block:Block {
+  return &ObjectDecl{
+    Kind: InputKind,
+    Name: name.(*Symbol),
+    Value: block.(*Block),
+    Visibility: PublicVisibility,
+    Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
+    Loc: c.Loc(),
+  }, nil
+}
+InputToken <- "input" !WordChar
 Implements <-  ImplementsToken _ first:Symbol rest:(_ AmpersandToken _ i:Symbol { return i, nil })* {
   return sliceOfPrepend[*Symbol](first, rest), nil
 }

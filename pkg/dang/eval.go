@@ -2401,6 +2401,30 @@ func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance 
 	return nil
 }
 
+// InputConstructor constructs values of a Dang-declared input type
+// (`input Foo { ... }`). It shares ConstructorFunction's argument binding and
+// field-default evaluation, but is a distinct value type so code that maps
+// object constructors to schema object types does not treat an input as one.
+type InputConstructor struct {
+	*ConstructorFunction
+}
+
+func (c *InputConstructor) String() string {
+	return fmt.Sprintf("input:%s", c.ObjectName)
+}
+
+// asConstructorFunction returns the ConstructorFunction behind an object or
+// input constructor.
+func asConstructorFunction(v Value) (*ConstructorFunction, bool) {
+	switch c := v.(type) {
+	case *ConstructorFunction:
+		return c, true
+	case *InputConstructor:
+		return c.ConstructorFunction, true
+	}
+	return nil, false
+}
+
 func (c *ConstructorFunction) ParameterNames() []string {
 	names := make([]string, len(c.Parameters))
 	for i, param := range c.Parameters {

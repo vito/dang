@@ -1,0 +1,77 @@
+# `input` declares an input object: a named bundle of data fields with a
+# constructor derived from them, like a `type` without methods.
+
+enum Status { ACTIVE INACTIVE }
+
+"""
+Filters for listing users.
+"""
+input UserFilter {
+  """
+  Substring to match against names.
+  """
+  name: String!
+  minAge: Int! = 18
+  tags: [String!]! = []
+  status: Status
+}
+
+# Inputs may nest other inputs (and lists of them).
+input Page {
+  limit: Int! = 10
+  filter: UserFilter
+  sorts: [Sort!]! = []
+}
+
+input Sort {
+  field: String!
+  desc: Boolean! = false
+}
+
+# Construction with named args; omitted fields take their defaults or null.
+let f = UserFilter(name: "jo")
+assert { f.name == "jo" }
+assert { f.minAge == 18 }
+assert { f.tags == [] }
+assert { f.status == null }
+
+# Positional args follow field order.
+let g = UserFilter("ann", 30, ["admin"], Status.ACTIVE)
+assert { g.minAge == 30 }
+assert { g.tags == ["admin"] }
+assert { g.status == Status.ACTIVE }
+
+# Inputs flow into function arguments.
+describe(filter: UserFilter!): String! {
+  `${filter.name} >= ${filter.minAge}`
+}
+
+assert { describe(f) == "jo >= 18" }
+assert { describe(UserFilter(name: "x", minAge: 3)) == "x >= 3" }
+
+let p = Page(filter: f, sorts: [Sort("name"), Sort(field: "age", desc: true)])
+assert { p.limit == 10 }
+assert { p.filter!.name == "jo" }
+assert { p.sorts.map { s => s.desc } == [false, true] }
+
+# Equality compares fields.
+assert { UserFilter(name: "jo") == f }
+assert { UserFilter(name: "jo", minAge: 21) != f }
+
+# Inputs decode from codecs like any other named type.
+let decoded = JSON.decode("{\"name\": \"zed\", \"tags\": [\"a\"]}") :: UserFilter!
+assert { decoded.name == "zed" }
+assert { decoded.minAge == 18 }
+assert { decoded.tags == ["a"] }
+
+# `input` remains an ordinary identifier.
+echo(input: String!): String! {
+  input
+}
+
+assert { echo("hi") == "hi" }
+
+let input = "plain"
+assert { input == "plain" }
+
+print("input declaration tests passed!")

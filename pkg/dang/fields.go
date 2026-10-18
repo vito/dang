@@ -359,8 +359,15 @@ func (s *FieldDecl) Walk(fn func(Node) bool) {
 	}
 }
 
+// ObjectDecl declares a named object type (`type Foo { ... }`) or, when Kind
+// is InputKind, an input object (`input Foo { ... }`). Both get a constructor
+// derived from their fields; an input is restricted to public data fields
+// whose types are themselves valid inputs (see validateInputBody and
+// validateInputFieldTypes).
 type ObjectDecl struct {
 	InferredTypeHolder
+	// Kind is ObjectKind (the zero value) for `type` or InputKind for `input`.
+	Kind       Kind
 	Name       *Symbol
 	Value      *Block
 	Implements []*Symbol
@@ -717,7 +724,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ObjectDecl.Hoist: environment does not support module operations")
 	}
 
-	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, c.Kind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, c.Name)
 	}
@@ -830,6 +837,14 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
 
+	// An input's body is restricted to public data fields. Checked here rather
+	// than in Hoist, which can run more than once per declaration.
+	if c.Kind == InputKind {
+		if err := c.validateInputBody(); err != nil {
+			return nil, err
+		}
+	}
+
 	// Function bodies infer declarations in source order rather than through
 	// the module's hoisting phases. Initialize local constructor and member
 	// signatures before inferring their bodies as well.
@@ -839,7 +854,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, c.Kind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, c.Name)
 	}
@@ -888,6 +903,12 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	bodyForms := c.bodyFormsWithoutNew()
 	if _, err := InferFormsWithPhases(ctx, bodyForms, inferTypeScope, fresh); err != nil {
 		return nil, err
+	}
+
+	if c.Kind == InputKind {
+		if err := c.validateInputFieldTypes(object); err != nil {
+			return nil, err
+		}
 	}
 
 	// Infer static members (self { } blocks) against the meta-type.
@@ -1180,7 +1201,14 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			NewBody:         newBody,
 		}
 
-		// Add the constructor to the evaluation environment
+		// Add the constructor to the evaluation environment. An input binds a
+		// distinct constructor type so consumers that map object constructors
+		// to schema objects (e.g. module SDKs) don't mistake it for one.
+		if c.Kind == InputKind {
+			inputConstructor := &InputConstructor{constructor}
+			scope.Bind(c.Name.Name, inputConstructor, c.Visibility)
+			return inputConstructor, nil
+		}
 		scope.Bind(c.Name.Name, constructor, c.Visibility)
 
 		// Evaluate static members (self { } blocks) into the type's statics
@@ -1192,6 +1220,97 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 		return constructor, nil
 	})
+}
+
+// validateInputBody checks that an input declaration's body holds only public
+// data fields: inputs carry values into a call, so they have no methods,
+// constructor, statics, or private state.
+func (c *ObjectDecl) validateInputBody() error {
+	errs := &InferenceErrors{}
+	for _, form := range c.Value.Forms {
+		switch f := form.(type) {
+		case *FieldDecl:
+			if _, isFun := f.Value.(*FunDecl); isFun {
+				errs.Add(NewInferError(
+					fmt.Errorf("input %s cannot declare methods; %q must be a data field", c.Name.Name, f.Name.Name),
+					f,
+				))
+			} else if f.Visibility != PublicVisibility {
+				errs.Add(NewInferError(
+					fmt.Errorf("input %s cannot declare private fields; drop `let` from %q", c.Name.Name, f.Name.Name),
+					f,
+				))
+			}
+		case *NewConstructorDecl:
+			errs.Add(NewInferError(
+				fmt.Errorf("input %s cannot declare a new() constructor; its constructor is derived from its fields", c.Name.Name),
+				f,
+			))
+		case *SelfBlockDecl:
+			errs.Add(NewInferError(
+				fmt.Errorf("input %s cannot declare static members", c.Name.Name),
+				f,
+			))
+		default:
+			errs.Add(NewInferError(
+				fmt.Errorf("input %s may only contain field declarations", c.Name.Name),
+				form,
+			))
+		}
+	}
+	if errs.HasErrors() {
+		return errs
+	}
+	return nil
+}
+
+// validateInputFieldTypes checks that every field of an input holds an input
+// type, mirroring GraphQL's rule that input objects may only nest scalars,
+// enums, other input objects, and lists of them -- never output objects,
+// interfaces, unions, or functions.
+func (c *ObjectDecl) validateInputFieldTypes(input *Type) error {
+	errs := &InferenceErrors{}
+	for _, form := range c.Value.Forms {
+		field, ok := form.(*FieldDecl)
+		if !ok {
+			continue
+		}
+		scheme, found := input.LocalSchemeOf(field.Name.Name)
+		if !found {
+			continue
+		}
+		fieldType, _ := scheme.Type()
+		if !isInputType(fieldType) {
+			errs.Add(NewInferError(
+				fmt.Errorf("input %s: field %q has type %s, which is not an input type; input fields may only hold scalars, enums, other inputs, and lists of them", c.Name.Name, field.Name.Name, fieldType),
+				field,
+			))
+		}
+	}
+	if errs.HasErrors() {
+		return errs
+	}
+	return nil
+}
+
+// isInputType reports whether t may appear in an input position: a scalar,
+// enum, or input object, optionally wrapped in lists and non-null.
+func isInputType(t hm.Type) bool {
+	switch tt := t.(type) {
+	case hm.NonNullType:
+		return isInputType(tt.Type)
+	case ListType:
+		return isInputType(tt.Type)
+	case *Type:
+		if tt.Named == "" {
+			return false
+		}
+		switch tt.Kind {
+		case ScalarKind, EnumKind, InputKind:
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ObjectDecl) Walk(fn func(Node) bool) {

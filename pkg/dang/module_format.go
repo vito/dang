@@ -28,6 +28,8 @@ func FormatPublicTypeShape(mod *Type) string {
 		keyword = "type"
 	case InterfaceKind:
 		keyword = "interface"
+	case InputKind:
+		keyword = "input"
 	default:
 		return ""
 	}

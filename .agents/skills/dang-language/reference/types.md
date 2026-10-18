@@ -117,6 +117,22 @@ case (c) {
 "RED" :: Color!      # runtime-validated coercion; "NOPE" :: Status! → invalid enum value "NOPE" for Status
 ```
 
+## Input objects
+
+```dang
+input UserFilter {
+  name: String!
+  minAge: Int! = 18
+  status: Status
+}
+
+UserFilter(name: "jo")            # implicit constructor; defaults/null fill the rest
+```
+- Like a `type` restricted to **public data fields**: no methods/computed fields, `let`, `new`, or `self { }`.
+- Field types must be input types: scalars, enums, other `input`s, lists of them. An object/interface/union field → `... is not an input type`.
+- `input` is a keyword only when a name follows on the same line; `input` stays usable as an identifier.
+- Not yet exposed through Dagger module APIs.
+
 ## Custom scalars
 
 ```dang

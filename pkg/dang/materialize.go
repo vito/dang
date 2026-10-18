@@ -592,7 +592,7 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {
 	args := map[string]Value{}
 
-	if constructor, ok := callable.(*ConstructorFunction); ok {
+	if constructor, ok := asConstructorFunction(callable); ok {
 		paramTypes := parameterTypes(callable)
 		for _, param := range constructor.Parameters {
 			name := param.Name.Name

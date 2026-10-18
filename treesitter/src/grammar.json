@@ -155,6 +155,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "input_decl"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "new_constructor_decl"
               },
               {
@@ -221,7 +225,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 178,
+      "value": 180,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -318,7 +322,7 @@
     },
     "non_null_assert": {
       "type": "PREC_LEFT",
-      "value": 177,
+      "value": 179,
       "content": {
         "type": "SEQ",
         "members": [
@@ -503,7 +507,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 170,
+      "value": 172,
       "content": {
         "type": "SEQ",
         "members": [
@@ -590,7 +594,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 169,
+      "value": 171,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1188,6 +1192,68 @@
       "content": {
         "type": "STRING",
         "value": "type"
+      }
+    },
+    "input_decl": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "input_token"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_inline_space"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "symbol"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "suffix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "directive_application"
+            }
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "block",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
+    "input_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "input"
       }
     },
     "implements": {
