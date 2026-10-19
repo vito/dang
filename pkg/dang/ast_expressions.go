@@ -1871,14 +1871,17 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 }
 
 // nullResult is the selection's result for a null receiver: null, propagated,
-// unless the selection is typed non-null regardless of its receiver, as the
-// non-null lazy inline fragment `... on User!` on a single value is. That
-// form asserts the value is a User, and null isn't one.
+// unless it is a lazy inline fragment selection with a non-null fragment
+// (`... on User!`) on a single value. That form asserts the value is of one
+// of the fragments' types, and null isn't, just as a mismatched type raises
+// in matchLazyInlineFragment.
 func (o *ObjectSelection) nullResult() (Value, error) {
-	if len(o.InlineFragments) > 0 && !o.IsList {
-		if _, nonNull := o.GetInferredType().(hm.NonNullType); nonNull {
-			return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got null",
-				o.inlineFragmentTypeNames())
+	if !o.IsList && o.isLazyInlineFragments() {
+		for _, frag := range o.InlineFragments {
+			if frag.NonNull {
+				return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got null",
+					o.inlineFragmentTypeNames())
+			}
 		}
 	}
 	return NullValue{}, nil

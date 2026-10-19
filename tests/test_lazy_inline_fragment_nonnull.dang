@@ -27,4 +27,14 @@ let asserted = { noPet.{{... on Cat!}}.name } rescue {
 assert { asserted == "inline fragment type assertion failed: expected one of Cat, got null" }
 assert { noPet.{{... on Cat}} == null }
 
+# ...with several fragments too, as for a mismatched type
+let assertedEither = {
+  noPet.{{... on Cat!, ... on Dog!}}
+  "unreachable"
+} rescue {
+  e: RuntimeError => e.message
+}
+assert { assertedEither == "inline fragment type assertion failed: expected one of Cat, Dog, got null" }
+assert { noPet.{{... on Cat, ... on Dog}} == null }
+
 print("Non-null lazy inline fragment tests passed!")
