@@ -353,7 +353,7 @@ client-side wrapping, and its `path` and `extensions` make the failure
 inspectable without parsing text:
 
 ```dang-static
-user(id: "1").alwaysFails rescue {
+user(id: "User:1").alwaysFails rescue {
   e: GraphQLError => `${e.message} (at ${toString(e.path)})`
 }
 ```
@@ -433,8 +433,12 @@ values, is less than it looks. Selecting an object-typed field only extends
 a lazy query chain (see [#graphql]): no request is sent, so nothing can
 fail, until a **leaf** field (one whose underlying schema type is a scalar
 or enum — including `@expectedType`-mapped fields like Dagger's `sync`) or
-a `.{{ }}` selection forces the chain. Failures happen at leaves and
-braces, not where the chain is built.
+a `.{{ }}` selection forces the chain, or a handle that may be `null` — a
+nullable object field, or anything selected off one — escapes the chain
+and is checked for null (see [#nullable-object-fields]). A nullable field
+that is only selected through, as in `me.parent.name`, is not checked
+itself; the leaf runs the chain. Failures happen at those points, not where
+the chain is built.
 
 A rescue wrapped around pure chain-building therefore guards nothing, and
 the compiler says so:

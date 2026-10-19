@@ -43,8 +43,9 @@ node(id: "x").{{
 ### Lazy inline fragments (no field block)
 - `... on User` yields a typed reference / type assertion without selecting fields; chainable: `node(id).{{... on User}}.name`.
 - Works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}`, comma/newline-separated, elementwise on lists).
-- Non-matching assertion returns `null` (`cat.{{... on Dog}} == null`).
-- Non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`.
+- Non-matching assertion returns `null` (`cat.{{... on Dog}} == null`), as does a narrowing of a `null` value.
+- Non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`. A `null` value raises too (`… got null`).
+- On a value already known to be of a concrete type (a checked nullable field, a `case` binding), a narrowing is matched without a request.
 
 ## Lists of objects
 ```dang
@@ -58,13 +59,17 @@ users.{{ name }}[0].name   # index to force the query
 
 ## Mutations
 - Root `Mutation` fields are functions like queries; the result is whatever the schema declares.
-- Side effects happen when the call **executes**, which is when its value is **forced** (same laziness rules as queries).
+- Side effects happen when the call **executes**, which is when its value is **forced** (same laziness rules as queries). An object-returning mutation is re-sent by **every** forced selection off it: `let u = Mutation.createUser(…)` runs nothing, then `u.name` and `u.id` create two users. Select what you need in one `.{{ }}` on the call to run it once: `Mutation.createUser(…).{{ id, name }}`.
+- Values reached through a mutation are never checked for null (they stay lazy and never `== null`), and `case` can't match concrete type patterns on a mutation-returned interface/union: the first undecidable pattern raises `cannot match type pattern Post against a Node reached through mutation …`. Discriminate with fragments on the call instead: `Mutation.touchNode(id).{{ ... on Post {{ title }}, ... on User {{ name }} }}`.
 
 ## Laziness / forcing
 GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.field`, `.{{...}}`, args); no request is sent until the value is **forced** — materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single request. This is what makes `user.{{ name, posts.{{ title }} }}` one round-trip.
+- **Exception — nullable object fields:** a nullable object/interface/union field (`parent: Agent`), or anything selected off one, is **checked for null when it escapes the chain** (bound with `let`, passed as an argument, returned, compared, …) with one `{ id __typename }` query, so `== null`, `??`, `!`, `null` patterns and flow narrowing work. Selecting through it (`me.parent.name`, `me.parent.{{ id }}`) sends no check: the leaf or projection reveals the null. Non-null object fields stay lazy.
+- A checked value is **loaded by its ID** (`node(id:)`, or `load<T>FromID` on older Dagger schemas): later selections start from the loader, passing it as an ID argument is free, and it has its **concrete** type, so `case` type patterns match it without another query.
+- **`case` on an interface/union value** that only knows its declared type (e.g. a non-null `favoriteNode: Node!`) asks for its `id`/`__typename` once, unless there are no type patterns or the first pattern is the declared type itself (`n: Node =>`).
 
 ## Equality
-- `==`/`!=` on GraphQL objects compare by **reference identity** — no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself, but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false`.
+- `==`/`!=` on GraphQL objects compare by **reference identity** — no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself, but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "User:1")` is `false`.
 - To ask whether two objects are the *same server entity*, compare an identifying field explicitly: `a.id == b.id`. That forces the fetch where it's visible rather than hiding I/O inside `==`.
 - A `.{{ }}` selection is different: it materializes an **anonymous record**, which compares by **value** (same fields + equal values ⇒ equal). Reference identity applies to the GraphQL object *handle*, not to a selected record. See the object-equality rules in `objects.md`.
 

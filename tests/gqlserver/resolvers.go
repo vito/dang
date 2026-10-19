@@ -16,7 +16,7 @@ type Resolver struct{}
 
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput) (*User, error) {
-	newID := strconv.Itoa(len(users) + 1)
+	newID := "User:" + strconv.Itoa(len(users)+1)
 	user := &User{
 		ID:     newID,
 		Name:   input.Name,
@@ -58,6 +58,31 @@ func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, err
 	return false, fmt.Errorf("user not found")
 }
 
+// TouchNode is the resolver for the touchNode field.
+func (r *mutationResolver) TouchNode(ctx context.Context, id string) (Node, error) {
+	node, err := (&queryResolver{r.Resolver}).findNodeByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return nil, fmt.Errorf("node %q not found", id)
+	}
+	return node, nil
+}
+
+// TouchResult is the resolver for the touchResult field.
+func (r *mutationResolver) TouchResult(ctx context.Context, id string) (SearchResult, error) {
+	node, err := (&queryResolver{r.Resolver}).findNodeByID(id)
+	if err != nil {
+		return nil, err
+	}
+	result, ok := node.(SearchResult)
+	if !ok {
+		return nil, fmt.Errorf("node %q not found", id)
+	}
+	return result, nil
+}
+
 // Hello is the resolver for the hello field.
 func (r *queryResolver) Hello(ctx context.Context, name string) (string, error) {
 	return fmt.Sprintf("Hello, %s!", name), nil
@@ -76,6 +101,17 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
 		}
 	}
 	return nil, fmt.Errorf("user not found")
+}
+
+// MaybeUser is the resolver for the maybeUser field.
+func (r *queryResolver) MaybeUser(ctx context.Context, id string) (*User, error) {
+	for _, user := range users {
+		if user.ID == id {
+			return user, nil
+		}
+	}
+	// Not found is a plain null, not an error.
+	return nil, nil
 }
 
 // PrimaryUser is the resolver for the primaryUser field.
@@ -281,6 +317,16 @@ func (r *queryResolver) Nodes(ctx context.Context) ([]Node, error) {
 	return r.getAllNodes(), nil
 }
 
+// FavoriteNode is the resolver for the favoriteNode field.
+func (r *queryResolver) FavoriteNode(ctx context.Context) (Node, error) {
+	return posts[1], nil
+}
+
+// Featured is the resolver for the featured field.
+func (r *queryResolver) Featured(ctx context.Context) (SearchResult, error) {
+	return users[1], nil
+}
+
 // Timestamped is the resolver for the timestamped field.
 func (r *queryResolver) Timestamped(ctx context.Context) ([]Timestamped, error) {
 	return r.getAllTimestamped(), nil
@@ -413,6 +459,21 @@ func (r *userResolver) AlwaysFails(ctx context.Context, obj *User) (string, erro
 			"code": "ALWAYS_FAILS",
 		},
 	}
+}
+
+// Manager is the resolver for the manager field.
+func (r *userResolver) Manager(ctx context.Context, obj *User) (*User, error) {
+	// User "User:1" sits at the top and has no manager; everyone else
+	// reports to user "User:1".
+	if obj.ID == "User:1" {
+		return nil, nil
+	}
+	for _, user := range users {
+		if user.ID == "User:1" {
+			return user, nil
+		}
+	}
+	return nil, nil
 }
 
 // Mutation returns MutationResolver implementation.

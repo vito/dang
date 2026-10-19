@@ -51,11 +51,11 @@ localNode: Node! = Labelled("local-node")
 assert { Node != null }
 assert { localNode.label == "local-node" }
 
-testNode: Test.Node = Test.node(id: "1")
-assert { testNode.id == "1" }
+testNode: Test.Node = Test.node(id: "User:1")
+assert { testNode.id == "User:1" }
 
-otherNode: Other.Node = Other.node(id: "2")
-assert { otherNode.id == "2" }
+otherNode: Other.Node = Other.node(id: "User:2")
+assert { otherNode.id == "User:2" }
 
 type Cat {
   name: String!

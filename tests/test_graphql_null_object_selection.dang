@@ -1,0 +1,76 @@
+# Test that nullable GraphQL object fields the server resolves to null stay
+# null through `{{ }}` selections, instead of becoming empty records.
+# See https://github.com/vito/dang/issues/186
+
+import Test
+
+# Top level: maybeUser returns null (with no error) when not found
+let missing = maybeUser(id: "nope").{{name}}
+assert { missing == null }
+
+# Top level, non-null path still works
+let found = maybeUser(id: "User:1").{{name}}
+assert { found != null }
+assert { found.name == "John Doe" }
+
+# Nested: user "User:1" has no manager
+let john = user(id: "User:1").{{name, manager.{{name}}}}
+assert { john.name == "John Doe" }
+assert { john.manager == null }
+
+# Nested, non-null: user "User:2" is managed by user "User:1"
+let jane = user(id: "User:2").{{name, manager.{{name}}}}
+assert { jane.name == "Jane Smith" }
+assert { jane.manager != null }
+assert { jane.manager.name == "John Doe" }
+
+# Nested twice: the null sits one level deeper
+let chain = user(id: "User:2").{{manager.{{name, manager.{{name}}}}}}
+assert { chain.manager.name == "John Doe" }
+assert { chain.manager.manager == null }
+
+# Narrowing on the nested null takes the right branch
+let managerName = if (john.manager == null) { "nobody" } else { john.manager.name }
+assert { managerName == "nobody" }
+
+# Projecting further down a chain through a null field is null as well, since
+# the null passes up through every step selected off it
+let deepMissing = user(id: "User:1").manager.posts.{{pageInfo.{{hasNextPage}}}}
+assert { deepMissing == null }
+let deepFound = user(id: "User:2").manager.posts.{{pageInfo.{{hasNextPage}}}}
+assert { deepFound.pageInfo.hasNextPage == false }
+assert { user(id: "User:1").manager.posts.posts.{{title}} == null }
+let titles = user(id: "User:2").manager.posts.posts.{{title}}
+assert { titles!.length == 4 }
+assert { titles![0].title == "First Post" }
+
+# Lists: each user sub-selects its manager, mixing null and non-null
+let everyone = users.{{name, manager.{{name}}}}
+assert { everyone.length == 2 }
+assert { everyone[0].name == "John Doe" }
+assert { everyone[0].manager == null }
+assert { everyone[1].name == "Jane Smith" }
+assert { everyone[1].manager.name == "John Doe" }
+
+# Inline fragments: a nullable object field inside a fragment
+let hits = search(query: "Jane").{{
+  ... on User {{ name, manager.{{name}} }}
+  ... on Post {{ title }}
+}}
+let hitManager = case (hits[0]) {
+  u: User => u.manager.name
+  else => "not a user"
+}
+assert { hitManager == "John Doe" }
+
+let johnHits = search(query: "John").{{
+  ... on User {{ name, manager.{{name}} }}
+  ... on Post {{ title }}
+}}
+let johnHasManager = case (johnHits[0]) {
+  u: User => u.manager != null
+  else => true
+}
+assert { johnHasManager == false }
+
+print("GraphQL null object selection tests passed!")

@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -365,6 +366,30 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, fmt.Errorf("evaluating case expression: %w", err)
 		}
 
+		// Type patterns match, and bind, the operand's concrete type. A
+		// GraphQL interface or union handle is resolved to it first; value
+		// clauses still compare against the handle itself, since resolving
+		// it gives a new handle with a different identity (see valuesEqual),
+		// unless it turned out to be null.
+		typedVal := exprVal
+		// A mutation-reached interface or union handle is never resolved
+		// (see needsConcreteType), so a type pattern its declared type
+		// doesn't satisfy can't be decided either way.
+		var unresolvedMutation *GraphQLValue
+		if gqlVal, ok := exprVal.(GraphQLValue); ok {
+			if c.needsConcreteType(gqlVal) {
+				typedVal, err = gqlVal.resolveObject(ctx, "the concrete type of "+gqlVal.Name)
+				if err != nil {
+					return nil, err
+				}
+				if _, isNull := typedVal.(NullValue); isNull {
+					exprVal = typedVal
+				}
+			} else if gqlVal.IsMutation && gqlVal.isAbstract() {
+				unresolvedMutation = &gqlVal
+			}
+		}
+
 		// Try each clause in order
 		for i, clause := range c.Clauses {
 			// Else clauses always match
@@ -374,13 +399,19 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() {
-				if matchesType(exprVal, clause.resolvedMemberType) {
+				if matchesType(typedVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding. It is unsealed, like
 					// a value clause's scope, so the clause can update enclosing
 					// bindings (e.g. loop state) the same way.
 					childScope := scope.Derive(false)
-					childScope.Bind(clause.Binding, exprVal, PrivateVisibility)
+					childScope.Bind(clause.Binding, typedVal, PrivateVisibility)
 					return EvalNode(ctx, childScope, clause.Expr)
+				}
+				if unresolvedMutation != nil {
+					// Falling through to a later arm or else would silently
+					// take the wrong branch for a value that may well be this
+					// type.
+					return nil, CreateEvalError(ctx, c.unresolvedMutationPatternError(*unresolvedMutation, clause), clause)
 				}
 				continue
 			}
@@ -408,6 +439,54 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		// exactly this fallthrough.
 		return NullValue{}, nil
 	})
+}
+
+// needsConcreteType reports whether matching the case's type patterns needs
+// the concrete type of g, a GraphQL handle, to be fetched from the server.
+//
+// A handle typed as an interface or union only knows that abstract type (a
+// non-null field, or one selected off a mutation; nullable fields are
+// resolved on their own, see GraphQLFunction.Call), so it would never match
+// a concrete type pattern. Resolving it costs one small query, so it is
+// skipped when there are no type patterns, when the handle is already of a
+// concrete type, and when the first type pattern matches the abstract type
+// itself (e.g. `n: Node`), since every concrete type would match it too.
+//
+// A handle reached through a mutation is never resolved: any query built on
+// its chain re-sends the mutation, so it keeps its abstract type. Case.Eval
+// raises unresolvedMutationPatternError for the first type pattern that the
+// abstract type doesn't satisfy, rather than guess.
+func (c *Case) needsConcreteType(g GraphQLValue) bool {
+	if g.IsMutation || !g.isAbstract() {
+		return false
+	}
+	for _, clause := range c.Clauses {
+		if clause.IsTypePattern() {
+			// A handle that may be null must be resolved all the same, for
+			// a null to fall through to `null` patterns or else.
+			return g.MaybeNull || !matchesType(g, clause.resolvedMemberType)
+		}
+	}
+	return false
+}
+
+// unresolvedMutationPatternError explains why a type pattern can't be matched
+// against g, an interface or union handle reached through a mutation, and
+// how to discriminate it instead: an inline fragment selection on the
+// mutation call sends it once, with each member's fields. The example lists
+// a fragment for each of the case's type patterns, since a selection without
+// one for the value's actual type fails.
+func (c *Case) unresolvedMutationPatternError(g GraphQLValue, clause *CaseClause) error {
+	var fragments []string
+	for _, cl := range c.Clauses {
+		if cl.IsTypePattern() && cl.TypePattern.Name != g.TypeName {
+			fragments = append(fragments, fmt.Sprintf("... on %s {{ ... }}", cl.TypePattern.Name))
+		}
+	}
+	return fmt.Errorf(
+		"cannot match type pattern %s against a %s reached through mutation %s: finding its concrete type would send the mutation again; select each possible type's fields on the mutation call instead, e.g. .{{ %s }}",
+		clause.TypePattern.Name, g.TypeName, g.Name, strings.Join(fragments, ", "),
+	)
 }
 
 // matchesType checks if a value's concrete type matches the given pattern

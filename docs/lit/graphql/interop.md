@@ -68,8 +68,9 @@ node(id: "x").{{
 
 - the lazy form `... on User` (no field block) narrows the value to that type without selecting fields, returning a chainable lazy value / typed reference
 - works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}` — comma- or newline-separated); multiple lazy fragments narrow a union
-- a narrowing that doesn't match returns `null`: `cat.{{... on Dog}} == null` (e.g. `node(...).{{... on Post}}` when the node is a User)
-- the non-null form `... on User!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`
+- a narrowing that doesn't match returns `null`: `cat.{{... on Dog}} == null` (e.g. `node(...).{{... on Post}}` when the node is a User), and so does one on a `null` value
+- the non-null form `... on User!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`. A `null` value fails the assertion too (`… got null`), since `null` isn't a `User`; use `... on User` to let it through
+- on a value already known to be of a concrete type (a checked nullable field, a `case` binding), a narrowing is matched without a request
 - useful for narrowing a GraphQL interface/union value before chaining (`node(id).{{... on User}}.name`)
 
 ## Lists of objects
@@ -89,14 +90,35 @@ users.{{ name, email }}
 
 - root `Mutation` fields are functions like queries
 - the result is whatever the schema declares
-- side effects happen when the call executes, which is when its value is **forced**
-- the laziness/forcing rules below apply to mutations exactly as they do to queries
+- side effects happen when the call executes, which is when its value is **forced** — and every forced selection off an object-returning mutation re-sends it: `let u = Mutation.createUser(…)` runs nothing on its own, and `u.name` then `u.id` creates two users. Select everything you need in one `.{{ }}` on the call (`Mutation.createUser(…).{{ id, name }}`) to run it exactly once
+- the laziness/forcing rules below apply to mutations as they do to queries, with one exception: nullable object fields reached through a mutation are not checked for null (see [#nullable-object-fields])
 
-> Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. See [#mutation] for how forcing interacts with side effects.
+> Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. Two exceptions send a small query early: a handle that may be `null` is checked when it escapes the chain (see [#nullable-object-fields]), and `case` asks for the concrete type of an interface or union value it matches type patterns against (see [#interfaces-unions]). See [#mutation] for how forcing interacts with side effects.
+
+## Nullable object fields {#nullable-object-fields}
+
+```dang
+let parent = me.parent   # parent: Agent (nullable)
+if (parent == null) {
+  raise "no parent"
+}
+parent.id
+```
+
+- a field returning a **nullable** object, interface or union (`parent: Agent`, not `Agent!`) may be `null`, so a handle to it is checked before it **escapes** the chain — when it's bound with `let`, passed as an argument, returned, compared, and so on. The check is one small query, so the value is either `null` or a handle known to be non-null
+- so `== null`, `??`, `!`, `null` patterns in `case`, and flow narrowing ([#flow-typing]) all behave as written
+- a field that is only **selected through** isn't checked: whatever runs the chain reveals the null itself. A leaf field selected off a null object is `null` (`me.parent.name`, one round-trip), and so is a `.{{ }}` selection (`me.parent.{{ id, name }}`, one round-trip)
+- anything selected off an unchecked nullable field may be null too, even a non-null field: `let d = a.maybeB.c.d` sends one check, for `d`, at the end of the chain; `a.maybeB.c.name` sends none
+- the check fetches the object's `id` along with its `__typename`, when the type has an `id` (a non-null `ID` or custom ID scalar, like Dagger's legacy `ContainerID`; not `String`, which doesn't promise IDs unique across types). The object is then **loaded by that ID**, the way the Dagger Go SDK does it: later selections start from the loader instead of re-running the chain (`node(id: "…") { ... on Agent { name } }`), and passing the object as an ID argument costs no extra query
+- the loader is the schema's Relay-style `node(id:)` root field, which current Dagger engines expose, or else a per-type `load<T>FromID(id:)` field as in older Dagger schemas. Without a loader the original chain is kept, with its ID remembered. Without an `id`, the check is just `__typename`
+- the checked handle has the object's **concrete** type, even when the field returns an interface or union. `case` type patterns match it without another query; on any GraphQL interface or union value, nullable or not, they match the concrete type (see [#interfaces-unions])
+- **non-null** object fields (`Agent!`) on a chain without nullable steps can't be null, so they stay lazy and cost nothing until forced
+- this matches the Dagger SDKs, which also run nullable object fields right away (fetching their IDs) and keep non-null ones lazy
+- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null. For the same reason `case` doesn't ask for the concrete type of an interface or union value reached through a mutation; a type pattern it can't decide raises (see [#interfaces-unions])
 
 ## Object equality
 
-- `==`/`!=` compare GraphQL objects by **reference identity** — there's no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false`
+- `==`/`!=` compare GraphQL objects by **reference identity** — there's no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "User:1")` is `false`
 - to ask whether two objects are the *same server entity*, compare an identifying field explicitly — `a.id == b.id` — which forces the necessary fetch where you can see it, instead of hiding I/O inside `==`
 - a `.{{ }}` selection is different: it materializes an **anonymous record**, which compares by **value**, so two selections with the same fields and equal values are equal (see [#operators])
 

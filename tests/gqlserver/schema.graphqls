@@ -15,8 +15,11 @@ scalar URL
 scalar JSON
 scalar BigInt
 
+# Objects implementing Node have globally unique, opaque IDs of the form
+# "<Type>:<key>" (e.g. "User:1", "Post:1"), so node(id:) can load any of them
+# and every lookup below takes the same ID an object reports.
 interface Node {
-  id: String!
+  id: ID!
 }
 
 interface Timestamped {
@@ -26,7 +29,9 @@ interface Timestamped {
 type Query {
   hello(name: String!): String!
   users: [User!]!
-  user(id: String!): User
+  user(id: ID!): User
+  # Like user, but returns null (with no error) when the user is not found.
+  maybeUser(id: ID!): User
   primaryUser: User!
   secondaryUser: User!
   userName(user: ID! @expectedType(name: "User")): String!
@@ -36,15 +41,20 @@ type Query {
   favoriteUserIDs: [ID!]! @expectedType(name: "User")
   favoriteNodeID: ID! @expectedType(name: "Node")
   serverInfo: ServerInfo!
-  posts(authorId: String, limit: Int): [Post!]!
-  userProfile(userId: String, includeStats: Boolean): UserProfile
+  posts(authorId: ID, limit: Int): [Post!]!
+  userProfile(userId: ID, includeStats: Boolean): UserProfile
   postTitles: [String!]!
   status: Status!
   now: Timestamp!
   homepage: URL!
   fetchURL(url: URL!): String!
-  node(id: String!): Node
+  # Returns null (with no error) for an unknown ID.
+  node(id: ID!): Node
   nodes: [Node!]!
+  # Non-null interface and union fields, which are never checked for null:
+  # favoriteNode is post "Post:2", featured is user "User:2".
+  favoriteNode: Node!
+  featured: SearchResult!
   timestamped: [Timestamped!]!
   # Additional queries for scalar coercion testing
   formatTimestamp(ts: Timestamp!): String!
@@ -78,12 +88,18 @@ input UserSort {
 
 type Mutation {
   createUser(input: CreateUserInput!): User!
-  updateUser(id: String!, input: UpdateUserInput!): User
-  deleteUser(id: String!): Boolean!
+  updateUser(id: ID!, input: UpdateUserInput!): User
+  deleteUser(id: ID!): Boolean!
+  # Returns the node with the given ID through its interface type, for
+  # matching on a mutation-returned interface handle. Changes nothing.
+  touchNode(id: ID!): Node!
+  # Returns the node with the given ID through the SearchResult union, for
+  # matching on a mutation-returned union handle. Changes nothing.
+  touchResult(id: ID!): SearchResult!
 }
 
 type User implements Node {
-  id: String!
+  id: ID!
   name: String!
   emails: [String!]!
   age: Int
@@ -93,10 +109,13 @@ type User implements Node {
   # Always returns a server-side error; used to test error reporting for a
   # field nested inside an object selection.
   alwaysFails: String! @goField(forceResolver: true)
+  # Nullable object field: user "User:1" has no manager (null, no error);
+  # every other user's manager is user "User:1".
+  manager: User @goField(forceResolver: true)
 }
 
 type Post implements Node & Timestamped {
-  id: String!
+  id: ID!
   title: String!
   content: String!
   author: User!

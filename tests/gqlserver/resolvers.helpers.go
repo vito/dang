@@ -109,7 +109,9 @@ func findUserByID(id string) (*User, error) {
 	return nil, fmt.Errorf("user not found")
 }
 
-// findNodeByID finds a node (User or Post) by ID
+// findNodeByID finds a node (User or Post) by its global ID, returning nil
+// (and no error) for an unknown ID. IDs are unique across types, so at most
+// one matches.
 func (r *queryResolver) findNodeByID(id string) (Node, error) {
 	// Try to find a user first
 	for _, user := range users {

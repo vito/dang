@@ -66,6 +66,21 @@ case (n) {
 - an interface pattern (`n: Named`) matches *any* implementer — useful as a catch-all after specific types
 - the operand must be a union or interface; a type pattern on a plain object → `type pattern requires a union or interface operand`
 - see [#control-flow] for full `case` semantics; flow typing of the binding is covered in [#flow-typing]
+- on a **GraphQL** interface or union value, type patterns match the object's **concrete** type, whatever type the field that produced it declares, nullable or not:
+
+```dang
+case (favoriteNode) {   # favoriteNode: Node!
+  u: User => u.name
+  p: Post => p.title + " by " + p.author.name
+  else => "something else"
+}
+```
+
+- a GraphQL value that only knows its declared type (like `favoriteNode` above) costs one small query: `case` asks the server for the object's `id` and `__typename`, and the arm binds a handle of the concrete type, loaded by that ID, just like a checked nullable field ([#nullable-object-fields]). `p.title` then selects through the loader
+- no query is sent when there's nothing to learn: without type patterns, for a value whose concrete type is already known (a checked nullable field, a `... on Post` narrowing), or when the first type pattern is satisfied by the declared type itself (`n: Node =>` first)
+- the exception is a value reached through a **mutation**: asking would re-send the mutation, so it keeps its declared type. Only a pattern that type already satisfies (`n: Node`) can match it; the first type pattern that isn't raises `cannot match type pattern Post against a Node reached through mutation …`, instead of falling through to a later arm or `else`. To discriminate a mutation result, select the fields of every type it may be on the mutation call, which sends it once: `Mutation.touchNode(id: "Post:1").{{ ... on Post {{ title }}, ... on User {{ name }} }}`, then `case` on that (a selection without a fragment for the value's actual type fails)
+- value patterns still compare against the original handle, so `case (f) { f => … }` matches as `f == f` does ([#interop])
+- for when to reach for inline fragments instead, see [#discriminating]
 
 ## Unions
 
@@ -79,7 +94,7 @@ union Pet = Cat | Dog
 - members must exist → `union member X not found`
 - only members may be matched in `case`: a non-member type pattern → `type X is not a member of union Pet`
 
-### Discriminating
+### Discriminating {#discriminating}
 
 ```dang
 case (pet) {
@@ -91,6 +106,11 @@ case (pet) {
 - covering every member is exhaustive: no `else` needed, and the result stays non-null
 - a `case` missing some members still type-checks, but a value that matches no arm yields `null`, so the case's type is nullable
 - add `else => ...` as a catch-all to cover unmatched members and keep the result non-null
+- GraphQL union values match their concrete type, the same way as interface values (see above), at the cost of the same one small query
+- for GraphQL values, `case` and an inline fragment (below) both discriminate, with different tradeoffs:
+  - `.{{ ... on User {{ name }} ... on Post {{ title }} }}` gets the type **and** the fields in **one** round-trip, and works over a list in that same round-trip. The result is a record holding just the selected fields
+  - `case` costs a query to learn the type, then each arm's selections run on their own, but the binding is a full handle: keep chaining off it (`u.posts.{{ title }}`) or pass it along as an argument
+  - so read fields with fragments, and branch with `case` when an arm does more with the object than read a few fields
 
 ### Inline fragments
 

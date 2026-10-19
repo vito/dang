@@ -198,6 +198,34 @@ type GraphQLFunction struct {
 	TypeScope  TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
+
+	// MaybeNull is inherited from the receiver: the chain runs through a
+	// nullable object field that was never probed, so the server may resolve
+	// it, and thus anything selected off it, to null. See GraphQLValue.
+	MaybeNull bool
+
+	// selectedThrough is set when the call's result is immediately selected
+	// from (`.field`, `.method(...)` or `.{{ }}`): whatever runs the chain
+	// then reveals a null on its own, so probing for it here would be a
+	// wasted round trip. See withSelectedThrough.
+	selectedThrough bool
+}
+
+// withSelectedThrough marks a GraphQL field function as being called for a
+// receiver that is immediately selected from (see GraphQLFunction.Call) when
+// selected is set. Callers pass the flag of the node being evaluated, so it
+// only reaches the one call whose result feeds the selection, never nested
+// evaluation such as the receiver or argument expressions. Other values pass
+// through unchanged.
+func withSelectedThrough(val Value, selected bool) Value {
+	if !selected {
+		return val
+	}
+	if g, ok := val.(GraphQLFunction); ok {
+		g.selectedThrough = true
+		return g
+	}
+	return val
 }
 
 func (g GraphQLFunction) Type() hm.Type {
@@ -258,11 +286,22 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
 
+		// On a MaybeNull chain, a null that came back without an error is the
+		// unprobed nullable field's null, passed up the path to this leaf by
+		// the query builder: had the leaf itself resolved null in spite of
+		// being non-null, the server would have reported an error and nulled
+		// out the nearest nullable parent instead. So the leaf is null too,
+		// as the type checker already assumes for a selection through a
+		// nullable receiver.
+		if result == nil && g.MaybeNull {
+			return NullValue{}, nil
+		}
+
 		return graphQLResultToValue(result, g.Field.TypeRef, g.Field.Directives.ExpectedType(), g.Schema, g.TypeScope, g.Client)
 	}
 
 	// For non-scalar types, return a GraphQLValue that can be further selected
-	return GraphQLValue{
+	val := GraphQLValue{
 		Name:       g.Name,
 		TypeName:   getTypeName(g.Field.TypeRef),
 		Field:      g.Field,
@@ -272,7 +311,31 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 		TypeScope:  g.TypeScope,  // Pass along the type environment
 		QueryChain: query,        // Pass the query chain for further building
 		IsMutation: g.IsMutation, // Propagate mutation flag
-	}, nil
+		MaybeNull:  g.MaybeNull || isNullableObjectType(g.Field.TypeRef, g.Schema),
+	}
+
+	// A handle that may be null has to be resolved before it escapes the
+	// chain, the way scalars are: a lazy handle is never null, so `== null`,
+	// `??`, `!`, null patterns and flow narrowing would all see a value, and
+	// the null would only surface later as an unrelated error. That covers a
+	// nullable object, interface or union field, and anything selected off
+	// an unprobed one, including lists. Everything else stays lazy; this
+	// mirrors the Dagger SDKs, which execute nullable object fields eagerly
+	// and keep the rest lazy.
+	//
+	// The probe is skipped while the handle is selected through, as in
+	// `a.maybeB.c.name` or `a.maybeB.{{name}}`: the leaf or projection that
+	// eventually runs the chain reveals the null itself, so the probe would
+	// be a wasted round trip. The handle is marked MaybeNull instead, and the
+	// first call off it that escapes the chain probes once, at its end.
+	//
+	// Known gap: fields reached through a mutation are not probed. Every
+	// query built off a mutation chain re-sends the mutation, so a probe would
+	// run it twice; such fields stay lazy and never compare equal to null.
+	if !val.MaybeNull || g.selectedThrough || g.IsMutation {
+		return val, nil
+	}
+	return val.resolveNull(ctx, g.TypeName+"."+g.Name)
 }
 
 func (g GraphQLFunction) ParameterNames() []string {
@@ -307,6 +370,14 @@ type GraphQLValue struct {
 	// back the same ID, so remembering it saves a round trip whenever the value
 	// flows into an ID-typed argument.
 	KnownID string
+
+	// MaybeNull marks a handle whose chain runs through a nullable object
+	// field that was left unprobed because the handle was selected through
+	// (see GraphQLFunction.Call). The server may resolve it to null, so a
+	// null leaf off this chain is null rather than an error, and a handle
+	// that escapes the chain is probed first. Values selected off this one
+	// inherit it; probing clears it.
+	MaybeNull bool
 }
 
 func (g GraphQLValue) Type() hm.Type {
@@ -394,6 +465,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		TypeScope:  g.TypeScope,  // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
 		IsMutation: g.IsMutation, // Propagate mutation flag
+		MaybeNull:  g.MaybeNull,  // Propagate unprobed nullable steps
 	}, nil
 }
 
@@ -781,6 +853,27 @@ func applyDefaults(args map[string]Value, def BuiltinDef) map[string]Value {
 	return result
 }
 
+// isNullableObjectType reports whether typeRef is a nullable, non-list object,
+// interface or union type: a field returning one may resolve to null, which a
+// lazy handle can't represent.
+func isNullableObjectType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
+	if typeRef == nil || schema == nil {
+		return false
+	}
+	if typeRef.Kind == introspection.TypeKindNonNull || typeRef.Kind == introspection.TypeKindList {
+		return false
+	}
+	t := schema.Types.Get(typeRef.Name)
+	if t == nil {
+		return false
+	}
+	switch t.Kind {
+	case introspection.TypeKindObject, introspection.TypeKindInterface, introspection.TypeKindUnion:
+		return true
+	}
+	return false
+}
+
 func isObjectLikeType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
 	currentType := typeRef
 	if currentType.Kind == "NON_NULL" {
@@ -834,18 +927,26 @@ func getTypeName(typeRef *introspection.TypeRef) string {
 // it identifies, so that a field typed as that object by @expectedType can be
 // chained onto like any other object-returning field.
 //
-// The ID is loaded through the schema's Relay-style `node(id:)` root field,
-// which returns an interface, so the concrete type is reached with an inline
-// fragment: node(id: "...") { ... on Container { ... } }.
-//
-// Returns nil (and no error) if the schema has no `node` field to load with, in
-// which case the caller keeps the raw ID string.
+// Returns nil (and no error) if the schema has no root field to load the type
+// with (see idLoaderFor), in which case the caller keeps the raw ID string.
 func loadObjectFromID(id, typeName string, schema *introspection.Schema, typeScope TypeScope, client graphql.Client) (Value, error) {
+	return loadObjectFromTypedID(id, "", typeName, schema, typeScope, client)
+}
+
+// loadObjectFromTypedID is loadObjectFromID for an ID read from an `id` field
+// of type idType: only a loader whose `id` argument takes that type is used.
+// An empty idType accepts any loader.
+//
+// The handle is typed as typeName itself, not whatever interface the loader
+// returns, and its chain starts at the loader: with the Relay-style
+// `node(id:)`, which returns an interface, the concrete type is reached with
+// an inline fragment, as in node(id: "...") { ... on Container { ... } }.
+func loadObjectFromTypedID(id, idType, typeName string, schema *introspection.Schema, typeScope TypeScope, client graphql.Client) (Value, error) {
 	if schema == nil || typeScope == nil || client == nil {
 		return nil, nil
 	}
-	nodeField := nodeLoaderField(schema)
-	if nodeField == nil {
+	loader, fragment := idLoaderFor(schema, typeName, idType)
+	if loader == nil {
 		return nil, nil
 	}
 	schemaType := schema.Types.Get(typeName)
@@ -856,31 +957,107 @@ func loadObjectFromID(id, typeName string, schema *introspection.Schema, typeSco
 	if !found {
 		return nil, fmt.Errorf("loading %s from ID: type not found", typeName)
 	}
+	chain := querybuilder.Query().Client(client).Select(loader.Name).Arg("id", id)
+	if fragment {
+		chain = chain.InlineFragment(typeName)
+	}
 	return GraphQLValue{
-		Name:     nodeField.Name,
+		Name:     loader.Name,
 		TypeName: typeName,
 		// Selections on this value resolve their types through Field, so it has
 		// to describe the loaded type rather than `node`'s interface return
 		// type, which is all the inline fragment leaves visible.
-		Field: &introspection.Field{
-			Name: nodeField.Name,
-			TypeRef: &introspection.TypeRef{
-				Kind: introspection.TypeKindNonNull,
-				OfType: &introspection.TypeRef{
-					Kind: schemaType.Kind,
-					Name: typeName,
-				},
+		Field:      concreteTypeField(loader.Name, schemaType),
+		ValType:    hm.NonNullType{Type: loadedType},
+		Client:     client,
+		Schema:     schema,
+		TypeScope:  typeScope,
+		QueryChain: chain,
+		KnownID:    id,
+	}, nil
+}
+
+// concreteTypeField describes a field returning a non-null t, for handles
+// whose type has been narrowed beyond the field that produced them.
+func concreteTypeField(name string, t *introspection.Type) *introspection.Field {
+	return &introspection.Field{
+		Name: name,
+		TypeRef: &introspection.TypeRef{
+			Kind: introspection.TypeKindNonNull,
+			OfType: &introspection.TypeRef{
+				Kind: t.Kind,
+				Name: t.Name,
 			},
 		},
-		ValType:   hm.NonNullType{Type: loadedType},
-		Client:    client,
-		Schema:    schema,
-		TypeScope: typeScope,
-		QueryChain: querybuilder.Query().Client(client).
-			Select(nodeField.Name).Arg("id", id).
-			InlineFragment(typeName),
-		KnownID: id,
-	}, nil
+	}
+}
+
+// idLoaderFor finds the root field that loads an object of typeName from its
+// ID, and whether the loaded value needs an inline fragment to reach the type.
+//
+// The Relay-style `node(id:)` is preferred when it can return typeName; it is
+// what current Dagger engines expose. Otherwise a per-type
+// `load<T>FromID(id:)` field returning the type is used, the convention of
+// older Dagger schemas (still served to older clients). When idType is
+// non-empty, the loader's `id` argument must take that named type, so that an
+// ID read from the object's `id` field is accepted as is.
+func idLoaderFor(schema *introspection.Schema, typeName, idType string) (*introspection.Field, bool) {
+	if node := nodeLoaderField(schema); node != nil &&
+		loaderTakesIDType(node, idType) && nodeCanReturn(schema, node, typeName) {
+		return node, true
+	}
+	queryType := schema.Types.Get(schema.QueryType.Name)
+	if queryType == nil {
+		return nil, false
+	}
+	name := "load" + typeName + "FromID"
+	for _, field := range queryType.Fields {
+		if field.Name != name || len(field.Args) != 1 || field.Args[0].Name != "id" {
+			continue
+		}
+		if getTypeName(field.TypeRef) != typeName || !loaderTakesIDType(field, idType) {
+			continue
+		}
+		return field, false
+	}
+	return nil, false
+}
+
+// loaderTakesIDType reports whether loader's `id` argument takes idType, or
+// whether idType is empty (anything goes).
+func loaderTakesIDType(loader *introspection.Field, idType string) bool {
+	return idType == "" || getTypeName(loader.Args[0].TypeRef) == idType
+}
+
+// nodeCanReturn reports whether node, a `node(id:)` loader, can load
+// typeName: it returns that type, or an interface or union the type belongs
+// to. Abstract types are accepted as is, since an inline fragment on one is
+// valid wherever it overlaps node's return type.
+func nodeCanReturn(schema *introspection.Schema, node *introspection.Field, typeName string) bool {
+	ret := getTypeName(node.TypeRef)
+	if ret == typeName {
+		return true
+	}
+	t := schema.Types.Get(typeName)
+	if t == nil {
+		return false
+	}
+	if t.Kind == introspection.TypeKindInterface || t.Kind == introspection.TypeKindUnion {
+		return true
+	}
+	for _, iface := range t.Interfaces {
+		if iface.Name == ret {
+			return true
+		}
+	}
+	if rt := schema.Types.Get(ret); rt != nil {
+		for _, pt := range rt.PossibleTypes {
+			if pt.Name == typeName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // nodeLoaderField returns the schema's `node(id:)` root field, the Relay-style
@@ -900,6 +1077,238 @@ func nodeLoaderField(schema *introspection.Schema) *introspection.Field {
 		return field
 	}
 	return nil
+}
+
+// loadableIDField returns t's `id` field when it identifies the object for an
+// ID loader: a non-null `ID!`, or a non-null custom scalar such as Dagger's
+// legacy per-type `ContainerID!` (which goes with `load<T>FromID`), that takes
+// no required arguments. Returns nil otherwise.
+//
+// Built-in scalars other than `ID` don't count, `String!` included: loading
+// through `node(id:)` relies on the Relay convention that IDs are unique
+// across every type, which only a schema declaring its IDs as `ID` promises.
+// A `String!` id might be a per-type key that would load the wrong object.
+func loadableIDField(t *introspection.Type) *introspection.Field {
+	if t == nil {
+		return nil
+	}
+	for _, f := range t.Fields {
+		if f.Name != "id" {
+			continue
+		}
+		if f.TypeRef == nil || f.TypeRef.Kind != introspection.TypeKindNonNull ||
+			f.TypeRef.OfType == nil || f.TypeRef.OfType.Kind != introspection.TypeKindScalar {
+			return nil
+		}
+		switch f.TypeRef.OfType.Name {
+		case "String", "Int", "Float", "Boolean":
+			return nil
+		}
+		if !hasZeroRequiredArgs(f) {
+			return nil
+		}
+		return f
+	}
+	return nil
+}
+
+// possibleObjectTypes lists the object types an interface or union can
+// resolve to, falling back to scanning for implementers when the schema
+// carries no possibleTypes (as with some SDL-built schemas).
+func possibleObjectTypes(schema *introspection.Schema, t *introspection.Type) []*introspection.Type {
+	var types []*introspection.Type
+	if len(t.PossibleTypes) > 0 {
+		for _, pt := range t.PossibleTypes {
+			if full := schema.Types.Get(pt.Name); full != nil {
+				types = append(types, full)
+			}
+		}
+		return types
+	}
+	if t.Kind != introspection.TypeKindInterface {
+		return nil
+	}
+	for _, candidate := range schema.Types {
+		if candidate.Kind != introspection.TypeKindObject {
+			continue
+		}
+		for _, iface := range candidate.Interfaces {
+			if iface.Name == t.Name {
+				types = append(types, candidate)
+				break
+			}
+		}
+	}
+	return types
+}
+
+// nullProbeSelection is the selection set that checks whether an object of
+// type typeName is null: `__typename`, plus its `id` when it has a loadable
+// one (see loadableIDField), so that a non-null result can be loaded by ID.
+// For an interface without an `id` of its own, or a union, the IDs of the
+// possible types that have one are fetched with inline fragments. idType is
+// the named type of the IDs fetched, or "" when none are.
+func nullProbeSelection(schema *introspection.Schema, typeName string) (fields []string, idType string) {
+	t := schema.Types.Get(typeName)
+	if t == nil {
+		return []string{"__typename"}, ""
+	}
+	if f := loadableIDField(t); f != nil {
+		return []string{"id", "__typename"}, getTypeName(f.TypeRef)
+	}
+	fields = []string{"__typename"}
+	if t.Kind != introspection.TypeKindInterface && t.Kind != introspection.TypeKindUnion {
+		return fields, ""
+	}
+	for _, pt := range possibleObjectTypes(schema, t) {
+		f := loadableIDField(pt)
+		if f == nil {
+			continue
+		}
+		// Every `id` shares one response key, so they must share a type to
+		// be selectable side by side.
+		ptIDType := getTypeName(f.TypeRef)
+		if idType == "" {
+			idType = ptIDType
+		} else if ptIDType != idType {
+			continue
+		}
+		fields = append(fields, "... on "+pt.Name+" { id }")
+	}
+	return fields, idType
+}
+
+// resolveNull probes a handle that may be null (see GraphQLFunction.Call)
+// with a single query against the end of its chain, returning null or a
+// handle known to be non-null. what names the field for error messages.
+//
+// An object, interface or union handle is probed with resolveObject, so it
+// comes back loaded by ID and narrowed to its concrete type.
+func (g GraphQLValue) resolveNull(ctx context.Context, what string) (Value, error) {
+	if g.Field != nil && isListTypeRef(g.Field.TypeRef) {
+		// Lists are only probed for a null they inherit from an unprobed
+		// nullable step; each element's __typename is the cheapest valid
+		// selection.
+		var result any
+		if err := g.QueryChain.Select("__typename").Bind(&result).Client(g.Client).Execute(ctx); err != nil {
+			return nil, fmt.Errorf("executing GraphQL query for %s: %w", what, err)
+		}
+		if result == nil {
+			return NullValue{}, nil
+		}
+		g.MaybeNull = false
+		return g, nil
+	}
+	return g.resolveObject(ctx, what)
+}
+
+// isAbstract reports whether the handle is typed as a GraphQL interface or
+// union, so its concrete type is not known without asking the server. List
+// handles never are: their elements are reached through a projection, which
+// reports each element's type itself.
+func (g GraphQLValue) isAbstract() bool {
+	if g.Schema == nil || (g.Field != nil && isListTypeRef(g.Field.TypeRef)) {
+		return false
+	}
+	t := g.Schema.Types.Get(g.TypeName)
+	return t != nil && (t.Kind == introspection.TypeKindInterface || t.Kind == introspection.TypeKindUnion)
+}
+
+// concreteObjectTypeName returns the handle's type name when it is already
+// known to be a concrete object type, with a chain scoped to it: a single
+// (non-list) handle of an object type that can't still turn out null. Inline
+// fragments on such a handle are matched without asking for __typename.
+func (g GraphQLValue) concreteObjectTypeName() (string, bool) {
+	if g.MaybeNull || g.Schema == nil || (g.Field != nil && isListTypeRef(g.Field.TypeRef)) {
+		return "", false
+	}
+	t := g.Schema.Types.Get(g.TypeName)
+	if t == nil || t.Kind != introspection.TypeKindObject {
+		return "", false
+	}
+	return g.TypeName, true
+}
+
+// resolveObject runs a single query against the end of the handle's chain
+// for the object's `__typename`, and its `id` when it has a loadable one (see
+// nullProbeSelection). It returns null if the server resolved the object to
+// null, or else a non-null handle of the object's concrete type. It backs
+// both the null probe (resolveNull) and `case` on an interface or union
+// handle (see Case.Eval). what names the field for error messages.
+//
+// Like the Dagger Go SDK, the object is then loaded from its ID, so later
+// selections start from the loader instead of re-running the whole chain, and
+// passing the object as an ID-typed argument costs nothing. Without a loader
+// the original chain is kept, still with its ID known. Either way the handle
+// is narrowed to its concrete type, so an interface- or union-typed handle
+// matches `case` type patterns by what it actually is.
+func (g GraphQLValue) resolveObject(ctx context.Context, what string) (Value, error) {
+	fields, idType := nullProbeSelection(g.Schema, g.TypeName)
+	var result map[string]any
+	probe := g.QueryChain.SelectMultiple(fields...).Bind(&result).Client(g.Client)
+	if err := probe.Execute(ctx); err != nil {
+		return nil, fmt.Errorf("executing GraphQL query for %s: %w", what, err)
+	}
+	if result == nil {
+		return NullValue{}, nil
+	}
+	g.MaybeNull = false
+
+	typeName, _ := result["__typename"].(string)
+	if !g.knowsType(typeName) {
+		typeName = g.TypeName
+	}
+	if id, ok := result["id"].(string); ok && id != "" {
+		loaded, err := loadObjectFromTypedID(id, idType, typeName, g.Schema, g.TypeScope, g.Client)
+		if err != nil {
+			return nil, err
+		}
+		if loaded != nil {
+			return loaded, nil
+		}
+		g.KnownID = id
+	}
+	if typeName != g.TypeName {
+		g = g.narrowTo(typeName)
+	}
+	return g, nil
+}
+
+// knowsType reports whether typeName is a type the handle can be retyped as:
+// one present in both the schema and the type environment.
+func (g GraphQLValue) knowsType(typeName string) bool {
+	if typeName == "" || g.Schema == nil || g.TypeScope == nil || g.Schema.Types.Get(typeName) == nil {
+		return false
+	}
+	_, found := g.TypeScope.NamedType(typeName)
+	return found
+}
+
+// narrowTo retypes an interface- or union-typed handle as the concrete type
+// typeName it was found to have, selecting further fields through an inline
+// fragment. The handle is returned unchanged if the type is unknown.
+func (g GraphQLValue) narrowTo(typeName string) GraphQLValue {
+	if !g.knowsType(typeName) {
+		return g
+	}
+	concrete, _ := g.TypeScope.NamedType(typeName)
+	name := g.Name
+	if g.Field != nil {
+		name = g.Field.Name
+	}
+	g.TypeName = typeName
+	g.Field = concreteTypeField(name, g.Schema.Types.Get(typeName))
+	g.ValType = hm.NonNullType{Type: concrete}
+	g.QueryChain = g.QueryChain.InlineFragment(typeName)
+	return g
+}
+
+// isListTypeRef reports whether typeRef is a (possibly non-null) list.
+func isListTypeRef(typeRef *introspection.TypeRef) bool {
+	if typeRef != nil && typeRef.Kind == introspection.TypeKindNonNull {
+		typeRef = typeRef.OfType
+	}
+	return typeRef != nil && typeRef.Kind == introspection.TypeKindList
 }
 
 func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType string, schema *introspection.Schema, typeScope TypeScope, client graphql.Client) (Value, error) {

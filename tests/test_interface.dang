@@ -5,10 +5,13 @@ import Test
 assert { Node != null }
 assert { Timestamped != null }
 
-# Test: Query returning interface type - node(id: "1") should return a User
-let nodeResult = node(id: "1").{{id}}
+# Test: Query returning interface type - node(id: "User:1") should return a User
+let nodeResult = node(id: "User:1").{{id}}
 assert { nodeResult != null }
-assert { nodeResult.id == "1" }
+assert { nodeResult.id == "User:1" }
+
+# Test: IDs are unique across types, so the same key loads a Post too
+assert { node(id: "Post:1").{{id}}.id == "Post:1" }
 
 # Test: Query returning list of interfaces - nodes should return all Users and Posts
 let allNodes = nodes.{{id}}

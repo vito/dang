@@ -1,0 +1,32 @@
+searching
+done
+[1m[33mWarning:[0m a lazy SearchResultConnection leaves this rescue without executing: failures in its pipeline will surface where it is used, outside this rescue; force it inside the rescue with a leaf field (`.totalCount`)
+  [2m[34m--> warnings/rescue_lazy_root.dang:21:18[0m
+ [2m    |[0m
+ [2m 19 | [0m
+ [2m 20 | # a non-null root field is never probed, so it leaves the rescue lazy[0m
+ [2m[34m[1m 21 | [0mlet connection = searchConnection(query: "Post") rescue null
+[2m                        [33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 22 | let qualifiedConnection = {[0m
+ [2m 23 |   print("searching")[0m
+ [2m    |[0m
+[1m[33mWarning:[0m a lazy SearchResultConnection leaves this rescue without executing: failures in its pipeline will surface where it is used, outside this rescue; force it inside the rescue with a leaf field (`.totalCount`)
+  [2m[34m--> warnings/rescue_lazy_root.dang:24:3[0m
+ [2m    |[0m
+ [2m 22 | let qualifiedConnection = {[0m
+ [2m 23 |   print("searching")[0m
+ [2m[34m[1m 24 | [0m  Test.searchConnection(query: "Post")
+[2m         [33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 25 | } rescue null[0m
+ [2m 26 | [0m
+ [2m    |[0m
+[1m[33mWarning:[0m a lazy User leaves this rescue without executing: failures in its pipeline will surface where it is used, outside this rescue; force it inside the rescue with a leaf field (`.sync`, `.name`, `.emails`)
+  [2m[34m--> warnings/rescue_lazy_root.dang:28:15[0m
+ [2m    |[0m
+ [2m 26 | [0m
+ [2m 27 | # so does a mutation, which is never probed[0m
+ [2m[34m[1m 28 | [0mlet updated = Test.Mutation.updateUser(id: "User:2", input: UpdateUserInput(name: "Jane Smith")) rescue null
+[2m                     [33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 29 | [0m
+ [2m 30 | assert { maybe != null }[0m
+ [2m    |[0m

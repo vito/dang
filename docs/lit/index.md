@@ -35,7 +35,7 @@ type Greeter {
 import Demo # configured in dang.toml below
 
 # imports become globals
-let u = user("1") # or Demo.user("1") to be explicit
+let u = user("User:1") # or Demo.user("User:1") to be explicit
 
 # fields that return scalars query on access
 print(`${u.name} is ${u.age} (${u.status})`)

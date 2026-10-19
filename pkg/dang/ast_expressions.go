@@ -62,6 +62,11 @@ type FunCall struct {
 	Args     Record
 	BlockArg *BlockArg // Optional block argument for bidirectional inference
 	Loc      *SourceLocation
+
+	// selectedThrough marks a call whose result is immediately selected from
+	// (`.field`, `.method(...)` or `.{{ }}`), which defers the null probe of
+	// GraphQL object fields to whatever runs the chain. See markSelectedThrough.
+	selectedThrough bool
 }
 
 var _ Node = (*FunCall)(nil)
@@ -348,7 +353,7 @@ func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		}
 
 		// Dispatch to appropriate function call handler
-		val, err := c.callFunction(ctx, scope, funVal, argValues)
+		val, err := c.callFunction(ctx, scope, withSelectedThrough(funVal, c.selectedThrough), argValues)
 		if err != nil && blockCallFrame != nil {
 			var breakEx *BreakException
 			if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, blockCallFrame) {
@@ -576,6 +581,10 @@ type Symbol struct {
 	Name     string
 	AutoCall bool
 	Loc      *SourceLocation
+
+	// selectedThrough marks an auto-called symbol whose result is immediately
+	// selected from. See markSelectedThrough.
+	selectedThrough bool
 }
 
 var _ Node = (*Symbol)(nil)
@@ -645,7 +654,7 @@ func (s *Symbol) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed as symbols
 		if s.AutoCall && isAutoCallableFn(val) {
-			return autoCallFn(ctx, scope, val)
+			return autoCallFn(ctx, scope, withSelectedThrough(val, s.selectedThrough))
 		}
 
 		return val, nil
@@ -669,6 +678,10 @@ type Select struct {
 	// than evaluating the receiver (which would auto-construct an instance).
 	staticOwner *Type
 	Loc         *SourceLocation
+
+	// selectedThrough marks an auto-called selection whose result is
+	// immediately selected from. See markSelectedThrough.
+	selectedThrough bool
 }
 
 var _ Node = (*Select)(nil)
@@ -742,6 +755,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 
 		// Handle normal receiver
+		markSelectedThrough(d.Receiver)
 		lt, err := d.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
@@ -1095,7 +1109,7 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed as symbols
 		if d.AutoCall && isAutoCallableFn(val) {
-			return autoCallFn(ctx, scope, val)
+			return autoCallFn(ctx, scope, withSelectedThrough(val, d.selectedThrough))
 		}
 
 		return val, nil
@@ -1457,6 +1471,8 @@ func (o *ObjectSelection) GetSourceLocation() *SourceLocation { return o.Loc }
 
 func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(o, func() (hm.Type, error) {
+		markSelectedThrough(o.Receiver)
+
 		// Infer the type of the receiver
 		receiverType, err := o.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
@@ -1506,6 +1522,27 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 		o.SetInferredType(resultType)
 		return resultType, nil
 	})
+}
+
+// markSelectedThrough flags the call that produces the receiver of a selection
+// — `.field`, `.method(...)` or `.{{ }}` — so that a GraphQL object field
+// called there skips its null probe. Whatever runs the chain later reveals
+// the null instead: a leaf field resolves to null, a `.{{ }}` projection
+// returns null, and a handle that escapes the chain is probed once at its end
+// (see GraphQLFunction.Call). Only the outermost call is flagged — the
+// receiver's own receiver is flagged by its own selection, and argument
+// expressions are separate nodes that keep probing as usual.
+func markSelectedThrough(node Node) {
+	switch n := node.(type) {
+	case *Grouped:
+		markSelectedThrough(n.Expr)
+	case *FunCall:
+		n.selectedThrough = true
+	case *Select:
+		n.selectedThrough = true
+	case *Symbol:
+		n.selectedThrough = true
+	}
 }
 
 // inferInlineFragments validates inline fragment selections on a union or interface type.
@@ -1802,7 +1839,7 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 
 		// Handle null values - propagate null
 		if _, ok := receiverVal.(NullValue); ok {
-			return NullValue{}, nil
+			return o.nullResult()
 		}
 
 		// Handle inline fragments on GraphQL values
@@ -1831,6 +1868,23 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 		// receivers uniformly.
 		return o.evalSelectionOnValue(receiverVal, ctx, scope)
 	})
+}
+
+// nullResult is the selection's result for a null receiver: null, propagated,
+// unless it is a lazy inline fragment selection with a non-null fragment
+// (`... on User!`) on a single value. That form asserts the value is of one
+// of the fragments' types, and null isn't, just as a mismatched type raises
+// in matchLazyInlineFragment.
+func (o *ObjectSelection) nullResult() (Value, error) {
+	if !o.IsList && o.isLazyInlineFragments() {
+		for _, frag := range o.InlineFragments {
+			if frag.NonNull {
+				return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got null",
+					o.inlineFragmentTypeNames())
+			}
+		}
+	}
+	return NullValue{}, nil
 }
 
 // evalInlineFragmentOnValue handles inline fragment selection on a Dang-native value.
@@ -1905,11 +1959,26 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 		return nil, fmt.Errorf("GraphQL inline fragments: no query chain")
 	}
 
+	// A handle already narrowed to its concrete type (a probed nullable
+	// field, a resolved `case` operand, a `... on T` narrowing) has a chain
+	// scoped to that type, where a fragment on any other type is invalid
+	// GraphQL. Only its own fragment can match, so only that one is sent;
+	// with none, the selection fails the same way a server-reported type
+	// matching no fragment does, without a request.
+	fragments := o.InlineFragments
+	if typeName, ok := gqlVal.concreteObjectTypeName(); ok && !o.IsList {
+		frag := o.fragmentFor(typeName)
+		if frag == nil {
+			return nil, fmt.Errorf("no inline fragment matched __typename %q", typeName)
+		}
+		fragments = []*InlineFragment{frag}
+	}
+
 	// Build inline fragment query string
 	// We need: { __typename ... on User { name email } ... on Post { title author { name } } }
 	var fragParts []string
 	fragParts = append(fragParts, "__typename")
-	for _, frag := range o.InlineFragments {
+	for _, frag := range fragments {
 		var fieldParts []string
 		for _, field := range frag.Fields {
 			if field.Selection != nil {
@@ -1950,14 +2019,25 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 		return o.evalGraphQLLazyInlineFragmentsList(gqlVal, ctx, scope)
 	}
 
-	// Query __typename to discover the concrete type
-	var typeName string
+	// A handle already narrowed to its concrete type needs no __typename
+	// query: its type is known, and its chain is scoped to it already.
+	if typeName, ok := gqlVal.concreteObjectTypeName(); ok {
+		return o.matchLazyInlineFragment(gqlVal, typeName, nil)
+	}
+
+	// Query __typename to discover the concrete type. The receiver may be a
+	// nullable field left unprobed (see markSelectedThrough), so a null
+	// here propagates like any other null receiver.
+	var typeName *string
 	err := query.Select("__typename").Client(gqlVal.Client).Bind(&typeName).Execute(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GraphQL lazy inline fragments: querying __typename: %w", err)
 	}
+	if typeName == nil {
+		return o.nullResult()
+	}
 
-	return o.matchLazyInlineFragment(gqlVal, typeName, query)
+	return o.matchLazyInlineFragment(gqlVal, *typeName, query)
 }
 
 // evalGraphQLLazyInlineFragmentsList handles lazy inline fragments on a list-typed GraphQL value.
@@ -1970,6 +2050,11 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue
 	err := query.Select("__typename").Client(gqlVal.Client).Bind(&result).Execute(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GraphQL lazy inline fragments list: querying __typename: %w", err)
+	}
+	if result == nil {
+		// The list sits on a chain through a nullable field that was left
+		// unprobed (see markSelectedThrough), and that field was null.
+		return NullValue{}, nil
 	}
 
 	resultSlice, ok := result.([]any)
@@ -1999,7 +2084,9 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue
 }
 
 // matchLazyInlineFragment finds the matching fragment for a given __typename and returns
-// a GraphQLValue for the concrete type, or null/error if no match.
+// a GraphQLValue for the concrete type, or null/error if no match. A nil query
+// means gqlVal's chain is already scoped to typeName, so no inline fragment is
+// added to it.
 func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName string, query *querybuilder.Selection) (Value, error) {
 	for _, frag := range o.InlineFragments {
 		if frag.TypeName.Name == typeName {
@@ -2012,6 +2099,14 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 			// Return a GraphQLValue for the concrete type, with an inline fragment
 			// added to the query chain so subsequent field selections are scoped
 			// to the concrete type (e.g. node(id:...){... on Container{field}}).
+			// The object is known to be there (from the __typename query, or
+			// the probe that made the handle concrete), so the handle is no
+			// longer MaybeNull; it is still the same object, so a known ID
+			// carries over.
+			chain := gqlVal.QueryChain
+			if query != nil {
+				chain = query.InlineFragment(typeName)
+			}
 			return GraphQLValue{
 				Name:       gqlVal.Name,
 				TypeName:   typeName,
@@ -2020,8 +2115,9 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 				Client:     gqlVal.Client,
 				Schema:     gqlVal.Schema,
 				TypeScope:  gqlVal.TypeScope,
-				QueryChain: query.InlineFragment(typeName),
+				QueryChain: chain,
 				IsMutation: gqlVal.IsMutation,
+				KnownID:    gqlVal.KnownID,
 			}, nil
 		}
 	}
@@ -2035,6 +2131,18 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 	}
 
 	return NullValue{}, nil
+}
+
+// fragmentFor returns the inline fragment on typeName, if any. Fragments are
+// always on concrete member or implementer types (see
+// resolveInlineFragmentMemberType), so a concrete type matches by name.
+func (o *ObjectSelection) fragmentFor(typeName string) *InlineFragment {
+	for _, frag := range o.InlineFragments {
+		if frag.TypeName.Name == typeName {
+			return frag
+		}
+	}
+	return nil
 }
 
 // inlineFragmentTypeNames returns a comma-separated list of type names from inline fragments.
@@ -2235,13 +2343,17 @@ func (o *ObjectSelection) evalFieldSelection(recv Value, field *FieldSelection, 
 		AutoCall: len(field.Args) == 0,
 		Loc:      field.Loc,
 	}
+	// A nested selection selects through the field's result right away.
+	selectedThrough := field.Selection != nil
+	selectNode.selectedThrough = selectedThrough
 
 	var node Node = selectNode
 	if len(field.Args) > 0 {
 		node = &FunCall{
-			Fun:  selectNode,
-			Args: field.Args,
-			Loc:  field.Loc,
+			Fun:             selectNode,
+			Args:            field.Args,
+			Loc:             field.Loc,
+			selectedThrough: selectedThrough,
 		}
 	}
 
@@ -2477,6 +2589,15 @@ func buildSelectionString(sel *ObjectSelection) string {
 }
 
 func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeScope TypeScope, client graphql.Client) (Value, error) {
+	// A nullable object (or list) field the server resolved to null stays
+	// null, rather than becoming an empty record that compares unequal to
+	// null and lacks every selected field. This covers the top-level result,
+	// nested object and list fields, and null items within lists, since they
+	// all recurse through here.
+	if result == nil {
+		return NullValue{}, nil
+	}
+
 	// Check if the result is a list/slice
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
