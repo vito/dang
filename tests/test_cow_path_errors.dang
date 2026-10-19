@@ -9,6 +9,7 @@ type Inner {
 type Foo {
   x: Int!
   maybe: Inner = null
+
   comp: Inner! { Inner(x) }
 }
 
