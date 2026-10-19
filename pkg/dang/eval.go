@@ -2378,6 +2378,60 @@ func (m *Object) Derive(sealed bool) ValueScope {
 	}
 }
 
+// snapshotReceiver returns a sealed receiver frame for a method call that is
+// immune to later in-place writes on m's chain.
+//
+// A method's bare field writes (`total += x`) land in place on its sealed
+// receiver frame, and that frame is also `self`. Deriving a nested call's
+// receiver as a live child of it would let the caller's later writes (e.g. from
+// a block it passed in) show through the callee's receiver, breaking
+// fork-per-call. So the frames above the instance's root are flattened into one
+// fresh frame, capturing the receiver's state as of the call. Only frames
+// sharing m's Mod are flattened (an instance's copy-on-write generations); the
+// root and anything beyond stay shared. Those frames hold only accumulated
+// writes, so this copies little, and it keeps receiver chains shallow.
+func (m *Object) snapshotReceiver() *Object {
+	var frames []*Object
+	base := m
+	for base.Parent != nil && base.Mod == m.Mod {
+		frames = append(frames, base)
+		base = base.Parent
+	}
+	if len(frames) == 0 {
+		return m.Derive(true).(*Object)
+	}
+
+	snap := &Object{
+		Mod:          m.Mod,
+		Values:       make(map[string]Value),
+		Visibilities: make(map[string]Visibility),
+		Parent:       base,
+		IsForked:     true,
+		dynamicScope: m.dynamicScope,
+	}
+	// Apply the farthest frame first so nearer frames shadow it.
+	for i := len(frames) - 1; i >= 0; i-- {
+		f := frames[i]
+		f.mu.Lock()
+		for name, val := range f.Values {
+			snap.Values[name] = val
+			delete(snap.Pending, name)
+		}
+		for name, p := range f.Pending {
+			if snap.Pending == nil {
+				snap.Pending = make(map[string]*pendingInit)
+			}
+			snap.Pending[name] = p
+			delete(snap.Values, name)
+		}
+		for name, vis := range f.Visibilities {
+			snap.Visibilities[name] = vis
+		}
+		f.mu.Unlock()
+	}
+	return snap
+}
+
 // Update overwrites the nearest existing binding following proper scoping rules:
 // - If the variable exists locally, update it locally
 // - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
@@ -2479,7 +2533,12 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 	}
 
 	// Create a composite environment that includes both the receiver and the method's closure
-	recv := b.Receiver.Derive(true)
+	var recv ValueScope
+	if obj, ok := b.Receiver.(*Object); ok {
+		recv = obj.snapshotReceiver()
+	} else {
+		recv = b.Receiver.Derive(true)
+	}
 	fnScope := CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
 	fnScope.EnterSelf(recv)
 

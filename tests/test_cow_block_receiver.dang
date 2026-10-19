@@ -1,0 +1,25 @@
+# Regression: a method's receiver is a snapshot of the caller's `self` as of the
+# call. Writes the caller makes afterwards (here, from a block it passed in)
+# must not show through the callee's receiver. Before the fix the callee's
+# receiver was a live child frame of the caller's, so `twice` read the
+# caller's in-progress `total` (3) instead of its own (0).
+
+type Acc {
+  total: Int! = 0
+
+  twice(&block(x: Int!): Int!): Int! { block(1); block(2); total }
+
+  # The block mutates run's own fork; twice's receiver stays at 0.
+  run: Int! { twice { x => total += x; total } }
+
+  # Same, through an explicit receiver.
+  runSelf: Int! { self.twice { x => total += x; total } }
+
+  # The block's writes still accumulate into the enclosing method's fork.
+  collect: Acc! { twice { x => total += x; total }; self }
+}
+
+assert("callee reads its own receiver") { Acc(0).run == 0 }
+assert("explicit self receiver too") { Acc(0).runSelf == 0 }
+assert("block writes accumulate in the caller's fork") { Acc(0).collect.total == 3 }
+assert("starting value is respected") { Acc(10).collect.total == 13 }
