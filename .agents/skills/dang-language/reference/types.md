@@ -5,7 +5,7 @@
 - `[T]` and `[T]!` — lists
 - `{{ ... }}` — records (always non-null)
 - custom GraphQL scalars: `URL`, `Timestamp`, `JSON`, ...
-- user-defined: `type`, `interface`, `union`, `enum`, `scalar`
+- user-defined: `type`, `input`, `interface`, `union`, `enum`, `scalar` (declared names must be capitalized)
 
 ## The `!` sigil (nullability)
 - `T!` — non-null `T`; `T` (no bang) — nullable `T`.

@@ -142,7 +142,7 @@ Expr         := Import | Decl | Reassignment | Form
 Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
 Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
-                           | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
+                           | ObjectDecl | InputDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
 Form         := Return | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | IndexOrCall | SelectOrCall | Literal | List

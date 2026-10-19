@@ -143,6 +143,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
 - Custom scalars decode from their string forms.
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
+- An API object/interface (imported type) decodes from its **ID string**, loaded lazily via the API's `node(id:)` — the inverse of `encode`, which writes such an object as its ID. Not validated at decode: a bad ID fails at the first field selected.
 
 ### Serialization
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
