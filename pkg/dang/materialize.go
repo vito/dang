@@ -559,10 +559,10 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 // interface. Encoding such a value writes its ID (GraphQLValue.MarshalJSON), so
 // this is the way back: the ID is loaded into a lazy handle through the API's
 // `node(id:)` field, as for an `ID @expectedType` result. Only types imported
-// from an API have IDs to load; a Dang-declared type decodes field by field
-// from an object instead.
+// from an API with a `node(id:)` field have IDs to load; a Dang-declared object
+// decodes field by field from a JSON object instead.
 func materializeDecodedID(ctx context.Context, scope ValueScope, id string, mod *Type, path string) (Value, error) {
-	if mod.SourceSchema == nil {
+	if mod.SourceSchema == nil || nodeLoaderField(mod.SourceSchema) == nil {
 		if mod.Kind == InterfaceKind {
 			return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", mod.Name())
 		}
@@ -577,7 +577,7 @@ func materializeDecodedID(ctx context.Context, scope ValueScope, id string, mod 
 		return nil, materializeDeferredError(path, "%s", err.Error())
 	}
 	if val == nil {
-		return nil, materializeDeferredError(path, "loading %s from ID: the API has no node(id:) field", mod.Name())
+		return nil, materializeDeferredError(path, "loading %s from ID: no connection to the API it was imported from", mod.Name())
 	}
 	return val, nil
 }

@@ -184,7 +184,7 @@ listPeople(Pagination(after: "abc"))   # "first 20 after abc"
 - the Dang counterpart of a GraphQL input type: a bundle of data passed *into* a call
 - members are public data fields only — no methods or computed fields, no `let`, no `new`, no `self { }` block
 - field types must be input types: scalars, enums, other `input`s, objects, interfaces, and lists of them; a union field is an error (`... is not an input type`)
-- object and interface fields are passed by ID across an API, like object arguments: encoding writes an API object as its ID, and decoding loads an ID string back into the declared type (a Dang-declared `type` has no ID, so it encodes and decodes field by field)
+- object and interface fields are passed by ID across an API, like object arguments: encoding writes an API object as its ID, and decoding loads an ID string back into the declared type (see [#json-yaml]). A Dang-declared `type` has no ID, so it encodes and decodes field by field; a Dang-declared interface can't be decoded at all, since a JSON object doesn't say which implementation it is
 - `input` is only a keyword before a (capitalized) type name on the same line, so it still works as an ordinary identifier (`echo(input: String!)`, `input or default`)
 
 > Meta: user-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax. Schema input types are constructed exactly like local types: `CreateUserInput(name: "Alice", email: "...")` passed as `Mutation.createUser(input: ...)`. See [#interop].
