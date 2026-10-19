@@ -1,0 +1,129 @@
+# Bare field writes (`total += x`) inside a method are copy-on-write, exactly
+# like `self.total += x`: they fork `self` rather than mutating the receiver in
+# place, and bare field reads always see the current generation of `self`.
+# Before the fix, bare writes mutated the frame `self` pointed to, so every
+# alias of `self` (a local, a list, a record, another object's field, an early
+# snapshot) saw the write; and bare reads/writes ignored `self.x = v`.
+
+type Box {
+  s: Acc!
+}
+
+type Acc {
+  total: Int! = 0
+
+  doubled: Int! { total * 2 }
+
+  # Aliases of `self` taken before a bare write keep the old value.
+  aliasLocal: Int! { let r = self; total += 1; r.total }
+
+  aliasLocalSelfForm: Int! { let r = self; self.total += 1; r.total }
+
+  aliasList: [Int!]! { let l = [self]; total += 1; l.map { x => x.total } }
+
+  aliasRecord: Int! { let me = self; let rec = {{s: me}}; total += 1; rec.s.total }
+
+  aliasBox: Int! { let b = Box(self); total += 1; b.s.total }
+
+  aliasInBlock: Int! { let r = self; [1].each { x => total += x }; r.total }
+
+  snap: Acc! { let r = self; total += 1; r }
+
+  bothGenerations: [Int!]! { let r = self; total += 1; [r.total, self.total, total] }
+
+  # Equality sees the fork as a different value.
+  eqAfter: Boolean! { let r = self; total += 1; r == self }
+
+  eqBefore: Boolean! { let r = self; r == self }
+
+  # Bare reads and writes compose with `self.x = v`, in either order.
+  readAfterSelfWrite: Int! { self.total = 5; total }
+
+  bareAfterSelfWrite: Int! { self.total = 5; total += 1; self.total }
+
+  bareAfterSelfWriteRet: Acc! { self.total = 5; total += 1; self }
+
+  selfAfterBare: Int! { total = 5; self.total += 1; total }
+
+  selfAfterBareSelf: Int! { total = 5; self.total += 1; self.total }
+
+  blockMix: Acc! {
+    [1, 2].each { x =>
+      self.total += x
+      total += 10
+    }
+    self
+  }
+
+  bareInBlockAfterSelf: Acc! { self.total = 5; [1].each { x => total += x }; self }
+
+  blockSelfThenBare: Acc! {
+    [1].each { x =>
+      self.total = 5
+      total += 1
+    }
+    self
+  }
+
+  # Computed fields (bare sibling calls) see the current generation.
+  computedAfterBare: Int! { total += 1; doubled }
+
+  computedAfterSelfThenBare: Int! { self.total = 5; total += 1; doubled }
+
+  # Arguments and locals shadowing a field are rebound, not forked into self.
+  shadowArg(total: Int!): Int! { total += 100; self.total }
+
+  shadowLet: Int! { let total = 7; total += 1; self.total }
+}
+
+let a = Acc(0)
+
+assert("local alias keeps the old value") { a.aliasLocal == 0 }
+assert("local alias, self. form") { a.aliasLocalSelfForm == 0 }
+assert("alias in a list") { a.aliasList == [0] }
+assert("alias in a record") { a.aliasRecord == 0 }
+assert("alias in another object's field") { a.aliasBox == 0 }
+assert("alias across a block's write") { a.aliasInBlock == 0 }
+assert("returned early snapshot") { a.snap.total == 0 }
+assert("old and new generations") { a.bothGenerations == [0, 1, 1] }
+
+assert("alias differs after a write") { a.eqAfter == false }
+assert("alias equals self before a write") { a.eqBefore }
+
+assert("bare read after self. write") { a.readAfterSelfWrite == 5 }
+assert("bare write after self. write") { a.bareAfterSelfWrite == 6 }
+assert("bare write after self. write, returned") { a.bareAfterSelfWriteRet.total == 6 }
+assert("self. write after bare write, bare read") { a.selfAfterBare == 6 }
+assert("self. write after bare write, self. read") { a.selfAfterBareSelf == 6 }
+assert("mixed forms in a block accumulate") { a.blockMix.total == 23 }
+assert("bare block write after self. write") { a.bareInBlockAfterSelf.total == 6 }
+assert("self. then bare write in one block") { a.blockSelfThenBare.total == 6 }
+
+assert("computed field after bare write") { a.computedAfterBare == 2 }
+assert("computed field after mixed writes") { a.computedAfterSelfThenBare == 12 }
+
+assert("arg shadows the field") { a.shadowArg(1) == 0 }
+assert("let shadows the field") { a.shadowLet == 0 }
+
+assert("receiver untouched") { a.total == 0 }
+
+# Reproducers from the constructor investigation.
+type M {
+  count: Int! = 0
+
+  run2: Int! { self.count = 5; count }
+
+  run: M! {
+    [1].each { x =>
+      self.count = 5
+      count += 1
+    }
+    self
+  }
+
+  alias: Int! { let s = self; count = 5; s.count }
+}
+
+assert("bare read sees self. write") { M.run2 == 5 }
+assert("bare write after self. write in a block") { M.run.count == 6 }
+assert("alias keeps the old value") { M.alias == 0 }

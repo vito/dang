@@ -2163,6 +2163,26 @@ type Object struct {
 	Parent       *Object                 // For hierarchical scoping
 	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
+
+	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
+	// Its effective parent is not Parent but the current value of its `self`
+	// cell, so bare field reads see the latest copy-on-write generation of
+	// `self` (including `self.x = v` writes), and bare field writes fork `self`
+	// instead of mutating a receiver frame in place. See nextFrame and Update.
+	selfParent bool
+}
+
+// nextFrame returns the frame name resolution continues in after m, and
+// whether that frame is m's `self` (see selfParent). It reads only fields that
+// are fixed once a frame is built, plus the `self` cell, so it is safe with or
+// without m.mu held.
+func (m *Object) nextFrame() (*Object, bool) {
+	if m.selfParent && m.dynamicScope != nil {
+		if self, ok := m.dynamicScope.Value.(*Object); ok {
+			return self, true
+		}
+	}
+	return m.Parent, false
 }
 
 // NewObject creates a new Object with an empty values map
@@ -2187,7 +2207,7 @@ func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	m.mu.Lock()
 	p, pending := m.Pending[name]
 	val, hasVal := m.Values[name]
-	parent := m.Parent
+	parent, _ := m.nextFrame()
 	m.mu.Unlock()
 	if pending {
 		return m.force(ctx, name, p)
@@ -2205,7 +2225,7 @@ func (m *Object) Has(name string) bool {
 	m.mu.Lock()
 	_, pending := m.Pending[name]
 	_, hasVal := m.Values[name]
-	parent := m.Parent
+	parent, _ := m.nextFrame()
 	m.mu.Unlock()
 	if pending || hasVal {
 		return true
@@ -2289,7 +2309,7 @@ func (m *Object) LookupLocal(name string) (Value, bool) {
 func (m *Object) lookupValue(name string) (Value, bool) {
 	m.mu.Lock()
 	val, ok := m.Values[name]
-	parent := m.Parent
+	parent, _ := m.nextFrame()
 	m.mu.Unlock()
 	if ok {
 		return val, true
@@ -2310,7 +2330,7 @@ func (m *Object) Bind(name string, value Value, visibility Visibility) {
 func (m *Object) Visibility(name string) Visibility {
 	m.mu.Lock()
 	vis, ok := m.Visibilities[name]
-	parent := m.Parent
+	parent, _ := m.nextFrame()
 	m.mu.Unlock()
 	if ok {
 		return vis
@@ -2328,8 +2348,8 @@ func (m *Object) visibilityLocked(name string) Visibility {
 	if vis, ok := m.Visibilities[name]; ok {
 		return vis
 	}
-	if m.Parent != nil {
-		return m.Parent.Visibility(name)
+	if parent, _ := m.nextFrame(); parent != nil {
+		return parent.Visibility(name)
 	}
 	return PrivateVisibility
 }
@@ -2351,7 +2371,7 @@ func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 			})
 		}
 	}
-	parent := m.Parent
+	parent, _ := m.nextFrame()
 	m.mu.Unlock()
 
 	// Collect bindings from parent (if any) - avoiding duplicates
@@ -2381,15 +2401,15 @@ func (m *Object) Derive(sealed bool) ValueScope {
 // snapshotReceiver returns a sealed receiver frame for a method call that is
 // immune to later in-place writes on m's chain.
 //
-// A method's bare field writes (`total += x`) land in place on its sealed
-// receiver frame, and that frame is also `self`. Deriving a nested call's
-// receiver as a live child of it would let the caller's later writes (e.g. from
-// a block it passed in) show through the callee's receiver, breaking
-// fork-per-call. So the frames above the instance's root are flattened into one
-// fresh frame, capturing the receiver's state as of the call. Only frames
-// sharing m's Mod are flattened (an instance's copy-on-write generations); the
-// root and anything beyond stay shared. Those frames hold only accumulated
-// writes, so this copies little, and it keeps receiver chains shallow.
+// Field writes inside a method never touch receiver frames — bare or not, they
+// fork `self` (see Object.Update and newSelfFrame) — so a receiver is normally
+// never written in place after the call starts. The snapshot still matters in
+// two ways: it keeps the callee safe from any remaining in-place writer of a
+// receiver's chain (e.g. an instance still under construction), and it keeps
+// receiver chains shallow, since every copy-on-write write adds a frame.
+// Only frames sharing m's Mod are flattened (an instance's copy-on-write
+// generations); the root and anything beyond stay shared. Those frames hold
+// only accumulated writes, so this copies little.
 func (m *Object) snapshotReceiver() *Object {
 	var frames []*Object
 	base := m
@@ -2445,11 +2465,20 @@ func (m *Object) Update(name string, value Value) {
 		m.mu.Unlock()
 		return
 	}
-	parent := m.Parent
+	parent, isSelf := m.nextFrame()
 	forked := m.IsForked
 	m.mu.Unlock()
 
 	if parent != nil && !forked && parent.Has(name) {
+		if isSelf {
+			// A bare field write (`total += x`) inside a method: values are
+			// immutable, so fork `self` exactly like `self.total += x` does
+			// rather than writing into the receiver in place, which would
+			// show through every alias of it (`let r = self`, a stored
+			// `self`, a returned snapshot).
+			m.dynamicScope.Value = forkWithField(parent, name, value)
+			return
+		}
 		// Variable exists in parent, update parent (only if not forked)
 		parent.Update(name, value)
 		return
@@ -2461,6 +2490,27 @@ func (m *Object) Update(name string, value Value) {
 	m.Values[name] = value
 	m.Visibilities[name] = m.visibilityLocked(name)
 	m.mu.Unlock()
+}
+
+// forkWithField returns a copy-on-write fork of obj with name set to value,
+// leaving obj itself untouched — the same fork `self.x = v` makes in
+// evalFieldAssignment. The caller installs the result as the new `self`.
+func forkWithField(obj *Object, name string, value Value) *Object {
+	next := obj.Derive(false).(*Object)
+	next.Bind(name, value, obj.Visibility(name))
+	return next
+}
+
+// newSelfFrame returns a frame for a body executing with self as its receiver
+// (a method call, see BoundMethod.Call): a fresh, unshared `self` cell holding
+// self, and a selfParent link so that bare names resolve through whatever
+// generation of `self` the cell holds. Bind the body's arguments in it and
+// Derive the body's scopes from it.
+func newSelfFrame(self *Object) *Object {
+	frame := self.Derive(false).(*Object)
+	frame.selfParent = true
+	frame.EnterSelf(self)
+	return frame
 }
 
 // Self returns the dynamic scope value ('self')
@@ -2533,14 +2583,17 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 	}
 
 	// Create a composite environment that includes both the receiver and the method's closure
-	var recv ValueScope
+	var fnScope OverlayValueScope
 	if obj, ok := b.Receiver.(*Object); ok {
-		recv = obj.snapshotReceiver()
+		// Bare field reads and writes resolve through the method's `self`
+		// cell (see newSelfFrame), so they track self's copy-on-write
+		// generations exactly like `self.x`.
+		fnScope = CreateOverlayValueScope(newSelfFrame(obj.snapshotReceiver()), b.Method.Closure)
 	} else {
-		recv = b.Receiver.Derive(true)
+		recv := b.Receiver.Derive(true)
+		fnScope = CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
+		fnScope.EnterSelf(recv)
 	}
-	fnScope := CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
-	fnScope.EnterSelf(recv)
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
