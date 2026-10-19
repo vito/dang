@@ -1,0 +1,38 @@
+# Regression: a copy-on-write field write whose path runs through a link that
+# isn't an object (a nullable field holding null, a computed `{ }` member) used
+# to panic the interpreter on a type assertion. It now raises an error.
+
+type Inner {
+  x: Int!
+}
+
+type Foo {
+  x: Int!
+  maybe: Inner = null
+  comp: Inner! { Inner(x) }
+}
+
+let throughNull = {
+  let a = Foo(1)
+  a.maybe.x = 4
+  "unreachable"
+} rescue {
+  e: Error => e.message
+}
+assert { throughNull == "cannot assign to a.maybe.x: a.maybe is null" }
+
+let throughComputed = {
+  let a = Foo(1)
+  a.comp.x = 4
+  "unreachable"
+} rescue {
+  e: Error => e.message
+}
+assert { throughComputed == "cannot assign to a.comp.x: a.comp is computed, not a stored field" }
+
+# A non-null link still works, and copies rather than aliasing.
+let a = Foo(1, maybe: Inner(3))
+let b = a
+a.maybe.x = 4
+assert { a.maybe.x == 4 }
+assert { b.maybe.x == 3 }

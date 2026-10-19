@@ -590,8 +590,34 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		return nil, fmt.Errorf("unexpected root node type: %T", rootNode)
 	}
 
+	// Every link on the path must be an object to copy. A nullable link that
+	// is null at runtime has nothing to write into, so report it as an error
+	// rather than panicking on the type assertion.
+	rootLabel := rootSymbolName
+	if rootLabel == "" {
+		rootLabel = "self"
+	}
+	asScope := func(v Value, depth int) (ValueScope, error) {
+		if vs, ok := v.(ValueScope); ok {
+			return vs, nil
+		}
+		link := strings.Join(append([]string{rootLabel}, path[:depth]...), ".")
+		target := strings.Join(append([]string{rootLabel}, path...), ".")
+		if _, isNull := v.(NullValue); isNull {
+			return nil, fmt.Errorf("cannot assign to %s: %s is null", target, link)
+		}
+		if _, isFn := v.(FunctionValue); isFn {
+			return nil, fmt.Errorf("cannot assign to %s: %s is computed, not a stored field", target, link)
+		}
+		return nil, fmt.Errorf("cannot assign to %s: %s is not an object", target, link)
+	}
+
 	// Clone the root object to begin the copy-on-write process
-	newRoot := cowFork(rootObj.(ValueScope))
+	rootScope, err := asScope(rootObj, 0)
+	if err != nil {
+		return nil, err
+	}
+	newRoot := cowFork(rootScope)
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
@@ -604,7 +630,11 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
-		clonedVal := cowFork(val.(ValueScope))
+		link, err := asScope(val, i+1)
+		if err != nil {
+			return nil, err
+		}
+		clonedVal := cowFork(link)
 		cowBind(currentObj, fieldName, clonedVal.(Value))
 		currentObj = clonedVal
 	}
