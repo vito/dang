@@ -113,7 +113,7 @@ parent.id
 - the checked handle has the object's **concrete** type, even when the field returns an interface or union. `case` type patterns match it without another query; on any GraphQL interface or union value, nullable or not, they match the concrete type (see [#interfaces-unions])
 - **non-null** object fields (`Agent!`) on a chain without nullable steps can't be null, so they stay lazy and cost nothing until forced
 - this matches the Dagger SDKs, which also run nullable object fields right away (fetching their IDs) and keep non-null ones lazy
-- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null. For the same reason `case` doesn't ask for the concrete type of an interface or union value reached through a mutation (see [#interfaces-unions])
+- **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null. For the same reason `case` doesn't ask for the concrete type of an interface or union value reached through a mutation; a type pattern it can't decide raises (see [#interfaces-unions])
 
 ## Object equality
 

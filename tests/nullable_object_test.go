@@ -306,7 +306,6 @@ assert { describe(node(id: "User:1")) == "user John Doe" }
 	t.Run("does not resolve a mutation-returned handle", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let r = case (Mutation.touchNode(id: "Post:1")) {
-  p: Post => "post " + p.title
   n: Node => "node " + toString(n.id)
 }
 assert { r == "node Post:1" }
@@ -314,5 +313,22 @@ assert { r == "node Post:1" }
 		require.Len(t, queries, 1)
 		require.True(t, strings.HasPrefix(queries[0], "mutation "), queries[0])
 		require.NotContains(t, queries[0], "__typename")
+	})
+
+	t.Run("raises for a concrete pattern on a mutation-returned handle", func(ctx context.Context, t *testctx.T) {
+		// Neither resolving the handle nor falling through to else. Nothing
+		// was forced off the mutation, so it isn't sent at all (see #193).
+		queries := run(t, `
+let r = {
+  case (Mutation.touchResult(id: "Post:1")) {
+    u: User => "user " + u.name
+    else => "else"
+  }
+} rescue {
+  e: RuntimeError => e.message
+}
+assert { r.contains("cannot match type pattern User") }
+`)
+		require.Empty(t, queries)
 	})
 }

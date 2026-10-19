@@ -78,7 +78,7 @@ case (favoriteNode) {   # favoriteNode: Node!
 
 - a GraphQL value that only knows its declared type (like `favoriteNode` above) costs one small query: `case` asks the server for the object's `id` and `__typename`, and the arm binds a handle of the concrete type, loaded by that ID, just like a checked nullable field ([#nullable-object-fields]). `p.title` then selects through the loader
 - no query is sent when there's nothing to learn: without type patterns, for a value whose concrete type is already known (a checked nullable field, a `... on Post` narrowing), or when the first type pattern is satisfied by the declared type itself (`n: Node =>` first)
-- the exception is a value reached through a **mutation**: asking would re-send the mutation, so it keeps its declared type and matches only interface patterns (`n: Node`) or `else`. Narrow it with an inline fragment (`.{{... on Post}}`) instead
+- the exception is a value reached through a **mutation**: asking would re-send the mutation, so it keeps its declared type. Only a pattern that type already satisfies (`n: Node`) can match it; the first type pattern that isn't raises `cannot match type pattern Post against a Node reached through mutation …`, instead of falling through to a later arm or `else`. To discriminate a mutation result, select the fields of every type it may be on the mutation call, which sends it once: `Mutation.touchNode(id: "Post:1").{{ ... on Post {{ title }}, ... on User {{ name }} }}`, then `case` on that (a selection without a fragment for the value's actual type fails)
 - value patterns still compare against the original handle, so `case (f) { f => … }` matches as `f == f` does ([#interop])
 - for when to reach for inline fragments instead, see [#discriminating]
 

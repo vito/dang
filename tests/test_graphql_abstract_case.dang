@@ -71,20 +71,46 @@ let unmatched = case (favoriteNode) {
 assert { unmatched == "not a user" }
 
 # A handle reached through a mutation keeps its interface type: resolving it
-# would re-send the mutation. It matches interface patterns and else only;
-# an inline fragment narrows it instead.
+# would re-send the mutation. A pattern its interface type satisfies still
+# matches...
 let touched = Mutation.touchNode(id: "Post:1")
-let touchedKind = case (touched) {
-  p: Post => "post " + p.title
+let touchedNode = case (touched) {
   n: Node => "node " + toString(n.id)
 }
-assert { touchedKind == "node Post:1" }
+assert { touchedNode == "node Post:1" }
 
-let touchedPost = case (touched) {
-  p: Post => p.title
-  else => "unresolved"
+# ...but a concrete pattern can't be decided, so it raises rather than
+# falling through to a later arm or else: the value may well be a Post.
+let touchedPost = {
+  case (touched) {
+    p: Post => p.title
+    else => "unresolved"
+  }
+} rescue {
+  e: RuntimeError => e.message
 }
-assert { touchedPost == "unresolved" }
-assert { touched.{{... on Post!}}.title == "First Post" }
+assert { touchedPost.contains("cannot match type pattern Post against a Node reached through mutation touchNode") }
+
+# Patterns covering every member of a mutation-returned union type-check as
+# exhaustive, and raise the same way instead of matching nothing.
+let touchedKind = {
+  case (Mutation.touchResult(id: "Post:1")) {
+    u: User => "user " + u.name
+    p: Post => "post " + p.title
+  }
+} rescue {
+  e: RuntimeError => e.message
+}
+assert { touchedKind.contains("cannot match type pattern User against a SearchResult reached through mutation touchResult") }
+# The hint names a fragment for every type pattern.
+assert { touchedKind.contains(".{{ ... on User {{ ... }}, ... on Post {{ ... }} }}") }
+
+# An inline fragment selection on the mutation call discriminates it in the
+# one request.
+let selected = case (Mutation.touchResult(id: "Post:1").{{... on User {{ name }}, ... on Post {{ title }}}}) {
+  u: User => "user " + u.name
+  p: Post => "post " + p.title
+}
+assert { selected == "post First Post" }
 
 print("GraphQL abstract case tests passed!")
