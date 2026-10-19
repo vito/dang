@@ -43,8 +43,8 @@ node(id: "x").{{
 ### Lazy inline fragments (no field block)
 - `... on User` yields a typed reference / type assertion without selecting fields; chainable: `node(id).{{... on User}}.name`.
 - Works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}`, comma/newline-separated, elementwise on lists).
-- Non-matching assertion returns `null` (`cat.{{... on Dog}} == null`).
-- Non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`.
+- Non-matching assertion returns `null` (`cat.{{... on Dog}} == null`), as does a narrowing of a `null` value.
+- Non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`. A `null` value raises too (`… got null`).
 
 ## Lists of objects
 ```dang

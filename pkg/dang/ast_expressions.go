@@ -1839,7 +1839,7 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 
 		// Handle null values - propagate null
 		if _, ok := receiverVal.(NullValue); ok {
-			return NullValue{}, nil
+			return o.nullResult()
 		}
 
 		// Handle inline fragments on GraphQL values
@@ -1868,6 +1868,20 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 		// receivers uniformly.
 		return o.evalSelectionOnValue(receiverVal, ctx, scope)
 	})
+}
+
+// nullResult is the selection's result for a null receiver: null, propagated,
+// unless the selection is typed non-null regardless of its receiver, as the
+// non-null lazy inline fragment `... on User!` on a single value is. That
+// form asserts the value is a User, and null isn't one.
+func (o *ObjectSelection) nullResult() (Value, error) {
+	if len(o.InlineFragments) > 0 && !o.IsList {
+		if _, nonNull := o.GetInferredType().(hm.NonNullType); nonNull {
+			return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got null",
+				o.inlineFragmentTypeNames())
+		}
+	}
+	return NullValue{}, nil
 }
 
 // evalInlineFragmentOnValue handles inline fragment selection on a Dang-native value.
@@ -1996,7 +2010,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 		return nil, fmt.Errorf("GraphQL lazy inline fragments: querying __typename: %w", err)
 	}
 	if typeName == nil {
-		return NullValue{}, nil
+		return o.nullResult()
 	}
 
 	return o.matchLazyInlineFragment(gqlVal, *typeName, query)

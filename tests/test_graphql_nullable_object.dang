@@ -106,9 +106,20 @@ assert { maybeUser(id: "nope").{{name}} == null }
 
 # Inline fragments off a null field propagate null too
 assert { node(id: "nope").{{... on User}} == null }
-assert { node(id: "nope").{{... on User!}} == null }
 assert { node(id: "nope").{{... on User {{ name }}}} == null }
 assert { node(id: "User:1").{{... on User}}.name == "John Doe" }
+
+# ...except the non-null form, which asserts a User and gets null, whether
+# the null comes from the selection or from a handle checked earlier
+let assertedNull = { node(id: "nope").{{... on User!}}.name } rescue {
+  e: RuntimeError => e.message
+}
+assert { assertedNull == "inline fragment type assertion failed: expected one of User, got null" }
+let missing = node(id: "nope")
+let assertedMissing = { missing.{{... on User!}}.name } rescue {
+  e: RuntimeError => e.message
+}
+assert { assertedMissing == "inline fragment type assertion failed: expected one of User, got null" }
 
 # Mutations returning a nullable object are left lazy (a probe would re-send
 # the mutation), but still work
