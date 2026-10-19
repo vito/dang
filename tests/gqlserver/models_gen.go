@@ -23,6 +23,11 @@ type Timestamped interface {
 	GetCreatedAt() string
 }
 
+type Assignment struct {
+	Owner    string   `json:"owner"`
+	Subjects []string `json:"subjects"`
+}
+
 type CreateUserInput struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`

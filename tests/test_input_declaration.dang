@@ -58,6 +58,24 @@ assert { p.sorts.map { s => s.desc } == [false, true] }
 assert { UserFilter(name: "jo") == f }
 assert { UserFilter(name: "jo", minAge: 21) != f }
 
+# Inputs can hold objects and interfaces too; across an API they're passed by
+# ID (see test_input_object_ids.dang). A Dang-declared type has no ID, so it
+# decodes field by field like any other value.
+type Person {
+  name: String!
+}
+
+input Pair {
+  left: Person!
+  right: Person
+}
+
+let pair = Pair(Person(name: "a"))
+assert { pair.left.name == "a" }
+assert { pair.right == null }
+let pairDecoded = JSON.decode("{\"left\": {\"name\": \"b\"}}") :: Pair!
+assert { pairDecoded.left.name == "b" }
+
 # Inputs decode from codecs like any other named type.
 let decoded = JSON.decode("{\"name\": \"zed\", \"tags\": [\"a\"]}") :: UserFilter!
 assert { decoded.name == "zed" }

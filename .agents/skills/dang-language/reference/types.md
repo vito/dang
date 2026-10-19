@@ -129,7 +129,8 @@ input UserFilter {
 UserFilter(name: "jo")            # implicit constructor; defaults/null fill the rest
 ```
 - Like a `type` restricted to **public data fields**: no methods/computed fields, `let`, `new`, or `self { }`.
-- Field types must be input types: scalars, enums, other `input`s, lists of them. An object/interface/union field → `... is not an input type`.
+- Field types must be input types: scalars, enums, other `input`s, objects, interfaces, lists of them. A union field → `... is not an input type`.
+- Object/interface fields are passed by ID across an API (like object args): `JSON.encode` writes an API object as its ID, and decoding an ID string into an API object type loads it via `node(id:)`. Dang-declared types encode/decode field by field.
 - `input` is a keyword only when a capitalized name follows on the same line; `input` stays usable as an identifier.
 - Not yet exposed through Dagger module APIs.
 

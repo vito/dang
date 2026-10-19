@@ -1267,9 +1267,12 @@ func (c *ObjectDecl) validateInputBody() error {
 }
 
 // validateInputFieldTypes checks that every field of an input holds an input
-// type, mirroring GraphQL's rule that input objects may only nest scalars,
-// enums, other input objects, and lists of them -- never output objects,
-// interfaces, unions, or functions.
+// type. This follows GraphQL's rule that input objects nest only scalars,
+// enums, other input objects, and lists of them, with Dagger's extension that
+// object and interface values are passed by ID: across a GraphQL boundary such
+// a field travels as an `ID @expectedType(name: ...)`, the same contract as an
+// object-typed argument. Unions and functions have no ID form, so they're
+// still rejected.
 func (c *ObjectDecl) validateInputFieldTypes(input *Type) error {
 	errs := &InferenceErrors{}
 	for _, form := range c.Value.Forms {
@@ -1284,7 +1287,7 @@ func (c *ObjectDecl) validateInputFieldTypes(input *Type) error {
 		fieldType, _ := scheme.Type()
 		if !isInputType(fieldType) {
 			errs.Add(NewInferError(
-				fmt.Errorf("input %s: field %q has type %s, which is not an input type; input fields may only hold scalars, enums, other inputs, and lists of them", c.Name.Name, field.Name.Name, fieldType),
+				fmt.Errorf("input %s: field %q has type %s, which is not an input type; input fields may only hold scalars, enums, objects, interfaces, other inputs, and lists of them", c.Name.Name, field.Name.Name, fieldType),
 				field,
 			))
 		}
@@ -1296,7 +1299,8 @@ func (c *ObjectDecl) validateInputFieldTypes(input *Type) error {
 }
 
 // isInputType reports whether t may appear in an input position: a scalar,
-// enum, or input object, optionally wrapped in lists and non-null.
+// enum, input object, or an object or interface (passed by ID), optionally
+// wrapped in lists and non-null.
 func isInputType(t hm.Type) bool {
 	switch tt := t.(type) {
 	case hm.NonNullType:
@@ -1308,7 +1312,7 @@ func isInputType(t hm.Type) bool {
 			return false
 		}
 		switch tt.Kind {
-		case ScalarKind, EnumKind, InputKind:
+		case ScalarKind, EnumKind, InputKind, ObjectKind, InterfaceKind:
 			return true
 		}
 	}

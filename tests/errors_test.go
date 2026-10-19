@@ -280,28 +280,42 @@ func (DangSuite) TestInputDeclarationDiagnostics(ctx context.Context, t *testctx
 			wants: []string{"input Filter cannot declare static members"},
 		},
 		{
-			name: "object field",
-			source: `type User {
+			// Objects and interfaces are passed by ID, but a union has no ID
+			// form.
+			name: "union field",
+			source: `type Cat {
   name: String!
 }
 
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
 input Filter {
-  owner: User!
+  pet: Pet!
 }
 `,
-			wants: []string{`input Filter: field "owner" has type User!, which is not an input type`},
+			wants: []string{`input Filter: field "pet" has type Pet!, which is not an input type`},
 		},
 		{
-			name: "list of objects field",
-			source: `type User {
+			name: "list of unions field",
+			source: `type Cat {
   name: String!
 }
 
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
 input Filter {
-  owners: [User!]! = []
+  pets: [Pet!]! = []
 }
 `,
-			wants: []string{`input Filter: field "owners" has type [User!]!, which is not an input type`},
+			wants: []string{`input Filter: field "pets" has type [Pet!]!, which is not an input type`},
 		},
 		{
 			// A rejected input still binds its constructor, so using it
@@ -317,18 +331,25 @@ print(Filter("x").name)
 			wants: []string{`input Filter cannot declare methods; "shout" must be a data field`},
 		},
 		{
-			name: "object field, then used",
-			source: `type User {
+			name: "union field, then used",
+			source: `type Cat {
   name: String!
 }
 
-input Filter {
-  owner: User!
+type Dog {
+  name: String!
 }
 
-print(Filter(User(name: "x")).owner.name)
+union Pet = Cat | Dog
+
+input Filter {
+  pet: Pet!
+}
+
+let filter = Filter(Cat(name: "x"))
+print(filter == filter)
 `,
-			wants: []string{`input Filter: field "owner" has type User!, which is not an input type`},
+			wants: []string{`input Filter: field "pet" has type Pet!, which is not an input type`},
 		},
 		{
 			name: "local input with method, then used",

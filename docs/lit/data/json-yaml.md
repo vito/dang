@@ -21,6 +21,7 @@ let settings: Settings! = TOML.decode("count = 1")
 
 - parsing is type-driven: the expected type guides decoding. The type comes from a `::` cast ([#nullability]), an annotation, or the parameter/return type at the call site (`JSON.decode(...) :: Status!`, `let x: Summary! = JSON.decode(...)`, `f(d: String!): Summary! { JSON.decode(d) }`)
 - works for primitives, lists, records, custom types ([#objects]), enums ([#enums-scalars])
+- an object or interface from an imported API decodes from its ID string, loaded through the API's `node(id:)` field — the inverse of encoding, which writes such an object as its ID
 - unknown/extra fields in the input are ignored, not errors
 - `JSON.decode` rejects trailing data after the first value
 - TOML's top level is always a table, so `TOML.decode` materializes into a record/object type

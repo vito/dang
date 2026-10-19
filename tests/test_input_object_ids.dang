@@ -1,0 +1,41 @@
+# Object and interface fields in inputs travel as IDs, the same contract as
+# object-typed arguments (`ID @expectedType(name: ...)`).
+
+import Test
+
+let john = primaryUser
+let jane = secondaryUser
+
+# An imported input whose fields are `ID @expectedType` takes objects, which
+# are sent as their IDs.
+assert { assignmentLabel(assignment: Assignment(owner: john)) == "John Doe" }
+assert { assignmentLabel(assignment: Assignment(owner: john, subjects: [jane])) == "John Doe: User:Jane Smith" }
+
+# A declared input can hold objects and interfaces too.
+input Review {
+  author: User!
+  subjects: [Node!]! = []
+  note: String
+}
+
+let review = Review(author: john, subjects: [jane], note: "lgtm")
+assert { review.author.name == "John Doe" }
+
+# Encoding writes each object as its ID...
+let encoded = JSON.encode(review)
+let raw = JSON.decode(encoded) :: {{author: String!, subjects: [String!]!, note: String}}
+assert { raw.author == john.id }
+assert { raw.subjects == [jane.id] }
+
+# ...and decoding loads the IDs back into objects of the declared types.
+let decoded = JSON.decode(encoded) :: Review!
+assert { decoded.author.name == "John Doe" }
+assert { userName(user: decoded.author) == "John Doe" }
+assert { nodeLabel(node: decoded.subjects[0]!) == "User:Jane Smith" }
+assert { decoded.note == "lgtm" }
+
+# Decoding an ID works anywhere an API object is expected, not just in inputs.
+let loaded = JSON.decode(JSON.encode(jane)) :: User!
+assert { loaded.name == "Jane Smith" }
+
+print("input object ID tests passed!")
