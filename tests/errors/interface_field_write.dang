@@ -1,0 +1,13 @@
+interface HasX {
+  x: Int!
+}
+
+type Bar implements HasX {
+  x: Int!
+}
+
+check: Int! {
+  let a: HasX! = Bar(1)
+  a.x = 2
+  a.x
+}

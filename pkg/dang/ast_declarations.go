@@ -443,6 +443,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
+		if err := r.checkInterfaceFieldWrite(); err != nil {
+			return nil, err
+		}
 
 		// Infer the type of the value (right-hand side)
 		valueType, err := r.Value.Infer(ctx, env, fresh)
@@ -474,6 +477,36 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 		}
 	})
+}
+
+// checkInterfaceFieldWrite rejects a field write whose path runs through an
+// interface-typed value (`a.x = 2` with `a: HasX!`, or `a.iface.y = 2`). An
+// interface only promises its fields can be read: an implementation may
+// provide one as a computed `{ }` member, which has nothing to store into, so
+// interface fields are read-only.
+func (r *Reassignment) checkInterfaceFieldWrite() error {
+	sel, ok := r.Target.(*Select)
+	if !ok {
+		return nil
+	}
+	for ; sel != nil; sel, _ = sel.Receiver.(*Select) {
+		holder, ok := sel.Receiver.(interface{ GetInferredType() hm.Type })
+		if !ok {
+			continue
+		}
+		recvType := holder.GetInferredType()
+		if nn, ok := recvType.(hm.NonNullType); ok {
+			recvType = nn.Type
+		}
+		if mod, ok := recvType.(*Type); ok && mod.Kind == InterfaceKind {
+			target := strings.TrimSpace(Format(r.Target))
+			return NewInferError(
+				fmt.Errorf("cannot assign to %s: fields of interface %s are read-only", target, mod),
+				r,
+			)
+		}
+	}
+	return nil
 }
 
 func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.Env, fresh hm.Fresher, targetType, valueType hm.Type) error {
