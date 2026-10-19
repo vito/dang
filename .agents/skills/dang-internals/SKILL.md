@@ -103,11 +103,18 @@ without aliasing back to the caller.
 
 ### Bare vs `self.` field assignment in methods
 
-Both work and produce the same result:
+Both fork `self` and produce the same result:
 
-- Bare `field = value` reassigns through the Fork (the method body's env
-  includes the receiver's fields).
 - `self.field = value` takes the copy-on-write path explicitly.
+- Bare `field = value` resolves through the method's outermost frame
+  (`newSelfFrame`, `selfParent`), whose effective parent is the *current*
+  value of the `self` cell rather than a fixed receiver frame
+  (`Object.nextFrame`). So bare reads see `self.x = v` writes, and a bare
+  write that reaches a field of `self` forks it (`forkWithField`) and puts
+  the fork in the cell. Receiver frames are never written in place — an
+  alias of `self` (`let r = self`, a stored or returned `self`) keeps the
+  generation it captured.
+- A local/arg shadowing the field is found first and rebound, no fork.
 
 Use `self.` when a parameter shadows a field name (`new(x: Int!) { self.x = x }`).
 
