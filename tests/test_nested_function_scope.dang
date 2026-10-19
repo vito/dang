@@ -1,0 +1,116 @@
+# Functions declared inside a method body are lexically scoped closures: the
+# enclosing method's args and locals shadow fields inside them, exactly as in
+# the method itself, and their `self` is the method's current `self`. Like a
+# sibling method, each call works on its own fork of that `self`.
+#
+# Before the fix a nested function ran like a sibling method with the
+# receiver's fields overlaid on its closure, so a field shadowed the enclosing
+# method's same-named arg or local: with field n = 10, `let n = 5` followed by
+# `inner(x) { n + x }; inner(1)` returned 11 instead of 6.
+
+type Shadow {
+  n: Int! = 10
+
+  letShadows: Int! {
+    let n = 5
+    inner(x: Int!): Int! { n + x }
+    inner(1)
+  }
+
+  argShadows(n: Int!): Int! {
+    inner(x: Int!): Int! { n + x }
+    inner(1)
+  }
+
+  argShadowsZeroArity(n: Int!): Int! {
+    let inner: Int! { n * 2 }
+    inner
+  }
+
+  # An arg read alongside an explicit field write.
+  argIntoField(n: Int!): Shadow! {
+    let inner: Shadow! {
+      self.n = n * 2
+      self
+    }
+    inner
+  }
+
+  # Without shadowing, bare names still reach the fields.
+  fieldVisible: Int! {
+    inner(x: Int!): Int! { n + x }
+    inner(1)
+  }
+
+  # The nested function sees the method's current `self`.
+  readsCurrentSelf: Int! {
+    n += 5
+    inner(x: Int!): Int! { n + x }
+    inner(1)
+  }
+
+  # Field writes in a nested function fork per call.
+  forkPerCall: Shadow! {
+    let bump: Shadow! { n += 1; self }
+    bump
+    bump
+    self
+  }
+
+  enclosingUntouched: Int! {
+    let bump: Shadow! { n += 1; self }
+    bump
+    n
+  }
+
+  returnsFork: Shadow! {
+    let bump: Shadow! { n += 1; self }
+    bump
+  }
+
+  # Inside the nested function, bare and self. forms see each other's writes.
+  bareThenSelf: Int! {
+    let inner: Int! { n += 1; self.n }
+    inner
+  }
+
+  selfThenBare: Int! {
+    let inner: Int! { self.n = 7; n }
+    inner
+  }
+
+  # Blocks inside a nested function accumulate into its fork.
+  blockInNested: Shadow! {
+    let inner: Shadow! {
+      [1, 2].each { x => n += x }
+      self
+    }
+    inner
+  }
+
+  # A nested function declared in a block sees the block's locals.
+  nestedInBlock: [Int!]! {
+    let n = 1
+    [5].map { x =>
+      let inner: Int! { n + x }
+      inner
+    }
+  }
+}
+
+let s = Shadow
+
+assert("let shadows the field") { s.letShadows == 6 }
+assert("arg shadows the field") { s.argShadows(3) == 4 }
+assert("arg shadows the field, zero-arity") { s.argShadowsZeroArity(3) == 6 }
+assert("arg written into a field") { s.argIntoField(4).n == 8 }
+assert("field visible when unshadowed") { s.fieldVisible == 11 }
+assert("sees the method's current self") { s.readsCurrentSelf == 16 }
+assert("writes fork per call") { s.forkPerCall.n == 10 }
+assert("enclosing method's self untouched") { s.enclosingUntouched == 10 }
+assert("returned fork carries the write") { s.returnsFork.n == 11 }
+assert("bare write, self. read") { s.bareThenSelf == 11 }
+assert("self. write, bare read") { s.selfThenBare == 7 }
+assert("block writes accumulate in the nested fork") { s.blockInNested.n == 13 }
+assert("nested function in a block") { s.nestedInBlock == [6] }
+assert("receiver untouched") { s.n == 10 }

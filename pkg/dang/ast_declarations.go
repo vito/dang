@@ -169,6 +169,7 @@ func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.Function
 		Directives:     f.Directives,
 		BlockParamName: blockParamName,
 		IsDynamic:      hasDynamicScope,
+		Nested:         hasDynamicScope && inMethodBody(scope),
 	}
 }
 

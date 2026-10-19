@@ -1837,6 +1837,13 @@ type FunctionValue struct {
 	// ends up being called. Nil until referenced.
 	SelfScope ValueScope
 
+	// Nested marks a function declared inside a method body. It is a closure:
+	// its body runs on its own Closure, so the method's args and locals
+	// shadow fields as they do anywhere else in the method, and its `self` is
+	// the method's current `self`. Like a sibling method, each call works on
+	// its own fork of that `self` (fork-per-call); see FunctionValue.Call.
+	Nested bool
+
 	IsBlockArg          bool
 	CapturedReturnFrame *ControlFrame
 	CapturedBreakFrame  *ControlFrame
@@ -1888,11 +1895,14 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 	// against the object it was written in, never whichever object happens to
 	// invoke it. The caller's `self` is only a fallback for values that were
 	// never bound.
-	if f.IsDynamic && !f.IsBlockArg {
-		selfScope := scope
-		if f.SelfScope != nil {
-			selfScope = f.SelfScope
-		}
+	//
+	// Nested functions (declared inside a method body) are closures and skip
+	// this dispatch; see below.
+	selfScope := scope
+	if f.SelfScope != nil {
+		selfScope = f.SelfScope
+	}
+	if f.IsDynamic && !f.IsBlockArg && !f.Nested {
 		if self, ok := selfScope.Self(); ok {
 			method := f
 			method.SelfScope = nil // the receiver below is the binding now
@@ -1916,11 +1926,29 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 
 	fnScope := f.Closure.Derive(false)
 
-	if f.IsDynamic {
-		// A block argument inherits the caller's `self` by sharing its cell, so
-		// mutations inside the block stay visible to the enclosing method.
-		if dynScope, hasDynScope := scope.Self(); hasDynScope {
-			fnScope.MutateSelf(dynScope)
+	switch {
+	case f.Nested:
+		// A nested function runs on its closure, so the enclosing method's
+		// args and locals resolve lexically (shadowing fields), and its
+		// `self` is the enclosing method's current `self`, read through the
+		// closure. Each call gets a fresh cell holding a fork of it, so field
+		// writes in the body stay in that fork (fork-per-call, like a sibling
+		// method) and surface only if it returns `self`. Bare field names
+		// resolve through this cell too (see Object.nextFrame). Dropping the
+		// EnterSelf would instead share the method's cell, accumulating the
+		// body's writes into the method's fork like a block's.
+		if self, ok := f.Closure.Self(); ok {
+			if obj, ok := self.(*Object); ok {
+				fnScope.EnterSelf(obj.snapshotReceiver())
+			}
+		}
+	case f.IsDynamic && !f.IsBlockArg:
+		// Fallback for a receiver that is neither a scope nor a scalar. Enter
+		// a fresh cell: MutateSelf would overwrite the cell fnScope shares
+		// with the closure, rebinding `self` for everything else closed over
+		// it.
+		if self, ok := selfScope.Self(); ok {
+			fnScope.EnterSelf(self)
 		}
 	}
 
@@ -2207,13 +2235,25 @@ type Object struct {
 }
 
 // nextFrame returns the frame name resolution continues in after m, and
-// whether that frame is m's `self` (see selfParent). It reads only fields that
+// whether that frame is `self` (see selfParent). It reads only fields that
 // are fixed once a frame is built, plus the `self` cell, so it is safe with or
 // without m.mu held.
-func (m *Object) nextFrame() (*Object, bool) {
-	if m.selfParent && m.dynamicScope != nil {
-		if self, ok := m.dynamicScope.Value.(*Object); ok {
-			return self, true
+//
+// cell is the `self` cell of the frame the resolution started from. A
+// selfParent frame continues into that cell's `self` rather than its own, so
+// a frame that entered a fresh `self` over a method's scope (a nested
+// function call, see FunctionValue.Call) resolves the method's locals and
+// args lexically but its fields through its own `self`. Every other frame
+// shares its method's cell, making the two the same; nil falls back to m's.
+func (m *Object) nextFrame(cell *DynamicScope) (*Object, bool) {
+	if m.selfParent {
+		if cell == nil {
+			cell = m.dynamicScope
+		}
+		if cell != nil {
+			if self, ok := cell.Value.(*Object); ok {
+				return self, true
+			}
 		}
 	}
 	return m.Parent, false
@@ -2238,10 +2278,16 @@ func (m *Object) String() string {
 }
 
 func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
+	return m.lookupFrom(ctx, name, m.dynamicScope)
+}
+
+// lookupFrom is Lookup for a resolution that started at a frame whose `self`
+// cell is cell (see nextFrame).
+func (m *Object) lookupFrom(ctx context.Context, name string, cell *DynamicScope) (Value, bool, error) {
 	m.mu.Lock()
 	p, pending := m.Pending[name]
 	val, hasVal := m.Values[name]
-	parent, _ := m.nextFrame()
+	parent, _ := m.nextFrame(cell)
 	m.mu.Unlock()
 	if pending {
 		return m.force(ctx, name, p)
@@ -2250,22 +2296,26 @@ func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
 		return val, true, nil
 	}
 	if parent != nil {
-		return parent.Lookup(ctx, name)
+		return parent.lookupFrom(ctx, name, cell)
 	}
 	return nil, false, nil
 }
 
 func (m *Object) Has(name string) bool {
+	return m.hasFrom(name, m.dynamicScope)
+}
+
+func (m *Object) hasFrom(name string, cell *DynamicScope) bool {
 	m.mu.Lock()
 	_, pending := m.Pending[name]
 	_, hasVal := m.Values[name]
-	parent, _ := m.nextFrame()
+	parent, _ := m.nextFrame(cell)
 	m.mu.Unlock()
 	if pending || hasVal {
 		return true
 	}
 	if parent != nil {
-		return parent.Has(name)
+		return parent.hasFrom(name, cell)
 	}
 	return false
 }
@@ -2341,15 +2391,19 @@ func (m *Object) LookupLocal(name string) (Value, bool) {
 // initializers). Use this only when pending has already been forced —
 // otherwise Lookup is the right call.
 func (m *Object) lookupValue(name string) (Value, bool) {
+	return m.lookupValueFrom(name, m.dynamicScope)
+}
+
+func (m *Object) lookupValueFrom(name string, cell *DynamicScope) (Value, bool) {
 	m.mu.Lock()
 	val, ok := m.Values[name]
-	parent, _ := m.nextFrame()
+	parent, _ := m.nextFrame(cell)
 	m.mu.Unlock()
 	if ok {
 		return val, true
 	}
 	if parent != nil {
-		return parent.lookupValue(name)
+		return parent.lookupValueFrom(name, cell)
 	}
 	return nil, false
 }
@@ -2362,15 +2416,19 @@ func (m *Object) Bind(name string, value Value, visibility Visibility) {
 }
 
 func (m *Object) Visibility(name string) Visibility {
+	return m.visibilityFrom(name, m.dynamicScope)
+}
+
+func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
 	m.mu.Lock()
 	vis, ok := m.Visibilities[name]
-	parent, _ := m.nextFrame()
+	parent, _ := m.nextFrame(cell)
 	m.mu.Unlock()
 	if ok {
 		return vis
 	}
 	if parent != nil {
-		return parent.Visibility(name)
+		return parent.visibilityFrom(name, cell)
 	}
 	return PrivateVisibility
 }
@@ -2378,17 +2436,21 @@ func (m *Object) Visibility(name string) Visibility {
 // visibilityLocked resolves a visibility while the caller already holds m.mu.
 // Local lookups stay under the held lock; the parent fallback takes the
 // parent's own lock (child -> parent ordering, never the reverse).
-func (m *Object) visibilityLocked(name string) Visibility {
+func (m *Object) visibilityLocked(name string, cell *DynamicScope) Visibility {
 	if vis, ok := m.Visibilities[name]; ok {
 		return vis
 	}
-	if parent, _ := m.nextFrame(); parent != nil {
-		return parent.Visibility(name)
+	if parent, _ := m.nextFrame(cell); parent != nil {
+		return parent.visibilityFrom(name, cell)
 	}
 	return PrivateVisibility
 }
 
 func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
+	return m.bindingsFrom(vis, m.dynamicScope)
+}
+
+func (m *Object) bindingsFrom(vis Visibility, cell *DynamicScope) []Keyed[Value] {
 	var bindings []Keyed[Value]
 
 	m.mu.Lock()
@@ -2405,12 +2467,12 @@ func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 			})
 		}
 	}
-	parent, _ := m.nextFrame()
+	parent, _ := m.nextFrame(cell)
 	m.mu.Unlock()
 
 	// Collect bindings from parent (if any) - avoiding duplicates
 	if parent != nil {
-		for _, binding := range parent.Bindings(vis) {
+		for _, binding := range parent.bindingsFrom(vis, cell) {
 			// Only include if not shadowed by current module
 			if _, isShadowed := shadowed[binding.Key]; !isShadowed {
 				bindings = append(bindings, binding)
@@ -2491,30 +2553,38 @@ func (m *Object) snapshotReceiver() *Object {
 // - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
 // - If the variable doesn't exist anywhere, set it locally
 func (m *Object) Update(name string, value Value) {
+	m.updateFrom(name, value, m.dynamicScope)
+}
+
+func (m *Object) updateFrom(name string, value Value, cell *DynamicScope) {
 	m.mu.Lock()
 	if _, existsLocally := m.Values[name]; existsLocally {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
-		m.Visibilities[name] = m.visibilityLocked(name)
+		m.Visibilities[name] = m.visibilityLocked(name, cell)
 		m.mu.Unlock()
 		return
 	}
-	parent, isSelf := m.nextFrame()
+	parent, isSelf := m.nextFrame(cell)
 	forked := m.IsForked
 	m.mu.Unlock()
 
-	if parent != nil && !forked && parent.Has(name) {
+	if parent != nil && !forked && parent.hasFrom(name, cell) {
 		if isSelf {
 			// A bare field write (`total += x`) inside a method: values are
 			// immutable, so fork `self` exactly like `self.total += x` does
 			// rather than writing into the receiver in place, which would
 			// show through every alias of it (`let r = self`, a stored
-			// `self`, a returned snapshot).
-			m.dynamicScope.Value = forkWithField(parent, name, value)
+			// `self`, a returned snapshot). The fork goes into the cell
+			// nextFrame resolved `self` from.
+			if cell == nil {
+				cell = m.dynamicScope
+			}
+			cell.Value = forkWithField(parent, name, value)
 			return
 		}
 		// Variable exists in parent, update parent (only if not forked)
-		parent.Update(name, value)
+		parent.updateFrom(name, value, cell)
 		return
 	}
 
@@ -2522,7 +2592,7 @@ func (m *Object) Update(name string, value Value) {
 	// locally.
 	m.mu.Lock()
 	m.Values[name] = value
-	m.Visibilities[name] = m.visibilityLocked(name)
+	m.Visibilities[name] = m.visibilityLocked(name, cell)
 	m.mu.Unlock()
 }
 
@@ -2577,6 +2647,24 @@ func newSelfFrame(self *Object) *Object {
 	frame.selfParent = true
 	frame.EnterSelf(self)
 	return frame
+}
+
+// inMethodBody reports whether scope lies inside a method body, i.e. its
+// frames reach a method's newSelfFrame before any `self` value. Functions
+// declared there are nested functions: they close over the method's locals
+// and `self` (see FunctionValue.Nested).
+func inMethodBody(scope ValueScope) bool {
+	switch s := scope.(type) {
+	case OverlayValueScope:
+		return inMethodBody(s.primary)
+	case *Object:
+		for f := s; f != nil; f = f.Parent {
+			if f.selfParent {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Self returns the dynamic scope value ('self')
@@ -2641,8 +2729,9 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	// A block keeps its enclosing method's `self`; a function referenced by
 	// bare name (`b.hook = &helper`, later called as `b.hook(x)`) keeps the
-	// `self` it was referenced under. Neither rebinds to this receiver.
-	if b.Method.IsBlockArg || b.Method.SelfScope != nil {
+	// `self` it was referenced under, and a nested function the `self` of the
+	// method it was declared in. None of them rebinds to this receiver.
+	if b.Method.IsBlockArg || b.Method.Nested || b.Method.SelfScope != nil {
 		return b.Method.Call(ctx, scope, args)
 	}
 
