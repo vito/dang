@@ -160,23 +160,25 @@ func inferNodeWithoutAutoCall(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	}
 }
 
+// evalNodeWithoutAutoCall evaluates node as a reference (`&expr`): a
+// zero-arity function it resolves to is returned, not called. It evaluates a
+// copy of the node with AutoCall cleared rather than flipping the flag on the
+// shared AST: the same node can be evaluated concurrently (a `{{ }}` task per
+// field or list element), and mutating it would race with those readers.
 func evalNodeWithoutAutoCall(ctx context.Context, scope ValueScope, node Node) (Value, error) {
 	switch n := node.(type) {
 	case *Symbol:
-		prev := n.AutoCall
-		n.AutoCall = false
-		defer func() { n.AutoCall = prev }()
-		return EvalNode(ctx, scope, n)
+		ref := *n
+		ref.AutoCall = false
+		return EvalNode(ctx, scope, &ref)
 	case *Select:
-		prev := n.AutoCall
-		n.AutoCall = false
-		defer func() { n.AutoCall = prev }()
-		return EvalNode(ctx, scope, n)
+		ref := *n
+		ref.AutoCall = false
+		return EvalNode(ctx, scope, &ref)
 	case *Index:
-		prev := n.AutoCall
-		n.AutoCall = false
-		defer func() { n.AutoCall = prev }()
-		return EvalNode(ctx, scope, n)
+		ref := *n
+		ref.AutoCall = false
+		return EvalNode(ctx, scope, &ref)
 	case *Grouped:
 		return evalNodeWithoutAutoCall(ctx, scope, n.Expr)
 	default:
