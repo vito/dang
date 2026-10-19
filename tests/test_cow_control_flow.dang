@@ -2,8 +2,13 @@
 # made in `if`/`case` arms, `rescue` operands and arms, `loop`, `.each`/`.map`/
 # `.filter` blocks and user block-arg calls all accumulate into that call's
 # fork of `self`, and early exits (`return`, `break`) surface the generation
-# current at the exit. Writes are not rolled back by a rescued raise; a raising
-# callee's own fork is simply discarded.
+# current at the exit.
+#
+# The rescue cases below pin what falls out of copy-on-write rather than a
+# designed transactional rule: `rescue` doesn't roll anything back, so writes
+# that already ran in the same method stay, while a raising callee never
+# returns its fork, so its writes are lost. Neither is a guarantee worth
+# relying on; these tests guard against accidental changes.
 
 type Cat {
   name: String!
@@ -45,7 +50,7 @@ type Acc {
     self
   }
 
-  # rescue: writes made before a raise survive it
+  # rescue: no rollback, so writes that ran before the raise remain
   rescBare: Acc! { { total += 1; raise "boom" } rescue null; self }
 
   rescSelf: Acc! { { self.total += 1; raise "boom" } rescue null; self }
@@ -82,7 +87,7 @@ type Acc {
     self
   }
 
-  # ...but a raising callee's fork is discarded
+  # ...while a raising callee never returns its fork, so its writes are lost
   boomAfter: Acc! { total += 1; raise "x" }
 
   rescCallee: Int! { boomAfter rescue null; total }
@@ -250,8 +255,8 @@ assert("case else arm") { Acc.caseVal(3).total == 100 }
 assert("case type arm, bare") { Acc.casePet(Cat("c")).log == ["c"] }
 assert("case type arm, self.") { Acc.casePet(Dog("d")).log == ["d"] }
 
-assert("rescue keeps a bare write made before the raise") { Acc.rescBare.total == 1 }
-assert("rescue keeps a self. write made before the raise") { Acc.rescSelf.total == 1 }
+assert("no rollback: a bare write before the raise remains") { Acc.rescBare.total == 1 }
+assert("no rollback: a self. write before the raise remains") { Acc.rescSelf.total == 1 }
 assert("rescue arm write, bare") { Acc.rescArm.total == 5 }
 assert("rescue arm write, self.") { Acc.rescArmSelf.total == 5 }
 assert("rescue around .each keeps earlier iterations") { Acc.rescEach.total == 3 }
