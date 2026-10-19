@@ -489,7 +489,16 @@ func (c OverlayValueScope) Bind(name string, value Value, visibility Visibility)
 }
 
 func (c OverlayValueScope) Update(name string, value Value) {
-	// Delegate to the primary environment for scoping logic
+	// Reassign the binding where reads find it: primary first, then lexical.
+	// A name only the lexical scope binds (e.g. a top-level binding written
+	// from a method, constructor, nested function, or a block inside one)
+	// must be updated there — the same binding a free function's write
+	// reaches — not silently re-bound as a new local in primary, where the
+	// write would vanish when the call returns.
+	if !c.primary.Has(name) && c.lexical.Has(name) {
+		c.lexical.Update(name, value)
+		return
+	}
 	c.primary.Update(name, value)
 }
 
@@ -675,6 +684,13 @@ func (e *ConstructorScope) Update(name string, value Value) {
 	// receiver snapshot of a method called from this constructor.
 	inst, ok := e.instance()
 	if !ok {
+		return
+	}
+	// A name the instance doesn't have but the enclosing scope does (a
+	// top-level binding) is reassigned there, like from any function body,
+	// rather than grafted onto the instance as a new field.
+	if !inst.Has(name) && e.closure.Has(name) {
+		e.closure.Update(name, value)
 		return
 	}
 	e.MutateSelf(forkWithField(inst, name, value))
