@@ -1,0 +1,29 @@
+# `self` is available inside an object literal in a method body. Inference
+# already accepted `{{s: self}}`, but at runtime the literal's scope only
+# consulted the fresh record for `self`, so evaluation failed with "'self' is
+# not available in this context".
+
+type Acc {
+  total: Int! = 0
+
+  wrap: Int! { {{s: self}}.s.total }
+
+  # The literal captures the generation of `self` current when it is built.
+  aliasRecord: Int! {
+    let rec = {{s: self}}
+    total += 1
+    rec.s.total
+  }
+
+  afterWrite: Int! {
+    total += 1
+    {{s: self, t: total}}.s.total
+  }
+
+  nested: Int! { {{outer: {{inner: self}}}}.outer.inner.total }
+}
+
+assert("self in a record literal") { Acc(3).wrap == 3 }
+assert("record keeps the old generation") { Acc(0).aliasRecord == 0 }
+assert("record sees the current generation") { Acc(0).afterWrite == 1 }
+assert("self in a nested record literal") { Acc(4).nested == 4 }

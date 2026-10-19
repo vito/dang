@@ -506,9 +506,15 @@ func (c OverlayValueScope) Derive(sealed bool) ValueScope {
 	}
 }
 
-// Self returns the dynamic scope from the primary environment
+// Self returns the dynamic scope from the primary environment, falling back to
+// the lexical one when primary has none — e.g. an object literal `{{s: self}}`
+// inside a method, whose primary is the fresh record. This mirrors
+// OverlayTypeScope.GetDynamicScopeType, which already lets such code infer.
 func (c OverlayValueScope) Self() (Value, bool) {
-	return c.primary.Self()
+	if v, ok := c.primary.Self(); ok {
+		return v, true
+	}
+	return c.lexical.Self()
 }
 
 // MutateSelf sets the dynamic scope in the primary environment
