@@ -90,8 +90,23 @@ type Builder {
 
 `Clone` and `Fork` both share the dynamic-scope cell (a `*DynamicScope`
 pointer). Only `NewDynamicScope` creates a fresh one. So everything inside
-a single method call — closures, nested `.each`, user blocks — sees the
-same `self`, while distinct method calls are isolated.
+a single method call — closures, nested `.each`, user blocks, and nested
+functions declared in the body (`FunctionValue.Nested`, which run on a derive
+of their closure rather than through `BoundMethod.Call`) — sees the same
+`self`, while distinct method calls are isolated.
+
+### Whose `self` a function runs against
+
+Always the `self` where it was written, never the caller's:
+
+- Blocks and nested functions close over their scope, `self` cell included.
+- A method referenced by bare name (`helper(1)`, `&helper`) or through
+  `self` (`&self.helper`) is bound to the referencing scope
+  (`FunctionValue.SelfScope`, see `bindLexicalSelf`); calls dispatch on that
+  scope's `self`, read at call time. So a ref stored on another object and
+  invoked from its methods still runs against the object it came from.
+- `&obj.helper` with any other receiver is a `BoundMethod` on that value;
+  values are immutable, so binding it early is equivalent.
 
 ### Copy-on-write field assignment
 

@@ -1016,6 +1016,15 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				} else if found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
 					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
+						// Through `self` itself, bind like a bare reference
+						// instead (see bindLexicalSelf): `self` can change
+						// generations within a method, and `&self.helper`
+						// must read it when called, exactly like `&helper`.
+						// Any other receiver is an immutable value, so
+						// binding it now is equivalent.
+						if _, isSelf := d.Receiver.(*SelfKeyword); isSelf && fnVal.IsDynamic && !fnVal.IsBlockArg {
+							return fnVal.bindLexicalSelf(scope), nil
+						}
 						return BoundMethod{Method: fnVal, Receiver: rec}, nil
 					}
 					return val, nil

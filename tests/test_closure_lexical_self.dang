@@ -51,6 +51,16 @@ type Guest {
 
   bumpThenRef: Host! { n += 5; let h = Host; h.hook = &helper; h }
 
+  # Refs through `self` read it when called, like bare refs; refs through any
+  # other receiver hold that (immutable) value.
+  refBareThenWrite: Int! { let f = &helper; n += 5; f(1) }
+
+  refSelfThenWrite: Int! { let f = &self.helper; n += 5; f(1) }
+
+  refAliasThenWrite: Int! { let r = self; let f = &r.helper; n += 5; f(1) }
+
+  selfRefEscape: Host! { let h = Host; h.hook = &self.helper; h }
+
   # Same for a function declared inside the method.
   nestedFire: Int! {
     inner(x: Int!): Int! { n + x }
@@ -155,6 +165,16 @@ assert("stored method ref, self. call") { g.refFireSelf == 11 }
 assert("escaped method ref, called from the host") { g.refEscape.fire(1) == 11 }
 assert("escaped method ref, called directly") { g.refEscape.hook(1) == 11 }
 assert("ref sees the referencing method's self") { g.bumpThenRef.hook(1) == 16 }
+assert("bare ref reads self when called") { g.refBareThenWrite == 16 }
+assert("self. ref reads self when called") { g.refSelfThenWrite == 16 }
+assert("ref through an alias keeps the alias's value") { g.refAliasThenWrite == 11 }
+assert("escaped self. ref keeps its own receiver") { g.selfRefEscape.fire(1) == 11 }
+
+# A ref through a variable holds the value, not the variable.
+let gVar = Guest
+let gRef = &gVar.helper
+gVar.n = 50
+assert("ref through a variable keeps the value") { gRef(1) == 11 and gVar.n == 50 }
 assert("stored nested fn ref") { g.nestedFire == 11 }
 assert("escaped nested fn ref") { g.nestedEscape.fire(1) == 12 }
 assert("escaped nested fn ref, called directly") { g.nestedEscape.hook(1) == 12 }

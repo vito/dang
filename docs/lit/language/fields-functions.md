@@ -165,6 +165,8 @@ greet(someNullableString)  # falls back to "world" when the value is null
 - needed for assignment to a function-typed field, passing as an arg, etc.
 - combined with `.method` selection: `&user.greet`
 - a captured ref must still satisfy the target's block-parameter signature
+- a method ref is lexically bound: wherever it is stored or called from (even another object's methods), it runs against the `self` where it was written, never the caller's
+- inside a method, `&helper` and `&self.helper` read `self` when called, so they see field writes made after the ref was taken; a ref through any other receiver (`&r.helper`) holds that value, since values are immutable
 
 ### Nested functions
 

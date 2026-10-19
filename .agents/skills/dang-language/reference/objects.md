@@ -55,6 +55,8 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 ### Function references: `&fn`
 - `&` yields the function itself without calling it: `&greet`, `&user.greet`.
 - Needed to assign to a function-typed field, pass as an arg, etc. Re-reads its closure each call. A captured ref must still satisfy the target's block-parameter signature.
+- A method ref is **lexically bound**: wherever it is stored or called from (even another object's methods), it runs against the `self` where the ref was written, never the caller's.
+- Inside a method, `&helper` and `&self.helper` read `self` **when called**, so they see field writes the method makes after taking the ref (`let f = &helper; n += 5; f(1)` sees the new `n`). A ref through any other receiver (`&r.helper`, with `let r = self` or any other value) holds that value: values are immutable, so later writes (which fork `self`, or rebind `r`) don't reach it.
 
 ### Nested functions
 - Functions declared inside method (or `new()`) bodies are **closures, like blocks**: names resolve lexically (the method's args and locals shadow fields inside them, just as in the method body), and they share the method's `self`, so field writes inside them (bare or `self.`) accumulate into the method's fork. That makes them usable as inline helpers:
