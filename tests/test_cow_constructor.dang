@@ -14,7 +14,10 @@ type CtorHelper {
   helper(&blk(x: Int!): Int!): Int! { blk(1); blk(2); count }
 
   new {
-    seen = helper { x => count += x; count }
+    seen = helper { x =>
+      count += x
+      count
+    }
     self
   }
 }
@@ -30,7 +33,10 @@ type CtorBlockArg {
   check(&c: Boolean!): Int! { c; count }
 
   new(&cond: Boolean!) {
-    seen = check { count += 10; cond }
+    seen = check {
+      count += 10
+      cond
+    }
     self
   }
 }

@@ -10,13 +10,29 @@ type Acc {
   twice(&block(x: Int!): Int!): Int! { block(1); block(2); total }
 
   # The block mutates run's own fork; twice's receiver stays at 0.
-  run: Int! { twice { x => total += x; total } }
+  run: Int! {
+    twice { x =>
+      total += x
+      total
+    }
+  }
 
   # Same, through an explicit receiver.
-  runSelf: Int! { self.twice { x => total += x; total } }
+  runSelf: Int! {
+    self.twice { x =>
+      total += x
+      total
+    }
+  }
 
   # The block's writes still accumulate into the enclosing method's fork.
-  collect: Acc! { twice { x => total += x; total }; self }
+  collect: Acc! {
+    twice { x =>
+      total += x
+      total
+    }
+    self
+  }
 }
 
 assert("callee reads its own receiver") { Acc(0).run == 0 }
