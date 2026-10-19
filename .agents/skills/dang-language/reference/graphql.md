@@ -45,6 +45,7 @@ node(id: "x").{{
 - Works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}`, comma/newline-separated, elementwise on lists).
 - Non-matching assertion returns `null` (`cat.{{... on Dog}} == null`), as does a narrowing of a `null` value.
 - Non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`. A `null` value raises too (`… got null`).
+- On a value already known to be of a concrete type (a checked nullable field, a `case` binding), a narrowing is matched without a request.
 
 ## Lists of objects
 ```dang
