@@ -90,10 +90,10 @@ users.{{ name, email }}
 
 - root `Mutation` fields are functions like queries
 - the result is whatever the schema declares
-- side effects happen when the call executes, which is when its value is **forced**
+- side effects happen when the call executes, which is when its value is **forced** — and every forced selection off an object-returning mutation re-sends it: `let u = Mutation.createUser(…)` runs nothing on its own, and `u.name` then `u.id` creates two users. Select everything you need in one `.{{ }}` on the call (`Mutation.createUser(…).{{ id, name }}`) to run it exactly once
 - the laziness/forcing rules below apply to mutations as they do to queries, with one exception: nullable object fields reached through a mutation are not checked for null (see [#nullable-object-fields])
 
-> Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. See [#mutation] for how forcing interacts with side effects.
+> Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. Two exceptions send a small query early: a handle that may be `null` is checked when it escapes the chain (see [#nullable-object-fields]), and `case` asks for the concrete type of an interface or union value it matches type patterns against (see [#interfaces-unions]). See [#mutation] for how forcing interacts with side effects.
 
 ## Nullable object fields {#nullable-object-fields}
 
