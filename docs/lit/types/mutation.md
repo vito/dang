@@ -121,6 +121,16 @@ let pair = {{
 [pair.a, pair.b, counter]
 ```
 
+```dang-static
+# a function defined outside the `{{ }}` still writes its own shared scope,
+# so calling it from several fields races: those writes happen in an
+# unspecified order (and `+=` can lose updates). Keep shared writes out of
+# `{{ }}` fields; a compile-time check for this is planned.
+let hits = 0
+inc: Int! { hits += 1; hits }
+{{ a: inc, b: inc }}
+```
+
 ```dang
 # fields coordinate by value in any order (a field naming a sibling waits for it)
 {{ total: a + b, a: 1, b: 2 }}.total
