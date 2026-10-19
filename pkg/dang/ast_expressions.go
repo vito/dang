@@ -1956,11 +1956,26 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 		return nil, fmt.Errorf("GraphQL inline fragments: no query chain")
 	}
 
+	// A handle already narrowed to its concrete type (a probed nullable
+	// field, a resolved `case` operand, a `... on T` narrowing) has a chain
+	// scoped to that type, where a fragment on any other type is invalid
+	// GraphQL. Only its own fragment can match, so only that one is sent;
+	// with none, the selection fails the same way a server-reported type
+	// matching no fragment does, without a request.
+	fragments := o.InlineFragments
+	if typeName, ok := gqlVal.concreteObjectTypeName(); ok && !o.IsList {
+		frag := o.fragmentFor(typeName)
+		if frag == nil {
+			return nil, fmt.Errorf("no inline fragment matched __typename %q", typeName)
+		}
+		fragments = []*InlineFragment{frag}
+	}
+
 	// Build inline fragment query string
 	// We need: { __typename ... on User { name email } ... on Post { title author { name } } }
 	var fragParts []string
 	fragParts = append(fragParts, "__typename")
-	for _, frag := range o.InlineFragments {
+	for _, frag := range fragments {
 		var fieldParts []string
 		for _, field := range frag.Fields {
 			if field.Selection != nil {
@@ -1999,6 +2014,12 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 	// Handle list types: query __typename for each element, return a list of GraphQLValues
 	if o.IsList {
 		return o.evalGraphQLLazyInlineFragmentsList(gqlVal, ctx, scope)
+	}
+
+	// A handle already narrowed to its concrete type needs no __typename
+	// query: its type is known, and its chain is scoped to it already.
+	if typeName, ok := gqlVal.concreteObjectTypeName(); ok {
+		return o.matchLazyInlineFragment(gqlVal, typeName, nil)
 	}
 
 	// Query __typename to discover the concrete type. The receiver may be a
@@ -2060,7 +2081,9 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue
 }
 
 // matchLazyInlineFragment finds the matching fragment for a given __typename and returns
-// a GraphQLValue for the concrete type, or null/error if no match.
+// a GraphQLValue for the concrete type, or null/error if no match. A nil query
+// means gqlVal's chain is already scoped to typeName, so no inline fragment is
+// added to it.
 func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName string, query *querybuilder.Selection) (Value, error) {
 	for _, frag := range o.InlineFragments {
 		if frag.TypeName.Name == typeName {
@@ -2073,9 +2096,14 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 			// Return a GraphQLValue for the concrete type, with an inline fragment
 			// added to the query chain so subsequent field selections are scoped
 			// to the concrete type (e.g. node(id:...){... on Container{field}}).
-			// The __typename query just showed the object is there, so the
-			// handle is no longer MaybeNull; it is still the same object, so a
-			// known ID carries over.
+			// The object is known to be there (from the __typename query, or
+			// the probe that made the handle concrete), so the handle is no
+			// longer MaybeNull; it is still the same object, so a known ID
+			// carries over.
+			chain := gqlVal.QueryChain
+			if query != nil {
+				chain = query.InlineFragment(typeName)
+			}
 			return GraphQLValue{
 				Name:       gqlVal.Name,
 				TypeName:   typeName,
@@ -2084,7 +2112,7 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 				Client:     gqlVal.Client,
 				Schema:     gqlVal.Schema,
 				TypeScope:  gqlVal.TypeScope,
-				QueryChain: query.InlineFragment(typeName),
+				QueryChain: chain,
 				IsMutation: gqlVal.IsMutation,
 				KnownID:    gqlVal.KnownID,
 			}, nil
@@ -2100,6 +2128,18 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 	}
 
 	return NullValue{}, nil
+}
+
+// fragmentFor returns the inline fragment on typeName, if any. Fragments are
+// always on concrete member or implementer types (see
+// resolveInlineFragmentMemberType), so a concrete type matches by name.
+func (o *ObjectSelection) fragmentFor(typeName string) *InlineFragment {
+	for _, frag := range o.InlineFragments {
+		if frag.TypeName.Name == typeName {
+			return frag
+		}
+	}
+	return nil
 }
 
 // inlineFragmentTypeNames returns a comma-separated list of type names from inline fragments.

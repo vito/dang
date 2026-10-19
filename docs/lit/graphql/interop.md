@@ -70,6 +70,7 @@ node(id: "x").{{
 - works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}` — comma- or newline-separated); multiple lazy fragments narrow a union
 - a narrowing that doesn't match returns `null`: `cat.{{... on Dog}} == null` (e.g. `node(...).{{... on Post}}` when the node is a User), and so does one on a `null` value
 - the non-null form `... on User!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`. A `null` value fails the assertion too (`… got null`), since `null` isn't a `User`; use `... on User` to let it through
+- on a value already known to be of a concrete type (a checked nullable field, a `case` binding), a narrowing is matched without a request
 - useful for narrowing a GraphQL interface/union value before chaining (`node(id).{{... on User}}.name`)
 
 ## Lists of objects

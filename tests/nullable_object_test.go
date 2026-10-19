@@ -332,3 +332,57 @@ assert { r.contains("cannot match type pattern User") }
 		require.Empty(t, queries)
 	})
 }
+
+// A handle narrowed to its concrete type, like a checked nullable interface
+// field loaded by ID, has a chain scoped to that type. Inline fragments on it
+// send only its own type's fragment, since a fragment on another type would
+// be invalid there, and lazy fragments match without asking for __typename.
+func (DangSuite) TestInlineFragmentsOnConcreteHandleQueries(ctx context.Context, t *testctx.T) {
+	run := func(t *testctx.T, source string) []string {
+		return runRecordingQueries(ctx, t, source)
+	}
+
+	t.Run("selects only the concrete type's fragment", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let n = node(id: "Post:1")
+let r = case (n.{{... on User {{ name }}, ... on Post {{ title }}}}) {
+  u: User => u.name
+  p: Post => p.title
+}
+assert { r == "First Post" }
+`)
+		require.Equal(t, []string{
+			`query Query {node(id:"Post:1"){id __typename}}`,
+			`query Query {node(id:"Post:1"){... on Post{__typename ... on Post { title }}}}`,
+		}, queries)
+	})
+
+	t.Run("matches a lazy fragment without a query", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let n = node(id: "Post:1")
+assert { n.{{... on Post!}}.title == "First Post" }
+assert { n.{{... on User}} == null }
+`)
+		require.Equal(t, []string{
+			`query Query {node(id:"Post:1"){id __typename}}`,
+			`query Query {node(id:"Post:1"){... on Post{title}}}`,
+		}, queries)
+	})
+
+	t.Run("fails a selection with no matching fragment without a query", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let n = node(id: "Post:1")
+let r = {
+  case (n.{{... on User {{ name }}}}) {
+    u: User => u.name
+  }
+} rescue {
+  e: RuntimeError => e.message
+}
+assert { r == "no inline fragment matched __typename \"Post\"" }
+`)
+		require.Equal(t, []string{
+			`query Query {node(id:"Post:1"){id __typename}}`,
+		}, queries)
+	})
+}

@@ -121,6 +121,21 @@ let assertedMissing = { missing.{{... on User!}}.name } rescue {
 }
 assert { assertedMissing == "inline fragment type assertion failed: expected one of User, got null" }
 
+# A handle checked earlier is narrowed to its concrete type; selecting
+# fragments for several types off it still matches the right one
+let describeNode(n: Node!): String! {
+  case (n.{{... on User {{ name }}, ... on Post {{ title }}}}) {
+    u: User => "user " + u.name
+    p: Post => "post " + p.title
+  }
+}
+
+let checkedPost = node(id: "Post:1")
+assert { describeNode(checkedPost!) == "post First Post" }
+assert { describeNode(node(id: "User:1")!) == "user John Doe" }
+assert { checkedPost.{{... on Post!}}.title == "First Post" }
+assert { checkedPost.{{... on User}} == null }
+
 # Mutations returning a nullable object are left lazy (a probe would re-send
 # the mutation), but still work
 let updated = Mutation.updateUser(id: "User:2", input: UpdateUserInput(name: "Jane Smith"))

@@ -1214,6 +1214,21 @@ func (g GraphQLValue) isAbstract() bool {
 	return t != nil && (t.Kind == introspection.TypeKindInterface || t.Kind == introspection.TypeKindUnion)
 }
 
+// concreteObjectTypeName returns the handle's type name when it is already
+// known to be a concrete object type, with a chain scoped to it: a single
+// (non-list) handle of an object type that can't still turn out null. Inline
+// fragments on such a handle are matched without asking for __typename.
+func (g GraphQLValue) concreteObjectTypeName() (string, bool) {
+	if g.MaybeNull || g.Schema == nil || (g.Field != nil && isListTypeRef(g.Field.TypeRef)) {
+		return "", false
+	}
+	t := g.Schema.Types.Get(g.TypeName)
+	if t == nil || t.Kind != introspection.TypeKindObject {
+		return "", false
+	}
+	return g.TypeName, true
+}
+
 // resolveObject runs a single query against the end of the handle's chain
 // for the object's `__typename`, and its `id` when it has a loadable one (see
 // nullProbeSelection). It returns null if the server resolved the object to
