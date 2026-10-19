@@ -485,6 +485,9 @@ func formatDeclSignature(node dang.Node) string {
 		return dang.Format(&fieldCopy)
 
 	case *dang.ObjectDecl:
+		if n.Kind == dang.InputKind {
+			return fmt.Sprintf("input %s", n.Name.Name)
+		}
 		return fmt.Sprintf("type %s", n.Name.Name)
 
 	default:

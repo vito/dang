@@ -39,6 +39,17 @@ interface Thing {
 `,
 			want: "interface Thing {\n  id: String!\n}",
 		},
+		{
+			name: "input",
+			src: `"""
+A user filter.
+"""
+input Filter {
+  name: String!
+}
+`,
+			want: "input Filter {\n  name: String!\n}",
+		},
 	}
 
 	for _, tt := range tests {
@@ -64,6 +75,21 @@ interface Thing {
 				t.Fatalf("code block should not contain top-level doc string: %q", codeBlock)
 			}
 		})
+	}
+}
+
+func TestFormatDeclSignature(t *testing.T) {
+	// The fallback signature for a declaration with no inferred type keeps its
+	// keyword: an input reuses ObjectDecl, but isn't a `type`.
+	parsed, err := dang.Parse("hover.dang", []byte("type Person {\n  name: String!\n}\n\ninput Filter {\n  name: String!\n}\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	forms := parsed.(*dang.FileBlock).Forms
+	for i, want := range []string{"type Person", "input Filter"} {
+		if got := formatDeclSignature(forms[i]); got != want {
+			t.Fatalf("formatDeclSignature(forms[%d]) = %q, want %q", i, got, want)
+		}
 	}
 }
 
