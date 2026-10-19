@@ -1837,11 +1837,11 @@ type FunctionValue struct {
 	// ends up being called. Nil until referenced.
 	SelfScope ValueScope
 
-	// Nested marks a function declared inside a method body. It is a closure:
-	// its body runs on its own Closure, so the method's args and locals
-	// shadow fields as they do anywhere else in the method, and its `self` is
-	// the method's current `self`. Like a sibling method, each call works on
-	// its own fork of that `self` (fork-per-call); see FunctionValue.Call.
+	// Nested marks a function declared inside a method or new() body. It is
+	// a closure, like a block: its body runs on its own Closure, so the
+	// method's args and locals shadow fields as they do anywhere else in the
+	// method, and it shares the method's `self` cell, so its field writes
+	// accumulate into the method's fork; see FunctionValue.Call.
 	Nested bool
 
 	IsBlockArg          bool
@@ -1928,20 +1928,12 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 
 	switch {
 	case f.Nested:
-		// A nested function runs on its closure, so the enclosing method's
-		// args and locals resolve lexically (shadowing fields), and its
-		// `self` is the enclosing method's current `self`, read through the
-		// closure. Each call gets a fresh cell holding a fork of it, so field
-		// writes in the body stay in that fork (fork-per-call, like a sibling
-		// method) and surface only if it returns `self`. Bare field names
-		// resolve through this cell too (see Object.nextFrame). Dropping the
-		// EnterSelf would instead share the method's cell, accumulating the
-		// body's writes into the method's fork like a block's.
-		if self, ok := f.Closure.Self(); ok {
-			if obj, ok := self.(*Object); ok {
-				fnScope.EnterSelf(obj.snapshotReceiver())
-			}
-		}
+		// A nested function is a closure, like a block: it runs on a derive
+		// of its closure, so the enclosing method's args and locals resolve
+		// lexically (shadowing fields), and it shares the method's `self`
+		// cell, so its field writes (bare or `self.`) accumulate into the
+		// method's fork. That is what makes it usable as an inline helper,
+		// e.g. `let bump: Int! { n += 1; n }` called repeatedly.
 	case f.IsDynamic && !f.IsBlockArg:
 		// Fallback for a receiver that is neither a scope nor a scalar. Enter
 		// a fresh cell: MutateSelf would overwrite the cell fnScope shares
@@ -2301,10 +2293,10 @@ type Object struct {
 //
 // cell is the `self` cell of the frame the resolution started from. A
 // selfParent frame continues into that cell's `self` rather than its own, so
-// a frame that entered a fresh `self` over a method's scope (a nested
-// function call, see FunctionValue.Call) resolves the method's locals and
-// args lexically but its fields through its own `self`. Every other frame
-// shares its method's cell, making the two the same; nil falls back to m's.
+// a frame that entered a fresh `self` over a method's scope (a `{{ }}` task,
+// see forkTaskScope) resolves the method's locals and args lexically but its
+// fields through its own `self`. Every other frame shares its method's cell,
+// making the two the same; nil falls back to m's.
 func (m *Object) nextFrame(cell *DynamicScope) (*Object, bool) {
 	if m.selfParent {
 		if cell == nil {
@@ -2777,12 +2769,14 @@ func newSelfFrame(self *Object) *Object {
 	return frame
 }
 
-// inMethodBody reports whether scope lies inside a method body, i.e. its
-// frames reach a method's newSelfFrame before any `self` value. Functions
-// declared there are nested functions: they close over the method's locals
-// and `self` (see FunctionValue.Nested).
+// inMethodBody reports whether scope lies inside a method or new() body, i.e.
+// its frames reach a method's newSelfFrame (or a constructor scope) before any
+// `self` value. Functions declared there are nested functions: they close over
+// the body's locals and `self` (see FunctionValue.Nested).
 func inMethodBody(scope ValueScope) bool {
 	switch s := scope.(type) {
+	case *ConstructorScope:
+		return true
 	case OverlayValueScope:
 		return inMethodBody(s.primary)
 	case recordFieldScope:

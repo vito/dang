@@ -233,7 +233,7 @@ type Acc {
     self
   }
 
-  # nested functions fork like methods
+  # nested functions share the method's self, like blocks
   nestedFn: Acc! { inc: Acc! { total += 1; self }; let a = inc; a }
 
   nestedFnTwice: Int! { inc: Int! { total += 1; total }; inc; inc; total }
@@ -287,5 +287,5 @@ assert("recursion accumulates through forks") { Acc.countdown(3).total == 6 }
 assert("recursion with rescue") { Acc.rec(3).total == 6 }
 assert("recursion via return from a block") { Acc.walk(3).total == 6 }
 
-assert("nested function forks self") { Acc.nestedFn.total == 1 }
-assert("nested function calls don't touch the caller") { Acc.nestedFnTwice == 0 }
+assert("nested function writes self") { Acc.nestedFn.total == 1 }
+assert("nested function calls accumulate in the caller") { Acc.nestedFnTwice == 2 }

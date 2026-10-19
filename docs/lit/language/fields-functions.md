@@ -168,8 +168,9 @@ greet(someNullableString)  # falls back to "world" when the value is null
 
 ### Nested functions
 
-- functions declared inside method bodies can capture enclosing scope
-- captured `self` works — nested function still acts as a method on the receiver
+- functions declared inside method (or `new()`) bodies are closures, like blocks: they capture the enclosing scope lexically, so the method's args and locals shadow fields inside them just as in the method body
+- they share the method's `self`: field writes inside them (bare or `self.`) accumulate into the method's fork, so `let bump: Int! { n += 1; n }` called twice yields `1` then `2` and leaves `n == 2` for the rest of the method
+- sibling methods differ: each call forks `self` on its own, and its changes surface only through a returned `self`
 
 > Meta: link forward to [#blocks] — block arguments are the more common form of "pass code." Function refs are for the cases where you need a true callable to store or rebind.
 

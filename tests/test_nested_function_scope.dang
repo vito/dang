@@ -1,12 +1,14 @@
-# Functions declared inside a method body are lexically scoped closures: the
-# enclosing method's args and locals shadow fields inside them, exactly as in
-# the method itself, and their `self` is the method's current `self`. Like a
-# sibling method, each call works on its own fork of that `self`.
+# Functions declared inside a method body are lexically scoped closures, like
+# blocks: the enclosing method's args and locals shadow fields inside them,
+# exactly as in the method itself, and they share the method's `self`, so their
+# field writes accumulate into the method's fork. That makes them usable as
+# inline helpers (`let bump: Int! { n += 1; n }`).
 #
 # Before the fix a nested function ran like a sibling method with the
 # receiver's fields overlaid on its closure, so a field shadowed the enclosing
 # method's same-named arg or local: with field n = 10, `let n = 5` followed by
-# `inner(x) { n + x }; inner(1)` returned 11 instead of 6.
+# `inner(x) { n + x }; inner(1)` returned 11 instead of 6. Its writes also went
+# to a private fork per call, so `bump; bump` left the method's `n` unchanged.
 
 type Shadow {
   n: Int! = 10
@@ -49,23 +51,56 @@ type Shadow {
     inner(1)
   }
 
-  # Field writes in a nested function fork per call.
-  forkPerCall: Shadow! {
+  # Field writes in a nested function accumulate into the method's fork.
+  accumulates: Shadow! {
     let bump: Shadow! { n += 1; self }
     bump
     bump
     self
   }
 
-  enclosingUntouched: Int! {
+  enclosingSeesWrites: Int! {
     let bump: Shadow! { n += 1; self }
     bump
     n
   }
 
-  returnsFork: Shadow! {
+  returnsSelf: Shadow! {
     let bump: Shadow! { n += 1; self }
     bump
+  }
+
+  # The inline-helper pattern: each call sees the previous one's write.
+  inlineHelper: [Int!]! {
+    let bump: Int! { n += 1; n }
+    let a = bump
+    let b = bump
+    [a, b, n]
+  }
+
+  selfFormHelper: [Int!]! {
+    let bump: Int! { self.n += 1; self.n }
+    let a = bump
+    let b = bump
+    [a, b, n]
+  }
+
+  # Aliases of `self` taken before a nested function's write keep the old
+  # value: the write forks `self` like any other.
+  aliasBeforeHelper: [Int!]! {
+    let r = self
+    let bump: Int! { n += 1; n }
+    bump
+    [r.n, n]
+  }
+
+  # Writes to the enclosing method's locals land there too.
+  writesLocal: Int! {
+    let count = 0
+    let tick: Int! { count += 1; count }
+    tick
+    tick
+    count
   }
 
   # Inside the nested function, bare and self. forms see each other's writes.
@@ -79,13 +114,14 @@ type Shadow {
     inner
   }
 
-  # Blocks inside a nested function accumulate into its fork.
+  # Blocks inside a nested function accumulate into the method's fork too.
   blockInNested: Shadow! {
-    let inner: Shadow! {
+    let inner: Int! {
       [1, 2].each { x => n += x }
-      self
+      n
     }
     inner
+    self
   }
 
   # A nested function declared in a block sees the block's locals.
@@ -106,11 +142,50 @@ assert("arg shadows the field, zero-arity") { s.argShadowsZeroArity(3) == 6 }
 assert("arg written into a field") { s.argIntoField(4).n == 8 }
 assert("field visible when unshadowed") { s.fieldVisible == 11 }
 assert("sees the method's current self") { s.readsCurrentSelf == 16 }
-assert("writes fork per call") { s.forkPerCall.n == 10 }
-assert("enclosing method's self untouched") { s.enclosingUntouched == 10 }
-assert("returned fork carries the write") { s.returnsFork.n == 11 }
+assert("writes accumulate across calls") { s.accumulates.n == 12 }
+assert("enclosing method sees the write") { s.enclosingSeesWrites == 11 }
+assert("returned self carries the write") { s.returnsSelf.n == 11 }
+assert("inline helper") { s.inlineHelper == [11, 12, 12] }
+assert("inline helper, self. form") { s.selfFormHelper == [11, 12, 12] }
+assert("alias keeps the pre-write value") { s.aliasBeforeHelper == [10, 11] }
+assert("writes to enclosing locals") { s.writesLocal == 2 }
 assert("bare write, self. read") { s.bareThenSelf == 11 }
 assert("self. write, bare read") { s.selfThenBare == 7 }
-assert("block writes accumulate in the nested fork") { s.blockInNested.n == 13 }
+assert("block writes in a nested function") { s.blockInNested.n == 13 }
 assert("nested function in a block") { s.nestedInBlock == [6] }
 assert("receiver untouched") { s.n == 10 }
+
+# The example from the language reference.
+type Counter {
+  n: Int! = 0
+
+  run: [Int!]! {
+    let bump: Int! { n += 1; n }
+    let a = bump
+    let b = bump
+    [a, b, n]
+  }
+}
+
+assert("Counter.run") { Counter.run == [1, 2, 2] }
+assert("Counter untouched") { Counter.n == 0 }
+
+# Nested functions in new() share the constructor's `self` the same way.
+type Built {
+  n: Int! = 0
+  seen: [Int!]! = []
+
+  new(times: Int!) {
+    let bump: Int! { n += 1; n }
+    let i = 0
+    loop {
+      if (i >= times) { break }
+      seen += [bump]
+      i += 1
+    }
+    self
+  }
+}
+
+assert("nested function in new() accumulates") { Built(3).n == 3 }
+assert("nested function in new() sees each write") { Built(3).seen == [1, 2, 3] }

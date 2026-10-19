@@ -57,7 +57,15 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 - Needed to assign to a function-typed field, pass as an arg, etc. Re-reads its closure each call. A captured ref must still satisfy the target's block-parameter signature.
 
 ### Nested functions
-- Functions declared inside method bodies capture enclosing scope, including `self` (the nested function still acts as a method on the receiver).
+- Functions declared inside method (or `new()`) bodies are **closures, like blocks**: names resolve lexically (the method's args and locals shadow fields inside them, just as in the method body), and they share the method's `self`, so field writes inside them (bare or `self.`) accumulate into the method's fork. That makes them usable as inline helpers:
+  ```dang
+  type Counter {
+    n: Int! = 0
+    run: [Int!]! { let bump: Int! { n += 1; n }; let a = bump; let b = bump; [a, b, n] }
+  }
+  Counter.run == [1, 2, 2]   # Counter.n is still 0
+  ```
+- Contrast sibling methods (`bump` declared on the type): each call forks `self` independently, so the changes surface only through a returned `self`.
 
 ## Blocks (the "lambda of Dang")
 

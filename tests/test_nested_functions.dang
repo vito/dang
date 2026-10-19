@@ -8,10 +8,9 @@ type Counter {
   val: Int = 0
 
   incr: Counter! {
-    # Define a helper function inside the method
+    # Define a helper function inside the method. It is a closure sharing the
+    # method's `self`, so incrBy(1) runs on (and returns) the method's fork.
     let helper: Counter! {
-      # This helper has 'self' in its closure, so IsMethod=true
-      # That means it will fork and update self when called
       incrBy(1)
     }
 
