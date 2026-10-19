@@ -2493,11 +2493,43 @@ func (m *Object) Update(name string, value Value) {
 }
 
 // forkWithField returns a copy-on-write fork of obj with name set to value,
-// leaving obj itself untouched — the same fork `self.x = v` makes in
+// leaving obj itself untouched — the same result `self.x = v` produces in
 // evalFieldAssignment. The caller installs the result as the new `self`.
+//
+// Deriving a child frame per write would make a loop of bare writes
+// (`xs.each { x => total += x }`) build a chain as deep as its iteration count,
+// and every read of a field the loop doesn't write would walk all of it —
+// quadratic. So when obj is itself a copy-on-write frame (it has a parent), its
+// frame is copied instead, with the new generation as obj's sibling: chains
+// stay as deep as they were, and a write costs one copy of the fields written
+// so far.
 func forkWithField(obj *Object, name string, value Value) *Object {
-	next := obj.Derive(false).(*Object)
-	next.Bind(name, value, obj.Visibility(name))
+	vis := obj.Visibility(name)
+	if obj.Parent == nil {
+		next := obj.Derive(false).(*Object)
+		next.Bind(name, value, vis)
+		return next
+	}
+	obj.mu.Lock()
+	next := &Object{
+		Mod:          obj.Mod,
+		Values:       maps.Clone(obj.Values),
+		Visibilities: maps.Clone(obj.Visibilities),
+		Pending:      maps.Clone(obj.Pending),
+		Parent:       obj.Parent,
+		IsForked:     obj.IsForked,
+		dynamicScope: obj.dynamicScope,
+	}
+	obj.mu.Unlock()
+	if next.Values == nil {
+		next.Values = make(map[string]Value)
+	}
+	if next.Visibilities == nil {
+		next.Visibilities = make(map[string]Visibility)
+	}
+	delete(next.Pending, name)
+	next.Values[name] = value
+	next.Visibilities[name] = vis
 	return next
 }
 
