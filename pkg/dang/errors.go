@@ -199,20 +199,19 @@ type EvalContext struct {
 	warnedDeprecations map[string]bool
 }
 
-// Context key for storing EvalContext in Go context
-type evalContextKey struct{}
-
 // WithEvalContext stores the EvalContext in the Go context
 func WithEvalContext(ctx context.Context, evalCtx *EvalContext) context.Context {
-	return context.WithValue(ctx, evalContextKey{}, evalCtx)
+	if f := frameFrom(ctx); f != nil && f.evalCtx == evalCtx {
+		return ctx
+	}
+	f := deriveFrame(ctx)
+	f.evalCtx = evalCtx
+	return withFrame(ctx, f)
 }
 
 // GetEvalContext retrieves the EvalContext from the Go context
 func GetEvalContext(ctx context.Context) *EvalContext {
-	if evalCtx, ok := ctx.Value(evalContextKey{}).(*EvalContext); ok {
-		return evalCtx
-	}
-	return nil
+	return currentFrame(ctx).evalCtx
 }
 
 // CreateEvalError creates a source error from within an evaluator

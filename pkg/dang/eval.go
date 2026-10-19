@@ -23,10 +23,8 @@ import (
 	"github.com/vito/dang/v2/pkg/querybuilder"
 )
 
-// Context key for passing block arguments
+// Context key for inference-time state
 type contextKey string
-
-const blockArgContextKey contextKey = "blockArg"
 
 // ContextWithBlock attaches val as the block argument for the next
 // Callable invocation that consumes ctx. The wrapped value must
@@ -35,9 +33,17 @@ const blockArgContextKey contextKey = "blockArg"
 //
 // Embedders (e.g. Booklit) use this when programmatically calling a
 // Dang function that declares a block parameter — the surface syntax
-// `Foo(...) { ... }` sets the same key during parsing.
+// `Foo(...) { ... }` sets the same state during evaluation.
 func ContextWithBlock(ctx context.Context, val Value) context.Context {
-	return context.WithValue(ctx, blockArgContextKey, val)
+	f := deriveFrame(ctx)
+	f.blockArg = val
+	return withFrame(ctx, f)
+}
+
+// currentBlockArg returns the block argument attached to ctx (see
+// ContextWithBlock), or nil if there is none.
+func currentBlockArg(ctx context.Context) Value {
+	return currentFrame(ctx).blockArg
 }
 
 // Value represents a runtime value in the Dang language
@@ -742,10 +748,8 @@ func addBuiltinFunctions(scope ValueScope) {
 
 				// Extract block from context if present
 				var blockArg *FunctionValue
-				if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
-					if fnVal, ok := blockVal.(FunctionValue); ok {
-						blockArg = &fnVal
-					}
+				if fnVal, ok := currentBlockArg(ctx).(FunctionValue); ok {
+					blockArg = &fnVal
 				}
 
 				return def.Impl(ctx, nil, Args{Values: argsWithDefaults, Block: blockArg})
@@ -770,10 +774,8 @@ func addBuiltinFunctions(scope ValueScope) {
 
 					// Extract block from context if present
 					var blockArg *FunctionValue
-					if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
-						if fnVal, ok := blockVal.(FunctionValue); ok {
-							blockArg = &fnVal
-						}
+					if fnVal, ok := currentBlockArg(ctx).(FunctionValue); ok {
+						blockArg = &fnVal
 					}
 
 					return def.Impl(ctx, selfVal, Args{Values: argsWithDefaults, Block: blockArg})
@@ -1873,7 +1875,7 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 		}
 	}
 
-	ctx, err := enterCall(ctx)
+	frame, err := enterCall(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1892,9 +1894,10 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 		invocationFrame := NewControlFrame(BlockInvocationFrame)
 		defer invocationFrame.Deactivate()
 
-		blockCtx := contextWithReturnFrame(ctx, f.CapturedReturnFrame)
-		blockCtx = contextWithBreakFrame(blockCtx, f.CapturedBreakFrame)
-		blockCtx = contextWithContinueFrame(blockCtx, invocationFrame)
+		frame.returnFrame = f.CapturedReturnFrame
+		frame.breakFrame = f.CapturedBreakFrame
+		frame.continueFrame = invocationFrame
+		blockCtx := withFrame(ctx, frame)
 
 		if err := f.BindArgs(blockCtx, fnScope, args); err != nil {
 			return nil, err
@@ -1916,8 +1919,9 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
-	fnCtx := contextWithFunctionControlBoundary(ctx)
-	fnCtx = contextWithReturnFrame(fnCtx, returnFrame)
+	frame.enterFunctionControlBoundary()
+	frame.returnFrame = returnFrame
+	fnCtx := withFrame(ctx, frame)
 
 	if err := f.BindArgs(fnCtx, fnScope, args); err != nil {
 		return nil, err
@@ -1972,8 +1976,8 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnScope ValueScope, args ma
 		blockParamName := f.BlockParamName
 		if blockParamName != "" {
 			// Extract block arg from context
-			if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
-				fnScope.Bind(blockParamName, blockVal.(Value), PrivateVisibility)
+			if blockVal := currentBlockArg(ctx); blockVal != nil {
+				fnScope.Bind(blockParamName, blockVal, PrivateVisibility)
 			}
 		}
 	}
@@ -2034,7 +2038,7 @@ type pendingInit struct {
 	err  error
 }
 
-// forceChain is a linked list, threaded through the context, of the pending
+// forceChain is a linked list, carried on the evaluation frame, of the pending
 // initializers currently being forced in one evaluation chain. It lets force
 // distinguish a genuine self-referential cycle (the same chain re-enters a
 // pending it is already forcing) from ordinary concurrent access by an
@@ -2044,13 +2048,10 @@ type forceChain struct {
 	parent *forceChain
 }
 
-type forceChainKey struct{}
-
 // forcingInChain reports whether p is already being forced earlier in ctx's
 // evaluation chain.
 func forcingInChain(ctx context.Context, p *pendingInit) bool {
-	fc, _ := ctx.Value(forceChainKey{}).(*forceChain)
-	for ; fc != nil; fc = fc.parent {
+	for fc := currentFrame(ctx).forceChain; fc != nil; fc = fc.parent {
 		if fc.p == p {
 			return true
 		}
@@ -2061,8 +2062,9 @@ func forcingInChain(ctx context.Context, p *pendingInit) bool {
 // withForceChain returns ctx extended with p as the innermost initializer
 // being forced.
 func withForceChain(ctx context.Context, p *pendingInit) context.Context {
-	fc, _ := ctx.Value(forceChainKey{}).(*forceChain)
-	return context.WithValue(ctx, forceChainKey{}, &forceChain{p: p, parent: fc})
+	f := deriveFrame(ctx)
+	f.forceChain = &forceChain{p: p, parent: f.forceChain}
+	return withFrame(ctx, f)
 }
 
 // evalParallel runs fn for each index in [0, n) concurrently and returns the
@@ -2471,7 +2473,7 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 		return b.Method.Call(ctx, scope, args)
 	}
 
-	ctx, err := enterCall(ctx)
+	frame, err := enterCall(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2483,7 +2485,8 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
-	methodCtx := contextWithReturnFrame(ctx, returnFrame)
+	frame.returnFrame = returnFrame
+	methodCtx := withFrame(ctx, frame)
 
 	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {
 		return nil, err
@@ -2529,7 +2532,7 @@ func (b BoundScalarMethod) MarshalJSON() ([]byte, error) {
 }
 
 func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-	ctx, err := enterCall(ctx)
+	frame, err := enterCall(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2541,7 +2544,8 @@ func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
-	methodCtx := contextWithReturnFrame(ctx, returnFrame)
+	frame.returnFrame = returnFrame
+	methodCtx := withFrame(ctx, frame)
 
 	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {
 		return nil, err
@@ -2669,11 +2673,12 @@ func (c *ConstructorFunction) String() string {
 }
 
 func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-	ctx, err := enterCall(ctx)
+	frame, err := enterCall(ctx)
 	if err != nil {
 		return nil, err
 	}
-	ctx = contextWithFunctionControlBoundary(ctx)
+	frame.enterFunctionControlBoundary()
+	ctx = withFrame(ctx, frame)
 
 	// Create a new instance of the object
 	instance := NewObject(c.ObjectType)
@@ -2730,13 +2735,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 			defaultScope.Bind(param.Name.Name, val, PrivateVisibility)
 		}
 		if c.BlockParamName != "" {
-			blockRaw := ctx.Value(blockArgContextKey)
-			if blockRaw == nil {
+			blockVal := currentBlockArg(ctx)
+			if blockVal == nil {
 				return nil, fmt.Errorf("missing block argument for constructor %s", c.ObjectName)
-			}
-			blockVal, ok := blockRaw.(Value)
-			if !ok {
-				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ObjectName)
 			}
 			argScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 			defaultScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
@@ -2749,7 +2750,8 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		newBodyScope.EnterSelf(instance)
 		returnFrame := NewControlFrame(ReturnFrame)
 		defer returnFrame.Deactivate()
-		newBodyCtx := contextWithReturnFrame(ctx, returnFrame)
+		frame.returnFrame = returnFrame
+		newBodyCtx := withFrame(ctx, frame)
 
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
@@ -3352,7 +3354,8 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 
 // EvalNode evaluates any AST node (legacy interface)
 func EvalNode(ctx context.Context, scope ValueScope, node Node) (Value, error) {
-	return EvalNodeWithContext(ctx, scope, node, GetEvalContext(ctx))
+	ctx, frame := ensureFrame(ctx)
+	return evalNode(ctx, scope, node, frame.evalCtx)
 }
 
 // EvalNodeWithContext evaluates any AST node with enhanced error reporting
@@ -3360,8 +3363,15 @@ func EvalNodeWithContext(ctx context.Context, scope ValueScope, node Node, evalC
 	// Store the eval context in the Go context for evaluators to access
 	if evalCtx != nil {
 		ctx = WithEvalContext(ctx, evalCtx)
+	} else {
+		ctx, _ = ensureFrame(ctx)
 	}
+	return evalNode(ctx, scope, node, evalCtx)
+}
 
+// evalNode evaluates node under ctx's frame, reporting errors against evalCtx.
+// It never changes the frame itself: evaluating a node costs no context layer.
+func evalNode(ctx context.Context, scope ValueScope, node Node, evalCtx *EvalContext) (Value, error) {
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, scope)
 		if err != nil {

@@ -232,11 +232,6 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
-// inFlightErrorKey carries the error currently being rescued through the
-// dynamic extent of a rescue arm (clause expr or fallback), so that a
-// raise evaluating during recovery can record it as the new error's cause.
-type inFlightErrorKey struct{}
-
 // raisedErrorFor returns the *RaisedError wrapper for an error caught by a
 // rescue: the original wrapper when the error came from raise (preserving
 // its location and cause chain), or a fresh one around the classified
@@ -263,7 +258,9 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// Resolve the error value once, and expose it to the arm's dynamic
 		// extent so a raise during recovery records it as the cause.
 		errVal := extractErrorValue(err)
-		armCtx := context.WithValue(ctx, inFlightErrorKey{}, raisedErrorFor(err, errVal))
+		armFrame := deriveFrame(ctx)
+		armFrame.inFlight = raisedErrorFor(err, errVal)
+		armCtx := withFrame(ctx, armFrame)
 
 		// Arms run in unsealed child scopes, like a block's, so they can
 		// update enclosing bindings (e.g. a retry counter). An arm's error
@@ -456,7 +453,7 @@ func (r *Raise) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		return nil, err
 	}
 
-	inFlight, _ := ctx.Value(inFlightErrorKey{}).(*RaisedError)
+	inFlight := currentFrame(ctx).inFlight
 
 	switch v := val.(type) {
 	case StringValue:
