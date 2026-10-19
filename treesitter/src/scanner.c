@@ -276,7 +276,7 @@ static bool scan_comment_token(TSLexer *lexer, const bool *valid_symbols) {
 }
 
 // Scan the contextual `input` keyword. Like the PEG's `InputToken
-// _inlineSpace UpperTypeDeclName`, `input` only starts a declaration when a
+// _inlineSpace ![a-z_] TypeDeclName`, `input` only starts a declaration when a
 // capitalized name follows on the same line. Anywhere else (`input.foo`, a
 // bare `input`, `input or { ... }`) it must stay an identifier, so refuse and
 // let the internal lexer take it as a word_token. No expression starts with

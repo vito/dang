@@ -408,6 +408,17 @@ func (DangSuite) TestLowercaseTypeDeclNames(ctx context.Context, t *testctx.T) {
 			require.Contains(t, err.Error(), tt.want)
 		})
 	}
+
+	// The check runs only once a whole declaration has matched, so a
+	// declaration keyword used as a variable can still precede a lowercase
+	// word. (Pigeon keeps an action's error even after backtracking.)
+	for _, keyword := range []string{"type", "interface", "union", "enum"} {
+		t.Run(keyword+" as a variable", func(ctx context.Context, t *testctx.T) {
+			source := "f(" + keyword + ": Boolean!): Boolean! { " + keyword + " and true }\n"
+			_, err := dang.Parse("main.dang", []byte(source))
+			require.NoError(t, err)
+		})
+	}
 }
 
 // TestDangModuleImportCycle checks that native Dang import cycles are reported

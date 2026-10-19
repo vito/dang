@@ -21,7 +21,6 @@ var tsSkippedRules = map[string]bool{
 	"CommentToken":              true,
 	"InputToken":                true,
 	"TypeDeclName":              true,
-	"UpperTypeDeclName":         true,
 }
 
 func skipTS(name string) bool {
@@ -69,7 +68,6 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 	// lenient about its case, except where the scanner needs it to tell an
 	// `input` declaration from `input` used as an identifier.
 	"TypeDeclName":              "symbol",
-	"UpperTypeDeclName":         "symbol",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{

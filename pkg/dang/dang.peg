@@ -305,7 +305,7 @@ InterfaceDecl <- InterfaceToken _ name:TypeDeclName implements:(_ i:Implements {
     Implements: sliceOf[*Symbol](implements),
     Visibility: PublicVisibility,
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 InterfaceToken <- "interface" !WordChar
 
@@ -315,7 +315,7 @@ UnionDecl <- UnionToken _ name:TypeDeclName _ '=' _ first:Symbol rest:(_ '|' _ s
     Members:    sliceOfPrepend[*Symbol](first, rest),
     Visibility: PublicVisibility,
     Loc:        c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 UnionToken <- "union" !WordChar
 
@@ -327,7 +327,7 @@ ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil }
     Visibility: PublicVisibility, // TODO
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 TypeToken <- "type" !WordChar
 
@@ -336,7 +336,7 @@ TypeToken <- "type" !WordChar
 // derived constructor) and is told apart by Kind. `input` is a common
 // identifier, so the (capitalized) name must follow on the same line; a bare
 // `input` on its own line stays an expression.
-InputDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* InputToken _inlineSpace name:UpperTypeDeclName suffixDirectives:DirectiveApplication* _ block:Block {
+InputDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* InputToken _inlineSpace ![a-z_] name:TypeDeclName suffixDirectives:DirectiveApplication* _ block:Block {
   return &ObjectDecl{
     Kind: InputKind,
     Name: name.(*Symbol),
@@ -360,7 +360,7 @@ EnumDecl <- EnumToken _ name:TypeDeclName _ '{' _ values:(first:CapsSymbol rest:
     Values: values.([]*Symbol),
     Visibility: PublicVisibility,
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 EnumToken <- "enum" !WordChar
 
@@ -375,7 +375,7 @@ ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil }
     Visibility: PublicVisibility,
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 ScalarToken <- "scalar" !WordChar
 
@@ -567,20 +567,16 @@ Symbol <- name:Id {
 }
 Id <- WordToken
 
-// The name a type declaration introduces: `type`, `interface`, `union`,
-// `enum` and `scalar` all share it, and `input` shares UpperTypeDeclName.
-// Type annotations can only name capitalized types (NamedType <- UpperId), so
-// a lowercase type could never be referenced; reject it with a targeted error
-// rather than a generic parse failure. The tree-sitter grammar reads both as a
-// plain `symbol`.
-TypeDeclName <- UpperTypeDeclName / name:Symbol {
-  return name, fmt.Errorf("type name %q must start with an uppercase letter", name.(*Symbol).Name)
-}
-
-// A type declaration name that must be capitalized to match at all. The
-// contextual `input` uses it so that a lowercase word after `input` (as in
-// `input or { ... }`) backtracks into an expression instead of an error.
-UpperTypeDeclName <- &[A-Z] name:Symbol {
+// The name a type declaration introduces, shared by `type`, `input`,
+// `interface`, `union`, `enum` and `scalar`. Type annotations can only name
+// capitalized types (NamedType <- UpperId), so a lowercase type could never be
+// referenced; each declaration's action rejects one via checkTypeDeclName. The
+// check can't live here: pigeon keeps an action's error even when the parser
+// backtracks past it, so `type and true` (with `type` a variable) would fail.
+// The contextual `input` instead requires the capital up front (`![a-z_]`,
+// which tree-sitter ignores), so that `input or { ... }` backtracks into an
+// expression. The tree-sitter grammar reads this as a plain `symbol`.
+TypeDeclName <- name:Symbol {
   return name, nil
 }
 
