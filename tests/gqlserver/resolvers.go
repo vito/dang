@@ -70,6 +70,19 @@ func (r *mutationResolver) TouchNode(ctx context.Context, id string) (Node, erro
 	return node, nil
 }
 
+// TouchResult is the resolver for the touchResult field.
+func (r *mutationResolver) TouchResult(ctx context.Context, id string) (SearchResult, error) {
+	node, err := (&queryResolver{r.Resolver}).findNodeByID(id)
+	if err != nil {
+		return nil, err
+	}
+	result, ok := node.(SearchResult)
+	if !ok {
+		return nil, fmt.Errorf("node %q not found", id)
+	}
+	return result, nil
+}
+
 // Hello is the resolver for the hello field.
 func (r *queryResolver) Hello(ctx context.Context, name string) (string, error) {
 	return fmt.Sprintf("Hello, %s!", name), nil

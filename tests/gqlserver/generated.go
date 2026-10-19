@@ -50,10 +50,11 @@ type DirectiveRoot struct {
 
 type ComplexityRoot struct {
 	Mutation struct {
-		CreateUser func(childComplexity int, input CreateUserInput) int
-		DeleteUser func(childComplexity int, id string) int
-		TouchNode  func(childComplexity int, id string) int
-		UpdateUser func(childComplexity int, id string, input UpdateUserInput) int
+		CreateUser  func(childComplexity int, input CreateUserInput) int
+		DeleteUser  func(childComplexity int, id string) int
+		TouchNode   func(childComplexity int, id string) int
+		TouchResult func(childComplexity int, id string) int
+		UpdateUser  func(childComplexity int, id string, input UpdateUserInput) int
 	}
 
 	PageInfo struct {
@@ -159,6 +160,7 @@ type MutationResolver interface {
 	UpdateUser(ctx context.Context, id string, input UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id string) (bool, error)
 	TouchNode(ctx context.Context, id string) (Node, error)
+	TouchResult(ctx context.Context, id string) (SearchResult, error)
 }
 type QueryResolver interface {
 	Hello(ctx context.Context, name string) (string, error)
@@ -257,6 +259,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.TouchNode(childComplexity, args["id"].(string)), true
+	case "Mutation.touchResult":
+		if e.complexity.Mutation.TouchResult == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_touchResult_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.TouchResult(childComplexity, args["id"].(string)), true
 	case "Mutation.updateUser":
 		if e.complexity.Mutation.UpdateUser == nil {
 			break
@@ -974,6 +987,17 @@ func (ec *executionContext) field_Mutation_touchNode_args(ctx context.Context, r
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_touchResult_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_updateUser_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1512,6 +1536,47 @@ func (ec *executionContext) fieldContext_Mutation_touchNode(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_touchNode_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_touchResult(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_touchResult,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().TouchResult(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNSearchResult2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐSearchResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_touchResult(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SearchResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_touchResult_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5856,6 +5921,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "touchNode":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_touchNode(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "touchResult":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_touchResult(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++

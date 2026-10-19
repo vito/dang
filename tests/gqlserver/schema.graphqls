@@ -93,6 +93,9 @@ type Mutation {
   # Returns the node with the given ID through its interface type, for
   # matching on a mutation-returned interface handle. Changes nothing.
   touchNode(id: ID!): Node!
+  # Returns the node with the given ID through the SearchResult union, for
+  # matching on a mutation-returned union handle. Changes nothing.
+  touchResult(id: ID!): SearchResult!
 }
 
 type User implements Node {
