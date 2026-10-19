@@ -298,7 +298,7 @@ FieldSelection <- alias:(a:Id ColonToken _ { return a, nil })? name:Id args:ArgV
   }, nil
 }
 
-InterfaceDecl <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
+InterfaceDecl <- InterfaceToken _ name:TypeDeclName implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
   return &InterfaceDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
@@ -309,7 +309,7 @@ InterfaceDecl <- InterfaceToken _ name:Symbol implements:(_ i:Implements { retur
 }
 InterfaceToken <- "interface" !WordChar
 
-UnionDecl <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
+UnionDecl <- UnionToken _ name:TypeDeclName _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
   return &UnionDecl{
     Name:       name.(*Symbol),
     Members:    sliceOfPrepend[*Symbol](first, rest),
@@ -319,7 +319,7 @@ UnionDecl <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbo
 }
 UnionToken <- "union" !WordChar
 
-ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:Symbol implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
+ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:TypeDeclName implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
   return &ObjectDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
@@ -334,9 +334,9 @@ TypeToken <- "type" !WordChar
 // An input object: a named bundle of data fields, the Dang counterpart of a
 // GraphQL input type. It shares ObjectDecl's representation (fields, defaults,
 // derived constructor) and is told apart by Kind. `input` is a common
-// identifier, so the name must follow on the same line; a bare `input` on its
-// own line stays an expression.
-InputDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* InputToken _inlineSpace name:Symbol suffixDirectives:DirectiveApplication* _ block:Block {
+// identifier, so the (capitalized) name must follow on the same line; a bare
+// `input` on its own line stays an expression.
+InputDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* InputToken _inlineSpace name:UpperTypeDeclName suffixDirectives:DirectiveApplication* _ block:Block {
   return &ObjectDecl{
     Kind: InputKind,
     Name: name.(*Symbol),
@@ -354,7 +354,7 @@ ImplementsToken <- "implements" !WordChar
 
 AmpersandToken <- '&'
 
-EnumDecl <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
+EnumDecl <- EnumToken _ name:TypeDeclName _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
   return &EnumDecl{
     Name: name.(*Symbol),
     Values: values.([]*Symbol),
@@ -364,7 +364,7 @@ EnumDecl <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:C
 }
 EnumToken <- "enum" !WordChar
 
-ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* ScalarToken _ name:Symbol suffixDirectives:DirectiveApplication* body:(_ b:Block { return b, nil })? {
+ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* ScalarToken _ name:TypeDeclName suffixDirectives:DirectiveApplication* body:(_ b:Block { return b, nil })? {
   var block *Block
   if body != nil {
     block = body.(*Block)
@@ -566,6 +566,24 @@ Symbol <- name:Id {
   }, nil
 }
 Id <- WordToken
+
+// The name a type declaration introduces: `type`, `interface`, `union`,
+// `enum` and `scalar` all share it, and `input` shares UpperTypeDeclName.
+// Type annotations can only name capitalized types (NamedType <- UpperId), so
+// a lowercase type could never be referenced; reject it with a targeted error
+// rather than a generic parse failure. The tree-sitter grammar reads both as a
+// plain `symbol`.
+TypeDeclName <- UpperTypeDeclName / name:Symbol {
+  return name, fmt.Errorf("type name %q must start with an uppercase letter", name.(*Symbol).Name)
+}
+
+// A type declaration name that must be capitalized to match at all. The
+// contextual `input` uses it so that a lowercase word after `input` (as in
+// `input or { ... }`) backtracks into an expression instead of an error.
+UpperTypeDeclName <- &[A-Z] name:Symbol {
+  return name, nil
+}
+
 FieldId <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
   return &Symbol{
     Name: string(c.text),

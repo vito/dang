@@ -276,12 +276,12 @@ static bool scan_comment_token(TSLexer *lexer, const bool *valid_symbols) {
 }
 
 // Scan the contextual `input` keyword. Like the PEG's `InputToken
-// _inlineSpace Symbol DirectiveApplication* _ Block`, `input` only starts a
-// declaration when a name follows on the same line, then a directive or the
-// body; anywhere else (`input.foo`, a bare `input`, `input or x`) it must stay
-// an identifier, so refuse and let the internal lexer take it as a word_token.
-// The PEG backtracks out of a failed declaration; tree-sitter commits to the
-// keyword once it's lexed, so the whole head is checked here as lookahead.
+// _inlineSpace UpperTypeDeclName`, `input` only starts a declaration when a
+// capitalized name follows on the same line. Anywhere else (`input.foo`, a
+// bare `input`, `input or { ... }`) it must stay an identifier, so refuse and
+// let the internal lexer take it as a word_token. No expression starts with
+// `input` followed by a capitalized word, so nothing past the name's first
+// letter needs checking.
 //
 // `skip_newlines` lets a declaration start on a fresh line where no statement
 // separator is expected (e.g. right after a block's `{`); callers must only
@@ -309,31 +309,7 @@ static bool scan_input_token(TSLexer *lexer, bool skip_newlines) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     lexer->advance(lexer, false);
   }
-  // The name: a WordToken, which excludes `null` and `rescue`.
-  char name[8];
-  unsigned len = 0;
-  int32_t c = lexer->lookahead;
-  if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_')) {
-    return false;
-  }
-  while (is_word_char(lexer->lookahead)) {
-    if (len < sizeof(name) - 1) {
-      name[len] = (char)lexer->lookahead;
-    }
-    len++;
-    lexer->advance(lexer, false);
-  }
-  if (len < sizeof(name)) {
-    name[len] = '\0';
-    if (strcmp(name, "null") == 0 || strcmp(name, "rescue") == 0) {
-      return false;
-    }
-  }
-  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
-         lexer->lookahead == '\n' || lexer->lookahead == '\r') {
-    lexer->advance(lexer, false);
-  }
-  if (lexer->lookahead != '{' && lexer->lookahead != '@') {
+  if (lexer->lookahead < 'A' || lexer->lookahead > 'Z') {
     return false;
   }
   lexer->result_symbol = INPUT_TOKEN;

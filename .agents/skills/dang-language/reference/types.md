@@ -130,7 +130,7 @@ UserFilter(name: "jo")            # implicit constructor; defaults/null fill the
 ```
 - Like a `type` restricted to **public data fields**: no methods/computed fields, `let`, `new`, or `self { }`.
 - Field types must be input types: scalars, enums, other `input`s, lists of them. An object/interface/union field → `... is not an input type`.
-- `input` is a keyword only when a name follows on the same line; `input` stays usable as an identifier.
+- `input` is a keyword only when a capitalized name follows on the same line; `input` stays usable as an identifier.
 - Not yet exposed through Dagger module APIs.
 
 ## Custom scalars

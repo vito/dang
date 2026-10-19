@@ -164,6 +164,7 @@ input
 input.foo
 assert { input == 1 }
 input or 2
+input or { 2 }
 input rescue { else => 3 }
 
 --------------------------------------------------------------------------------
@@ -304,6 +305,19 @@ input rescue { else => 3 }
         (literal
           (int
             (non_zero_decimal_digit))))))
+  (form_sep)
+  (default_expr
+    (rescue_expr
+      (logical_or_expr
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token))))
+        (or_token)
+        (block
+          (literal
+            (int
+              (non_zero_decimal_digit)))))))
   (form_sep)
   (default_expr
     (rescue_expr

@@ -225,7 +225,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 180,
+      "value": 182,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -322,7 +322,7 @@
     },
     "non_null_assert": {
       "type": "PREC_LEFT",
-      "value": 179,
+      "value": 181,
       "content": {
         "type": "SEQ",
         "members": [
@@ -507,7 +507,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 172,
+      "value": 174,
       "content": {
         "type": "SEQ",
         "members": [
@@ -594,7 +594,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 171,
+      "value": 173,
       "content": {
         "type": "SEQ",
         "members": [

@@ -61,6 +61,7 @@ TypeVariable := [a-z]                           # single lowercase letter
 ## Lexical
 
 - identifiers: `[a-zA-Z_][a-zA-Z0-9_]*` (lowercase-leading = value, uppercase-leading = type)
+  - declared type names (`type`, `input`, `interface`, `union`, `enum`, `scalar`) must be uppercase-leading, since type annotations can only refer to those
 - comments: `#` to end of line
 - strings:
   - `"..."` (with escapes), `"""..."""` triple-quoted (docstrings reuse this)
@@ -71,7 +72,7 @@ TypeVariable := [a-z]                           # single lowercase letter
 ## Reserved words
 
 - keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `rescue`, `return`, `scalar`, `self`, `true`, `type`, `union` (`try` and `catch` are ordinary identifiers now; legacy `try`/`catch` blocks still parse but are rejected at type-check — see [#errors])
-- `input` is contextual: it starts an `InputDecl` only when a name follows on the same line (`input Foo {`), and is an ordinary identifier otherwise (see [#inputs])
+- `input` is contextual: it starts an `InputDecl` only when a type name follows on the same line (`input Foo {`), and is an ordinary identifier otherwise (see [#inputs])
 - `pub` is optional — the visibility keyword is parsed but no longer required; declarations are public by default (see [#fields])
 - see [#syntax]
 

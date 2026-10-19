@@ -382,6 +382,34 @@ print(greet(Filter("x")))
 	}
 }
 
+// TestLowercaseTypeDeclNames checks that every type-introducing declaration
+// requires a capitalized name: type annotations can only refer to capitalized
+// names, so a lowercase type could never be referenced.
+func (DangSuite) TestLowercaseTypeDeclNames(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"type", "type user {\n  name: String!\n}\n", `type name "user" must start with an uppercase letter`},
+		{"interface", "interface named {\n  name: String!\n}\n", `type name "named" must start with an uppercase letter`},
+		{"union", "type A {\n  a: Int!\n}\n\ntype B {\n  b: Int!\n}\n\nunion ab = A | B\n", `type name "ab" must start with an uppercase letter`},
+		{"enum", "enum status {\n  ACTIVE\n}\n", `type name "status" must start with an uppercase letter`},
+		{"scalar", "scalar email\n", `type name "email" must start with an uppercase letter`},
+		// `input` is contextual, so a lowercase name doesn't start a
+		// declaration at all; what's left isn't a valid expression either.
+		{"input", "input filter {\n  name: String!\n}\n", "no match found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			_, err := dang.Parse("main.dang", []byte(tt.source))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
 // TestDangModuleImportCycle checks that native Dang import cycles are reported
 // as a clean error rather than looping forever. A directory that must ERROR fits
 // neither the golden harness (the cycle message embeds absolute module dirs) nor

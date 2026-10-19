@@ -71,6 +71,15 @@ echo(input: String!): String! {
 
 assert { echo("hi") == "hi" }
 
+# Only a capitalized name starts a declaration, so a statement can still begin
+# with `input` followed by a keyword and a block.
+either(input: Boolean!): Boolean! {
+  input or { false }
+}
+
+assert { either(true) }
+assert { !either(false) }
+
 let input = "plain"
 assert { input == "plain" }
 
