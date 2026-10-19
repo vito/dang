@@ -115,12 +115,12 @@ func trailingChainField(env hm.Env, operand Node) (string, *Type) {
 			if fn, ok := n.Fun.(*Select); ok {
 				sel, selectedThrough = fn, n.selectedThrough
 			} else if fn, ok := n.Fun.(*Symbol); ok {
-				if classifyGQLSymbol(fn, n.selectedThrough) == gqlChainField {
-					return fn.Name, schemaObjectModule(fn.GetInferredType())
+				if classifyGQLSymbol(fn, n.GetInferredType(), n.selectedThrough) == gqlChainField {
+					return fn.Name, schemaObjectModule(n.GetInferredType())
 				}
 			}
 		case *Symbol:
-			if classifyGQLSymbol(n, n.selectedThrough) == gqlChainField {
+			if classifyGQLSymbol(n, n.GetInferredType(), n.selectedThrough) == gqlChainField {
 				return n.Name, schemaObjectModule(n.GetInferredType())
 			}
 		}
@@ -253,21 +253,61 @@ func classifyGQLSelect(sel *Select, selectedThrough bool) gqlFieldClass {
 	if sel.Receiver == nil {
 		return notGQLField
 	}
-	mod := schemaObjectModule(inferredTypeOf(sel.Receiver))
+	mod := selectReceiverModule(sel.Receiver)
 	if mod == nil {
 		return notGQLField
 	}
 	return classifyField(mod.SourceSchema, mod.Named, sel.Field.Name, selectedThrough, chainMayBeNull(sel.Receiver))
 }
 
+// selectReceiverModule returns the schema type a selection's field resolves
+// against: the receiver's schema object module, or the Query root type when
+// the receiver is a GraphQL import itself, as in `Test.user(id: ...)`. Root
+// fields read that way are the same root GraphQLFunctions bare names reach,
+// so they execute (or not) exactly like their unqualified spelling.
+func selectReceiverModule(recv Node) *Type {
+	t := inferredTypeOf(recv)
+	if mod := schemaObjectModule(t); mod != nil {
+		return mod
+	}
+	return importQueryRoot(t)
+}
+
+// importQueryRoot returns the Query type of a GraphQL import module, or nil
+// when t is not one. TypeScopeFromSchema builds the module as an overlay
+// whose lexical layer is the Query type, which is how `Test.field` resolves
+// root fields. (`Test.Mutation` is an ordinary value of the Mutation type,
+// so qualified mutations go through schemaObjectModule like bare ones.)
+func importQueryRoot(t hm.Type) *Type {
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	scope, ok := t.(*OverlayTypeScope)
+	if !ok {
+		return nil
+	}
+	lexical, ok := scope.lexical.(*OverlayTypeScope)
+	if !ok {
+		return nil
+	}
+	query, ok := lexical.primary.(*Type)
+	if !ok || query.SourceSchema == nil || query.Kind != ObjectKind ||
+		query.Named != query.SourceSchema.QueryType.Name {
+		return nil
+	}
+	return query
+}
+
 // classifyGQLSymbol classifies a bare name that may resolve to a root Query
-// field spliced into the lexical scope. Only object-returning root fields are
-// recognizable this way — their inferred type is a schema module whose
-// schema's Query type carries the field. (A local binding that happens to
-// shadow a root field with the same name and type classifies the same way;
-// both readings are infallible, so the distinction doesn't matter here.)
-func classifyGQLSymbol(sym *Symbol, selectedThrough bool) gqlFieldClass {
-	mod := schemaObjectModule(sym.GetInferredType())
+// field spliced into the lexical scope. t is the type of the field's result:
+// the symbol's own inferred type when it is auto-called, or the type of the
+// FunCall applying it (the symbol itself then has a function type). Only
+// object-returning root fields are recognizable this way — their result is
+// a schema module whose schema's Query type carries the field. (A local
+// binding that happens to shadow a root field with the same name and type
+// classifies the same way; accepted imprecision.)
+func classifyGQLSymbol(sym *Symbol, t hm.Type, selectedThrough bool) gqlFieldClass {
+	mod := schemaObjectModule(t)
 	if mod == nil || mod.SourceSchema.QueryType.Name == "" {
 		return notGQLField
 	}
@@ -300,7 +340,7 @@ func selectMayBeNull(sel *Select) bool {
 	if sel.Receiver == nil {
 		return false
 	}
-	mod := schemaObjectModule(inferredTypeOf(sel.Receiver))
+	mod := selectReceiverModule(sel.Receiver)
 	if mod == nil {
 		return false
 	}
@@ -415,7 +455,7 @@ func rescueOperandCanFail(env hm.Env, node Node) bool {
 	case *Continue:
 		return false
 	case *Symbol:
-		switch classifyGQLSymbol(n, n.selectedThrough) {
+		switch classifyGQLSymbol(n, n.GetInferredType(), n.selectedThrough) {
 		case gqlChainField:
 			return false
 		case gqlLeafField:
@@ -470,7 +510,7 @@ func rescueOperandCanFail(env hm.Env, node Node) bool {
 				return callArgsCanFail(env, n)
 			}
 		case *Symbol:
-			if classifyGQLSymbol(fn, n.selectedThrough) == gqlChainField {
+			if classifyGQLSymbol(fn, n.GetInferredType(), n.selectedThrough) == gqlChainField {
 				return callArgsCanFail(env, n)
 			}
 		}
@@ -573,12 +613,12 @@ func tailLeavesLazyHandle(env hm.Env, tail Node) *Type {
 				return nil
 			}
 		case *Symbol:
-			if classifyGQLSymbol(fn, n.selectedThrough) == gqlLeafField {
+			if classifyGQLSymbol(fn, n.GetInferredType(), n.selectedThrough) == gqlLeafField {
 				return nil
 			}
 		}
 	case *Symbol:
-		if classifyGQLSymbol(n, n.selectedThrough) == gqlLeafField {
+		if classifyGQLSymbol(n, n.GetInferredType(), n.selectedThrough) == gqlLeafField {
 			return nil
 		}
 	}

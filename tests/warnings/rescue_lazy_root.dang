@@ -1,0 +1,32 @@
+# Root fields behave the same whether they are called with arguments or
+# reached through the import's name: a nullable object root field is probed
+# for null where written, so its request runs inside the rescue, while a
+# non-null one or a mutation stays lazy.
+
+import Test
+
+# no warning: a nullable root field called with arguments is probed
+let maybe = maybeUser(id: "User:1") rescue null
+let someNode = node(id: "User:1") rescue null
+
+# no warning: so is one reached through the import
+let qualifiedMaybe = Test.maybeUser(id: "User:1") rescue null
+let qualifiedNode = Test.node(id: "User:1") rescue null
+
+# no warning: a handle selected off an unprobed nullable root field is probed
+# where it escapes the chain
+let userPosts = Test.maybeUser(id: "User:1").posts rescue null
+
+# a non-null root field is never probed, so it leaves the rescue lazy
+let connection = searchConnection(query: "Post") rescue null
+let qualifiedConnection = {
+  print("searching")
+  Test.searchConnection(query: "Post")
+} rescue null
+
+# so does a mutation, which is never probed
+let updated = Test.Mutation.updateUser(id: "User:2", input: UpdateUserInput(name: "Jane Smith")) rescue null
+
+assert { maybe != null }
+assert { qualifiedNode != null }
+print("done")
