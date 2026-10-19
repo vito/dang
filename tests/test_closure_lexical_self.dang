@@ -68,13 +68,36 @@ type Guest {
   }
 
   # Their writes accumulate in this method's fork, not the host's.
-  blockWrite: Guest! { Host.runTwice { x => n += x; n }; self }
+  blockWrite: Guest! {
+    Host.runTwice { x =>
+      n += x
+      n
+    }
+    self
+  }
 
-  blockWriteSelf: Guest! { Host.runTwice { x => self.n += x; n }; self }
+  blockWriteSelf: Guest! {
+    Host.runTwice { x =>
+      self.n += x
+      n
+    }
+    self
+  }
 
-  blockWriteHost: Int! { Host.runTwice { x => n += x; n } }
+  blockWriteHost: Int! {
+    Host.runTwice { x =>
+      n += x
+      n
+    }
+  }
 
-  blockWriteLevels: Guest! { Host.nested { x => n += 5; n }; self }
+  blockWriteLevels: Guest! {
+    Host.nested { x =>
+      n += 5
+      n
+    }
+    self
+  }
 }
 
 let g = Guest
