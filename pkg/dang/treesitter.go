@@ -18,6 +18,7 @@ var tsSkippedRules = map[string]bool{
 	"SingleTemplateContentChar": true,
 	"LangTagTerminator":         true,
 	"CommentToken":              true,
+	"InputToken":                true,
 }
 
 func skipTS(name string) bool {
@@ -45,6 +46,11 @@ var tsExternalRuleNames = []treesitter.RuleName{
 	// template, where `#` is content (Markdown headers, `issue #5`, etc.)
 	// rather than a comment start.
 	"comment_token",
+	// The contextual `input` keyword. External so the scanner can require a
+	// same-line name after it, like the PEG's `InputToken _inlineSpace Symbol`.
+	// As a plain keyword token, tree-sitter would lex every statement-leading
+	// `input` as the keyword, breaking `input` used as an identifier.
+	"input_token",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
@@ -55,6 +61,7 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 	"SingleTemplateContentChar": "_template_content_char",
 	"LangTagTerminator":         "_lang_tag_terminator",
 	"CommentToken":              "comment_token",
+	"InputToken":                "input_token",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{

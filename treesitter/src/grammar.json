@@ -1249,13 +1249,6 @@
         }
       ]
     },
-    "input_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "input"
-      }
-    },
     "implements": {
       "type": "SEQ",
       "members": [
@@ -5916,6 +5909,10 @@
     {
       "type": "SYMBOL",
       "name": "comment_token"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "input_token"
     }
   ],
   "supertypes": [
