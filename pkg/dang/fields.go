@@ -837,20 +837,22 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
 
-	// An input's body is restricted to public data fields. Checked here rather
-	// than in Hoist, which can run more than once per declaration.
-	if c.Kind == InputKind {
-		if err := c.validateInputBody(); err != nil {
-			return nil, err
-		}
-	}
-
 	// Function bodies infer declarations in source order rather than through
 	// the module's hoisting phases. Initialize local constructor and member
 	// signatures before inferring their bodies as well.
 	if c.ConstructorFnType == nil {
 		if err := c.Hoist(ctx, env, fresh, 1); err != nil {
 			return nil, err
+		}
+	}
+
+	// An input's body is restricted to public data fields. Checked here rather
+	// than in Hoist, which can run more than once per declaration. The
+	// constructor is still returned (and bound by Hoist above) so uses of the
+	// input don't cascade into unrelated errors.
+	if c.Kind == InputKind {
+		if err := c.validateInputBody(); err != nil {
+			return c.ConstructorFnType, err
 		}
 	}
 
@@ -907,7 +909,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	if c.Kind == InputKind {
 		if err := c.validateInputFieldTypes(object); err != nil {
-			return nil, err
+			return c.ConstructorFnType, err
 		}
 	}
 

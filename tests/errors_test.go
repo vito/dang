@@ -304,6 +304,47 @@ input Filter {
 			wants: []string{`input Filter: field "owners" has type [User!]!, which is not an input type`},
 		},
 		{
+			// A rejected input still binds its constructor, so using it
+			// doesn't pile on unrelated errors.
+			name: "method, then used",
+			source: `input Filter {
+  name: String!
+  shout: String! { name.toUpper }
+}
+
+print(Filter("x").name)
+`,
+			wants: []string{`input Filter cannot declare methods; "shout" must be a data field`},
+		},
+		{
+			name: "object field, then used",
+			source: `type User {
+  name: String!
+}
+
+input Filter {
+  owner: User!
+}
+
+print(Filter(User(name: "x")).owner.name)
+`,
+			wants: []string{`input Filter: field "owner" has type User!, which is not an input type`},
+		},
+		{
+			name: "local input with method, then used",
+			source: `f: String! {
+  input Q {
+    n: String!
+    m: String! { n }
+  }
+  Q("x").n
+}
+
+print(f)
+`,
+			wants: []string{`input Q cannot declare methods; "m" must be a data field`},
+		},
+		{
 			name: "not assignable to object",
 			source: `type User {
   name: String!
