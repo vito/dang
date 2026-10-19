@@ -1822,7 +1822,11 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 
 		// If the nested selection is on a list, wrap the result in a list type
 		if field.Selection.IsList {
-			listType := ListType{Type: t}
+			var elementType hm.Type = t
+			if field.Selection.ElementIsNonNull {
+				elementType = hm.NonNullType{Type: elementType}
+			}
+			listType := ListType{Type: elementType}
 			return hm.NonNullType{Type: listType}, nil
 		}
 
