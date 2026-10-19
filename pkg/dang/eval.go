@@ -2401,12 +2401,12 @@ func (m *Object) Derive(sealed bool) ValueScope {
 // snapshotReceiver returns a sealed receiver frame for a method call that is
 // immune to later in-place writes on m's chain.
 //
-// Field writes inside a method never touch receiver frames — bare or not, they
-// fork `self` (see Object.Update and newSelfFrame) — so a receiver is normally
-// never written in place after the call starts. The snapshot still matters in
-// two ways: it keeps the callee safe from any remaining in-place writer of a
-// receiver's chain (e.g. an instance still under construction), and it keeps
-// receiver chains shallow, since every copy-on-write write adds a frame.
+// Field writes inside a method or new() never touch existing frames — bare or
+// not, they fork `self` (see Object.Update, newSelfFrame and
+// ConstructorScope.Update) — so a receiver is normally never written in place
+// after the call starts. The snapshot is defensive against any remaining
+// in-place writer of a receiver's chain, and it keeps receiver chains shallow,
+// since every copy-on-write write adds a frame.
 // Only frames sharing m's Mod are flattened (an instance's copy-on-write
 // generations); the root and anything beyond stay shared. Those frames hold
 // only accumulated writes, so this copies little.
@@ -2888,10 +2888,13 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		}
 
 		// Execute the new() body with access to self and constructor args.
-		// We evaluate forms directly (not via Block.Eval) to avoid cloning
-		// the env, which would lose dynamic scope updates for self assignments.
+		// We evaluate forms directly (not via Block.Eval) so constructor-body
+		// `let`s stay in newBodyScope's locals. The instance itself lives in
+		// newBodyScope's `self` cell: every field write in the body (bare or
+		// `self.field = ...`, at any nesting depth) installs a new
+		// copy-on-write generation there, so `instance` — whose field
+		// defaults were evaluated above — is never written in place.
 		newBodyScope := CreateConstructorScope(instance, argScope, c.Closure)
-		newBodyScope.EnterSelf(instance)
 		returnFrame := NewControlFrame(ReturnFrame)
 		defer returnFrame.Deactivate()
 		frame.returnFrame = returnFrame
@@ -2899,26 +2902,20 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
-			returned := false
 			lastVal, err = EvalNode(newBodyCtx, newBodyScope, form)
 			if err != nil {
 				if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 					lastVal = returnVal
-					returned = true
-				} else {
-					return nil, fmt.Errorf("evaluating new() for %s: %w", c.ObjectName, err)
+					break
 				}
+				return nil, fmt.Errorf("evaluating new() for %s: %w", c.ObjectName, err)
 			}
-			// After each form, update the instance from the dynamic scope
-			// (copy-on-write may have replaced it via self.field = value)
-			if updatedInstance, found := newBodyScope.Self(); found {
-				instance = updatedInstance.(*Object)
-				// Keep constructor locals while pointing bare field reads/writes at
-				// the latest copy-on-write generation of self.
-				newBodyScope.instance = instance
-			}
-			if returned {
-				break
+		}
+
+		// The latest generation of self is the instance by default.
+		if updatedInstance, found := newBodyScope.Self(); found {
+			if obj, ok := updatedInstance.(*Object); ok {
+				instance = obj
 			}
 		}
 

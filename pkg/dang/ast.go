@@ -538,22 +538,41 @@ func CreateOverlayValueScope(primary ValueScope, lexical ValueScope) OverlayValu
 // ConstructorScope is a specialized environment for new() constructor bodies.
 // Declarations bind to constructor-local lexical scope, while reassignment can
 // still update constructor args or existing instance fields.
+//
+// The instance under construction is not held here: it is always the current
+// `self`, read from the dynamic-scope cell that every derived scope (nested
+// blocks, block args, closures) shares. Bare field reads and writes therefore
+// see the same generation of the instance as `self.field`, no matter how
+// deeply nested, and a bare field write is copy-on-write exactly like
+// `self.field = value` (see Update). The instance as it stood when field
+// defaults were evaluated is never written in place, so values that captured
+// an earlier `self` — an alias (`let s = self`) or the receiver snapshot of a
+// method called from new() — never observe the constructor's later writes.
 type ConstructorScope struct {
-	locals   ValueScope // Constructor-body let bindings
-	instance ValueScope // Object instance (target for bare field reassignments)
-	args     ValueScope // Constructor arguments
-	closure  ValueScope // Lexical closure (outer scope)
+	locals  ValueScope // Constructor-body let bindings
+	args    ValueScope // Constructor arguments
+	closure ValueScope // Lexical closure (outer scope)
 
-	dynamicScope *DynamicScope
+	dynamicScope *DynamicScope // `self`: the current generation of the instance
 }
 
-func CreateConstructorScope(instance ValueScope, args ValueScope, closure ValueScope) *ConstructorScope {
+func CreateConstructorScope(instance *Object, args ValueScope, closure ValueScope) *ConstructorScope {
 	return &ConstructorScope{
-		locals:   NewObject(NewType("_constructor_locals_", ObjectKind)),
-		instance: instance,
-		args:     args,
-		closure:  closure,
+		locals:       NewObject(NewType("_constructor_locals_", ObjectKind)),
+		args:         args,
+		closure:      closure,
+		dynamicScope: &DynamicScope{Value: instance},
 	}
+}
+
+// instance returns the current generation of the object under construction.
+func (e *ConstructorScope) instance() (*Object, bool) {
+	self, ok := e.Self()
+	if !ok {
+		return nil, false
+	}
+	inst, ok := self.(*Object)
+	return inst, ok
 }
 
 func (e *ConstructorScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
@@ -570,17 +589,25 @@ func (e *ConstructorScope) Lookup(ctx context.Context, name string) (Value, bool
 		return val, true, nil
 	}
 	// Then instance fields
-	if val, found, err := e.instance.Lookup(ctx, name); err != nil {
-		return nil, found, err
-	} else if found {
-		return val, true, nil
+	if inst, ok := e.instance(); ok {
+		if val, found, err := inst.Lookup(ctx, name); err != nil {
+			return nil, found, err
+		} else if found {
+			return val, true, nil
+		}
 	}
 	// Then lexical closure
 	return e.closure.Lookup(ctx, name)
 }
 
 func (e *ConstructorScope) Has(name string) bool {
-	return e.locals.Has(name) || e.args.Has(name) || e.instance.Has(name) || e.closure.Has(name)
+	if e.locals.Has(name) || e.args.Has(name) {
+		return true
+	}
+	if inst, ok := e.instance(); ok && inst.Has(name) {
+		return true
+	}
+	return e.closure.Has(name)
 }
 
 func (e *ConstructorScope) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
@@ -604,10 +631,12 @@ func (e *ConstructorScope) Bindings(vis Visibility) []Keyed[Value] {
 			seen[kv.Key] = true
 		}
 	}
-	for _, kv := range e.instance.Bindings(vis) {
-		if !seen[kv.Key] {
-			bs = append(bs, kv)
-			seen[kv.Key] = true
+	if inst, ok := e.instance(); ok {
+		for _, kv := range inst.Bindings(vis) {
+			if !seen[kv.Key] {
+				bs = append(bs, kv)
+				seen[kv.Key] = true
+			}
 		}
 	}
 	for _, kv := range e.closure.Bindings(vis) {
@@ -619,7 +648,8 @@ func (e *ConstructorScope) Bindings(vis Visibility) []Keyed[Value] {
 }
 
 func (e *ConstructorScope) MarshalJSON() ([]byte, error) {
-	return json.Marshal(e.instance)
+	self, _ := e.Self()
+	return json.Marshal(self)
 }
 
 func (e *ConstructorScope) Bind(name string, value Value, visibility Visibility) {
@@ -638,8 +668,16 @@ func (e *ConstructorScope) Update(name string, value Value) {
 		e.args.Update(name, value)
 		return
 	}
-	// Otherwise reassign on the instance (where fields live)
-	e.instance.Update(name, value)
+	// Otherwise it is a field write: copy-on-write onto the current `self`,
+	// exactly like `self.name = value` (and like a bare field write in a
+	// method, see Object.Update). Never write in place — earlier generations
+	// of the instance may be aliased (`let s = self`) or shared by the
+	// receiver snapshot of a method called from this constructor.
+	inst, ok := e.instance()
+	if !ok {
+		return
+	}
+	e.MutateSelf(forkWithField(inst, name, value))
 }
 
 func (e *ConstructorScope) Visibility(name string) Visibility {
@@ -649,16 +687,18 @@ func (e *ConstructorScope) Visibility(name string) Visibility {
 	if e.args.Has(name) {
 		return e.args.Visibility(name)
 	}
-	return e.instance.Visibility(name)
+	if inst, ok := e.instance(); ok {
+		return inst.Visibility(name)
+	}
+	return PrivateVisibility
 }
 
 func (e *ConstructorScope) Derive(sealed bool) ValueScope {
 	return &ConstructorScope{
 		locals:       e.locals.Derive(sealed),
-		instance:     e.instance.Derive(sealed),
 		args:         e.args,
 		closure:      e.closure,
-		dynamicScope: e.dynamicScope,
+		dynamicScope: e.dynamicScope, // share `self`, and with it the instance
 	}
 }
 
@@ -682,11 +722,15 @@ func (e *ConstructorScope) EnterSelf(value Value) {
 }
 
 func (e *ConstructorScope) Type() hm.Type {
-	return e.instance.Type()
+	if self, ok := e.Self(); ok {
+		return self.Type()
+	}
+	return e.locals.Type()
 }
 
 func (e *ConstructorScope) String() string {
-	return fmt.Sprintf("ConstructorScope(%s)", e.instance)
+	self, _ := e.Self()
+	return fmt.Sprintf("ConstructorScope(%s)", self)
 }
 
 // OverlayTypeScope is the inference-time analogue of OverlayValueScope: it

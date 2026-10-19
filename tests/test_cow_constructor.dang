@@ -1,0 +1,155 @@
+# Copy-on-write inside new(): the instance under construction is the current
+# `self`, and every field write in the constructor body — bare or `self.f =`,
+# at any nesting depth — forks it rather than writing in place. So values that
+# captured an earlier `self` (an alias, or the receiver of a method called from
+# new()) never observe the constructor's later writes, and bare reads always
+# see the latest write.
+
+# A method called from new() reads its own receiver, a snapshot as of the call.
+# The block it is passed mutates the constructor's self, not the callee's.
+type CtorHelper {
+  count: Int! = 0
+  seen: Int! = -1
+
+  helper(&blk(x: Int!): Int!): Int! { blk(1); blk(2); count }
+
+  new {
+    seen = helper { x => count += x; count }
+    self
+  }
+}
+
+assert("callee from new() reads its own receiver") { CtorHelper.seen == 0 }
+assert("block writes accumulate in the constructor") { CtorHelper.count == 3 }
+
+# Same through a constructor block argument.
+type CtorBlockArg {
+  count: Int! = 0
+  seen: Int! = -1
+
+  check(&c: Boolean!): Int! { c; count }
+
+  new(&cond: Boolean!) {
+    seen = check { count += 10; cond }
+    self
+  }
+}
+
+let ctorBlockArg = CtorBlockArg { true }
+assert("callee ignores the constructor block's writes") { ctorBlockArg.seen == 0 }
+assert("constructor block's writes land on self") { ctorBlockArg.count == 10 }
+
+# Aliasing self inside new(): later writes fork, leaving the alias untouched.
+type CtorAlias {
+  count: Int! = 0
+  seen: Int! = -1
+  viaMethod: Int! = -1
+
+  getCount: Int! { count }
+
+  new {
+    let s = self
+    count = 5
+    seen = s.count
+    viaMethod = s.getCount
+    self
+  }
+}
+
+assert("alias keeps the pre-write value") { CtorAlias.seen == 0 }
+assert("alias's methods see the pre-write value") { CtorAlias.viaMethod == 0 }
+assert("constructed value has the write") { CtorAlias.count == 5 }
+
+# A method result taken before a later constructor write is not affected by it.
+type CtorEarlyResult {
+  count: Int! = 0
+
+  bumped: CtorEarlyResult! { count += 100; self }
+
+  new {
+    let b = bumped
+    count = 1
+    b
+  }
+}
+
+assert("earlier method result is a snapshot") { CtorEarlyResult.count == 100 }
+
+# Bare reads see `self.f =` writes made in the same nested block, and bare
+# writes made after a `self.f =` write are not lost or shadowed.
+type CtorMixed {
+  count: Int! = 0
+  other: Int! = 0
+  seen: Int! = -1
+
+  new {
+    if (true) {
+      self.count = 5
+      seen = count
+    }
+    [1].each { x =>
+      other = 3
+      count += x
+    }
+    self
+  }
+}
+
+assert("bare read sees self.f write in nested block") { CtorMixed.seen == 5 }
+assert("bare += after self.f = accumulates") { CtorMixed.count == 6 }
+assert("bare write in block lands on self") { CtorMixed.other == 3 }
+
+# Methods called on self during a constructor loop see the state as of each call.
+type CtorLoop {
+  items: [Int!]! = []
+  sums: [Int!]! = []
+
+  total: Int! { items.reduce(0) { acc, x => acc + x } }
+
+  new(xs: [Int!]!) {
+    xs.each { x =>
+      items += [x]
+      sums += [total]
+    }
+    self
+  }
+}
+
+assert("loop accumulates; methods see each step") { CtorLoop([1, 2, 3]).sums == [1, 3, 6] }
+
+# Early return keeps the writes made so far.
+type CtorReturn {
+  count: Int! = 0
+
+  new(early: Boolean!) {
+    count = 1
+    if (early) {
+      return self
+    }
+    count = 2
+    self
+  }
+}
+
+assert("early return") { CtorReturn(true).count == 1 }
+assert("normal return") { CtorReturn(false).count == 2 }
+
+# Construction is fork-per-call too: instances are independent, and methods on
+# the result fork from it.
+type CtorIndependent {
+  count: Int! = 0
+
+  incr: CtorIndependent! { count += 1; self }
+
+  new(start: Int!) {
+    count = start
+    self
+  }
+}
+
+let ci = CtorIndependent(1)
+let ci2 = ci.incr
+let ci3 = ci.incr
+assert("original untouched") { ci.count == 1 }
+assert("each call forks from the original") { ci2.count == 2 and ci3.count == 2 }
+assert("separate constructions are independent") { CtorIndependent(7).count == 7 and ci.count == 1 }
