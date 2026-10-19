@@ -2203,20 +2203,20 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 	return results, nil
 }
 
-// forkTaskScope derives the scope one concurrent `{{ }}` task evaluates in from
-// base, with selfSrc's `self` (if any) in scope.
+// forkTaskScope derives the scope one concurrent `{{ }}` task evaluates in.
 //
-// Sealing (Derive(true)) keeps the task's bare writes to outer locals and
-// fields private, but Derive shares the dynamic-scope cell, so a
-// `self.field = ...` inside the task would MutateSelf the enclosing method's
-// cell: racing with sibling tasks and leaking into the method's `self` after
-// the `{{ }}`. Each task therefore gets its own cell, seeded with the enclosing
-// `self`, so the copy-on-write fork such a write creates stays task-local, just
-// like a bare write. selfSrc is separate from base because an object literal's
-// base is its own record scope, whose `self` comes from the enclosing scope.
-func forkTaskScope(base, selfSrc ValueScope) ValueScope {
-	task := base.Derive(true)
-	if self, ok := selfSrc.Self(); ok {
+// Sealing (Derive(true)) keeps the task's writes to outer locals private, but
+// Derive shares the dynamic-scope cell, so a field write inside the task
+// (`self.field = ...`, or a bare one, which forks `self` the same way) would
+// write the enclosing method's cell: racing with sibling tasks and leaking into
+// the method's `self` after the `{{ }}`. Each task therefore gets its own cell,
+// seeded with the enclosing `self`. The task frame starts name resolution with
+// that cell, so its bare field reads and writes go through the task's `self`
+// generation too (see nextFrame), and the copy-on-write forks they create stay
+// task-local.
+func forkTaskScope(scope ValueScope) ValueScope {
+	task := scope.Derive(true)
+	if self, ok := scope.Self(); ok {
 		task.EnterSelf(self)
 	}
 	return task
@@ -2655,6 +2655,28 @@ func (m *Object) updateFrom(name string, value Value, cell *DynamicScope) {
 		return
 	}
 
+	if forked && parent != nil {
+		// A sealed frame (a `{{ }}` task, see forkTaskScope) keeps writes to
+		// outer locals and args private by setting them locally, below. A
+		// write to a field of `self` must still fork `self`, though — into
+		// this frame's own cell, which for a task is private — or the task's
+		// `self.field` reads would miss its bare `field = v` writes.
+		if cell == nil {
+			cell = m.dynamicScope
+		}
+		if cell != nil && parent.resolvesToSelfField(name, cell) {
+			for {
+				self, ok := cell.get().(*Object)
+				if !ok {
+					break
+				}
+				if cell.swap(self, forkWithField(self, name, value)) {
+					return
+				}
+			}
+		}
+	}
+
 	// Variable doesn't exist anywhere (or we're a forked boundary): set it
 	// locally.
 	m.mu.Lock()
@@ -2722,6 +2744,27 @@ func (m *Object) cowCopy() *Object {
 	return next
 }
 
+// resolvesToSelfField reports whether name, resolved starting at m, is a field
+// of the `self` held in cell — reached through a selfParent frame (see
+// nextFrame) — rather than a local or argument bound in a frame before it.
+func (m *Object) resolvesToSelfField(name string, cell *DynamicScope) bool {
+	for f := m; f != nil; {
+		f.mu.Lock()
+		_, has := f.Values[name]
+		_, pending := f.Pending[name]
+		f.mu.Unlock()
+		if has || pending {
+			return false
+		}
+		next, isSelf := f.nextFrame(cell)
+		if isSelf {
+			return next.hasFrom(name, cell)
+		}
+		f = next
+	}
+	return false
+}
+
 // newSelfFrame returns a frame for a body executing with self as its receiver
 // (a method call, see BoundMethod.Call): a fresh, unshared `self` cell holding
 // self, and a selfParent link so that bare names resolve through whatever
@@ -2742,6 +2785,10 @@ func inMethodBody(scope ValueScope) bool {
 	switch s := scope.(type) {
 	case OverlayValueScope:
 		return inMethodBody(s.primary)
+	case recordFieldScope:
+		// A record literal field: the record itself is never a method body,
+		// but the scope it was written in may be.
+		return inMethodBody(s.lexical)
 	case *Object:
 		for f := s; f != nil; f = f.Parent {
 			if f.selfParent {

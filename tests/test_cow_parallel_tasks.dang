@@ -71,12 +71,34 @@ type Acc {
 
   recCalls: [Int!]! { let r = {{a: bump.total, b: bump.bump.total, c: total}}; [r.a, r.b, r.c] }
 
+  # Inside one task, bare and `self.` forms see each other's writes.
+  taskMix: Int! { {{a: if (true) { self.total = 5; total } else { 0 }}}.a }
+
+  taskMix2: Int! { {{a: if (true) { total = 5; self.total } else { 0 }}}.a }
+
+  taskMixLeak: Int! {
+    {{
+      a: if (true) { total = 5; self.total = 6; 1 } else { 0 }
+    }}
+    total
+  }
+
+  selMix: Int! { self.{{x: plus(n: if (true) { total = 5; self.total } else { 0 })}}.x }
+
+  selMix2: Int! { self.{{x: plus(n: if (true) { self.total = 5; total } else { 0 })}}.x }
+
   # A block passed in from outside writes its own (outer) method's `self`
   # from several tasks at once. The order of those writes is unspecified, but
   # they must not corrupt state.
   both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }
 
-  runBoth: Acc! { both { x => total += x; total }; self }
+  runBoth: Acc! {
+    both { x =>
+      total += x
+      total
+    }
+    self
+  }
 }
 
 assert("selection: self. write stays in its task") { Acc(0).selSelf.total == 0 }
@@ -94,6 +116,11 @@ assert("record literal: bare writes are per task") { Acc(0).recBare.log == ["1",
 assert("record literal: dependent field") { Acc(0).recDep.log == ["1", "1"] }
 assert("record literal: dependent field leaves self alone") { Acc(0).recDep.total == 0 }
 assert("parallel method calls fork independently") { Acc(0).recCalls == [1, 2, 0] }
+assert("in a task, bare reads see self. writes") { Acc(0).taskMix == 5 }
+assert("in a task, self. reads see bare writes") { Acc(0).taskMix2 == 5 }
+assert("in a task, mixed writes stay private") { Acc(0).taskMixLeak == 0 }
+assert("in a selection task, self. reads see bare writes") { Acc(0).selMix == 5 }
+assert("in a selection task, bare reads see self. writes") { Acc(0).selMix2 == 5 }
 
 let both = Acc(0).runBoth.total
 assert("outer block writes from parallel tasks land") { both >= 1 and both <= 3 }

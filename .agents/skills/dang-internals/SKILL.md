@@ -134,10 +134,16 @@ deterministically: the lowest-index *genuine* error, preferring it over the
 `self`) so a task's incidental writes — bare or `self.x = v` — stay private
 while the receiver and lexical scope are only read. Without the private cell, a
 `self.x = v` in a task would write the enclosing method's shared cell (a race,
-and a leak past the `{{ }}`). A closure created *outside* the `{{ }}` still
-writes its own scope when a task calls it; those writes are unordered across
-tasks, so the `DynamicScope` cell is mutex-guarded (leaf lock) and bare writes
-install their fork with a compare-and-swap.
+and a leak past the `{{ }}`). Name resolution from the task frame threads that
+private cell (see `nextFrame`), and a sealed frame still forks `self` for a
+bare *field* write (`resolvesToSelfField`) while keeping local/arg writes
+local, so bare and `self.` forms see each other inside a task exactly as in a
+method body. Record-literal fields use `recordFieldScope` (block.go): the record
+frame first for siblings, then the private fork, with writes and `self` routed
+to the fork. A closure created *outside* the `{{ }}` still writes its own scope
+when a task calls it; those writes are unordered across tasks, so the
+`DynamicScope` cell is mutex-guarded (leaf lock) and field writes install their
+fork with a compare-and-swap.
 
 The selection paths (`ObjectSelection.evalFieldsBySelection`, the `ListValue`
 case of `evalSelectionOnValue`, and the inline-fragment-over-list case) are thin
