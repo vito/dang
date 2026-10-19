@@ -30,6 +30,8 @@
 
 ## Reserved words
 
+> Treat these as reserved when naming your own variables and parameters. Strictly, only `null` and `rescue` are rejected as identifiers; the parser falls back to reading the others as plain names where their construct doesn't match, but editors still highlight them as keywords, and `true`, `false` and `self` can never be read back as variables. Selecting a field with one of these names (`x.type`) works for all but `null`. See [#grammar] for the details.
+
 - `pub`, `let`, `type`, `interface`, `enum`, `union`, `scalar`, `new`, `implements`
 - `input` only before a type name (`input Foo { ... }`); elsewhere it's an ordinary identifier (see [#inputs])
 - `if`, `else`, `case`, `break`, `continue`, `return`
