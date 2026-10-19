@@ -1,0 +1,137 @@
+type Inner {
+  x: Int!
+}
+
+type Foo {
+  x: Int!
+  inner: Inner! = Inner(10)
+  tags: [String!]! = []
+  name: String! = ""
+}
+
+assert("alias of a top-level binding is untouched by a field write") {
+  let a = Foo(1)
+  let b = a
+  a.x = 2
+  a.x == 2 and b.x == 1
+}
+
+assert("nested path write leaves a previously taken child untouched") {
+  let a = Foo(1)
+  let i = a.inner
+  let b = a
+  a.inner.x = 20
+  a.inner.x == 20 and i.x == 10 and b.inner.x == 10
+}
+
+assert("objects held in lists are untouched") {
+  let a = Foo(1)
+  let xs = [a]
+  a.x = 2
+  xs[0].x == 1 and a.x == 2
+}
+
+assert("objects held in records are untouched") {
+  let a = Foo(1)
+  let r = {{o: a}}
+  a.x = 2
+  r.o.x == 1 and a.x == 2
+}
+
+assert("writes through a record path clone the record") {
+  let a = Foo(1)
+  let r = {{o: a}}
+  let r2 = r
+  r.o.x = 5
+  r.o.x == 5 and r2.o.x == 1 and a.x == 1
+}
+
+mutateParam(o: Foo!): Foo! {
+  o.x = 9
+  o.inner.x = 99
+  o
+}
+
+assert("function mutating its parameter leaves the caller's value alone") {
+  let a = Foo(1)
+  let m = mutateParam(a)
+  m.x == 9 and m.inner.x == 99 and a.x == 1 and a.inner.x == 10
+}
+
+assert("+= on list fields does not leak to aliases") {
+  let a = Foo(1, tags: ["a"])
+  let b = a
+  a.tags += ["b"]
+  a.tags == ["a", "b"] and b.tags == ["a"]
+}
+
+assert("+= on string fields does not leak to aliases") {
+  let a = Foo(1, name: "x")
+  let b = a
+  a.name += "y"
+  a.name == "xy" and b.name == "x"
+}
+
+assert("equality sees mutated fields") {
+  let a = Foo(1)
+  let b = a
+  a.x = 2
+  a != b and b == Foo(1) and a == Foo(2)
+}
+
+assert("equality sees nested mutated fields") {
+  let a = Foo(1)
+  let b = a
+  a.inner.x = 11
+  a != b and a == Foo(1, inner: Inner(11))
+}
+
+assert("toJSON reflects shadowed values") {
+  let a = Foo(1)
+  let b = a
+  a.x = 2
+  a.inner.x = 3
+  JSON.encode(a) == JSON.encode(Foo(2, inner: Inner(3))) and JSON.encode(b) == JSON.encode(Foo(1))
+}
+
+interface HasX {
+  x: Int!
+}
+
+type Bar implements HasX {
+  x: Int!
+}
+
+assert("interface-typed aliases are not affected") {
+  let a = Bar(1)
+  let h: HasX! = a
+  let hs: [HasX!]! = [a]
+  a.x = 2
+  a.x == 2 and h.x == 1 and hs[0].x == 1
+}
+
+let shared = Foo(1)
+let sharedAlias = shared
+
+bumpShared: Int! {
+  shared.x = shared.x + 1
+  shared.x
+}
+
+assert("top-level binding reassigned from a function leaves aliases alone") {
+  bumpShared == 2 and shared.x == 2 and sharedAlias.x == 1
+}
+
+assert("many repeated writes stay correct") {
+  let a = Foo(0)
+  let b = a
+  let i = 0
+  loop {
+    if (i >= 10000) {
+      break
+    }
+    a.x += 1
+    i += 1
+  }
+  a.x == 10000 and b.x == 0
+}
