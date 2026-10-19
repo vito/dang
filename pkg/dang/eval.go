@@ -1831,6 +1831,12 @@ type FunctionValue struct {
 	Directives     []*DirectiveApplication
 	IsDynamic      bool // True if this function has access to dynamic scope
 
+	// SelfScope is the scope a dynamic (method-like) function was referenced
+	// from by bare name (`helper(1)`, `&helper`); see bindLexicalSelf. Its
+	// `self` is the receiver the function runs against, wherever the value
+	// ends up being called. Nil until referenced.
+	SelfScope ValueScope
+
 	IsBlockArg          bool
 	CapturedReturnFrame *ControlFrame
 	CapturedBreakFrame  *ControlFrame
@@ -1848,6 +1854,21 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal function value")
 }
 
+// bindLexicalSelf records scope as the place a dynamic function was referenced
+// by bare name, so that calls run against that scope's `self` (read when the
+// call happens, like any closure variable) rather than the caller's. Blocks
+// already close over their scope, and an already-bound value keeps its
+// original binding however far it travels.
+func (f FunctionValue) bindLexicalSelf(scope ValueScope) FunctionValue {
+	if !f.IsDynamic || f.IsBlockArg || f.SelfScope != nil {
+		return f
+	}
+	if _, ok := scope.Self(); ok {
+		f.SelfScope = scope
+	}
+	return f
+}
+
 func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	// A naked self-call to a sibling method or computed field (`foo()` rather
 	// than `self.foo()`, recursion included) must behave exactly like
@@ -1860,17 +1881,30 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 	// arguments are excluded: they intentionally share the enclosing method's
 	// `self` (so `xs.each { self.x += ... }` accumulates), and BoundMethod.Call
 	// would re-dispatch a block straight back here.
+	//
+	// The receiver is the `self` of the scope the function was referenced
+	// from (SelfScope), not of the scope calling it: a reference that escapes
+	// (`b.hook = &helper`, then `b.fire` calls `hook(x)`) must keep running
+	// against the object it was written in, never whichever object happens to
+	// invoke it. The caller's `self` is only a fallback for values that were
+	// never bound.
 	if f.IsDynamic && !f.IsBlockArg {
-		if self, ok := scope.Self(); ok {
+		selfScope := scope
+		if f.SelfScope != nil {
+			selfScope = f.SelfScope
+		}
+		if self, ok := selfScope.Self(); ok {
+			method := f
+			method.SelfScope = nil // the receiver below is the binding now
 			if recv, ok := self.(ValueScope); ok {
-				return BoundMethod{Method: f, Receiver: recv}.Call(ctx, scope, args)
+				return BoundMethod{Method: method, Receiver: recv}.Call(ctx, scope, args)
 			}
 			// A scalar method's self is a plain value, not a scope: a bare
 			// sibling call inside a scalar body re-dispatches with a fresh
 			// self cell the same way (falling through would MutateSelf a
 			// scope derived from the shared closure).
 			if sv, ok := self.(ScalarValue); ok {
-				return BoundScalarMethod{Method: f, Receiver: sv}.Call(ctx, scope, args)
+				return BoundScalarMethod{Method: method, Receiver: sv}.Call(ctx, scope, args)
 			}
 		}
 	}
@@ -2605,7 +2639,10 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 }
 
 func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-	if b.Method.IsBlockArg {
+	// A block keeps its enclosing method's `self`; a function referenced by
+	// bare name (`b.hook = &helper`, later called as `b.hook(x)`) keeps the
+	// `self` it was referenced under. Neither rebinds to this receiver.
+	if b.Method.IsBlockArg || b.Method.SelfScope != nil {
 		return b.Method.Call(ctx, scope, args)
 	}
 

@@ -654,6 +654,13 @@ func (s *Symbol) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
 		}
 
+		// A bare reference to a method or nested function binds it to this
+		// scope's `self`, so it keeps that receiver even if it escapes (e.g.
+		// `&helper` stored on another object and called from its methods).
+		if fn, ok := val.(FunctionValue); ok {
+			val = fn.bindLexicalSelf(scope)
+		}
+
 		// Auto-call zero-arity functions when accessed as symbols
 		if s.AutoCall && isAutoCallableFn(val) {
 			return autoCallFn(ctx, scope, withSelectedThrough(val, s.selectedThrough))
