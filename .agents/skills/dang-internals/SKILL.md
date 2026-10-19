@@ -129,9 +129,15 @@ still-running tasks. Every task is awaited, then one error is chosen
 deterministically: the lowest-index *genuine* error, preferring it over the
 `context.Canceled` errors our own cancellation may have induced in siblings
 (so the real cause is never masked by cancellation noise from a lower index).
-`n <= 1` runs inline. Callers fork the scope per task (`scope.Derive(true)`) so
-a task's incidental writes stay private while the receiver and lexical scope are
-only read.
+`n <= 1` runs inline. Callers fork the scope per task (`forkTaskScope`: a sealed
+`Derive(true)` plus a **task-private `self` cell** seeded with the enclosing
+`self`) so a task's incidental writes — bare or `self.x = v` — stay private
+while the receiver and lexical scope are only read. Without the private cell, a
+`self.x = v` in a task would write the enclosing method's shared cell (a race,
+and a leak past the `{{ }}`). A closure created *outside* the `{{ }}` still
+writes its own scope when a task calls it; those writes are unordered across
+tasks, so the `DynamicScope` cell is mutex-guarded (leaf lock) and bare writes
+install their fork with a compare-and-swap.
 
 The selection paths (`ObjectSelection.evalFieldsBySelection`, the `ListValue`
 case of `evalSelectionOnValue`, and the inline-fragment-over-list case) are thin

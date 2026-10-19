@@ -2203,12 +2203,72 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 	return results, nil
 }
 
+// forkTaskScope derives the scope one concurrent `{{ }}` task evaluates in from
+// base, with selfSrc's `self` (if any) in scope.
+//
+// Sealing (Derive(true)) keeps the task's bare writes to outer locals and
+// fields private, but Derive shares the dynamic-scope cell, so a
+// `self.field = ...` inside the task would MutateSelf the enclosing method's
+// cell: racing with sibling tasks and leaking into the method's `self` after
+// the `{{ }}`. Each task therefore gets its own cell, seeded with the enclosing
+// `self`, so the copy-on-write fork such a write creates stays task-local, just
+// like a bare write. selfSrc is separate from base because an object literal's
+// base is its own record scope, whose `self` comes from the enclosing scope.
+func forkTaskScope(base, selfSrc ValueScope) ValueScope {
+	task := base.Derive(true)
+	if self, ok := selfSrc.Self(); ok {
+		task.EnterSelf(self)
+	}
+	return task
+}
+
 // DynamicScope is a shared mutable cell for the 'self' value.
 // Cloned environments share the same cell so that mutations to self
 // inside closures (e.g. inside .each blocks) are visible to the
 // enclosing scope.
+//
+// The cell is guarded by mu because a closure can write it from several
+// goroutines at once: a block created in a method and invoked from the
+// concurrent tasks of a `{{ }}` writes the method's `self` (writes made
+// lexically inside a task go to that task's private cell, see forkTaskScope).
+// The order of such writes is unspecified; the lock only keeps them memory-safe
+// and stops a fork from being lost (see swap). mu is a leaf lock: nothing else
+// is acquired while it is held.
 type DynamicScope struct {
-	Value Value
+	mu    sync.Mutex
+	value Value
+}
+
+func newDynamicScope(v Value) *DynamicScope {
+	return &DynamicScope{value: v}
+}
+
+// get returns the current `self`.
+func (d *DynamicScope) get() Value {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.value
+}
+
+// set replaces the current `self`.
+func (d *DynamicScope) set(v Value) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.value = v
+}
+
+// swap replaces `self` with next only if it is still old, reporting whether it
+// did. Callers derive next from old outside the lock and retry on failure, so
+// a concurrent fork of `self` is built on rather than overwritten. old is an
+// *Object so the identity comparison can never hit an uncomparable Value.
+func (d *DynamicScope) swap(old *Object, next Value) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if cur, ok := d.value.(*Object); !ok || cur != old {
+		return false
+	}
+	d.value = next
+	return true
 }
 
 // Object represents an instance of a Type; it implements ValueScope
@@ -2251,7 +2311,7 @@ func (m *Object) nextFrame(cell *DynamicScope) (*Object, bool) {
 			cell = m.dynamicScope
 		}
 		if cell != nil {
-			if self, ok := cell.Value.(*Object); ok {
+			if self, ok := cell.get().(*Object); ok {
 				return self, true
 			}
 		}
@@ -2570,18 +2630,25 @@ func (m *Object) updateFrom(name string, value Value, cell *DynamicScope) {
 	m.mu.Unlock()
 
 	if parent != nil && !forked && parent.hasFrom(name, cell) {
-		if isSelf {
-			// A bare field write (`total += x`) inside a method: values are
-			// immutable, so fork `self` exactly like `self.total += x` does
-			// rather than writing into the receiver in place, which would
-			// show through every alias of it (`let r = self`, a stored
-			// `self`, a returned snapshot). The fork goes into the cell
-			// nextFrame resolved `self` from.
-			if cell == nil {
-				cell = m.dynamicScope
+		// A bare field write (`total += x`) inside a method: values are
+		// immutable, so fork `self` exactly like `self.total += x` does
+		// rather than writing into the receiver in place, which would
+		// show through every alias of it (`let r = self`, a stored
+		// `self`, a returned snapshot). The fork goes into the cell
+		// nextFrame resolved `self` from.
+		//
+		// The cell can be written concurrently (a block invoked from
+		// several `{{ }}` tasks), so install the fork only if `self` is
+		// still the generation it was built from; otherwise fork the newer
+		// generation, so neither write is lost.
+		if isSelf && cell == nil {
+			cell = m.dynamicScope
+		}
+		for isSelf {
+			if cell.swap(parent, forkWithField(parent, name, value)) {
+				return
 			}
-			cell.Value = forkWithField(parent, name, value)
-			return
+			parent, isSelf = m.nextFrame(cell)
 		}
 		// Variable exists in parent, update parent (only if not forked)
 		parent.updateFrom(name, value, cell)
@@ -2687,8 +2754,10 @@ func inMethodBody(scope ValueScope) bool {
 
 // Self returns the dynamic scope value ('self')
 func (m *Object) Self() (Value, bool) {
-	if m.dynamicScope != nil && m.dynamicScope.Value != nil {
-		return m.dynamicScope.Value, true
+	if m.dynamicScope != nil {
+		if v := m.dynamicScope.get(); v != nil {
+			return v, true
+		}
 	}
 	if m.Parent != nil {
 		return m.Parent.Self()
@@ -2700,9 +2769,9 @@ func (m *Object) Self() (Value, bool) {
 // existing shared cell, or creates a new cell if none exists.
 func (m *Object) MutateSelf(value Value) {
 	if m.dynamicScope != nil {
-		m.dynamicScope.Value = value
+		m.dynamicScope.set(value)
 	} else {
-		m.dynamicScope = &DynamicScope{Value: value}
+		m.dynamicScope = newDynamicScope(value)
 	}
 }
 
@@ -2710,7 +2779,7 @@ func (m *Object) MutateSelf(value Value) {
 // Use this when establishing a new self (e.g. entering a method body)
 // rather than updating self within the current scope.
 func (m *Object) EnterSelf(value Value) {
-	m.dynamicScope = &DynamicScope{Value: value}
+	m.dynamicScope = newDynamicScope(value)
 }
 
 // MarshalJSON implements json.Marshaler for Object

@@ -596,8 +596,9 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 		name := field.Name.Name
 		newMod.BindLazy(name, func(ctx context.Context) (Value, error) {
 			// Fork so a field's incidental local writes stay private; sibling
-			// references resolve through newMod, forcing them on demand.
-			fieldScope := valueScope.Derive(true)
+			// references resolve through newMod, forcing them on demand. The
+			// enclosing `self` stays in scope, in a task-private cell.
+			fieldScope := forkTaskScope(valueScope, scope)
 			// A field's own name refers to the enclosing scope, not the field
 			// being defined, so `users: users.{{...}}` reads the outer `users`
 			// rather than recursing into itself. Redirect it to the outer scope

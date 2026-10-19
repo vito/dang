@@ -2291,7 +2291,7 @@ func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, s
 		// elements are selected concurrently (each forks the scope for isolation)
 		// and fail fast; results stay in source order.
 		results, err := evalParallel(ctx, len(v.Elements), func(ctx context.Context, i int) (Value, error) {
-			return o.evalSelectionOnValue(v.Elements[i], ctx, scope.Derive(true))
+			return o.evalSelectionOnValue(v.Elements[i], ctx, forkTaskScope(scope, scope))
 		})
 		if err != nil {
 			return nil, err
@@ -2327,7 +2327,7 @@ func (o *ObjectSelection) evalFieldsBySelection(recv Value, ctx context.Context,
 	// and lexical scope are only read. Results are bound in source order, so the
 	// record layout is deterministic regardless of completion order.
 	vals, err := evalParallel(ctx, len(o.Fields), func(ctx context.Context, i int) (Value, error) {
-		return o.evalFieldSelection(recv, o.Fields[i], ctx, scope.Derive(true))
+		return o.evalFieldSelection(recv, o.Fields[i], ctx, forkTaskScope(scope, scope))
 	})
 	if err != nil {
 		return nil, err

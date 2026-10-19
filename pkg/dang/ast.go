@@ -570,7 +570,7 @@ func CreateConstructorScope(instance *Object, args ValueScope, closure ValueScop
 		locals:       NewObject(NewType("_constructor_locals_", ObjectKind)),
 		args:         args,
 		closure:      closure,
-		dynamicScope: &DynamicScope{Value: instance},
+		dynamicScope: newDynamicScope(instance),
 	}
 }
 
@@ -682,18 +682,26 @@ func (e *ConstructorScope) Update(name string, value Value) {
 	// method, see Object.Update). Never write in place — earlier generations
 	// of the instance may be aliased (`let s = self`) or shared by the
 	// receiver snapshot of a method called from this constructor.
-	inst, ok := e.instance()
-	if !ok {
-		return
+	//
+	// Like Object.Update, install the fork only if `self` is still the
+	// generation it was built from, so a concurrent write (a block called
+	// from several `{{ }}` tasks) is built on rather than dropped.
+	for {
+		inst, ok := e.instance()
+		if !ok {
+			return
+		}
+		// A name the instance doesn't have but the enclosing scope does (a
+		// top-level binding) is reassigned there, like from any function
+		// body, rather than grafted onto the instance as a new field.
+		if !inst.Has(name) && e.closure.Has(name) {
+			e.closure.Update(name, value)
+			return
+		}
+		if e.dynamicScope.swap(inst, forkWithField(inst, name, value)) {
+			return
+		}
 	}
-	// A name the instance doesn't have but the enclosing scope does (a
-	// top-level binding) is reassigned there, like from any function body,
-	// rather than grafted onto the instance as a new field.
-	if !inst.Has(name) && e.closure.Has(name) {
-		e.closure.Update(name, value)
-		return
-	}
-	e.MutateSelf(forkWithField(inst, name, value))
 }
 
 func (e *ConstructorScope) Visibility(name string) Visibility {
@@ -719,22 +727,24 @@ func (e *ConstructorScope) Derive(sealed bool) ValueScope {
 }
 
 func (e *ConstructorScope) Self() (Value, bool) {
-	if e.dynamicScope != nil && e.dynamicScope.Value != nil {
-		return e.dynamicScope.Value, true
+	if e.dynamicScope != nil {
+		if v := e.dynamicScope.get(); v != nil {
+			return v, true
+		}
 	}
 	return nil, false
 }
 
 func (e *ConstructorScope) MutateSelf(value Value) {
 	if e.dynamicScope != nil {
-		e.dynamicScope.Value = value
+		e.dynamicScope.set(value)
 	} else {
-		e.dynamicScope = &DynamicScope{Value: value}
+		e.dynamicScope = newDynamicScope(value)
 	}
 }
 
 func (e *ConstructorScope) EnterSelf(value Value) {
-	e.dynamicScope = &DynamicScope{Value: value}
+	e.dynamicScope = newDynamicScope(value)
 }
 
 func (e *ConstructorScope) Type() hm.Type {
