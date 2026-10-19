@@ -591,7 +591,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 	}
 
 	// Clone the root object to begin the copy-on-write process
-	newRoot := rootObj.(ValueScope).Derive(false)
+	newRoot := cowFork(rootObj.(ValueScope))
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
@@ -604,8 +604,8 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
-		clonedVal := val.(ValueScope).Derive(false)
-		currentObj.Bind(fieldName, clonedVal.(Value), currentObj.Visibility(fieldName))
+		clonedVal := cowFork(val.(ValueScope))
+		cowBind(currentObj, fieldName, clonedVal.(Value))
 		currentObj = clonedVal
 	}
 
@@ -616,7 +616,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: obj.field = value
-		currentObj.Bind(finalField, value, currentObj.Visibility(finalField))
+		cowBind(currentObj, finalField, value)
 	case "+":
 		// Compound assignment: obj.field += value
 		currentValue, found, err := currentObj.Lookup(ctx, finalField)
@@ -633,7 +633,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 			return nil, err
 		}
 
-		currentObj.Bind(finalField, newValue, currentObj.Visibility(finalField))
+		cowBind(currentObj, finalField, newValue)
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
@@ -647,6 +647,25 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 	}
 
 	return newRoot.(Value), nil
+}
+
+// cowFork copies one link of a copy-on-write path. Objects copy their top
+// write generation as a sibling (see Object.cowCopy) rather than deriving a
+// child, so repeated writes don't build ever-deeper parent chains.
+func cowFork(v ValueScope) ValueScope {
+	if obj, ok := v.(*Object); ok {
+		return obj.cowCopy()
+	}
+	return v.Derive(false)
+}
+
+// cowBind writes a field on a link cowFork just copied.
+func cowBind(v ValueScope, name string, value Value) {
+	if obj, ok := v.(*Object); ok {
+		obj.bindOverPending(name, value, obj.Visibility(name))
+		return
+	}
+	v.Bind(name, value, v.Visibility(name))
 }
 
 func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {

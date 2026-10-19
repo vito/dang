@@ -2599,41 +2599,59 @@ func (m *Object) updateFrom(name string, value Value, cell *DynamicScope) {
 // forkWithField returns a copy-on-write fork of obj with name set to value,
 // leaving obj itself untouched — the same result `self.x = v` produces in
 // evalFieldAssignment. The caller installs the result as the new `self`.
-//
-// Deriving a child frame per write would make a loop of bare writes
-// (`xs.each { x => total += x }`) build a chain as deep as its iteration count,
-// and every read of a field the loop doesn't write would walk all of it —
-// quadratic. So when obj is itself a copy-on-write frame (it has a parent), its
-// frame is copied instead, with the new generation as obj's sibling: chains
-// stay as deep as they were, and a write costs one copy of the fields written
-// so far.
 func forkWithField(obj *Object, name string, value Value) *Object {
 	vis := obj.Visibility(name)
-	if obj.Parent == nil {
-		next := obj.Derive(false).(*Object)
-		next.Bind(name, value, vis)
-		return next
+	next := obj.cowCopy()
+	next.bindOverPending(name, value, vis)
+	return next
+}
+
+// bindOverPending binds name on m, superseding any pending initializer m holds
+// for it (Lookup prefers a pending entry over a value). Use it to write a field
+// on a frame fresh from cowCopy, whose pending entries are copies of its
+// source's.
+func (m *Object) bindOverPending(name string, value Value, vis Visibility) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.Pending, name)
+	m.Values[name] = value
+	m.Visibilities[name] = vis
+}
+
+// cowCopy returns a fresh copy of m for a copy-on-write write to bind on,
+// leaving m itself untouched. Every field write — bare (forkWithField) or
+// through a path (`a.x = v`, `self.a.b = v`, see evalFieldAssignment) — forks
+// through here.
+//
+// Deriving a child frame per write would make a loop of writes
+// (`xs.each { x => total += x }`, or `a.x += 1` in a `loop`) build a chain as
+// deep as its iteration count, and every read of a field the loop doesn't
+// write — and every Bindings/MarshalJSON/equality walk — would walk all of it:
+// quadratic, and every superseded generation would stay reachable. So when m
+// is itself a copy-on-write frame (it has a parent), its frame is copied
+// instead, with the new generation as m's sibling: chains stay as deep as
+// they were, and a write costs one copy of the fields written so far.
+func (m *Object) cowCopy() *Object {
+	if m.Parent == nil {
+		return m.Derive(false).(*Object)
 	}
-	obj.mu.Lock()
+	m.mu.Lock()
 	next := &Object{
-		Mod:          obj.Mod,
-		Values:       maps.Clone(obj.Values),
-		Visibilities: maps.Clone(obj.Visibilities),
-		Pending:      maps.Clone(obj.Pending),
-		Parent:       obj.Parent,
-		IsForked:     obj.IsForked,
-		dynamicScope: obj.dynamicScope,
+		Mod:          m.Mod,
+		Values:       maps.Clone(m.Values),
+		Visibilities: maps.Clone(m.Visibilities),
+		Pending:      maps.Clone(m.Pending),
+		Parent:       m.Parent,
+		IsForked:     m.IsForked,
+		dynamicScope: m.dynamicScope,
 	}
-	obj.mu.Unlock()
+	m.mu.Unlock()
 	if next.Values == nil {
 		next.Values = make(map[string]Value)
 	}
 	if next.Visibilities == nil {
 		next.Visibilities = make(map[string]Visibility)
 	}
-	delete(next.Pending, name)
-	next.Values[name] = value
-	next.Visibilities[name] = vis
 	return next
 }
 
