@@ -774,15 +774,9 @@ func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) erro
 
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		// Handle nil receiver (symbol calls) - look up type in environment
+		// Every Select has a receiver: bare names are Symbols.
 		if d.Receiver == nil {
-			scheme, found := env.SchemeOf(d.Field.Name)
-			if !found {
-				return nil, fmt.Errorf("%q not found in env", d.Field.Name)
-			}
-			t, _ := scheme.Type()
-			d.SetInferredType(t)
-			return t, nil
+			return nil, fmt.Errorf("Select.Infer: internal error: %q has no receiver", d.Field.Name)
 		}
 
 		// Static member resolution. When the receiver names a type directly
@@ -998,16 +992,7 @@ func (d *Select) DeclaredSymbols() []string {
 }
 
 func (d *Select) ReferencedSymbols() []string {
-	var symbols []string
-
-	// When Receiver is nil, this is a top-level function call like createPerson()
-	if d.Receiver == nil {
-		symbols = append(symbols, d.Field.Name)
-	} else {
-		symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
-	}
-
-	return symbols
+	return d.Receiver.ReferencedSymbols()
 }
 
 func (d *Select) Body() hm.Expression { return d }
@@ -1044,17 +1029,10 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return val, nil
 		}
 
-		var receiverVal Value
-		var err error
-
 		// Handle normal receiver evaluation
-		if d.Receiver != nil {
-			receiverVal, err = EvalNode(ctx, scope, d.Receiver)
-			if err != nil {
-				return nil, fmt.Errorf("evaluating receiver: %w", err)
-			}
-		} else {
-			receiverVal = scope
+		receiverVal, err := EvalNode(ctx, scope, d.Receiver)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating receiver: %w", err)
 		}
 
 		val, err := (func() (Value, error) {
