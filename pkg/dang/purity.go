@@ -75,7 +75,7 @@ func resolveBinding(env hm.Env, name string) TypeScope {
 		}
 		return resolveBinding(e.lexical, name)
 	case *Type:
-		if _, ok := e.vars[name]; ok {
+		if _, ok := e.vars[name]; ok && !e.narrowed[name] {
 			return e
 		}
 		if e.Parent != nil {
