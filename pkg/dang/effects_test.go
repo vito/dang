@@ -88,6 +88,44 @@ func TestTopLevelImmutable(t *testing.T) {
 			name: "self field is fine",
 			src:  "type T { count: Int! = 0\n bump: T! { count += 1; self } }",
 		},
+		{
+			name: "static written from script code",
+			src:  "type Counter { self { count: Int! = 0 } }\nCounter.count = 5",
+			want: "cannot assign to `Counter.count`: static members are immutable once initialized",
+		},
+		{
+			name: "static written through a path from a method",
+			src:  "type P { x: Int! }\ntype Counter { self { cfg: P! = P(1) }\n bump: Int! { Counter.cfg.x = 2; 1 } }",
+			want: "cannot assign to `Counter.cfg`: static members are immutable",
+		},
+		{
+			name: "static method writing its own self is pure",
+			src: `
+				type Counter {
+					self {
+						count: Int! = 0
+						bump: Int! { count += 1; count }
+						bumpSelf: Int! { self.count += 1; count }
+					}
+				}
+				r: Int! { let x = {{a: Counter.bump, b: Counter.bumpSelf}}; x.a + x.b }
+			`,
+		},
+		{
+			name: "static method's closure writing its self inside {{ }}",
+			src: `
+				type Counter {
+					self {
+						count: Int! = 0
+						run: Int! {
+							bump: Int! { count += 1; count }
+							{{a: bump}}.a
+						}
+					}
+				}
+			`,
+			want: "{{ }} fields run concurrently; `bump` writes `count`",
+		},
 	})
 }
 

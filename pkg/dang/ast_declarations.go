@@ -531,6 +531,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err := r.checkInterfaceFieldWrite(); err != nil {
 			return nil, err
 		}
+		if err := checkStaticWrite(r); err != nil {
+			return nil, err
+		}
 		if err := checkTopLevelWrite(ctx, env, r); err != nil {
 			return nil, err
 		}

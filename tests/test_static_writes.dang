@@ -1,0 +1,27 @@
+# Statics are type-level state, initialized once. Writes to them from outside
+# are compile errors (tests/errors/static_member_write.dang); a static method's
+# writes to its own `self` stay in that call's copy, like an instance method's,
+# so they are pure and may run inside {{ }}.
+
+type Counter {
+  self {
+    count: Int! = 0
+
+    bump: Int! {
+      count += 1
+      count
+    }
+
+    bumpSelf: Int! {
+      self.count += 10
+      count
+    }
+  }
+}
+
+assert("each call forks the statics") { [Counter.bump, Counter.bump] == [1, 1] }
+assert("self. form too") { Counter.bumpSelf == 10 }
+assert("the statics are untouched") { Counter.count == 0 }
+assert("static methods run in parallel fields") {
+  {{a: Counter.bump, b: Counter.bumpSelf}} == {{a: 1, b: 10}}
+}

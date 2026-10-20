@@ -149,3 +149,26 @@ func checkTopLevelWrite(ctx context.Context, env hm.Env, r *Reassignment) error 
 		r,
 	)
 }
+
+// checkStaticWrite rejects an assignment through a static member
+// (`Counter.count = 5`, `Counter.cfg.x = 1`). Statics are type-level state,
+// initialized once like top-level bindings, and immutable afterwards from
+// everywhere — script code included, since the type name is not an object to
+// copy-on-write. Inside a static method, writes to its own `self` fields stay
+// in that call's fork, exactly like an instance method's, so they are pure.
+func checkStaticWrite(r *Reassignment) error {
+	for node := r.Target; ; {
+		sel, ok := node.(*Select)
+		if !ok {
+			return nil
+		}
+		if sel.staticOwner != nil {
+			return NewInferError(
+				fmt.Errorf("cannot assign to `%s.%s`: static members are immutable once initialized; a static method's writes to `self` stay in that call's copy",
+					sel.staticOwner.Named, sel.Field.Name),
+				r,
+			)
+		}
+		node = sel.Receiver
+	}
+}
