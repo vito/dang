@@ -212,14 +212,16 @@ type Guest {
 }
 ```
 
-### Field defaults can't keep the object they're building {#field-default-closures}
+### Field defaults only see values {#field-defaults}
 
-A type's field defaults run against the object while it is still being built:
+A type's field defaults run once, while the object is still being built:
 before `new()` assigns its fields, and before any later write makes a new
-copy. A closure or `&ref` created there that uses the object (`self`, or the
-type's own fields and methods) would keep reading that half-built object for
-as long as it lives. So in a field default it can be called or passed as an
-argument, but not stored, returned, or put in a list or record:
+copy. Without an explicit `new()` they are the constructor's parameter
+defaults (`combined: String! = prefix + suffix` reads whatever `prefix` the
+caller passed), and they are scoped like them: a default sees the other
+fields' values and the enclosing scope, but not `self`, and not the type's
+methods or computed fields, which belong to the finished object. That holds
+anywhere in the default, blocks and nested functions included:
 
 ```dang-failure
 type Gauge {
@@ -229,21 +231,39 @@ type Gauge {
 }
 ```
 
-Blocks a default runs right away are fine. To keep a closure, create it in a
-method or computed field, which runs against the finished object, or in
+With an explicit `new()`, a field without a default has no value until
+`new()` assigns it, after the defaults have run, so a default can't read it
+either:
+
+```dang-failure
+type Dial {
+  level: Int!
+  let doubled = level * 2
+  new(level: Int!) {
+    self.level = level
+    self
+  }
+}
+```
+
+So whatever a default reads is a value, the one the object starts with, and a
+closure created there is like any closure that only reads its scope: it can
+go anywhere, and it keeps the values it captured even after later writes or
+`new()` change the fields. To work with the finished object instead, use a
+method or computed field, which runs against the current receiver, or
 `new()`:
 
 ```dang
 type Meter {
   level: Int! = 1
   read(x: Int!): Int! { level + x }
-  let total: Int! = [1, 2].map { x => level + x }.reduce(0) { a, b => a + b }
-  reader: Host! { Host.store { x => read(x) } }
+  let held = Host.store { x => level + x }        # level as the object starts
+  reader: Host! { Host.store { x => read(x) } }   # level as it is now
 }
 
 let m = Meter
 m.level = 10
-[m.total, m.reader.saved(1)]
+[m.held.saved(1), m.reader.saved(1)]
 ```
 
 ## `{{ }}` fields can't write outside themselves {#concurrent-fields}

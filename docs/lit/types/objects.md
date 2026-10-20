@@ -45,7 +45,7 @@ Vault.unlock(Account)   # "hunter2"
 - one positional parameter per non-default field, in **declaration order** (NOT required-first-then-defaults — a defaulted field may precede a required one; positional args still line up by declaration order)
   - e.g. `Mixed { pub publicWithDefault = "default"; let privateRequired: Int! }` constructs as `Mixed("default", 42)`
 - can also be called with named arguments (`Counter(value: 42)`)
-- field defaults are evaluated with `self` bound, so a default may reference earlier/sibling fields, e.g. `combined = prefix + "_" + suffix`
+- field defaults act as the constructor's parameter defaults, so a default may reference sibling fields, e.g. `combined = prefix + "_" + suffix` (`Computed("hello").combined` sees the passed `prefix`); like parameter defaults they see only values: not `self`, and not the type's methods or computed fields (see [#field-defaults])
 
 ```dang
 Person("Alice", age: 30)
@@ -88,7 +88,7 @@ type Greeter {
 
 ## `self`
 
-- bound during constructor and method execution (and during field-default / computed-field evaluation)
+- bound during constructor, method, and computed-field execution; not in field defaults, which run before the object is finished (see [#field-defaults])
 - bare names inside a method resolve against the current receiver first: bare `name` reads `self.name`, bare `incrBy(1)` calls `self.incrBy(1)`
 - field **reads** never need `self.`; for **assignment**, both forms work:
   - bare `a += 1` / `value = v` on a field forks `self` and sets the field
@@ -166,6 +166,6 @@ type Person implements Named & Identifiable { name: String!; id: String! }
 
 - methods can reference types and fields defined later in the same file
 - references also resolve across files in a directory module, order-independently
-- defaults can reference sibling fields (evaluated with `self` bound)
+- defaults can reference sibling fields, including ones declared after them
 
 > Meta: user-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax. Schema input types are constructed exactly like local types: `CreateUserInput(name: "Alice", email: "...")` passed as `Mutation.createUser(input: ...)`. See [#interop].

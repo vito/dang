@@ -31,6 +31,10 @@ let secret = "shhh"       # local field (untyped is fine)
   constructor parameter; a `let` field *with* a default does not
 - private fields with defaults are preferred over outer-scope bindings of the
   same name inside the type
+- a field's default runs once, while the object is being built, and is scoped
+  like a constructor parameter default: it reads the other fields' values and
+  the enclosing scope, but not `self` or the type's methods and computed
+  fields — see [#field-defaults]
 
 ### Visibility
 
@@ -171,7 +175,7 @@ greet(someNullableString)  # falls back to "world" when the value is null
 - a method ref is lexically bound: wherever it is stored or called from (even another object's methods), it runs against the `self` where it was written, never the caller's
 - inside a method, `&helper` and `&self.helper` read `self` when called, so they see field writes made after the ref was taken; a ref through any other receiver (`&r.helper`) holds that value, since values are immutable
 - a ref to a closure that writes outside itself (a nested function or block writing the enclosing method's locals or `self`) can be called or passed as an argument, but not stored, returned, or put in a list or record — see [#impure-closures]. Named functions and methods never write outside their own `self`, so refs to them can go anywhere
-- except from a field default: there `&helper` would be bound to the half-built object under construction, so it can only be called or passed as an argument; take it in a method, computed field, or `new()` instead — see [#field-default-closures]
+- a field default can't take `&helper` at all: it doesn't see the type's methods — see [#field-defaults]
 
 ### Nested functions
 
