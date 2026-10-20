@@ -105,14 +105,24 @@ func editionFromStore(store map[string]any) Edition {
 
 type editionKey struct{}
 
-// ContextWithEdition sets the edition of source that no dang.toml governs,
-// in place of LatestEdition. Embedders use it for source whose edition they
-// know some other way (e.g. a Dagger SDK pinning a module's edition from its
-// engine version), and for source that has no path at all (REPL input, or a
-// completion fragment of a file whose edition is already known). It never
-// overrides a dang.toml: see EditionForDir.
+// ContextWithEdition sets the edition of the source evaluated directly with
+// ctx (the directory or file passed to RunDir, DeclareDir or RunFile, or
+// source with no path at all, such as REPL input or a completion fragment)
+// when no dang.toml governs it, in place of LatestEdition. Embedders use it
+// for source whose edition they know some other way, e.g. a Dagger SDK
+// pinning a module's edition from its engine version.
+//
+// It never overrides a dang.toml (see EditionForDir), and it does not reach
+// the modules that source imports: an imported module's edition depends only
+// on its own path, so an ungoverned import is LatestEdition.
 func ContextWithEdition(ctx context.Context, e Edition) context.Context {
 	return context.WithValue(ctx, editionKey{}, e)
+}
+
+// withoutContextEdition clears ContextWithEdition, for crossing into an
+// imported module.
+func withoutContextEdition(ctx context.Context) context.Context {
+	return ContextWithEdition(ctx, "")
 }
 
 // EditionFromContext returns the edition of source that no dang.toml
