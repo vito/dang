@@ -246,18 +246,18 @@ type Dial {
 }
 ```
 
-So whatever a default reads is a value, the one the object starts with, and a
+So whatever a default reads is a value the object is built with, and a
 closure created there is like any closure that only reads its scope: it can
-go anywhere, and it keeps the values it captured even after later writes or
-`new()` change the fields. To work with the finished object instead, use a
-method or computed field, which runs against the current receiver, or
-`new()`:
+go anywhere. It reads the fields as the type body leaves them, so neither
+`new()` nor any later write reaches it. To work with the finished object
+instead, use a method or computed field, which runs against the current
+receiver, or `new()`:
 
 ```dang
 type Meter {
   level: Int! = 1
   read(x: Int!): Int! { level + x }
-  let held = Host.store { x => level + x }        # level as the object starts
+  let held = Host.store { x => level + x }        # level as the object is built
   reader: Host! { Host.store { x => read(x) } }   # level as it is now
 }
 
