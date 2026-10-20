@@ -1,13 +1,14 @@
 ---
 name: dang-internals
-description: Non-obvious invariants in Dang's compiler — multi-pass hoisting, the Fork/Clone/dynamic-scope-cell model, and `Module.Eq` subtyping. Use when editing `pkg/dang/` infer/eval/scope code, adding a new type-like declaration, or debugging mutation/scoping issues.
+description: Non-obvious invariants in Dang's compiler — multi-pass hoisting, the Fork/Clone/dynamic-scope-cell model, the effect/escape checks (top-level immutability, closure purity, `{{ }}` purity), and `Module.Eq` subtyping. Use when editing `pkg/dang/` infer/eval/scope code, adding a new type-like declaration, adding a builtin that takes a block, or debugging mutation/scoping/purity issues.
 ---
 
 # Dang Internals — Hoisting and Scoping
 
-The two non-obvious invariants in `pkg/dang/`: how the compiler resolves
-forward references (multi-pass hoisting) and how copy-on-write mutation
-interacts with closures (shared vs fresh dynamic-scope cells).
+The non-obvious invariants in `pkg/dang/`: how the compiler resolves forward
+references (multi-pass hoisting), how copy-on-write mutation interacts with
+closures (shared vs fresh dynamic-scope cells), and how the compile-time
+effect checks keep shared writes out of escaping closures and `{{ }}` fields.
 
 ## Multi-pass hoisting
 
@@ -158,7 +159,9 @@ frame first for siblings, then the private fork, with writes and `self` routed
 to the fork. A closure created *outside* the `{{ }}` still writes its own scope
 when a task calls it; those writes are unordered across tasks, so the
 `DynamicScope` cell is mutex-guarded (leaf lock) and field writes install their
-fork with a compare-and-swap.
+fork with a compare-and-swap. Checked programs never do this: the compiler
+rejects shared writes from `{{ }}` fields (see "Effects and escapes" below), so
+the locks are a memory-safety backstop, not a semantics.
 
 The selection paths (`ObjectSelection.evalFieldsBySelection`, the `ListValue`
 case of `evalSelectionOnValue`, and the inline-fragment-over-list case) are thin
@@ -207,6 +210,74 @@ Two things to preserve when touching this:
   cycles the static graph can't see — module-level cycles routed through an
   auto-called function (`module_lazy_cycle`) — and is what stops a
   self-referential force from deadlocking on its own `pendingInit.mu`.
+
+## Effects and escapes (compile-time purity)
+
+Three checks, layered so that none needs to track function values through
+storage. Files: `purity.go` (layer 1), `effects.go` (layer 2 and the shared
+machinery), `fields_purity.go` (layer 3). `hm.FunctionType` carries an opaque
+`hm.Effect` that hm only copies through `Apply`/`Normalize` (`Eq` ignores it);
+Dang's `*Effect` is either a **closure effect** (a function body: what it
+writes outside itself, which outer parameters it calls, any non-local
+`return`/`break`) or a **parameter effect variable** (a function-typed param,
+with "must be pure" reasons once discovered).
+
+1. **Top-level bindings are immutable from functions.** `checkTopLevelWrite`
+   rejects an assignment whose root resolves (`resolveBinding`) to the
+   top-level frame (or a frame it extends) when inferring inside a function,
+   method, constructor or type body (`withFunctionBody`). Top-level script
+   code — top-level forms and blocks inside them, REPL prompts, doc
+   snippets — may still reassign. Statics (`self { }` members) can't be
+   written from outside at all (`checkStaticWrite`); a static method's
+   `self` writes fork per call like an instance method's. Consequence: **named
+   functions and methods never write shared state** — their only writes are
+   locals and their own `self` fork (methods/constructors own their receiver
+   frame, `methodSelfFrame`).
+2. **Impure closures can't escape.** A block, nested function, or `&ref` to
+   one whose effect writes a binding it doesn't declare may appear only as a
+   callee or as an argument for a function-typed parameter. Escape detection
+   is source-based: `FunCall` marks the callee and eligible arguments with
+   `withAllowedFn`; any other `Symbol`/`FunctionRef` producing a function
+   value calls `checkEscape`. A parameter that escapes (or a closure calling
+   one) gets a "must be pure" reason. Builtins are assumed to call their
+   function args sequentially and never store them (`paramAcceptsFn`;
+   `TestBuiltinsNeverStoreFunctions` lists them — extend it when adding one).
+3. **`{{ }}` fields.** Each field is an `effFrame{field: true}`. Inside a field:
+   a write to a binding not declared within it is an error
+   (`checkFieldWrite`/`declaredWithin`; blocks written directly in a field
+   register their scope with it); calling a closure created outside the field
+   that writes anything is an error; calling a parameter makes it "must be
+   pure" (concurrently).
+
+Effects are computed **in source order** on a stack of `effFrame`s carried in
+ctx (`withEffFrame` for bodies, `withFieldFrame` for fields): writes
+(`absorbWrite`) and calls (`absorbCall`) land in the innermost body frame,
+dropping targets it owns (`effFrame.inside` walks `*Type.Parent`). Nested
+functions aren't hoisted, so a closure's effect is complete before anything
+can reference it — no fixed point. What can't be decided in place is whether
+an argument meets a parameter's "must be pure" requirement, because hoisting
+infers callers before callees: `effectArg` records bindings on the
+`effectSolver` and `solve()` propagates requirements through forwarded
+parameters (a monotone boolean propagation) and reports violations, including
+blocks with non-local `return`/`break` that may escape (this replaced the old
+runtime "expired frame" checks).
+
+**Every inference entry point must solve.** `Infer`, `InferDirectoryFiles(Focused)`
+and `InferFormsWithPhases` install a solver when ctx has none and solve it at
+the end; nested calls reuse the outer one. `InferTopLevel` is
+`InferFormsWithPhases` plus marking the top-level frame — use it for REPL-like
+sessions (REPL, playground, literate docs). Errors found during inference
+(escapes, field violations) go through `reportEffectError` so they're
+reported with the deferred ones without failing the expression's type.
+
+Gotchas:
+- Flow-sensitive narrowing re-adds a name to a clone frame; `Type.narrowed`
+  marks those so writes resolve to the real declaration.
+- `Coerce` wraps field values after inference; look through it
+  (`FieldDecl.funDecl`) when you need the `FunDecl`.
+- Effects attach to fresh function types only (`attachEffects` on
+  `FunTypeNode` results and freshly built signatures); never `SetEffect` a
+  shared type — use `WithEffect` for a copy.
 
 ## Subtyping via `Module.Eq`
 
