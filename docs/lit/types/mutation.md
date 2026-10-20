@@ -110,25 +110,182 @@ let total = 0
 total
 ```
 
+Copy-on-write is Dang's only kind of mutation: a write changes the writer's
+own copy of `self`, or a local of the scope it runs in, never a value someone
+else holds. Three compile-time rules close the loopholes around that.
+
+## Top-level bindings are immutable {#top-level-bindings}
+
+A top-level binding is immutable once initialized. Top-level script code
+(top-level forms and the blocks inside them, like the loop above) may still
+reassign it: that reassignment is part of initializing the package, and it
+keeps one-off scripts and the REPL working.
+
+Nothing else can write one. Functions, methods, `new()`, type bodies, and the
+closures inside them are all rejected, path writes such as `shared.x = …`
+included:
+
+```dang-static
+count: Int! = 0
+
+bump: Int! {
+  count += 1
+  count
+}
+```
+
+```
+Error: cannot assign to `count`: top-level bindings are immutable once
+initialized; use a local `let`, a field, or return the new value
+```
+
+So a function or method has no side effects beyond its own copy of `self`.
+To change something, return the new value, as `incr` does on `Counter` above.
+
+## Closures that write can't escape {#impure-closures}
+
+A block or nested function can write the bindings of the scope it was written
+in: the loop above writes `total`, and a nested function in a method can write
+the method's locals or `self`. Such a closure (or a `&ref` to one) is
+*impure*. It may only be called or passed as an argument. Storing it in a
+`let` or field, returning it, or putting it in a list or record is a compile
+error: whoever ended up holding it could change that scope's state from
+anywhere, a shared mutable cell of exactly the kind copy-on-write rules out.
+
 ```dang-failure
-# every `{{ }}` evaluates its fields concurrently, each in its own fork:
-# `b` can't see `a`'s write, and the outer `counter` stays untouched
+counter: Int! {
+  let n = 0
+  bump(x: Int!): Int! { n += x; n }
+  bump(1)             # calling it is fine
+  let saved = &bump   # storing it is not
+  n
+}
+```
+
+A closure that only reads its scope is pure and can go anywhere:
+
+```dang
+scaled: [Int!]! {
+  let k = 3
+  scale(x: Int!): Int! { x * k }
+  let f = &scale
+  [f(1), f(2)]
+}
+scaled
+```
+
+The same goes for block parameters. A function that stores, returns, or
+collects its block parameter (`self.saved = cb`) can only be given a pure
+block:
+
+```dang
+type Host {
+  saved(x: Int!): Int! { x }
+  store(&cb(x: Int!): Int!): Host! {
+    self.saved = cb
+    self
+  }
+}
+
+Host.store { x => x * 2 }.saved(21)
+```
+
+The check happens where the block is passed:
+
+```dang-static
+type Guest {
+  n: Int! = 10
+  escape: Host! {
+    Host.store { x =>
+      n += x
+      n
+    }
+  }
+}
+```
+
+```
+Error: `Host.store` stores, returns, or collects `cb`, so this block must not
+write outer state, but it writes `n`
+```
+
+## `{{ }}` fields can't write outside themselves {#concurrent-fields}
+
+Every `{{ }}` evaluates its fields concurrently, so fields communicate only
+by producing values. Inside a field, these are compile errors:
+
+- writing a binding declared outside the field, including the enclosing
+  method's locals and `self`. Each field works on a private copy, so the
+  write would otherwise be silently discarded.
+- calling a closure created outside the field that writes anything
+- calling a block parameter whose block isn't pure. This is checked where
+  the block is passed.
+
+```dang-static
 let counter = 0
-let pair = {{
+{{
   a: { counter += 1; counter },
   b: { counter += 10; counter }
 }}
-[pair.a, pair.b, counter]
+```
+
+```
+Error: {{ }} fields run concurrently; this assignment writes `counter`, which
+is declared outside the field
 ```
 
 ```dang-static
-# a function defined outside the `{{ }}` still writes its own shared scope,
-# so calling it from several fields races: those writes happen in an
-# unspecified order (and `+=` can lose updates). Keep shared writes out of
-# `{{ }}` fields; a compile-time check for this is planned.
-let hits = 0
-inc: Int! { hits += 1; hits }
-{{ a: inc, b: inc }}
+type Tally {
+  run: Int! {
+    let n = 0
+    bump: Int! { n += 1; n }
+    let r = {{ a: bump, b: bump }}
+    r.a + r.b
+  }
+}
+```
+
+```
+Error: {{ }} fields run concurrently; `bump` writes `n`
+```
+
+```dang
+# method calls that return updated copies are fine: each field forks its
+# own receiver, and `ctr` itself is untouched
+let ctr = Counter(0)
+{{ a: ctr.incr.value, b: ctr.incr.incr.value, orig: ctr.value }}
+```
+
+```dang
+# state declared inside a field belongs to that field
+{{ sum: { let n = 0; [1, 2, 3].each { x => n += x }; n } }}.sum
+```
+
+```dang
+# a block parameter called from several fields at once...
+both(&block(x: Int!): Int!): Int! {
+  let r = {{ a: block(1), b: block(2) }}
+  r.a + r.b
+}
+
+# ...works with a pure block
+both { x => x * 10 }
+```
+
+```dang-static
+# ...but rejects a block that writes outer state
+type Acc {
+  total: Int! = 0
+  runBoth: Acc! {
+    both { x => total += x; total }
+    self
+  }
+}
+```
+
+```
+Error: `both` calls `block` inside {{ }}, whose fields run concurrently, so
+this block must not write outer state, but it writes `total`
 ```
 
 ```dang
