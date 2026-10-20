@@ -909,9 +909,11 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	// Infer body forms (excluding new() which is handled separately)
+	// Infer body forms (excluding new() which is handled separately). Field
+	// defaults are evaluated against the object under construction; methods
+	// leave that context again (see withTypeBody).
 	bodyForms := c.bodyFormsWithoutNew()
-	if _, err := InferFormsWithPhases(ctx, bodyForms, inferTypeScope, fresh); err != nil {
+	if _, err := InferFormsWithPhases(withTypeBody(ctx, object), bodyForms, inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
 

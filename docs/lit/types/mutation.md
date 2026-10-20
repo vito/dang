@@ -212,6 +212,40 @@ type Guest {
 }
 ```
 
+### Field defaults can't keep the object they're building {#field-default-closures}
+
+A type's field defaults run against the object while it is still being built:
+before `new()` assigns its fields, and before any later write makes a new
+copy. A closure or `&ref` created there that uses the object (`self`, or the
+type's own fields and methods) would keep reading that half-built object for
+as long as it lives. So in a field default it can be called or passed as an
+argument, but not stored, returned, or put in a list or record:
+
+```dang-failure
+type Gauge {
+  level: Int! = 1
+  read(x: Int!): Int! { level + x }
+  let reader = &read
+}
+```
+
+Blocks a default runs right away are fine. To keep a closure, create it in a
+method or computed field, which runs against the finished object, or in
+`new()`:
+
+```dang
+type Meter {
+  level: Int! = 1
+  read(x: Int!): Int! { level + x }
+  let total: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }
+  reader: Host! { Host.store { x => read(x) } }
+}
+
+let m = Meter
+m.level = 10
+[m.total, m.reader.saved(1)]
+```
+
 ## `{{ }}` fields can't write outside themselves {#concurrent-fields}
 
 Every `{{ }}` evaluates its fields concurrently, so fields communicate only

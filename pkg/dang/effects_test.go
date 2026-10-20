@@ -708,3 +708,239 @@ func TestClosureEscapes(t *testing.T) {
 		},
 	})
 }
+
+// A closure or method ref created in a field default and using the object
+// under construction may be called or passed as an argument, but not kept:
+// it would keep reading the half-built object.
+func TestFieldDefaultClosures(t *testing.T) {
+	const box = `
+		type Box {
+			saved(x: Int!): Int! { x }
+			store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+		}
+	`
+	runEffectCases(t, []effectCase{
+		{
+			name: "method ref stored in a field",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let h = &get }",
+			want: "`get` is bound to the object under construction, so in a field default it can only be called or passed as an argument, not stored, returned, or put in a collection; create it in a method or computed field, or in new(), to use the finished object",
+		},
+		{
+			name: "self. method ref stored in a field",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let h = &self.get }",
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "method ref in a list",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let hs = [&get] }",
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "method ref in a record",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let r = {{h: &get}} }",
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "method ref stored on another object",
+			src: box + `
+				type T {
+					n: Int! = 1
+					get(x: Int!): Int! { n + x }
+					let b: Box! = Box.store { x => x }
+					let wired: Box! = if (true) { let w = b; w.saved = &get; w } else { b }
+				}
+			`,
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "block using a field, passed to a storing method",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let held = Box.store { x => n + x }
+				}
+			`,
+			want: "`Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `n` from the object under construction",
+		},
+		{
+			name: "block using self, passed to a storing method",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let held = Box.store { x => self.n + x }
+				}
+			`,
+			want: "but it uses `self`, the object under construction",
+		},
+		{
+			name: "block calling a method, passed to a storing method",
+			src: box + `
+				type T {
+					n: Int! = 1
+					get(x: Int!): Int! { n + x }
+					let held = Box.store { x => get(x) }
+				}
+			`,
+			want: "but it uses `get` from the object under construction",
+		},
+		{
+			name: "inner block using a field, inside a stored block",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let held = Box.store { x => [x].map { y => n + y }.reduce(0) { a, b => a + b } }
+				}
+			`,
+			want: "but it uses `n` from the object under construction",
+		},
+		{
+			name: "block calling a nested function that uses a field",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let held: Box! = {
+						a(x: Int!): Int! { n + x }
+						Box.store { x => a(x) }
+					}
+				}
+			`,
+			want: "this block must not use the object under construction, but it uses `n` from the object under construction",
+		},
+		{
+			name: "ref to a nested function calling one that uses a field",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let wired: Box! = {
+						a(x: Int!): Int! { n + x }
+						b(x: Int!): Int! { a(x) }
+						let w = Box
+						w.saved = &b
+						w
+					}
+				}
+			`,
+			want: "`b` uses `n` from the object under construction",
+		},
+		{
+			name: "nested function using a field in an argument default",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let held: Box! = {
+						a(x: Int!, k: Int! = n): Int! { x + k }
+						Box.store { x => a(x) }
+					}
+				}
+			`,
+			want: "this block must not use the object under construction, but it uses `n` from the object under construction",
+		},
+		{
+			name: "selections on another instance of the same type",
+			src: box + `
+				type Node {
+					n: Int! = 1
+					handle(x: Int!): Int! { x }
+					let held = Box.store { y => let o = Node; o.{{n}}.n + y }
+					let viaHandle = Box.store { y => let o = Node; o.{{handle(x: y)}}.handle }
+				}
+			`,
+		},
+		{
+			name: "field holding another instance's method",
+			src: `
+				type Handler {
+					next: Handler
+					handle(x: Int!): Int! { x }
+					let fallback = next.handle
+					let chain = [fallback]
+					let g = fallback
+				}
+			`,
+		},
+		{
+			name: "method selected through self without &",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let h = self.get }",
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "method ref through a parenthesized self",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let h = &(self).get }",
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "method selected from self with {{ }}",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let h = self.{{get}}.get }",
+			want: "`get` is bound to the object under construction",
+		},
+		{
+			name: "fields selected from self with {{ }}",
+			src:  "type T { n: Int! = 1\n m: Int! = 2\n let sum: Int! = self.{{n, m}}.n }",
+		},
+		{
+			name: "function-valued fields that aren't methods",
+			src: `
+				double(x: Int!): Int! { x * 2 }
+				type T {
+					let f = &double
+					let g = f
+					let fs = [f]
+				}
+			`,
+		},
+		{
+			name: "method called through self in a default",
+			src:  "type T { n: Int! = 1\n get(x: Int!): Int! { n + x }\n let a: Int! = self.get(1)\n let b: Int! = (self).get(2) }",
+		},
+		{
+			name: "blocks run while the default is evaluated",
+			src: box + `
+				type T {
+					n: Int! = 1
+					get(x: Int!): Int! { n + x }
+					let total: Int! = [1, 2].reduce(0) { acc, x => acc + x + n }
+					let viaMethod: Int! = [1, 2].map { x => get(x) }.reduce(0) { a, b => a + b }
+					let called: Int! = get(1)
+				}
+			`,
+		},
+		{
+			name: "stored block not using the object",
+			src: box + `
+				type T {
+					n: Int! = 1
+					let held = Box.store { x => x + 1 }
+				}
+			`,
+		},
+		{
+			name: "same refs and blocks in a method, computed field, or new()",
+			src: box + `
+				type T {
+					n: Int! = 1
+					fromNew: Box!
+					get(x: Int!): Int! { n + x }
+					wired: Box! { let w = Box; w.saved = &get; w }
+					held: Box! { Box.store { x => n + x } }
+					viaSelf(y: Int!): Box! { let w = Box; w.saved = &self.get; w }
+					new {
+						self.fromNew = Box.store { x => n + x }
+						self
+					}
+				}
+			`,
+		},
+		{
+			name: "static member refs",
+			src: `
+				type Counter {
+					self {
+						base: Int! = 2
+						scale(x: Int!): Int! { x * base }
+						let f = &scale
+					}
+				}
+			`,
+		},
+	})
+}

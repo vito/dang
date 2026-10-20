@@ -55,6 +55,15 @@ type Effect struct {
 	params  map[*Effect]bool
 	// nonLocal is a `return`/`break` in a block that leaves the block.
 	nonLocal Node
+	// initSelf is a use (named initSelfName) of the object under
+	// construction, by a closure or method ref created in a field default;
+	// see typeBodyPosition.
+	initSelf     Node
+	initSelfName string
+	// methodOf is the type a method's effect belongs to, and methodName the
+	// method's name there.
+	methodOf   *Type
+	methodName string
 	// createdIn is the frame the closure was created in.
 	createdIn *effFrame
 
@@ -84,6 +93,8 @@ func (e *Effect) reset() *Effect {
 	e.targets = nil
 	e.params = nil
 	e.nonLocal = nil
+	e.initSelf = nil
+	e.initSelfName = ""
 	return e
 }
 
@@ -253,6 +264,12 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 		return
 	}
 	checkFieldCall(ctx, callee, node, name)
+	// Calling something that uses the object under construction uses it too.
+	if callee.initSelf != nil {
+		if _, closures, ok := typeBodyPosition(ctx); ok {
+			noteInitSelf(closures, callee.initSelf, callee.initSelfName)
+		}
+	}
 	fr := bodyFrame(ctx)
 	if fr == nil {
 		return
@@ -353,6 +370,11 @@ func checkEscape(ctx context.Context, node Node, name string, t hm.Type) error {
 		return reportEffectError(ctx, NewInferError(fmt.Errorf(
 			"`%s` %s, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection",
 			name, eff.describeWrites(name)), node))
+	}
+	if eff.initSelf != nil {
+		return reportEffectError(ctx, NewInferError(fmt.Errorf(
+			"`%s` %s, so in a field default it can only be called or passed as an argument, not stored, returned, or put in a collection; %s",
+			name, eff.describeInitSelf(name), initSelfFix), node))
 	}
 	for p := range eff.params {
 		requirePure(p, false, fmt.Sprintf("`%s` calls `%s` and escapes", name, p.name))
@@ -485,6 +507,9 @@ func (s *effectSolver) solve() []error {
 		if b.param.escapeWhy != "" && b.arg.nonLocal != nil {
 			errs.add(b.arg.nonLocal, fmt.Sprintf("%s, so %s may outlive this call and cannot use `%s`", b.param.escapeWhy, subject, controlKeyword(b.arg.nonLocal)))
 		}
+		if b.param.escapeWhy != "" && b.arg.initSelf != nil {
+			errs.add(b.argNode, fmt.Sprintf("%s, so in a field default %s must not use the object under construction, but it %s; %s", b.param.escapeWhy, subject, b.arg.describeInitSelf(self), initSelfFix))
+		}
 	}
 	return errs.errs
 }
@@ -543,6 +568,161 @@ func calleeNameOf(n Node) string {
 		return calleeNameOf(x.Expr)
 	}
 	return strings.TrimSpace(Format(n))
+}
+
+// Closures created in field defaults.
+//
+// A type's field defaults are evaluated against the object under
+// construction, before new() runs and before any later copy-on-write
+// generation exists. A closure or method ref created there that uses the
+// object (`self`, or the type's own fields and methods by bare name) would
+// keep reading that half-built object for as long as it lives, stale after
+// every later write and missing the fields new() assigns. So such a value may
+// be called or passed as an argument while the default is evaluated, but not
+// stored, returned, or collected: it is treated like a closure with a
+// non-local `return`, through the same escape checks. A method or computed
+// field (`h: T { &get }`), or new(), creates it against the finished object
+// instead.
+
+const initSelfFix = "create it in a method or computed field, or in new(), to use the finished object"
+
+type typeBodyKey struct{}
+
+// typeBody is a type body being inferred: its object type, and the effect
+// frame current where the body starts.
+type typeBody struct {
+	object *Type
+	frame  *effFrame
+}
+
+// withTypeBody marks ctx as inferring object's field defaults.
+func withTypeBody(ctx context.Context, object *Type) context.Context {
+	return context.WithValue(ctx, typeBodyKey{}, &typeBody{object: object, frame: effFrameFrom(ctx)})
+}
+
+// withoutTypeBody leaves a type body, for a method's body: methods run
+// against their receiver, not the object under construction.
+func withoutTypeBody(ctx context.Context) context.Context {
+	if ctx.Value(typeBodyKey{}) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, typeBodyKey{}, (*typeBody)(nil))
+}
+
+// typeBodyPosition reports whether the current position is in a field
+// default of the type being inferred, and returns that type and the closures
+// (blocks and nested functions) created there that enclose the position,
+// innermost first.
+func typeBodyPosition(ctx context.Context) (*Type, []*Effect, bool) {
+	tb, _ := ctx.Value(typeBodyKey{}).(*typeBody)
+	if tb == nil {
+		return nil, nil, false
+	}
+	var closures []*Effect
+	for fr := effFrameFrom(ctx); fr != tb.frame; fr = fr.parent {
+		if fr == nil {
+			return nil, nil, false
+		}
+		if !fr.field && fr.eff != nil {
+			closures = append(closures, fr.eff)
+		}
+	}
+	return tb.object, closures, true
+}
+
+// noteInitSelf records a use (named name, at node) of the object under
+// construction in the closures enclosing it in a field default.
+func noteInitSelf(closures []*Effect, node Node, name string) {
+	for _, eff := range closures {
+		if eff.initSelf == nil {
+			eff.initSelf = node
+			eff.initSelfName = name
+		}
+	}
+}
+
+type selectedFieldKey struct{}
+
+// withSelectedField marks ctx as resolving a field name of a `{{ }}`
+// selection against the type of a receiver other than `self`: whichever
+// object that is, the name is not a member of the object under construction.
+func withSelectedField(ctx context.Context) context.Context {
+	return context.WithValue(ctx, selectedFieldKey{}, true)
+}
+
+// noteTypeBodySymbol handles a bare reference to name (at node, of type t)
+// in a field default: when it is one of the type's own fields or methods, it
+// uses the object under construction. A ref to one of its methods (`&get`)
+// gets its own effect recording that, so that it cannot escape.
+func noteTypeBodySymbol(ctx context.Context, env hm.Env, name string, node Node, t hm.Type) hm.Type {
+	if selectedField, _ := ctx.Value(selectedFieldKey{}).(bool); selectedField {
+		return t
+	}
+	object, closures, ok := typeBodyPosition(ctx)
+	if !ok || resolveBinding(env, name) != TypeScope(object) {
+		return t
+	}
+	noteInitSelf(closures, node, name)
+	return withInitSelf(object, t, node, name)
+}
+
+// noteTypeBodySelect handles `self.name` (at node, of type t) in a field
+// default: a method selected this way is a ref bound to the object under
+// construction, like `&name`, and is returned as such (bound is true). The
+// `self` receiver itself marks the enclosing closures.
+func noteTypeBodySelect(ctx context.Context, receiver Node, name string, node Node, t hm.Type) (hm.Type, bool) {
+	if _, isSelf := unwrapGrouped(receiver).(*SelfKeyword); !isSelf {
+		return t, false
+	}
+	object, _, ok := typeBodyPosition(ctx)
+	if !ok || !isMethodOf(object, name, t) {
+		return t, false
+	}
+	return withInitSelf(object, t, node, name), true
+}
+
+// noteTypeBodySelf handles `self` (at node) in a field default.
+func noteTypeBodySelf(ctx context.Context, node Node) {
+	if _, closures, ok := typeBodyPosition(ctx); ok {
+		noteInitSelf(closures, node, "self")
+	}
+}
+
+// withInitSelf returns t, when it is the type of object's method name, as a
+// ref bound to the object under construction. Methods' own effects are
+// always pure, so nothing else needs carrying over. Other function-valued
+// fields hold values whose own effects were already checked where they were
+// created.
+func withInitSelf(object *Type, t hm.Type, node Node, name string) hm.Type {
+	if !isMethodOf(object, name, t) {
+		return t
+	}
+	ft := fnTypeOf(t)
+	eff := newClosureEffect(name)
+	eff.initSelf = node
+	eff.initSelfName = name
+	cp := ft.WithEffect(eff)
+	if _, ok := t.(hm.NonNullType); ok {
+		return hm.NonNullType{Type: cp}
+	}
+	return cp
+}
+
+// isMethodOf reports whether t is the type of object's method name itself,
+// as opposed to another field holding a method (`let h = other.get`).
+func isMethodOf(object *Type, name string, t hm.Type) bool {
+	eff := effectOf(t)
+	return eff != nil && eff.methodOf != nil && eff.methodOf == object && eff.methodName == name
+}
+
+func (e *Effect) describeInitSelf(self string) string {
+	if e.initSelfName == self {
+		return "is bound to the object under construction"
+	}
+	if e.initSelfName == "self" {
+		return "uses `self`, the object under construction"
+	}
+	return fmt.Sprintf("uses `%s` from the object under construction", e.initSelfName)
 }
 
 // EffectSummary renders a function type's effect for display (LSP hover):

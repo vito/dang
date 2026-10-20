@@ -242,6 +242,22 @@ with "must be pure" reasons once discovered).
    one) gets a "must be pure" reason. Builtins are assumed to call their
    function args sequentially and never store them (`paramAcceptsFn`;
    `TestBuiltinsNeverStoreFunctions` lists them — extend it when adding one).
+   **Field defaults** use the same escape checks: while a type body's defaults
+   are inferred (`withTypeBody`; methods leave it via `withoutTypeBody` in
+   `inferFunctionType`, and `new()`/statics never enter it), a use of the
+   object under construction — `self`, or a bare name resolving to the
+   object's own frame — sets `Effect.initSelf` on every closure between it and
+   the type body (`typeBodyPosition`); calling something marked marks the
+   caller too (`absorbCall`), and a function's argument defaults count as its
+   own (its effect frame is entered before they're inferred). A `{{ }}`
+   selection's field names resolve against the receiver's type, so unless the
+   receiver is `self` they never count as uses (`withSelectedField`). A ref
+   to one of the object's own methods (`&get`, `self.get`, `&(self).get`,
+   `self.{{get}}`; a method's effect carries `methodOf`/`methodName`) gets a
+   fresh closure effect with `initSelf` set (`withInitSelf`), and
+   `Select.Infer` escape-checks the `self.get` form. `checkEscape` and
+   `solve()` treat `initSelf` like a non-local `return`: callable and
+   passable, never kept.
 3. **`{{ }}` fields.** Each field is an `effFrame{field: true}`. Inside a field:
    a write to a binding not declared within it is an error
    (`checkFieldWrite`/`declaredWithin`; blocks written directly in a field

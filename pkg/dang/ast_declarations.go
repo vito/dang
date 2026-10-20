@@ -264,6 +264,11 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 
 // inferFunctionType provides shared type inference logic for functions
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+	// A method runs against its receiver, not the object its type body's
+	// field defaults are evaluated against.
+	if methodSelfFrame(env) != nil {
+		ctx = withoutTypeBody(ctx)
+	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
 	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
@@ -271,9 +276,14 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(TypeScope)
 
+	// Writes and calls in the body accumulate into the function's effect. A
+	// method or constructor owns its receiver: its `self` writes are forks.
+	// Argument defaults are evaluated by the call too, so they count as well.
+	effCtx, _ := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
+
 	// Process arguments using shared logic. Defaults are evaluated at function
 	// call time, so they must not inherit the caller's return/break/continue targets.
-	args, directives, docStrings, err := f.inferFunctionArguments(functionCtx, newEnv, fresh)
+	args, directives, docStrings, err := f.inferFunctionArguments(effCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
@@ -351,10 +361,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// Ordinary functions are control-flow boundaries for break/continue; only
 	// block arguments may intentionally hand those effects to an enclosing call.
 	returnTarget := NewInferControlTarget(ReturnFrame)
-	bodyCtx := contextWithInferReturnTarget(functionCtx, returnTarget)
-	// Writes and calls in the body accumulate into the function's effect. A
-	// method or constructor owns its receiver: its `self` writes are forks.
-	bodyCtx, _ = withEffFrame(bodyCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
+	bodyCtx := contextWithInferReturnTarget(effCtx, returnTarget)
 	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
@@ -455,14 +462,19 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 }
 
 // nameEffect names the function for effect diagnostics: `Type.method` for
-// methods, the plain name otherwise.
+// methods, the plain name otherwise. It also records which type a method
+// belongs to.
 func (f *FunDecl) nameEffect(env hm.Env) {
-	if f.EffectName != "" {
-		return
+	self := methodSelfFrame(env)
+	if f.EffectName == "" {
+		f.EffectName = f.Named
+		if self != nil {
+			f.EffectName = self.Named + "." + f.Named
+		}
 	}
-	f.EffectName = f.Named
-	if self := methodSelfFrame(env); self != nil {
-		f.EffectName = self.Named + "." + f.Named
+	if self != nil {
+		f.fnEffects().latent.methodOf = self
+		f.fnEffects().latent.methodName = f.Named
 	}
 }
 

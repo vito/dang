@@ -300,6 +300,7 @@ func (s *SelfKeyword) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	if t == nil {
 		return nil, NewInferError(fmt.Errorf("'self' is not available in this context"), s)
 	}
+	noteTypeBodySelf(ctx, s)
 	s.SetInferredType(t)
 	return t, nil
 }
