@@ -7,23 +7,19 @@ import (
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-// Top-level bindings are immutable once initialized: no code — a free
-// function, method, new(), block, nested function, or a top-level
-// reassignment form — may write one. That makes every named function and
-// method free of shared-state effects (their own `self` writes are forks), which
-// is what lets closure purity (and the `{{ }}` check) stay lexical.
+// Top-level bindings are immutable once initialized: no function, method,
+// new(), type body, or closure inside one may write one. That makes every
+// named function and method free of shared-state effects (their own `self`
+// writes are forks), which is what lets closure purity (and the `{{ }}`
+// check) stay lexical.
+//
+// Top-level script code — top-level forms, and the blocks lexically inside
+// them outside any function, method, or type body — may still reassign
+// top-level bindings while the module initializes, e.g.
+// `let total = 0; xs.each { x => total += x }`. A REPL prompt is script code
+// too, so reassigning at the prompt keeps working.
 
 type topLevelFrameKey struct{}
-
-// allowTopLevelScriptWrites relaxes the rule for top-level script code: forms
-// at the top level (and blocks lexically inside them, outside any function,
-// method, or type body) may still reassign top-level bindings while the module
-// initializes, e.g. `let total = 0; xs.each { x => total += x }`. Functions,
-// methods and constructors are effect-free either way. Turning it off rejects
-// every top-level reassignment (fixing issue #196's ordering surprise by
-// rejection) but breaks top-level scripting idioms used across the tests and
-// docs.
-const allowTopLevelScriptWrites = true
 
 type functionBodyKey struct{}
 
@@ -39,8 +35,7 @@ func inFunctionBody(ctx context.Context) bool {
 }
 
 // withTopLevelFrame records the frame top-level declarations of the module
-// being inferred land in. Entry points that compile a module or file set it;
-// the REPL does not, so prompt-level reassignment keeps working there.
+// (or REPL session) being inferred land in.
 func withTopLevelFrame(ctx context.Context, env hm.Env) context.Context {
 	frame := envFrame(env)
 	if frame == nil {
@@ -119,7 +114,7 @@ func checkTopLevelWrite(ctx context.Context, env hm.Env, r *Reassignment) error 
 	if top == nil {
 		return nil
 	}
-	if allowTopLevelScriptWrites && !inFunctionBody(ctx) {
+	if !inFunctionBody(ctx) {
 		return nil
 	}
 	name, isSelf, _, ok := assignmentRoot(r.Target)

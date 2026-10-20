@@ -9,7 +9,7 @@ import (
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-// Closure purity (spike 2, layer 2).
+// Closure purity.
 //
 // With top-level bindings immutable (purity.go), named functions and methods
 // cannot write anything their caller can observe: their own `self` writes are
@@ -150,7 +150,7 @@ type effFrame struct {
 	// the call receiving the block.
 	block      bool
 	entryBreak *InferControlTarget
-	// field marks a `{{ }}` field (layer 3); it has no eff.
+	// field marks a `{{ }}` field (fields_purity.go); it has no eff.
 	field bool
 }
 

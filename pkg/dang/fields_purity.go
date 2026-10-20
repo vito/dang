@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// `{{ }}` purity (spike 2, layer 3).
+// `{{ }}` purity.
 //
 // `{{ }}` evaluates its fields concurrently. Within a field, these are
 // errors:
@@ -14,20 +14,16 @@ import (
 //     does not declare: those writes reach shared state, concurrently;
 //   - calling a function-typed parameter: that makes the parameter "must be
 //     pure", checked at callers (effects.go);
-//   - (behind fieldPrivateWritesAreErrors) writing a binding declared outside
-//     the field, directly or from a closure created inside the field. At
-//     runtime such writes land in the field's private fork and are discarded
-//     afterwards, so they are surprising rather than racy.
+//   - writing a binding declared outside the field (the method's locals,
+//     args, or self fields; top-level bindings are already immutable),
+//     directly or from a closure created inside the field. At runtime such
+//     writes land in the field's private fork and would be silently
+//     discarded when it finishes, so they are rejected as surprising even
+//     though they do not race.
 //
 // Everything here is decided on the spot, in source order: closure effects
 // are complete before the closure can be referenced, and named functions and
-// methods never write shared state (layer 1).
-
-// fieldPrivateWritesAreErrors rejects writes, inside a `{{ }}` field, to
-// bindings declared outside it (the method's locals, args, or self fields;
-// top-level bindings are already immutable). Today they go to a task-private
-// fork and are silently discarded when the field finishes.
-const fieldPrivateWritesAreErrors = true
+// methods never write shared state.
 
 const concurrentFields = "{{ }} fields run concurrently"
 
@@ -74,9 +70,6 @@ func declaredWithin(ctx context.Context, field *effFrame, target TypeScope) bool
 }
 
 func checkFieldWrite(ctx context.Context, target effTarget, node Node) {
-	if !fieldPrivateWritesAreErrors {
-		return
-	}
 	reported := false
 	enclosingFields(ctx, func(field *effFrame) {
 		if reported || declaredWithin(ctx, field, target.frame) {
