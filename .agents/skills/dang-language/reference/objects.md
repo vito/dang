@@ -28,6 +28,7 @@ z: Int!                   # declaration without value
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
 - Inside a `type`, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`.
+- Top-level bindings can be reassigned only by top-level script code; functions, methods, `new()` and closures inside them can't write them (see "Compile-time rules" below).
 
 ## Functions
 
@@ -57,6 +58,7 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 - Needed to assign to a function-typed field, pass as an arg, etc. Re-reads its closure each call. A captured ref must still satisfy the target's block-parameter signature.
 - A method ref is **lexically bound**: wherever it is stored or called from (even another object's methods), it runs against the `self` where the ref was written, never the caller's.
 - Inside a method, `&helper` and `&self.helper` read `self` **when called**, so they see field writes the method makes after taking the ref (`let f = &helper; n += 5; f(1)` sees the new `n`). A ref through any other receiver (`&r.helper`, with `let r = self` or any other value) holds that value: values are immutable, so later writes (which fork `self`, or rebind `r`) don't reach it.
+- A ref to a closure that writes outer state (a nested function or block writing the enclosing method's locals or `self`) can only be called or passed as an argument — storing, returning, or collecting it is a compile error. Refs to named functions and methods are always storable (see "Compile-time rules").
 
 ### Nested functions
 - Functions declared inside method (or `new()`) bodies are **closures, like blocks**: names resolve lexically (the method's args and locals shadow fields inside them, just as in the method body), and they share the method's `self`, so field writes inside them (bare or `self.`) accumulate into the method's fork. That makes them usable as inline helpers:
@@ -68,6 +70,8 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
   Counter.run == [1, 2, 2]   # Counter.n is still 0
   ```
 - Contrast sibling methods (`bump` declared on the type): each call forks `self` independently, so the changes surface only through a returned `self`.
+- A nested function that writes the method's state (like `bump` above) can't escape the method, and calling it inside a `{{ }}` field is a compile error.
+- LSP hover on a closure shows its effects: `// Effects: writes n; calls block` (outer bindings it writes, enclosing block params it calls). Pure functions show none.
 
 ## Blocks (the "lambda of Dang")
 
@@ -101,12 +105,13 @@ list.each { item, index => ... }
 - Reassignment **without** a shadowing `let` mutates the enclosing field — across nested blocks too. `+=` works on the outer field from inside a block.
 - Hoisting: a mutation inside a `loop` block is visible after the loop in the same scope.
 - Closures inside a method/constructor share `self` across iterations, so `source.each { item => self.items += [item] }` accumulates.
+- A block that writes outer state can be called or passed as an argument, never stored/returned/collected; inside a `{{ }}` field it can't write outside the field at all (see "Compile-time rules").
 
 ### Control-flow handoff
 - `return` inside a block unwinds the enclosing **function**, not just the block.
 - `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls. `break value` becomes the loop/call result; bare `break` yields `null`. `continue value` flows into `.map`'s result (bare → `null`, e.g. `[null]`); in `.each`/`loop` it just advances.
 - `break`/`continue` target the **innermost** block-taking call. An ordinary nested function declared inside a block does NOT inherit the break/continue target → `... outside of block-taking call`.
-- A block that may outlive the call it was passed to (its callee stores, returns or collects the block parameter) cannot use a non-local `return`/`break`: compile error `… so this block may outlive this call and cannot use \`return\``.
+- A block passed to a function that stores, returns, or collects its block param may outlive the call, so non-local `return`/`break` in it is a **compile error**: `` ... so this block may outlive this call and cannot use `return` `` (a `break` targeting a `loop` inside the block is fine).
 
 ## Objects (`type`)
 
@@ -200,7 +205,23 @@ Foo(42).incr.a == 43          # original Foo(42) untouched
 - **Within a method, mutations accumulate inside one fork**: `source.each { item => self.items += [item] }; self` builds up a single forked value. Return type is the concrete type name (`Builder!`) — there is no `Self` keyword.
 - **Nested field assignment** `self.a.b.c = x` clones every link on the path, leaving the original tree untouched. Compound forms (`data.a.b.c += 10`) work. Supported but expensive — avoid deep nesting.
 - **Bare reassignment vs. field mutation**: name resolution at the write site decides the target. A local/arg in scope → `x = value` rebinds it, no fork. A field (not shadowed) → bare `x = value` forks `self`. `self.x = value` always forks and sets the field.
-- No CoW for pure functions (no `self`) or top-level bindings (no `self` to fork). Chaining is the natural pattern: `Counter(0).incr.incr.incr.value == 3`.
+- No CoW for pure functions (no `self`). Chaining is the natural pattern: `Counter(0).incr.incr.incr.value == 3`.
+
+### Compile-time rules
+Copy-on-write is the only mutation. Three rules (all compile errors) close the loopholes:
+
+1. **Top-level bindings are immutable once initialized.** Top-level script code — top-level forms and blocks inside them (`let total = 0; xs.each { x => total += x }`) — may still reassign them; that's package initialization, and keeps scripts and the REPL working. Functions, methods, `new()`, type bodies and closures inside them can't write a top-level binding, path writes included (`shared.x = …`):
+   `` cannot assign to `count`: top-level bindings are immutable once initialized; use a local `let`, a field, or return the new value ``.
+   So functions and methods have **no side effects** beyond their own CoW `self`: return the new value instead.
+2. **Impure closures can't escape.** A block, nested function, or `&ref` to one that writes anything it doesn't declare may only be **called** or **passed as an argument** — not stored (`let`, field), returned, or put in a list/record:
+   `` `bump` writes `n`, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection ``.
+   A function whose block param escapes (`saved = block`, `self.cb = f`) must be given a **pure** block; the error is at the caller's block: `` `Host.store` stores, returns, or collects `cb`, so this block must not write outer state, but it writes `n` ``. Forwarding a param into such a function (`wrap { x => f(x) }`) passes the requirement on. Such escaping blocks also can't use non-local `return`/`break` (see Control-flow handoff above).
+3. **`{{ }}` fields can't write outside themselves**, because fields run concurrently. Inside a field it's an error to write a binding declared outside the field — including the enclosing method's locals or `self` (each field has a private copy, so the write would be silently discarded): `` {{ }} fields run concurrently; this assignment writes `total`, which is declared outside the field ``; to call a closure created outside the field that writes anything (`` {{ }} fields run concurrently; `bump` writes `n` ``); or to call a block param whose block isn't pure (reported at the caller's block: `` `Acc.both` calls `block` inside {{ }}, whose fields run concurrently, so this block must not write outer state, but it writes `total` ``). State declared inside the field is fine, and so are method calls returning updated copies — fields communicate by producing values:
+   ```dang
+   {{ a: acc.bump.total, b: acc.bump.bump.total }}   # each field forks acc independently
+   ```
+
+Named functions, methods, and stored callbacks are always pure under rules 1–2, so they're free to call from any field.
 
 ## Interfaces and unions
 

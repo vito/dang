@@ -61,11 +61,12 @@ let answer = loop { break 42 }   # block-taking builtin; runs until break
 - `break` exits; `break value` makes the block-taking call yield `value`; bare `break` yields `null`.
 - `continue` skips to the next iteration; in `.map`, `continue value` inserts `value` into the result (bare → `null`); in `.each`/`loop` it just advances.
 - Target the nearest enclosing block-taking call only; an ordinary nested function does NOT inherit the target.
+- A block passed to a function that stores, returns, or collects its block param may outlive the call, so a `break` (or `return`) leaving that block is a compile error: `` ... so this block may outlive this call and cannot use `break` ``. A `break` targeting a `loop` inside the block is fine.
 
 ## `return`
 - Exits the enclosing function/method/constructor early; outside one → `return outside of function`.
 - Value type must satisfy the declared return type.
-- Unwinds through enclosing blocks and loops (a `return` from inside `.each` exits the whole fn).
+- Unwinds through enclosing blocks and loops (a `return` from inside `.each` exits the whole fn) — except from a block that may outlive its call (see above).
 - A `return` in a skippable branch (e.g. a no-else `if`) does not make the fn non-null.
 - `return` is **NOT an error** and is **NOT recoverable** by `rescue`.
 

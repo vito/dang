@@ -27,6 +27,10 @@ Four ideas the rest of the language hangs on:
 - **Immutability + copy-on-write** — values never change. Methods that look
   mutating return a **forked copy** of the receiver; mutating methods must
   `return self` to surface it. `Foo(42).incr.a == 43`, original untouched.
+  The compiler closes the loopholes: top-level bindings are immutable once
+  initialized (only top-level script code reassigns them), closures that
+  write outer state can't be stored or returned, and `{{ }}` fields can't
+  write outside themselves. See `reference/objects.md`.
 - **Null tracking** — `String` ≠ `String!` in the type system, with
   flow-sensitive narrowing so you rarely write casts.
 
@@ -42,7 +46,7 @@ Four ideas the rest of the language hangs on:
 - **Multi-field selection** — `user.{{name, posts.{{title}}}}` becomes one GraphQL
   query (lazy; sent when forced). Fields can be aliased (`user.{{full: name}}`). It
   is the same `{{ }}` construct as a record literal; every `{{ }}` evaluates its
-  fields concurrently.
+  fields concurrently, so a field can't write state declared outside it.
 - **`#` comments, no `//`**; docstrings are real `"""..."""` strings before a
   declaration. Record literals use **double braces** `{{ ... }}`.
 - **No `for`/`while` keyword** — iterate with `xs.each { x => ... }`; repeat-until-`break`
@@ -76,7 +80,7 @@ Load the reference file that matches the question:
 |---|---|
 | `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
 | `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
-| `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write**, **interfaces** & **unions** + variance |
+| `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write** and its compile-time rules (immutable top-level bindings, impure closures can't escape, `{{ }}` fields can't write outside themselves), **interfaces** & **unions** + variance |
 | `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`raise`, the postfix `rescue` operator, the `Error` interface, when to raise vs. return null) |
 | `reference/stdlib.md` | top-level builtins (`assert`/`print`/`loop`/`toString`), **`String!` methods** (incl. regex/`Match`, base64), **`Path` scalar + methods**, **list `[T]!` methods**, **`JSON`/`YAML`/`TOML` codec namespaces** (`encode`/`decode`), `Random`, `UUID`, error types |
 | `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |
