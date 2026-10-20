@@ -27,7 +27,7 @@ z: Int!                   # declaration without value
 - A bare `name = value` mutates an existing field/local/arg. To declare a *new* field instead, give it a type (`total: Int! = 0`, public) or introduce it with `let` (`let total = 0`, local). `+=` for compound update.
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
-- Inside a `type`, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`.
+- Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself can't reassign fields (see "No field reassignment in the type body" under "Field defaults").
 - Top-level bindings can be reassigned only by top-level script code; functions, methods, `new()` and closures inside them can't write them (see "Compile-time rules" below).
 
 ## Functions

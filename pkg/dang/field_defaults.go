@@ -16,10 +16,11 @@ import (
 // other fields' values and the enclosing scope, but not `self`, and not the
 // type's methods and computed fields, which belong to the finished object. A
 // field only new() sets has no value yet, so it can't be used either. And
-// like a parameter default, a field default can't assign other fields: a
-// bare `x = expr` in the type body (or in a block of a default) would
-// override x's default and any constructor argument behind the back of what
-// other defaults already read.
+// nothing in the type body outside methods, computed fields and new() can
+// assign the type's fields: the object is still under construction, so a
+// bare `x = expr` in the body (or in a block of a default) would override
+// x's default and any constructor argument behind the back of what other
+// defaults already read.
 //
 // What a default reads is then always the value the object is built with,
 // including for closures created there: neither new() nor any later write

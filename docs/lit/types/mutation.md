@@ -246,10 +246,10 @@ type Dial {
 }
 ```
 
-And like a parameter default, a field default can't assign other fields,
-and neither can anything else in the type body outside methods, computed
-fields, and `new()`: a bare `level = 5` would override the field's default and
-any constructor argument after other defaults had already read it. Give the
+Nothing in the type body outside methods, computed fields, and `new()` can
+assign the type's fields, either. The object is still under construction
+there: a bare `level = 5` would override the field's default and any
+constructor argument after other defaults had already read it. Give the
 field a different default, or set it in `new()`:
 
 ```dang-failure

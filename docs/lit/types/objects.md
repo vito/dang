@@ -45,7 +45,7 @@ Vault.unlock(Account)   # "hunter2"
 - one positional parameter per non-default field, in **declaration order** (NOT required-first-then-defaults — a defaulted field may precede a required one; positional args still line up by declaration order)
   - e.g. `Mixed { pub publicWithDefault = "default"; let privateRequired: Int! }` constructs as `Mixed("default", 42)`
 - can also be called with named arguments (`Counter(value: 42)`)
-- field defaults act as the constructor's parameter defaults, so a default may reference sibling fields, e.g. `combined = prefix + "_" + suffix` (`Computed("hello").combined` sees the passed `prefix`); like parameter defaults they see only values: not `self`, and not the type's methods or computed fields; and nothing in the type body outside methods, computed fields and `new()` can reassign a field (see [#field-defaults])
+- field defaults act as the constructor's parameter defaults, so a default may reference sibling fields, e.g. `combined: String! = prefix + "_" + suffix` (`Computed("hello").combined` sees the passed `prefix`); like parameter defaults they see only values: not `self`, and not the type's methods or computed fields; and nothing in the type body outside methods, computed fields and `new()` can reassign a field (see [#field-defaults])
 
 ```dang
 Person("Alice", age: 30)
