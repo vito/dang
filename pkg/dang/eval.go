@@ -2361,12 +2361,18 @@ func (m *Object) hasFrom(name string, cell *DynamicScope) bool {
 	m.mu.Lock()
 	_, pending := m.Pending[name]
 	_, hasVal := m.Values[name]
-	parent, _ := m.nextFrame(cell)
+	parent, isSelf := m.nextFrame(cell)
 	m.mu.Unlock()
 	if pending || hasVal {
 		return true
 	}
 	if parent != nil {
+		// A field `self`'s type declares is there even before it has a
+		// value (a required field new() has yet to assign), so a bare write
+		// to it is a field write, not a write to some outer binding.
+		if isSelf && declaresField(parent, name) {
+			return true
+		}
 		return parent.hasFrom(name, cell)
 	}
 	return false
@@ -2621,7 +2627,7 @@ func (m *Object) updateFrom(name string, value Value, cell *DynamicScope) {
 	forked := m.IsForked
 	m.mu.Unlock()
 
-	if parent != nil && !forked && parent.hasFrom(name, cell) {
+	if parent != nil && !forked && (parent.hasFrom(name, cell) || isSelf && declaresField(parent, name)) {
 		// A bare field write (`total += x`) inside a method: values are
 		// immutable, so fork `self` exactly like `self.total += x` does
 		// rather than writing into the receiver in place, which would
@@ -2750,7 +2756,7 @@ func (m *Object) resolvesToSelfField(name string, cell *DynamicScope) bool {
 		}
 		next, isSelf := f.nextFrame(cell)
 		if isSelf {
-			return next.hasFrom(name, cell)
+			return next.hasFrom(name, cell) || declaresField(next, name)
 		}
 		f = next
 	}

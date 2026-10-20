@@ -159,3 +159,49 @@ let ci3 = ci.incr
 assert("original untouched") { ci.count == 1 }
 assert("each call forks from the original") { ci2.count == 2 and ci3.count == 2 }
 assert("separate constructions are independent") { CtorIndependent(7).count == 7 and ci.count == 1 }
+
+# A required field named like a top-level binding is still the field: new()'s
+# first bare write assigns it, even though the instance has no value for it
+# yet, and leaves the top-level binding alone.
+let label = 0
+
+type CtorShadow {
+  label: String!
+
+  new(s: String!) {
+    label = s
+    self
+  }
+}
+
+assert("bare write assigns a required field shadowing a top-level binding") { CtorShadow("abc").label == "abc" }
+assert("the shadowed top-level binding is untouched") { label == 0 }
+
+# Same from a method new() calls, before the field has a value.
+type CtorShadowMethod {
+  label: String!
+
+  withLabel(s: String!): CtorShadowMethod! {
+    label = s
+    self
+  }
+
+  new(s: String!) {
+    self.withLabel(s)
+  }
+}
+
+assert("method called from new() assigns a shadowing required field") { CtorShadowMethod("abc").label == "abc" }
+assert("the shadowed top-level binding is still untouched") { label == 0 }
+
+# And without any top-level binding of the same name.
+type CtorRequired {
+  other: String!
+
+  new(s: String!) {
+    other = s
+    self
+  }
+}
+
+assert("bare write assigns a required field") { CtorRequired("a").other == "a" }

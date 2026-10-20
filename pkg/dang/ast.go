@@ -576,6 +576,16 @@ func CreateConstructorScope(instance *Object, args ValueScope, closure ValueScop
 	}
 }
 
+// declaresField reports whether inst's type declares name, whether or not
+// the instance holds a value for it yet.
+func declaresField(inst *Object, name string) bool {
+	if inst.Mod == nil {
+		return false
+	}
+	_, found := inst.Mod.LocalSchemeOf(name)
+	return found
+}
+
 // instance returns the current generation of the object under construction.
 func (e *ConstructorScope) instance() (*Object, bool) {
 	self, ok := e.Self()
@@ -615,7 +625,7 @@ func (e *ConstructorScope) Has(name string) bool {
 	if e.locals.Has(name) || e.args.Has(name) {
 		return true
 	}
-	if inst, ok := e.instance(); ok && inst.Has(name) {
+	if inst, ok := e.instance(); ok && (inst.Has(name) || declaresField(inst, name)) {
 		return true
 	}
 	return e.closure.Has(name)
@@ -693,10 +703,12 @@ func (e *ConstructorScope) Update(name string, value Value) {
 		if !ok {
 			return
 		}
-		// A name the instance doesn't have but the enclosing scope does (a
+		// A name the type doesn't declare but the enclosing scope does (a
 		// top-level binding) is reassigned there, like from any function
-		// body, rather than grafted onto the instance as a new field.
-		if !inst.Has(name) && e.closure.Has(name) {
+		// body, rather than grafted onto the instance as a new field. Ask
+		// the type, not the instance: a required field has no value until
+		// new() assigns it, and that first write must still land on self.
+		if !inst.Has(name) && !declaresField(inst, name) && e.closure.Has(name) {
 			e.closure.Update(name, value)
 			return
 		}
