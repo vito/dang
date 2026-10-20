@@ -1,0 +1,4 @@
+# Selecting a `let` method with arguments through `{{ }}` follows the same
+# module-level visibility as `.` (see private_member_other_module): Path's
+# cleanPath is private to the prelude.
+Path("a/b").{{cleanPath(raw: "x//y")}}.cleanPath

@@ -750,6 +750,28 @@ func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool 
 	return home != nil && cur != nil && home == cur
 }
 
+// checkMemberAccessible enforces module-level visibility for selecting name
+// from a receiver of type rec (`x.name`, `x.{{name}}`): a `let` member is
+// private to the module that declares its type — reachable anywhere within
+// that module (any file, sibling type, via self or a local value) but
+// rejected from another module, so user code cannot reach a prelude type's
+// `let` helpers. Enforced only when both the member's home module and the
+// current module are known and differ; nil on either side (builtins, schema
+// types, an un-instrumented entry point) falls open. Bare names aren't
+// selections and are unaffected.
+func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) error {
+	recType, ok := rec.(*Type)
+	if !ok || recType.Visibility(name) != PrivateVisibility {
+		return nil
+	}
+	if home := recType.HomeModule(); home != nil {
+		if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
+			return fmt.Errorf("%q is a private member of %s and cannot be accessed from another module", name, recType.Named)
+		}
+	}
+	return nil
+}
+
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Handle nil receiver (symbol calls) - look up type in environment
@@ -934,20 +956,8 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			d.SetInferredType(tv)
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
-		// Module-level visibility: a `let` member is private to the module that
-		// declares its type — reachable anywhere within that module (any file,
-		// sibling type, via self or a local value) but rejected from another
-		// module, so user code cannot reach a prelude type's `let` helpers.
-		// Enforced only when both the member's home module and the current
-		// module are known and differ; nil on either side (builtins, schema
-		// types, an un-instrumented entry point) falls open. Bare-name access
-		// took the nil-receiver branch far above and is unaffected.
-		if recType, ok := rec.(*Type); ok && recType.Visibility(d.Field.Name) == PrivateVisibility {
-			if home := recType.HomeModule(); home != nil {
-				if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
-					return nil, fmt.Errorf("%q is a private member of %s and cannot be accessed from another module", d.Field.Name, recType.Named)
-				}
-			}
+		if err := checkMemberAccessible(ctx, rec, d.Field.Name); err != nil {
+			return nil, err
 		}
 		t, mono := scheme.Type()
 		if !mono {
@@ -1867,7 +1877,11 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		// No arguments - use symbol directly as before. The name is the
 		// receiver's field, not one in scope, so no type body's field-default
 		// scope applies to it, even when the receiver is an instance of a
-		// type whose body is being inferred.
+		// type whose body is being inferred. It's a selection, so the same
+		// visibility rule as `x.name` applies.
+		if err := checkMemberAccessible(ctx, rec, field.Name); err != nil {
+			return nil, NewInferError(err, field)
+		}
 		fieldType, err = (&Symbol{
 			Name:     field.Name,
 			AutoCall: true,
