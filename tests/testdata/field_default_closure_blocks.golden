@@ -1,0 +1,92 @@
+7 inference errors:
+
+Error 1:
+[1m[31mError:[0m `twice` uses `level` from the object under construction, so in a field default it can only be called or passed as an argument, not stored, returned, or put in a collection; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:34:15[0m
+ [2m    |[0m
+ [2m 32 |     twice(x: Int!): Int! { add(add(x)) }[0m
+ [2m 33 |     let b = Box[0m
+ [2m[34m[1m 34 | [0m    b.saved = &twice
+[2m                     [31m^^^^^^[0m
+ [2m 35 |     b[0m
+ [2m 36 |   }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `level` from the object under construction; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:15:29[0m
+ [2m    |[0m
+ [2m 13 |   read(x: Int!): Int! { level + x }[0m
+ [2m 14 | [0m
+ [2m[34m[1m 15 | [0m  let usesField = Box.store { x => level + x }
+[2m                                   [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m 16 |   let usesSelf = Box.store { x => self.level + x }[0m
+ [2m 17 |   let callsMethod = Box.store { x => read(x) }[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `self`, the object under construction; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:16:28[0m
+ [2m    |[0m
+ [2m 14 | [0m
+ [2m 15 |   let usesField = Box.store { x => level + x }[0m
+ [2m[34m[1m 16 | [0m  let usesSelf = Box.store { x => self.level + x }
+[2m                                  [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 17 |   let callsMethod = Box.store { x => read(x) }[0m
+ [2m 18 |   let innerBlock = Box.store { x => [x].map { y => level + y }.reduce(0) { a, b => a + b } }[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `read` from the object under construction; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:17:31[0m
+ [2m    |[0m
+ [2m 15 |   let usesField = Box.store { x => level + x }[0m
+ [2m 16 |   let usesSelf = Box.store { x => self.level + x }[0m
+ [2m[34m[1m 17 | [0m  let callsMethod = Box.store { x => read(x) }
+[2m                                     [31m^^^^^^^^^^^^^^^^[0m
+ [2m 18 |   let innerBlock = Box.store { x => [x].map { y => level + y }.reduce(0) { a, b => a + b } }[0m
+ [2m 19 | [0m
+ [2m    |[0m
+
+
+Error 5:
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `level` from the object under construction; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:18:30[0m
+ [2m    |[0m
+ [2m 16 |   let usesSelf = Box.store { x => self.level + x }[0m
+ [2m 17 |   let callsMethod = Box.store { x => read(x) }[0m
+ [2m[34m[1m 18 | [0m  let innerBlock = Box.store { x => [x].map { y => level + y }.reduce(0) { a, b => a + b } }
+[2m                                    [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 19 | [0m
+ [2m 20 |   let viaNested: Box! = {[0m
+ [2m    |[0m
+
+
+Error 6:
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `level` from the object under construction; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:22:15[0m
+ [2m    |[0m
+ [2m 20 |   let viaNested: Box! = {[0m
+ [2m 21 |     add(x: Int!): Int! { level + x }[0m
+ [2m[34m[1m 22 | [0m    Box.store { x => add(x) }
+[2m                     [31m^^^^^^^^^^^^^^^[0m
+ [2m 23 |   }[0m
+ [2m 24 | [0m
+ [2m    |[0m
+
+
+Error 7:
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so in a field default this block must not use the object under construction, but it uses `level` from the object under construction; create it in a method or computed field, or in new(), to use the finished object
+  [2m[34m--> errors/field_default_closure_blocks.dang:27:15[0m
+ [2m    |[0m
+ [2m 25 |   let viaArgDefault: Box! = {[0m
+ [2m 26 |     add(x: Int!, k: Int! = level): Int! { x + k }[0m
+ [2m[34m[1m 27 | [0m    Box.store { x => add(x) }
+[2m                     [31m^^^^^^^^^^^^^^^[0m
+ [2m 28 |   }[0m
+ [2m 29 | [0m
+ [2m    |[0m
+

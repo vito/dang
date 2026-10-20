@@ -1,0 +1,23 @@
+type Box {
+  saved(x: Int!): Int! { x }
+}
+
+type Gauge {
+  level: Int! = 1
+
+  read(x: Int!): Int! { level + x }
+
+  let bare = &read
+  let viaSelf = &self.read
+  let selected = self.read
+  let grouped = &(self).read
+  let picked = self.{{read}}.read
+  let inList = [&read]
+  let inRecord = {{f: &read}}
+
+  let onBox: Box! = {
+    let b = Box
+    b.saved = &read
+    b
+  }
+}
