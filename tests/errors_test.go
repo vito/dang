@@ -80,7 +80,7 @@ pub result = makeReturner.saved(1)
 
 	message := err.Error()
 	require.Contains(t, message, "Error:")
-	require.Contains(t, message, "return from expired function")
+	require.Contains(t, message, "cannot use `return`")
 	require.Contains(t, message, "return Box")
 	require.Contains(t, message, path)
 }

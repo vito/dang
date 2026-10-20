@@ -39,6 +39,7 @@ func (r *Return) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 		r.Target = target
 		r.TargetKind = target.Kind
+		markNonLocalReturn(ctx, r)
 
 		valueType, err := r.Value.Infer(ctx, env, fresh)
 		if err != nil {

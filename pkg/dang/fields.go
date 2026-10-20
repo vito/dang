@@ -53,6 +53,21 @@ func (s *FieldDecl) Body() hm.Expression {
 
 func (s *FieldDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
+// funDecl returns the function this field declares, if any, looking through
+// the Coerce inference wraps it in.
+func (s *FieldDecl) funDecl() *FunDecl {
+	value := s.Value
+	for {
+		c, ok := value.(*Coerce)
+		if !ok {
+			break
+		}
+		value = c.Expr
+	}
+	fd, _ := value.(*FunDecl)
+	return fd
+}
+
 func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	// If the field value is a hoister (e.g. wraps a FunDecl), delegate while
 	// preserving the field's name and metadata. This is the signature boundary:
@@ -258,6 +273,11 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	if definedType == nil {
 		definedType = fresh.Fresh()
 	}
+	// A function field's annotation is built fresh: give it the function's
+	// effect and its parameters' effect variables (see effects.go).
+	if fd := s.funDecl(); fd != nil && s.Type_ != nil {
+		fd.attachEffects(fnTypeOf(definedType))
+	}
 
 	if e, ok := env.(TypeScope); ok {
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
@@ -371,6 +391,8 @@ type ObjectDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
+
+	ctorFn *FunctionBase
 }
 
 // NewConstructorDecl represents an explicit `new(...) { ... }` constructor
@@ -1071,7 +1093,23 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 		}
 		constructorType.SetBlock(blockType)
 	}
+	ctor := c.ctorEffects(params, blockParam)
+	constructorType.SetEffect(ctor.fnEffects().latent)
+	if c.findNewConstructor() != nil {
+		// An explicit new()'s function-typed parameters are effect
+		// variables. The implicit constructor's parameters are fields:
+		// passing a closure for one stores it, so it escapes.
+		ctor.attachParamEffects(argsRec, constructorType.Block())
+	}
 	return constructorType, nil
+}
+
+// ctorEffects returns the effect bookkeeping for the type's constructor.
+func (c *ObjectDecl) ctorEffects(params []*FieldDecl, blockParam *FieldDecl) *FunctionBase {
+	if c.ctorFn == nil {
+		c.ctorFn = &FunctionBase{Args: params, BlockParam: blockParam, EffectName: c.Name.Name}
+	}
+	return c.ctorFn
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
@@ -1087,6 +1125,9 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 		argType, err := arg.Infer(constructorCtx, newEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
+		}
+		if argFn := fnTypeOf(argType); argFn != nil && c.ctorFn != nil {
+			argFn.SetEffect(c.ctorFn.paramEffect(arg.Name.Name))
 		}
 		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
@@ -1108,6 +1149,10 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 	// function boundaries for break/continue just like ordinary functions.
 	returnTarget := NewInferControlTarget(ReturnFrame)
 	bodyCtx := contextWithInferReturnTarget(constructorCtx, returnTarget)
+	if c.ctorFn != nil {
+		// new() owns its receiver like a method does.
+		bodyCtx, _ = withEffFrame(bodyCtx, c.ctorFn.fnEffects().latent.reset(), newEnv, c.Inferred)
+	}
 	bodyType, err := newDecl.BodyBlock.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() body: %w", err)

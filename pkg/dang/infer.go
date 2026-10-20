@@ -19,8 +19,18 @@ func Infer(ctx context.Context, env hm.Env, expr hm.Expression, hoist bool) (*hm
 	}
 
 	infer := newInferer(env)
+	ctx, solver, ownSolver := withEffectSolver(ctx)
 	if err := infer.consGen(ctx, expr); err != nil {
 		return nil, err
+	}
+	if ownSolver {
+		if errs := solver.solve(); len(errs) > 0 {
+			all := &InferenceErrors{}
+			for _, err := range errs {
+				all.Add(err)
+			}
+			return nil, all
+		}
 	}
 
 	if infer.t == nil {

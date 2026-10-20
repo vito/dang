@@ -101,13 +101,15 @@ func (c *FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		fun, err := c.Fun.Infer(ctx, env, fresh)
+		// The callee is a call position: a function value here does not escape.
+		fun, err := c.Fun.Infer(withAllowedFn(ctx, unwrapGrouped(c.Fun)), env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
+			absorbCall(ctx, effectOf(ft))
 			t, err := c.inferFunctionType(ctx, env, fresh, ft)
 			if err != nil {
 				return nil, err
@@ -160,9 +162,13 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		coerced, subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
+		coerced, argType, subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, ft, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
+		}
+		if scheme, has := argRecord.SchemeOf(k); has {
+			paramType, _ := scheme.Type()
+			effectArg(ctx, calleeNameOf(c.Fun), paramType, argType, arg.Value)
 		}
 		c.Args[i].Value = coerced
 		if subs != nil {
@@ -196,6 +202,9 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			return nil, fmt.Errorf("block argument: %w", err)
 		}
 		blockArgSubs = subs
+		if ft.Block() != nil && c.BlockArg.Inferred != nil {
+			effectArg(ctx, calleeNameOf(c.Fun), ft.Block(), c.BlockArg.Inferred, c.BlockArg)
+		}
 	}
 
 	// Check that all required arguments are provided
@@ -281,28 +290,44 @@ func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, ind
 // parameter type and returns the (possibly Coerce-wrapped) argument node along
 // with any substitutions produced by unification. The substitutions are used to
 // resolve type variables from argument types before inferring block args.
-func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) (Node, hm.Subs, error) {
+func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, callee *hm.FunctionType, value Node, recordType *RecordType, key string) (Node, hm.Type, hm.Subs, error) {
 	scheme, has := recordType.SchemeOf(key)
 	if !has {
-		return value, nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
+		return value, nil, nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
 	}
 
 	dt, isMono := scheme.Type()
 	if !isMono {
-		return value, nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
+		return value, nil, nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
 	}
 
-	// Infer the argument type
-	it, err := value.Infer(ctx, env, fresh)
+	// Infer the argument type. A function value passed for a parameter that
+	// is checked (or never stored) is not escaping.
+	argCtx := ctx
+	if paramAcceptsFn(callee, dt) {
+		argCtx = withAllowedFn(ctx, unwrapGrouped(value))
+	}
+	it, err := value.Infer(argCtx, env, fresh)
 	if err != nil {
-		return value, nil, fmt.Errorf("FunCall.Infer: %w", err)
+		return value, nil, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
 	subs, err := assignableForValue(it, dt, value)
 	if err != nil {
-		return value, nil, NewInferError(err, value)
+		return value, it, nil, NewInferError(err, value)
 	}
-	return wrapCoerce(value, dt, key), subs, nil
+	return wrapCoerce(value, dt, key), it, subs, nil
+}
+
+// unwrapGrouped strips parentheses around an expression.
+func unwrapGrouped(n Node) Node {
+	for {
+		g, ok := n.(*Grouped)
+		if !ok {
+			return n
+		}
+		n = g.Expr
+	}
 }
 
 var _ hm.Apply = (*FunCall)(nil)
@@ -611,8 +636,19 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		t, _ := scheme.Type()
 		if s.AutoCall {
 			var err error
-			t, _, err = autoCallFnType(t)
+			var called bool
+			before := t
+			t, called, err = autoCallFnType(t)
 			if err != nil {
+				return nil, err
+			}
+			if called && fnTypeOf(before) != nil {
+				absorbCall(ctx, effectOf(before))
+			}
+		}
+		// A function value outside a call position escapes.
+		if fnTypeOf(t) != nil && !fnAllowedAt(ctx, s) {
+			if err := checkEscape(ctx, s, s.Name, t); err != nil {
 				return nil, err
 			}
 		}
@@ -917,9 +953,14 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 		if d.AutoCall {
 			var err error
-			t, _, err = autoCallFnType(t)
+			var called bool
+			before := t
+			t, called, err = autoCallFnType(t)
 			if err != nil {
 				return nil, err
+			}
+			if called && fnTypeOf(before) != nil {
+				absorbCall(ctx, effectOf(before))
 			}
 		}
 
@@ -2895,6 +2936,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		b.Target = target
 		b.TargetKind = target.Kind
 		b.HasValue = b.Value != nil
+		markNonLocalBreak(ctx, b, target)
 
 		if b.Value != nil {
 			valueType, err := b.Value.Infer(ctx, env, fresh)
@@ -3280,6 +3322,9 @@ type BlockArg struct {
 	// ImplicitUnderscore is set during Infer when the block declares no explicit
 	// parameters but references `_`, giving it a single implicit parameter `_`.
 	ImplicitUnderscore bool
+
+	// effect is the block's closure effect (see effects.go).
+	effect *Effect
 }
 
 // blockArgUsesImplicitUnderscore reports whether the body references the
@@ -3414,6 +3459,16 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// still targets the enclosing function from the surrounding context.
 		continueTarget := NewInferControlTarget(BlockInvocationFrame)
 		bodyCtx := contextWithInferContinueTarget(ctx, continueTarget)
+		// A block is a closure: its writes and calls make up its effect,
+		// incurred wherever it is called. A break targeting the call that
+		// receives the block leaves the block.
+		if b.effect == nil {
+			b.effect = newClosureEffect("block")
+		}
+		var fr *effFrame
+		bodyCtx, fr = withEffFrame(bodyCtx, b.effect.reset(), newEnv, nil)
+		fr.block = true
+		fr.entryBreak = currentInferBreakTarget(ctx)
 		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
@@ -3479,6 +3534,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Build the function type
 		b.Inferred = hm.NewFnType(NewRecordType("", argSchemes...), bodyType)
+		b.Inferred.SetEffect(b.effect)
 		t := b.Inferred
 		b.SetInferredType(t)
 		return t, nil

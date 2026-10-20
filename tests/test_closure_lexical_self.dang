@@ -30,11 +30,6 @@ type Host {
   callSaved(x: Int!): Int! { saved(x) }
 }
 
-type Escaped {
-  guest: Guest!
-  host: Host!
-}
-
 topTwice(&cb(x: Int!): Int!): Int! { cb(1); cb(2) }
 
 type Guest {
@@ -138,24 +133,6 @@ type Guest {
     }
     self
   }
-
-  # A block that outlives its method still sees that method's self, but
-  # writing through it never changes the value the method returned.
-  escape: Escaped! {
-    let h = Host.store { x =>
-      n += x
-      n
-    }
-    Escaped(self, h)
-  }
-
-  escapeSelf: Escaped! {
-    let h = Host.store { x =>
-      self.n += x
-      n
-    }
-    Escaped(self, h)
-  }
 }
 
 let g = Guest
@@ -191,13 +168,5 @@ assert("host's fields are untouched") { g.blockWriteHost == 100 }
 assert("block writes through two levels") { g.blockWriteLevels.n == 15 }
 assert("top-level block-taking function") { g.viaTopLevel.n == 13 }
 assert("builtin block-taking method") { g.viaMap.n == 13 }
-
-let esc = g.escape
-assert("escaped block sees its method's self") { esc.host.callSaved(5) == 15 }
-assert("escaped block leaves the returned value alone") { esc.guest.n == 10 }
-
-let escSelf = g.escapeSelf
-assert("escaped block, self. form") { escSelf.host.callSaved(5) == 15 }
-assert("escaped block, self. form, returned value") { escSelf.guest.n == 10 }
 
 assert("receiver untouched") { g.n == 10 }

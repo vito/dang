@@ -1,0 +1,9 @@
+counter: [Int!]! {
+  let n = 0
+  bump(x: Int!): Int! {
+    n += x
+    n
+  }
+  let f = &bump
+  [f(1), f(2)]
+}

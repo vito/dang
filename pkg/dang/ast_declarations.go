@@ -25,6 +25,67 @@ type FunctionBase struct {
 
 	// ExpectedReturnType is set by checkArgumentType for bidirectional type inference
 	ExpectedReturnType hm.Type
+
+	// EffectName names the function in effect diagnostics.
+	EffectName string
+	effects    *fnEffects
+}
+
+// fnEffects holds a function's effect and the effect variables of its
+// function-typed parameters, created once per declaration and shared by every
+// function type built for it (hoisted signature, inferred type, the enclosing
+// FieldDecl's annotation).
+type fnEffects struct {
+	latent *Effect
+	params map[string]*Effect
+}
+
+func (f *FunctionBase) fnEffects() *fnEffects {
+	if f.effects == nil {
+		name := f.EffectName
+		if name == "" {
+			name = "function"
+		}
+		f.effects = &fnEffects{latent: newClosureEffect(name), params: map[string]*Effect{}}
+	}
+	return f.effects
+}
+
+func (f *FunctionBase) paramEffect(name string) *Effect {
+	fe := f.fnEffects()
+	if e, ok := fe.params[name]; ok {
+		return e
+	}
+	e := newParamEffect(fe.latent, name)
+	fe.params[name] = e
+	return e
+}
+
+// attachEffects annotates ft, a function type freshly built for this
+// declaration, with its effect and its parameters' effect variables.
+func (f *FunctionBase) attachEffects(ft *hm.FunctionType) {
+	if ft == nil {
+		return
+	}
+	ft.SetEffect(f.fnEffects().latent)
+	rec, _ := ft.Arg().(*RecordType)
+	f.attachParamEffects(rec, ft.Block())
+}
+
+// attachParamEffects annotates the function-typed parameters of a signature
+// with their effect variables. It must run before the body is inferred.
+func (f *FunctionBase) attachParamEffects(rec *RecordType, block *hm.FunctionType) {
+	if f.BlockParam != nil && block != nil {
+		block.SetEffect(f.paramEffect(f.BlockParam.Name.Name))
+	}
+	if rec != nil {
+		for _, field := range rec.Fields {
+			t, _ := field.Value.Type()
+			if argFn := fnTypeOf(t); argFn != nil {
+				argFn.SetEffect(f.paramEffect(field.Key))
+			}
+		}
+	}
 }
 
 // inferFunctionArguments processes FieldDecl arguments into function type arguments
@@ -135,6 +196,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.attachEffects(f.Inferred)
 	f.SetInferredType(f.Inferred)
 	return f.Inferred, nil
 }
@@ -250,6 +312,10 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
+	// Annotate parameter types with their effect variables before the body is
+	// checked (and before skolemization copies them below).
+	f.attachParamEffects(argsRec, blockType)
+
 	// Skolemize the function's own signature type variables for the duration of
 	// the body check. Within the body these parameters are rigid: each stands
 	// for "some caller-chosen type" and so supports no operations — you cannot
@@ -286,6 +352,9 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// block arguments may intentionally hand those effects to an enclosing call.
 	returnTarget := NewInferControlTarget(ReturnFrame)
 	bodyCtx := contextWithInferReturnTarget(functionCtx, returnTarget)
+	// Writes and calls in the body accumulate into the function's effect. A
+	// method or constructor owns its receiver: its `self` writes are forks.
+	bodyCtx, _ = withEffFrame(bodyCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
 	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
@@ -320,6 +389,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.Inferred.SetEffect(f.fnEffects().latent)
 	return f.Inferred, nil
 }
 
@@ -360,6 +430,7 @@ var _ hm.Inferer = &FunDecl{}
 var _ Hoister = &FunDecl{}
 
 func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	f.nameEffect(env)
 	switch pass {
 	case 0:
 		// Pass 0: Hoist function signature (declare type without inferring body).
@@ -383,7 +454,20 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 	return nil
 }
 
+// nameEffect names the function for effect diagnostics: `Type.method` for
+// methods, the plain name otherwise.
+func (f *FunDecl) nameEffect(env hm.Env) {
+	if f.EffectName != "" {
+		return
+	}
+	f.EffectName = f.Named
+	if self := methodSelfFrame(env); self != nil {
+		f.EffectName = self.Named + "." + f.Named
+	}
+}
+
 func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	f.nameEffect(env)
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
 		return f.inferFunctionType(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 	})
@@ -439,7 +523,8 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
-		targetType, err := inferNodeWithoutAutoCall(ctx, env, fresh, r.Target)
+		// A location is not a function value escaping.
+		targetType, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, r.Target), env, fresh, r.Target)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
@@ -448,6 +533,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		}
 		if err := checkTopLevelWrite(ctx, env, r); err != nil {
 			return nil, err
+		}
+		if name, isSelf, first, ok := assignmentRoot(r.Target); ok {
+			recordEffectWrite(ctx, env, name, isSelf, first)
 		}
 
 		// Infer the type of the value (right-hand side)

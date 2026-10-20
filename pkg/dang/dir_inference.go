@@ -27,8 +27,14 @@ import (
 func InferDirectoryFiles(ctx context.Context, files []*FileBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	ctx = withTopLevelFrame(ctx, dirScope)
+	ctx, solver, ownSolver := withEffectSolver(ctx)
 	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, inferencePhases)
+	if ownSolver {
+		for _, err := range solver.solve() {
+			overall.Add(err)
+		}
+	}
 
 	if overall.HasErrors() {
 		return overall
@@ -165,6 +171,7 @@ var inferencePhases = slices.Concat(declarationPhases, bodyPhases)
 func InferDirectoryFilesFocused(ctx context.Context, files []*FileBlock, active *FileBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	ctx = withTopLevelFrame(ctx, dirScope)
+	ctx, solver, ownSolver := withEffectSolver(ctx)
 	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 
 	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
@@ -190,6 +197,11 @@ func InferDirectoryFilesFocused(ctx context.Context, files []*FileBlock, active 
 
 	if activeIdx >= 0 {
 		runDirectoryPhases(ctx, scopes[activeIdx:activeIdx+1], fresh, overall, bodyPhases)
+	}
+	if ownSolver {
+		for _, err := range solver.solve() {
+			overall.Add(err)
+		}
 	}
 
 	if overall.HasErrors() {

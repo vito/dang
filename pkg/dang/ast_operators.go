@@ -1087,13 +1087,20 @@ var _ Evaluator = (*FunctionRef)(nil)
 
 func (f *FunctionRef) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		t, err := inferNodeWithoutAutoCall(ctx, env, fresh, f.Expr)
+		// The reference itself is checked here, so its operand is not.
+		allowed := fnAllowedAt(ctx, f)
+		t, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, f.Expr), env, fresh, f.Expr)
 		if err != nil {
 			return nil, err
 		}
 
 		if _, ok := t.(*hm.FunctionType); !ok {
 			return nil, NewInferError(fmt.Errorf("& requires a function, got %s", t.Name()), f.Expr)
+		}
+		if !allowed {
+			if err := checkEscape(ctx, f, calleeNameOf(f.Expr), t); err != nil {
+				return nil, err
+			}
 		}
 
 		f.SetInferredType(t)

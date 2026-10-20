@@ -1,4 +1,4 @@
-[1m[31mError:[0m break from expired block call
+[1m[31mError:[0m `Box.store` stores, returns, or collects `block`, so this block may outlive this call and cannot use `break`
   [2m[34m--> errors/expired_break_from_escaped_block.dang:13:5[0m
  [2m    |[0m
  [2m 11 | makeBreaker: Box! {[0m

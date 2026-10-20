@@ -1,0 +1,11 @@
+[1m[31mError:[0m `bump` writes `n`, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection
+  [2m[34m--> errors/closure_escape_nested_function.dang:7:11[0m
+ [2m    |[0m
+ [2m  5 |     n[0m
+ [2m  6 |   }[0m
+ [2m[34m[1m  7 | [0m  let f = &bump
+[2m                 [31m^^^^^[0m
+ [2m  8 |   [f(1), f(2)][0m
+ [2m  9 | }[0m
+ [2m    |[0m
+
