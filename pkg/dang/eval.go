@@ -2327,6 +2327,17 @@ func (m *Object) String() string {
 	return fmt.Sprintf("module %s", m.Mod)
 }
 
+// The frame-chain walks below (lookupFrom, hasFrom, lookupValueFrom,
+// visibilityFrom, bindingsFrom, updateFrom, Self) are loops rather than
+// recursion, so a deep chain costs heap, not Go stack. Each follows nextFrame
+// with the `cell` its resolution started from (Self follows Parent) and locks
+// one frame at a time, child before parent, releasing each before moving on.
+// The exception is updateFrom's writes: it calls visibilityLocked with the
+// written frame's lock still held, which walks on through visibilityFrom,
+// locking each further frame in turn while the written frame stays locked —
+// two locks at once, still in child -> parent order. The `self` cell's lock
+// (taken by nextFrame) is a leaf lock.
+
 func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	return m.lookupFrom(ctx, name, m.dynamicScope)
 }
@@ -2334,19 +2345,19 @@ func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
 // lookupFrom is Lookup for a resolution that started at a frame whose `self`
 // cell is cell (see nextFrame).
 func (m *Object) lookupFrom(ctx context.Context, name string, cell *DynamicScope) (Value, bool, error) {
-	m.mu.Lock()
-	p, pending := m.Pending[name]
-	val, hasVal := m.Values[name]
-	parent, _ := m.nextFrame(cell)
-	m.mu.Unlock()
-	if pending {
-		return m.force(ctx, name, p)
-	}
-	if hasVal {
-		return val, true, nil
-	}
-	if parent != nil {
-		return parent.lookupFrom(ctx, name, cell)
+	for o := m; o != nil; {
+		o.mu.Lock()
+		p, pending := o.Pending[name]
+		val, hasVal := o.Values[name]
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		if pending {
+			return o.force(ctx, name, p)
+		}
+		if hasVal {
+			return val, true, nil
+		}
+		o = parent
 	}
 	return nil, false, nil
 }
@@ -2356,22 +2367,22 @@ func (m *Object) Has(name string) bool {
 }
 
 func (m *Object) hasFrom(name string, cell *DynamicScope) bool {
-	m.mu.Lock()
-	_, pending := m.Pending[name]
-	_, hasVal := m.Values[name]
-	parent, isSelf := m.nextFrame(cell)
-	m.mu.Unlock()
-	if pending || hasVal {
-		return true
-	}
-	if parent != nil {
+	for o := m; o != nil; {
+		o.mu.Lock()
+		_, pending := o.Pending[name]
+		_, hasVal := o.Values[name]
+		parent, isSelf := o.nextFrame(cell)
+		o.mu.Unlock()
+		if pending || hasVal {
+			return true
+		}
 		// A field `self`'s type declares is there even before it has a
 		// value (a required field new() has yet to assign), so a bare write
 		// to it is a field write, not a write to some outer binding.
-		if isSelf && declaresField(parent, name) {
+		if parent != nil && isSelf && declaresField(parent, name) {
 			return true
 		}
-		return parent.hasFrom(name, cell)
+		o = parent
 	}
 	return false
 }
@@ -2451,15 +2462,15 @@ func (m *Object) lookupValue(name string) (Value, bool) {
 }
 
 func (m *Object) lookupValueFrom(name string, cell *DynamicScope) (Value, bool) {
-	m.mu.Lock()
-	val, ok := m.Values[name]
-	parent, _ := m.nextFrame(cell)
-	m.mu.Unlock()
-	if ok {
-		return val, true
-	}
-	if parent != nil {
-		return parent.lookupValueFrom(name, cell)
+	for o := m; o != nil; {
+		o.mu.Lock()
+		val, ok := o.Values[name]
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		if ok {
+			return val, true
+		}
+		o = parent
 	}
 	return nil, false
 }
@@ -2476,22 +2487,23 @@ func (m *Object) Visibility(name string) Visibility {
 }
 
 func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
-	m.mu.Lock()
-	vis, ok := m.Visibilities[name]
-	parent, _ := m.nextFrame(cell)
-	m.mu.Unlock()
-	if ok {
-		return vis
-	}
-	if parent != nil {
-		return parent.visibilityFrom(name, cell)
+	for o := m; o != nil; {
+		o.mu.Lock()
+		vis, ok := o.Visibilities[name]
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		if ok {
+			return vis
+		}
+		o = parent
 	}
 	return PrivateVisibility
 }
 
 // visibilityLocked resolves a visibility while the caller already holds m.mu.
-// Local lookups stay under the held lock; the parent fallback takes the
-// parent's own lock (child -> parent ordering, never the reverse).
+// Local lookups stay under the held lock; the fallback walks on from m's next
+// frame with visibilityFrom, taking each frame's own lock in turn while m.mu
+// stays held (child -> parent ordering, never the reverse).
 func (m *Object) visibilityLocked(name string, cell *DynamicScope) Visibility {
 	if vis, ok := m.Visibilities[name]; ok {
 		return vis
@@ -2509,31 +2521,28 @@ func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 func (m *Object) bindingsFrom(vis Visibility, cell *DynamicScope) []Keyed[Value] {
 	var bindings []Keyed[Value]
 
-	m.mu.Lock()
-	// Collect bindings from this module, recording every local key so parent
-	// bindings it shadows can be filtered out below.
-	shadowed := make(map[string]struct{}, len(m.Values))
-	for name, value := range m.Values {
-		shadowed[name] = struct{}{}
-		if m.Visibilities[name] >= vis {
-			bindings = append(bindings, Keyed[Value]{
-				Key:        name,
-				Value:      value,
-				Positional: false, // Type bindings are never positional
-			})
-		}
-	}
-	parent, _ := m.nextFrame(cell)
-	m.mu.Unlock()
-
-	// Collect bindings from parent (if any) - avoiding duplicates
-	if parent != nil {
-		for _, binding := range parent.bindingsFrom(vis, cell) {
-			// Only include if not shadowed by current module
-			if _, isShadowed := shadowed[binding.Key]; !isShadowed {
-				bindings = append(bindings, binding)
+	// Collect bindings frame by frame, nearest first, recording every key
+	// seen (whatever its visibility) so bindings it shadows further along the
+	// chain are filtered out.
+	shadowed := map[string]struct{}{}
+	for o := m; o != nil; {
+		o.mu.Lock()
+		for name, value := range o.Values {
+			if _, isShadowed := shadowed[name]; isShadowed {
+				continue
+			}
+			shadowed[name] = struct{}{}
+			if o.Visibilities[name] >= vis {
+				bindings = append(bindings, Keyed[Value]{
+					Key:        name,
+					Value:      value,
+					Positional: false, // Type bindings are never positional
+				})
 			}
 		}
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		o = parent
 	}
 
 	return bindings
@@ -2613,72 +2622,91 @@ func (m *Object) Update(name string, value Value) {
 }
 
 func (m *Object) updateFrom(name string, value Value, cell *DynamicScope) {
-	m.mu.Lock()
-	if _, existsLocally := m.Values[name]; existsLocally {
-		// Variable exists locally, update it locally
-		m.Values[name] = value
-		m.Visibilities[name] = m.visibilityLocked(name, cell)
-		m.mu.Unlock()
-		return
-	}
-	parent, isSelf := m.nextFrame(cell)
-	forked := m.IsForked
-	m.mu.Unlock()
-
-	if parent != nil && !forked && (parent.hasFrom(name, cell) || isSelf && declaresField(parent, name)) {
-		// A bare field write (`total += x`) inside a method: values are
-		// immutable, so fork `self` exactly like `self.total += x` does
-		// rather than writing into the receiver in place, which would
-		// show through every alias of it (`let r = self`, a stored
-		// `self`, a returned snapshot). The fork goes into the cell
-		// nextFrame resolved `self` from.
-		//
-		// The cell can be written concurrently (a block invoked from
-		// several `{{ }}` tasks), so install the fork only if `self` is
-		// still the generation it was built from; otherwise fork the newer
-		// generation, so neither write is lost.
-		if isSelf && cell == nil {
-			cell = m.dynamicScope
+	// inChain records that o's chain is known to bind name (the previous
+	// step's parent.hasFrom, or by induction its own inChain), sparing a full
+	// re-walk at every step: if o holds neither a value nor a pending
+	// initializer for name and its next frame is not `self`, hasFrom(o) can
+	// only have been true because hasFrom(parent) is, which is exactly the
+	// check below. A frame with a pending initializer for name, or a `self`
+	// link (whose cell may hold a newer generation by now, and where
+	// declaresField also counts), re-checks from scratch.
+	inChain := false
+	for o := m; ; {
+		o.mu.Lock()
+		if _, existsLocally := o.Values[name]; existsLocally {
+			// Variable exists locally, update it locally
+			o.Values[name] = value
+			o.Visibilities[name] = o.visibilityLocked(name, cell)
+			o.mu.Unlock()
+			return
 		}
-		for isSelf {
-			if cell.swap(parent, forkWithField(parent, name, value)) {
-				return
+		_, pendingLocally := o.Pending[name]
+		parent, isSelf := o.nextFrame(cell)
+		forked := o.IsForked
+		o.mu.Unlock()
+
+		known := inChain && !pendingLocally && !isSelf
+		inChain = false
+		if parent != nil && !forked && (known || parent.hasFrom(name, cell) || isSelf && declaresField(parent, name)) {
+			// A bare field write (`total += x`) inside a method: values are
+			// immutable, so fork `self` exactly like `self.total += x` does
+			// rather than writing into the receiver in place, which would
+			// show through every alias of it (`let r = self`, a stored
+			// `self`, a returned snapshot). The fork goes into the cell
+			// nextFrame resolved `self` from.
+			//
+			// The cell can be written concurrently (a block invoked from
+			// several `{{ }}` tasks), so install the fork only if `self` is
+			// still the generation it was built from; otherwise fork the newer
+			// generation, so neither write is lost.
+			if isSelf && cell == nil {
+				cell = o.dynamicScope
 			}
-			parent, isSelf = m.nextFrame(cell)
-		}
-		// Variable exists in parent, update parent (only if not forked)
-		parent.updateFrom(name, value, cell)
-		return
-	}
-
-	if forked && parent != nil {
-		// A sealed frame (a `{{ }}` task, see forkTaskScope) keeps writes to
-		// outer locals and args private by setting them locally, below. A
-		// write to a field of `self` must still fork `self`, though — into
-		// this frame's own cell, which for a task is private — or the task's
-		// `self.field` reads would miss its bare `field = v` writes.
-		if cell == nil {
-			cell = m.dynamicScope
-		}
-		if cell != nil && parent.resolvesToSelfField(name, cell) {
-			for {
-				self, ok := cell.get().(*Object)
-				if !ok {
-					break
-				}
-				if cell.swap(self, forkWithField(self, name, value)) {
+			if !isSelf {
+				// parent's chain binds name (see inChain).
+				inChain = true
+			}
+			for isSelf {
+				if cell.swap(parent, forkWithField(parent, name, value)) {
 					return
 				}
+				parent, isSelf = o.nextFrame(cell)
+			}
+			// Variable exists in parent, update parent (only if not forked)
+			o = parent
+			continue
+		}
+
+		if forked && parent != nil {
+			// A sealed frame (a `{{ }}` task, see forkTaskScope) keeps writes to
+			// outer locals and args private by setting them locally, below. A
+			// write to a field of `self` must still fork `self`, though — into
+			// this frame's own cell, which for a task is private — or the task's
+			// `self.field` reads would miss its bare `field = v` writes.
+			if cell == nil {
+				cell = o.dynamicScope
+			}
+			if cell != nil && parent.resolvesToSelfField(name, cell) {
+				for {
+					self, ok := cell.get().(*Object)
+					if !ok {
+						break
+					}
+					if cell.swap(self, forkWithField(self, name, value)) {
+						return
+					}
+				}
 			}
 		}
-	}
 
-	// Variable doesn't exist anywhere (or we're a forked boundary): set it
-	// locally.
-	m.mu.Lock()
-	m.Values[name] = value
-	m.Visibilities[name] = m.visibilityLocked(name, cell)
-	m.mu.Unlock()
+		// Variable doesn't exist anywhere (or we're a forked boundary): set it
+		// locally.
+		o.mu.Lock()
+		o.Values[name] = value
+		o.Visibilities[name] = o.visibilityLocked(name, cell)
+		o.mu.Unlock()
+		return
+	}
 }
 
 // forkWithField returns a copy-on-write fork of obj with name set to value,
@@ -2799,13 +2827,12 @@ func inMethodBody(scope ValueScope) bool {
 
 // Self returns the dynamic scope value ('self')
 func (m *Object) Self() (Value, bool) {
-	if m.dynamicScope != nil {
-		if v := m.dynamicScope.get(); v != nil {
-			return v, true
+	for o := m; o != nil; o = o.Parent {
+		if o.dynamicScope != nil {
+			if v := o.dynamicScope.get(); v != nil {
+				return v, true
+			}
 		}
-	}
-	if m.Parent != nil {
-		return m.Parent.Self()
 	}
 	return nil, false
 }
