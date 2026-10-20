@@ -248,11 +248,17 @@ with "must be pure" reasons once discovered).
    scoped like constructor parameter defaults (`field_defaults.go`): while a
    type body's non-method forms are inferred (`withTypeBody`, carrying
    `unavailableInDefaults`; methods leave it via `withoutTypeBody` in
-   `inferFunctionType`, and `new()`/statics never enter it), `self`
+   `inferFunctionType`, and `new()`'s body never enters it), `self`
    (`checkDefaultSelf`) and a bare name resolving to one of the type's methods
    or computed fields, or, with an explicit `new()`, to a field without a
    default (`checkDefaultName`), are compile errors, anywhere inside the
-   default. Code of a type declared in such a body (its methods included)
+   default, and so is assigning one of the type's fields (`checkDefaultWrite`,
+   from `Reassignment.Infer`). `new()`'s parameter defaults get the same
+   checks (`withNewParams` in `inferNewConstructor`), and at runtime
+   `ConstructorFunction.Call` evaluates them over the instance after its field
+   defaults, with earlier params on top. A `self { }` block is marked with
+   `withStaticsBody`: only the write check applies there. Code of a type
+   declared in such a body (its methods included)
    stays under the outer body's scope, since it is created while the outer
    object is built. A `{{ }}` selection's field names belong to the receiver,
    so `inferFieldType` resolves them outside every type body

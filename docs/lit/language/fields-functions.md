@@ -75,9 +75,12 @@ total = 5         # reassigns the existing field
   to assign the function itself — see the function references section below
 - nested-path mutation is copy-on-write: copying an object then writing
   `m.a.b.c = 2` leaves the original unchanged
-- inside a `type`, bare `name = ...` resolves to the field when nothing shadows
-  it; if a parameter (or local) shadows the field name, **field** mutation
-  requires `self.name = ...` — see [#mutation]
+- inside a `type`'s methods, bare `name = ...` resolves to the field when
+  nothing shadows it; if a parameter (or local) shadows the field name,
+  **field** mutation requires `self.name = ...` — see [#mutation]
+- the type body itself (its field defaults, and forms directly in it) can't
+  reassign the type's fields: give the field a different default, or set it
+  in `new()` — see [#field-defaults]
 
 ### Docstrings
 
@@ -148,7 +151,10 @@ Defaults:
 - in a free function a default may reference enclosing-scope names
 - in a method a default may reference fields of the same type
 - a nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`
-- same default rules apply to `new(...)` constructor params
+- same default rules apply to `new(...)` constructor params, which also run
+  after the type's field defaults and are scoped like them: they read the
+  fields' values (and earlier params), but not `self`, methods, or computed
+  fields — see [#field-defaults]
 
 A non-null parameter *with* a default (`name: String! = "world"`) is **nullable on the
 caller's side but non-null on the receiver's side**. Callers may omit it, pass `null`, or

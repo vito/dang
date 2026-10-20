@@ -246,12 +246,42 @@ type Dial {
 }
 ```
 
+And like a parameter default, a field default can't assign other fields,
+and neither can anything else in the type body outside methods, computed
+fields, and `new()`: a bare `level = 5` would override the field's default and
+any constructor argument after other defaults had already read it. Give the
+field a different default, or set it in `new()`:
+
+```dang-failure
+type Knob {
+  level: Int! = 1
+  let doubled = level * 2
+  level = 5
+}
+```
+
+`new()`'s own parameter defaults follow the same rule. They run after the
+field defaults and before `new()`'s body, so they read the fields as the
+defaults leave them, and the earlier parameters:
+
+```dang
+type Dimmer {
+  level: Int! = 1
+  out: Int!
+  new(k: Int! = level, j: Int! = k * 10) {
+    self.out = k + j
+    self
+  }
+}
+
+[Dimmer.out, Dimmer(2).out]
+```
+
 So whatever a default reads is a value the object is built with, and a
 closure created there is like any closure that only reads its scope: it can
-go anywhere. It reads the fields as the type body leaves them, so neither
-`new()` nor any later write reaches it. To work with the finished object
-instead, use a method or computed field, which runs against the current
-receiver, or `new()`:
+go anywhere, and neither `new()` nor any later write reaches it. To work with
+the finished object instead, use a method or computed field, which runs
+against the current receiver, or `new()`:
 
 ```dang
 type Meter {
