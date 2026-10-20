@@ -2,6 +2,9 @@
 source = ".dagger/modules/dang"
 entrypoint = true
 
+[modules.dang-dev]
+source = ".dagger/modules/dang-dev"
+
 [modules.dang-sdk]
 source = "dagger.io/sdk/dang"
 
@@ -17,6 +20,10 @@ module = "dang-sdk"
 [sdks.dang.scopes.".dagger/modules/dang"]
 is-module = true
 clients = ["./mod/apko"]
+
+[sdks.dang.scopes.".dagger/modules/dang-dev"]
+is-module = true
+clients = ["./.dagger/modules/dang"]
 
 [sdks.dang.scopes."mod/apko"]
 is-module = true

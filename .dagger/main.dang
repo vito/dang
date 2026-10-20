@@ -30,21 +30,21 @@ type Dang {
   }
 
   """
-  Build the documentation site: static HTML rendered from lit/, the playground
-  wasm, the syntax palette, the search index.
+  Build the documentation site, returning the changeset it produces under
+  docs/ (static HTML rendered from lit/, the playground wasm, the syntax
+  palette, the search index).
 
   Mirrors docs/build.sh. The output is gitignored, so this is a check (it
   verifies the build succeeds) rather than a generator — a generator's
   changeset would always look unapplied in CI, where the gitignored artifacts
   are absent.
   """
-  docs: Void @check {
-    development
+  docs: Changeset! @check {
+    let built = development
       .withWorkdir("/src/docs")
       .withExec(["bash", "./build.sh"])
-      .sync
-
-    null
+      .directory("/src/docs")
+    source.withDirectory("docs", built).changes(source)
   }
 
   """
@@ -261,63 +261,6 @@ type Dang {
 
   test: Test! {
     Test(self)
-  }
-
-  tools: Tools! {
-    Tools
-  }
-}
-
-"""
-Tools for agents working on Dang.
-
-Each tool reads the workspace as it is when called rather than holding a
-Dang: tool state survives reloads, so a stored Dang would keep testing a
-stale snapshot of the source.
-"""
-type Tools {
-  # Bump `version` whenever this type's fields change: saved tool state from
-  # an older shape is then discarded instead of failing to load.
-  agent(llm: LLM!): LLM! @agent {
-    llm.withTools(currentNode, version: 1)
-  }
-
-  """
-  Update the golden test specimens under tests/testdata/, treating the
-  current output as correct. Review the changeset before keeping it.
-  """
-  testUpdate(ws: Workspace!): Changeset! {
-    Dang(ws).test.update
-  }
-
-  """
-  Reformat every Dang source file with `dang fmt`, the same generator the
-  fmt/stale check runs. An empty changeset means everything is formatted.
-  """
-  fmt(ws: Workspace!): Changeset! {
-    Dang(ws).fmt
-  }
-
-  """
-  Run a Dang script with a dang binary built from the current source,
-  returning its combined stdout and stderr followed by its exit code. A
-  failing script is not an error, so this works for probing type errors and
-  runtime failures as well as output.
-  """
-  run(
-    ws: Workspace!,
-    """
-    The Dang source to run.
-    """
-    script: String!,
-  ): String! {
-    let current = Dang(ws)
-    current
-      .development
-      .withFile("/usr/bin/dang", current.binary)
-      .withNewFile("/tmp/script.dang", script)
-      .withExec(["sh", "-c", "dang /tmp/script.dang 2>&1; echo \"exit: $?\""])
-      .stdout
   }
 }
 
