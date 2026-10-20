@@ -180,6 +180,22 @@ assert { Dial.out == [1, 3, 0] }
 assert { Dial(5).out == [5, 7, 0] }
 assert { Dial(level: 4).out == [1, 3, 4] }
 
+# As for any function, an explicit null for a defaulted parameter falls back
+# to the default, non-null parameters included.
+assert { Dial(null).out == [1, 3, 0] }
+assert { Dial(5, null, null).out == [5, 7, 0] }
+
+type Named {
+  name: String!
+
+  new(n: String! = "anon") {
+    self.name = n
+    self
+  }
+}
+
+assert { Named(null).name == "anon" }
+
 # The same with a block parameter.
 type Knob {
   n: Int! = 3

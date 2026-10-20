@@ -3122,7 +3122,13 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		var defaultScope ValueScope = instanceScope
 		for _, param := range c.Parameters {
 			var val Value
-			if arg, found := args[param.Name.Name]; found {
+			arg, found := args[param.Name.Name]
+			if _, isNull := arg.(NullValue); found && isNull && param.Value != nil {
+				// An explicit null falls back to the default, as for function
+				// calls (FunctionValue.BindArgs).
+				found = false
+			}
+			if found {
 				val = arg
 			} else if param.Value != nil {
 				// Evaluate in defaultScope so earlier args are visible.
