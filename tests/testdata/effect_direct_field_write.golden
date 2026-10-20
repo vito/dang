@@ -1,0 +1,11 @@
+[1m[31mError:[0m {{ }} fields run concurrently; this assignment writes `total`, which is declared outside the field
+  [2m[34m--> errors/effect_direct_field_write.dang:5:30[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 |   recSelf: Int! {[0m
+ [2m[34m[1m  5 | [0m    let r = {{a: if (true) { self.total += 1; self.total } else { 0 }}}
+[2m                                    [31m^^^^^^^^^^^^^^^[0m
+ [2m  6 |     r.a[0m
+ [2m  7 |   }[0m
+ [2m    |[0m
+

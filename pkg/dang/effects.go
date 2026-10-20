@@ -55,11 +55,15 @@ type Effect struct {
 	params  map[*Effect]bool
 	// nonLocal is a `return`/`break` in a block that leaves the block.
 	nonLocal Node
+	// createdIn is the frame the closure was created in.
+	createdIn *effFrame
 
-	// effParam: the function owning the parameter, and why it must be pure
-	// (empty when it need not be).
-	owner     *Effect
-	mustNotEscapeImpure string
+	// effParam: the function owning the parameter, and why it must be bound
+	// to a pure function: because it escapes, or because it is called inside
+	// a `{{ }}` field (empty when it need not be).
+	owner         *Effect
+	escapeWhy     string
+	concurrentWhy string
 }
 
 var _ hm.Effect = (*Effect)(nil)
@@ -134,7 +138,8 @@ type effTarget struct {
 	name  string
 }
 
-// effFrame is a function body (named or closure) on the inference stack.
+// effFrame is a function body (named or closure), or a `{{ }}` field, on the
+// inference stack.
 type effFrame struct {
 	parent *effFrame
 	eff    *Effect
@@ -145,6 +150,8 @@ type effFrame struct {
 	// the call receiving the block.
 	block      bool
 	entryBreak *InferControlTarget
+	// field marks a `{{ }}` field (layer 3); it has no eff.
+	field bool
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {
@@ -170,10 +177,20 @@ func effFrameFrom(ctx context.Context) *effFrame {
 	return fr
 }
 
+// bodyFrame returns the innermost function body frame, skipping fields.
+func bodyFrame(ctx context.Context) *effFrame {
+	fr := effFrameFrom(ctx)
+	for fr != nil && fr.field {
+		fr = fr.parent
+	}
+	return fr
+}
+
 // withEffFrame enters a function body with effect eff. env is the body's own
 // environment; self, when non-nil, is a method's receiver type.
 func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (context.Context, *effFrame) {
 	fr := &effFrame{parent: effFrameFrom(ctx), eff: eff}
+	eff.createdIn = fr.parent
 	if own := envFrame(env); own != nil {
 		fr.owns = append(fr.owns, own)
 	}
@@ -212,9 +229,11 @@ func selfTypeFrame(env hm.Env) TypeScope {
 	return nil
 }
 
-// absorbWrite records a write to target in the innermost function body.
-func absorbWrite(ctx context.Context, target effTarget) {
-	fr := effFrameFrom(ctx)
+// absorbWrite records a write to target in the innermost function body, and
+// checks it against enclosing `{{ }}` fields.
+func absorbWrite(ctx context.Context, target effTarget, node Node) {
+	checkFieldWrite(ctx, target, node)
+	fr := bodyFrame(ctx)
 	if fr == nil || fr.inside(target.frame) {
 		return
 	}
@@ -227,10 +246,15 @@ func absorbWrite(ctx context.Context, target effTarget) {
 }
 
 // absorbCall records, in the innermost function body, the effect of calling
-// a function with effect callee.
-func absorbCall(ctx context.Context, callee *Effect) {
-	fr := effFrameFrom(ctx)
-	if fr == nil || callee == nil {
+// a function with effect callee (named name, at node), and checks it against
+// enclosing `{{ }}` fields.
+func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
+	if callee == nil {
+		return
+	}
+	checkFieldCall(ctx, callee, node, name)
+	fr := bodyFrame(ctx)
+	if fr == nil {
 		return
 	}
 	switch callee.kind {
@@ -265,9 +289,9 @@ func (e *Effect) addParam(p *Effect) {
 	e.params[p] = true
 }
 
-// recordEffectWrite records an assignment to name (resolved in env), or to a
-// field of self.
-func recordEffectWrite(ctx context.Context, env hm.Env, name string, isSelf bool, first string) {
+// recordEffectWrite records an assignment (at node) to name (resolved in
+// env), or to a field of self.
+func recordEffectWrite(ctx context.Context, env hm.Env, node Node, name string, isSelf bool, first string) {
 	var frame TypeScope
 	if isSelf {
 		frame = selfTypeFrame(env)
@@ -278,22 +302,22 @@ func recordEffectWrite(ctx context.Context, env hm.Env, name string, isSelf bool
 	if frame == nil {
 		return
 	}
-	absorbWrite(ctx, effTarget{frame: frame, name: name})
+	absorbWrite(ctx, effTarget{frame: frame, name: name}, node)
 }
 
 // markNonLocal records a `return`/`break` leaving the enclosing block(s): a
 // return leaves every block up to its function; a break leaves the block
 // whose receiving call it targets.
 func markNonLocalReturn(ctx context.Context, node Node) {
-	for fr := effFrameFrom(ctx); fr != nil && fr.block; fr = fr.parent {
-		if fr.eff.nonLocal == nil {
+	for fr := bodyFrame(ctx); fr != nil && (fr.block || fr.field); fr = fr.parent {
+		if fr.block && fr.eff.nonLocal == nil {
 			fr.eff.nonLocal = node
 		}
 	}
 }
 
 func markNonLocalBreak(ctx context.Context, node Node, target *InferControlTarget) {
-	fr := effFrameFrom(ctx)
+	fr := bodyFrame(ctx)
 	if fr != nil && fr.block && fr.entryBreak == target && fr.eff.nonLocal == nil {
 		fr.eff.nonLocal = node
 	}
@@ -322,31 +346,46 @@ func checkEscape(ctx context.Context, node Node, name string, t hm.Type) error {
 		return nil
 	}
 	if eff.kind == effParam {
-		requireNoImpureEscape(eff, fmt.Sprintf("`%s` stores, returns, or collects `%s`", eff.owner.name, eff.name))
+		requirePure(eff, false, fmt.Sprintf("`%s` stores, returns, or collects `%s`", eff.owner.name, eff.name))
 		return nil
 	}
 	if eff.impure() {
-		err := NewInferError(fmt.Errorf(
+		return reportEffectError(ctx, NewInferError(fmt.Errorf(
 			"`%s` %s, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection",
-			name, eff.describeWrites(name)), node)
-		// Report it with the deferred errors when possible, so the value
-		// still types and doesn't cascade into "not found" errors.
-		if s, ok := ctx.Value(effSolverKey{}).(*effectSolver); ok {
-			s.errs = append(s.errs, err)
-			return nil
-		}
-		return err
+			name, eff.describeWrites(name)), node))
 	}
 	for p := range eff.params {
-		requireNoImpureEscape(p, fmt.Sprintf("`%s` calls `%s` and escapes", name, p.name))
+		requirePure(p, false, fmt.Sprintf("`%s` calls `%s` and escapes", name, p.name))
 	}
 	return nil
 }
 
-func requireNoImpureEscape(p *Effect, why string) {
-	if p.mustNotEscapeImpure == "" {
-		p.mustNotEscapeImpure = why
+// requirePure records that parameter p must be bound to a pure function:
+// because it escapes, or because it is called inside a `{{ }}` field.
+func requirePure(p *Effect, concurrent bool, why string) bool {
+	if concurrent {
+		if p.concurrentWhy != "" {
+			return false
+		}
+		p.concurrentWhy = why
+		return true
 	}
+	if p.escapeWhy != "" {
+		return false
+	}
+	p.escapeWhy = why
+	return true
+}
+
+// reportEffectError queues an error found during inference with the deferred
+// ones, so the expression still types and nothing cascades. Without a solver
+// (the REPL, literate docs) it returns the error for the caller to raise.
+func reportEffectError(ctx context.Context, err error) error {
+	if s, ok := ctx.Value(effSolverKey{}).(*effectSolver); ok {
+		s.errs = append(s.errs, err)
+		return nil
+	}
+	return err
 }
 
 // Deferred checks of arguments against parameter requirements.
@@ -386,7 +425,7 @@ func effectArg(ctx context.Context, callee string, paramType, argType hm.Type, a
 	if arg == nil {
 		return
 	}
-	absorbCall(ctx, arg)
+	absorbCall(ctx, arg, argNode, calleeNameOf(argNode))
 	param := effectOf(paramType)
 	if param == nil || param.kind != effParam {
 		return
@@ -416,12 +455,11 @@ func (s *effectSolver) solve() []error {
 	for changed := true; changed; {
 		changed = false
 		for _, b := range s.bindings {
-			if b.param.mustNotEscapeImpure == "" {
-				continue
-			}
 			for _, q := range forwardedParams(b.arg) {
-				if q.mustNotEscapeImpure == "" {
-					q.mustNotEscapeImpure = fmt.Sprintf("`%s` passes `%s` to `%s`, where %s", q.owner.name, q.name, b.callee, b.param.mustNotEscapeImpure)
+				if b.param.escapeWhy != "" && requirePure(q, false, fmt.Sprintf("`%s` passes `%s` to `%s`, where %s", q.owner.name, q.name, b.callee, b.param.escapeWhy)) {
+					changed = true
+				}
+				if b.param.concurrentWhy != "" && requirePure(q, true, fmt.Sprintf("`%s` passes `%s` to `%s`, where %s", q.owner.name, q.name, b.callee, b.param.concurrentWhy)) {
 					changed = true
 				}
 			}
@@ -429,7 +467,7 @@ func (s *effectSolver) solve() []error {
 	}
 	errs := &effErrors{errs: s.errs}
 	for _, b := range s.bindings {
-		if b.param.mustNotEscapeImpure == "" || b.arg.kind != effClosure {
+		if b.arg.kind != effClosure {
 			continue
 		}
 		subject, self := "this block", b.arg.name
@@ -437,11 +475,13 @@ func (s *effectSolver) solve() []error {
 			self = calleeNameOf(b.argNode)
 			subject = "`" + self + "`"
 		}
-		if b.arg.impure() {
-			errs.add(b.argNode, fmt.Sprintf("%s, so %s must not write outer state, but it %s", b.param.mustNotEscapeImpure, subject, b.arg.describeWrites(self)))
+		for _, why := range []string{b.param.escapeWhy, b.param.concurrentWhy} {
+			if why != "" && b.arg.impure() {
+				errs.add(b.argNode, fmt.Sprintf("%s, so %s must not write outer state, but it %s", why, subject, b.arg.describeWrites(self)))
+			}
 		}
-		if b.arg.nonLocal != nil {
-			errs.add(b.arg.nonLocal, fmt.Sprintf("%s, so %s may outlive this call and cannot use `%s`", b.param.mustNotEscapeImpure, subject, controlKeyword(b.arg.nonLocal)))
+		if b.param.escapeWhy != "" && b.arg.nonLocal != nil {
+			errs.add(b.arg.nonLocal, fmt.Sprintf("%s, so %s may outlive this call and cannot use `%s`", b.param.escapeWhy, subject, controlKeyword(b.arg.nonLocal)))
 		}
 	}
 	return errs.errs

@@ -109,7 +109,7 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
-			absorbCall(ctx, effectOf(ft))
+			absorbCall(ctx, effectOf(ft), c, calleeNameOf(c.Fun))
 			t, err := c.inferFunctionType(ctx, env, fresh, ft)
 			if err != nil {
 				return nil, err
@@ -643,7 +643,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				return nil, err
 			}
 			if called && fnTypeOf(before) != nil {
-				absorbCall(ctx, effectOf(before))
+				absorbCall(ctx, effectOf(before), s, s.Name)
 			}
 		}
 		// A function value outside a call position escapes.
@@ -960,7 +960,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				return nil, err
 			}
 			if called && fnTypeOf(before) != nil {
-				absorbCall(ctx, effectOf(before))
+				absorbCall(ctx, effectOf(before), d, d.Field.Name)
 			}
 		}
 
@@ -1670,7 +1670,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			// Validate each field in the fragment exists on the concrete type
 			// and add it to the narrowed module (including nested selections)
 			for _, field := range frag.Fields {
-				fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
+				fieldType, err := o.inferFieldType(withFieldFrame(ctx, nil), field, memberMod, env, fresh)
 				if err != nil {
 					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
 				}
@@ -1801,7 +1801,8 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 
 	mod := NewType("", ObjectKind)
 	for _, field := range o.Fields {
-		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
+		// Selected fields (and list elements) evaluate concurrently.
+		fieldType, err := o.inferFieldType(withFieldFrame(ctx, nil), field, rec, env, fresh)
 		if err != nil {
 			return nil, err
 		}

@@ -535,7 +535,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			return nil, err
 		}
 		if name, isSelf, first, ok := assignmentRoot(r.Target); ok {
-			recordEffectWrite(ctx, env, name, isSelf, first)
+			recordEffectWrite(ctx, env, r, name, isSelf, first)
 		}
 
 		// Infer the type of the value (right-hand side)

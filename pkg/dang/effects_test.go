@@ -91,6 +91,195 @@ func TestTopLevelImmutable(t *testing.T) {
 	})
 }
 
+func TestFieldPurity(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "named functions and methods are pure",
+			src: `
+				double(x: Int!): Int! { let y = x; y += x; y }
+				type Counter {
+					value: Int! = 0
+					incr: Counter! { value += 1; self }
+				}
+				r: Int! {
+					let ctr = Counter
+					let x = {{a: double(1), b: ctr.incr.value, c: [ctr, ctr].{{incr}}}}
+					x.a + x.b
+				}
+			`,
+		},
+		{
+			name: "nested function writing the method's local",
+			src: `
+				type T {
+					run: Int! {
+						let n = 0
+						bump: Int! { n += 1; n }
+						{{a: bump, b: bump}}.a
+					}
+				}
+			`,
+			want: "{{ }} fields run concurrently; `bump` writes `n`",
+		},
+		{
+			name: "nested function writing self",
+			src: `
+				type T {
+					total: Int! = 0
+					run: Int! {
+						bump: Int! { total += 1; total }
+						{{a: bump}}.a
+					}
+				}
+			`,
+			want: "{{ }} fields run concurrently; `bump` writes `total`",
+		},
+		{
+			name: "transitively impure nested function",
+			src: `
+				run: Int! {
+					let n = 0
+					bump: Int! { n += 1; n }
+					twice: Int! { bump; bump }
+					{{a: twice}}.a
+				}
+			`,
+			want: "`twice` writes `n` (via `bump`)",
+		},
+		{
+			name: "block param called in fields, impure block",
+			src: `
+				type Acc {
+					total: Int! = 0
+					both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }
+					runBoth: Acc! { both { x => total += x; total }; self }
+				}
+			`,
+			want: "`Acc.both` calls `block` inside {{ }}, whose fields run concurrently, so this block must not write outer state, but it writes `total`",
+		},
+		{
+			name: "block param called in fields, pure block",
+			src: `
+				both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }
+				run: Int! { both { x => let y = x; y += 1; y } }
+			`,
+		},
+		{
+			name: "block param called from a block in a field",
+			src: `
+				each2(&block(x: Int!): Int!): [Int!]! { {{a: [1, 2].map { x => block(x) }}}.a }
+				run: [Int!]! {
+					let n = 0
+					each2 { x => n += x; n }
+				}
+			`,
+			want: "this block must not write outer state, but it writes `n`",
+		},
+		{
+			name: "forwarded block",
+			src: `
+				both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }
+				outer(&f(x: Int!): Int!): Int! { both { x => f(x) } }
+				run: Int! {
+					let total = 0
+					outer { x => total += x; total }
+				}
+			`,
+			want: "`outer` passes `f` to `both`, where `both` calls `block` inside {{ }}",
+		},
+		{
+			name: "closure created outside a field, passed to a builtin inside it",
+			src: `
+				run: [Int!]! {
+					let n = 0
+					bump(x: Int!): Int! { n += x; n }
+					{{a: [1, 2].map { x => bump(x) }}}.a
+				}
+			`,
+			want: "`bump` writes `n`",
+		},
+		{
+			name: "direct write to an outer local",
+			src: `
+				run: Int! {
+					let n = 0
+					{{a: if (true) { n += 1; n } else { 0 }}}.a
+				}
+			`,
+			want: "this assignment writes `n`, which is declared outside the field",
+		},
+		{
+			name: "direct write to self",
+			src: `
+				type T {
+					total: Int! = 0
+					run: Int! { {{a: if (true) { self.total = 5; total } else { 0 }}}.a }
+				}
+			`,
+			want: "this assignment writes `total`, which is declared outside the field",
+		},
+		{
+			name: "block in a field writing an outer local",
+			src: `
+				run: [Int!]! {
+					let n = 0
+					{{a: [1, 2].map { x => n += x; n }}}.a
+				}
+			`,
+			want: "this assignment writes `n`, which is declared outside the field",
+		},
+		{
+			name: "writes to field-local state",
+			src: `
+				run: Int! {
+					{{a: { let n = 0; [1, 2, 3].each { x => n += x }; n }}}.a
+				}
+			`,
+		},
+		{
+			name: "pure closure created outside the field",
+			src: `
+				run: Int! {
+					let k = 2
+					scale(x: Int!): Int! { x * k }
+					{{a: scale(1), b: scale(2)}}.b
+				}
+			`,
+		},
+	})
+}
+
+func TestEffectSummary(t *testing.T) {
+	src := `
+		run: Int! {
+			let n = 0
+			bump: Int! { n += 1; n }
+			scale(x: Int!): Int! { x * 2 }
+			bump + scale(1)
+		}
+	`
+	parsed, err := ParseWithRecovery("effects", []byte(src))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	file := parsed.(*FileBlock)
+	typeScope, _ := BuildScopesFromImports("", nil)
+	if _, err := InferFormsWithPhases(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher()); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	file.Walk(func(n Node) bool {
+		if fd, ok := n.(*FunDecl); ok && fd.Inferred != nil {
+			got = append(got, fd.Named+": "+EffectSummary(fd.Inferred))
+		}
+		return true
+	})
+	want := "run: \nbump: writes n\nscale: "
+	if strings.Join(got, "\n") != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), want)
+	}
+}
+
 func TestClosureEscapes(t *testing.T) {
 	runEffectCases(t, []effectCase{
 		{

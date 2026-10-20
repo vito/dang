@@ -1,9 +1,8 @@
 # Copy-on-write across `{{ }}` tasks. Every `{{ }}` evaluates its fields
-# concurrently, and each task's writes stay private to it: a field that writes
-# `self` (either form) must not leak into the enclosing method's `self` or into
-# sibling tasks. Before the fix, a selection task shared the method's `self`
-# cell, so `self.total += 5` inside a selected field's argument raced with its
-# siblings and survived the selection.
+# concurrently. Writes from inside a field to state declared outside it are
+# compile errors (see tests/errors/effect_*), so what remains observable is
+# that fields read the enclosing `self`, and that methods called from parallel
+# fields fork their receivers independently.
 
 type Acc {
   total: Int! = 0
@@ -11,116 +10,24 @@ type Acc {
 
   plus(n: Int!): Int! { total + n }
 
-  # A selection field's argument writes `self`; the write stays in its task.
-  selSelf: Acc! {
-    let r = self.{{x: plus(n: if (true) { self.total += 5; 1 } else { 0 }), y: plus(n: 2)}}
-    log = [toString(r.x), toString(r.y)]
-    self
-  }
-
-  # Same with a bare write.
-  selBare: Acc! {
-    let r = self.{{x: plus(n: if (true) { total += 5; 1 } else { 0 }), y: plus(n: 2)}}
-    log = [toString(r.x), toString(r.y)]
-    self
-  }
-
-  # A selection fanned out over a list: each element's task is private too.
-  selList: Acc! {
-    let r = [self, self].{{x: plus(n: if (true) { self.total += 5; 1 } else { 0 })}}
-    log = r.map { e => toString(e.x) }
-    self
-  }
-
   # Record literal fields read the enclosing `self`.
   recRead: Int! { {{a: self.total, b: 1}}.a }
 
-  # Record literal fields writing `self` (either form) see their own writes
-  # only; the method's `self` is untouched.
-  recSelf: Acc! {
-    let r = {{
-      a: if (true) { self.total += 1; self.total } else { 0 },
-      b: if (true) { self.total += 10; self.total } else { 0 }
-    }}
-    log = [toString(r.a), toString(r.b)]
-    self
-  }
-
-  recBare: Acc! {
-    let r = {{
-      a: if (true) { total += 1; total } else { 0 },
-      b: if (true) { total += 10; total } else { 0 }
-    }}
-    log = [toString(r.a), toString(r.b)]
-    self
-  }
-
-  # A dependent field forces its sibling, whose write stays in the sibling's
-  # task.
-  recDep: Acc! {
-    let r = {{
-      a: if (true) { self.total += 1; self.total } else { 0 },
-      b: a + self.total
-    }}
-    log = [toString(r.a), toString(r.b)]
-    self
-  }
+  # Selection fields read it too.
+  selRead: Int! { self.{{x: plus(n: 1), y: plus(n: 2)}}.y }
 
   # Mutating method calls in parallel fields each fork the receiver.
   bump: Acc! { total += 1; self }
 
   recCalls: [Int!]! { let r = {{a: bump.total, b: bump.bump.total, c: total}}; [r.a, r.b, r.c] }
 
-  # Inside one task, bare and `self.` forms see each other's writes.
-  taskMix: Int! { {{a: if (true) { self.total = 5; total } else { 0 }}}.a }
-
-  taskMix2: Int! { {{a: if (true) { total = 5; self.total } else { 0 }}}.a }
-
-  taskMixLeak: Int! {
-    {{
-      a: if (true) { total = 5; self.total = 6; 1 } else { 0 }
-    }}
-    total
-  }
-
-  selMix: Int! { self.{{x: plus(n: if (true) { total = 5; self.total } else { 0 })}}.x }
-
-  selMix2: Int! { self.{{x: plus(n: if (true) { self.total = 5; total } else { 0 })}}.x }
-
-  # A block passed in from outside writes its own (outer) method's `self`
-  # from several tasks at once. The order of those writes is unspecified, but
-  # they must not corrupt state.
+  # A pure block passed in from outside may run from several tasks at once.
   both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }
 
-  runBoth: Acc! {
-    both { x =>
-      total += x
-      total
-    }
-    self
-  }
+  runBoth: Int! { both { x => total + x * 10 } }
 }
 
-assert("selection: self. write stays in its task") { Acc(0).selSelf.total == 0 }
-assert("selection: task sees its own write") { Acc(0).selSelf.log == ["1", "2"] }
-assert("selection: bare write stays in its task") { Acc(0).selBare.total == 0 }
-assert("selection: bare write results") { Acc(0).selBare.log == ["1", "2"] }
-assert("list selection: write stays in its task") { Acc(0).selList.total == 0 }
-assert("list selection: results") { Acc(0).selList.log == ["1", "1"] }
-
 assert("record literal reads self") { Acc(7).recRead == 7 }
-assert("record literal: self. writes stay private") { Acc(0).recSelf.total == 0 }
-assert("record literal: self. writes are per task") { Acc(0).recSelf.log == ["1", "10"] }
-assert("record literal: bare writes stay private") { Acc(0).recBare.total == 0 }
-assert("record literal: bare writes are per task") { Acc(0).recBare.log == ["1", "10"] }
-assert("record literal: dependent field") { Acc(0).recDep.log == ["1", "1"] }
-assert("record literal: dependent field leaves self alone") { Acc(0).recDep.total == 0 }
+assert("selection reads self") { Acc(7).selRead == 9 }
 assert("parallel method calls fork independently") { Acc(0).recCalls == [1, 2, 0] }
-assert("in a task, bare reads see self. writes") { Acc(0).taskMix == 5 }
-assert("in a task, self. reads see bare writes") { Acc(0).taskMix2 == 5 }
-assert("in a task, mixed writes stay private") { Acc(0).taskMixLeak == 0 }
-assert("in a selection task, self. reads see bare writes") { Acc(0).selMix == 5 }
-assert("in a selection task, bare reads see self. writes") { Acc(0).selMix2 == 5 }
-
-let both = Acc(0).runBoth.total
-assert("outer block writes from parallel tasks land") { both >= 1 and both <= 3 }
+assert("pure block from parallel tasks") { Acc(1).runBoth == 32 }

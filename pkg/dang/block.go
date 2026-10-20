@@ -567,7 +567,9 @@ func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 	// Infer in dependency order so a field can reference siblings that are
 	// declared later in source order.
 	for _, idx := range order {
-		if _, err := o.Fields[idx].Infer(ctx, inferTypeScope, fresh); err != nil {
+		// Fields evaluate concurrently (see fields_purity.go).
+		fieldCtx := withFieldFrame(ctx, mod)
+		if _, err := o.Fields[idx].Infer(fieldCtx, inferTypeScope, fresh); err != nil {
 			return nil, err
 		}
 	}

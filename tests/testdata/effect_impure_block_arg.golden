@@ -1,0 +1,11 @@
+[1m[31mError:[0m `Acc.both` calls `block` inside {{ }}, whose fields run concurrently, so this block must not write outer state, but it writes `total`
+  [2m[34m--> errors/effect_impure_block_arg.dang:10:10[0m
+ [2m    |[0m
+ [2m  8 | [0m
+ [2m  9 |   runBoth: Acc! {[0m
+ [2m[34m[1m 10 | [0m    both { x =>
+[2m                [31m^^^^^^[0m
+ [2m 11 |       total += x[0m
+ [2m 12 |       total[0m
+ [2m    |[0m
+

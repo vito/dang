@@ -1,0 +1,11 @@
+type Tally {
+  run: Int! {
+    let n = 0
+    bump: Int! {
+      n += 1
+      n
+    }
+    let r = {{a: bump, b: bump}}
+    r.a + r.b
+  }
+}

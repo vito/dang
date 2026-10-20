@@ -1,0 +1,8 @@
+type Acc {
+  total: Int! = 0
+
+  recSelf: Int! {
+    let r = {{a: if (true) { self.total += 1; self.total } else { 0 }}}
+    r.a
+  }
+}
