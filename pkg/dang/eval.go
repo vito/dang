@@ -3116,10 +3116,10 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		argScope := NewObject(NewType("_constructor_args_", ObjectKind))
 		// Parameter defaults are scoped like field defaults: they read the
 		// fields as the field defaults left them, and the earlier parameters,
-		// which shadow fields. defaultParams holds those parameters, over the
-		// instance (and the closure behind it).
-		defaultParams := NewObject(NewType("_constructor_defaults_", ObjectKind))
-		defaultScope := CreateOverlayValueScope(defaultParams, instanceScope)
+		// which shadow fields. Each parameter gets its own layer over the
+		// instance (and the closure behind it), so a closure created in a
+		// default sees exactly the parameters before it, as it was checked.
+		var defaultScope ValueScope = instanceScope
 		for _, param := range c.Parameters {
 			var val Value
 			if arg, found := args[param.Name.Name]; found {
@@ -3135,7 +3135,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 				val = NullValue{}
 			}
 			argScope.Bind(param.Name.Name, val, PrivateVisibility)
-			defaultScope.Bind(param.Name.Name, val, PrivateVisibility)
+			layer := NewObject(NewType("_constructor_default_", ObjectKind))
+			layer.Bind(param.Name.Name, val, PrivateVisibility)
+			defaultScope = CreateOverlayValueScope(layer, defaultScope)
 		}
 		if c.BlockParamName != "" {
 			blockVal := currentBlockArg(ctx)
@@ -3143,7 +3145,6 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 				return nil, fmt.Errorf("missing block argument for constructor %s", c.ObjectName)
 			}
 			argScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
-			defaultScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 		}
 
 		// Execute the new() body with access to self and constructor args.

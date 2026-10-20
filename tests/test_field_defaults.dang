@@ -193,6 +193,20 @@ type Knob {
 
 assert { Knob { x => x * 2 }.r == 6 }
 
+# A closure created in a parameter default sees only the parameters before
+# it: a later parameter named like a field doesn't replace the field it read.
+type Later {
+  j: Int! = 1
+  out: Int!
+
+  new(k: Box! = Box.store { x => j + x }, j: Int! = 100) {
+    self.out = k.saved(0) + j
+    self
+  }
+}
+
+assert { Later.out == 101 }
+
 # Locals declared in a default's block can be written; the type's fields
 # can't (tests/errors/field_default_reassign.dang).
 type Tally {
