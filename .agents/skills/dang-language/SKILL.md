@@ -27,10 +27,11 @@ Four ideas the rest of the language hangs on:
 - **Immutability + copy-on-write** — values never change. Methods that look
   mutating return a **forked copy** of the receiver; mutating methods must
   `return self` to surface it. `Foo(42).incr.a == 43`, original untouched.
-  The compiler closes the loopholes: top-level bindings are immutable once
-  initialized (only top-level script code reassigns them), closures that
-  write outer state can't be stored or returned, and `{{ }}` fields can't
-  write outside themselves. See `reference/objects.md`.
+  The compiler closes the loopholes: top-level bindings and statics are
+  immutable once initialized (only top-level script code reassigns top-level
+  bindings), closures that write outer state can't be stored or returned,
+  and `{{ }}` fields can't write outside themselves. See
+  `reference/objects.md`.
 - **Null tracking** — `String` ≠ `String!` in the type system, with
   flow-sensitive narrowing so you rarely write casts.
 
