@@ -1814,33 +1814,46 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 	return mod, nil
 }
 
+// typedNode stands in, during inference, for an expression whose type is
+// already known, such as the receiver of a `{{ }}` selection while one of its
+// fields is inferred. It is never evaluated.
+type typedNode struct {
+	InferredTypeHolder
+	Type hm.Type
+	Loc  *SourceLocation
+}
+
+var _ Node = (*typedNode)(nil)
+
+func (n *typedNode) Infer(context.Context, hm.Env, hm.Fresher) (hm.Type, error) {
+	n.SetInferredType(n.Type)
+	return n.Type, nil
+}
+func (n *typedNode) Body() hm.Expression                { return n }
+func (n *typedNode) GetSourceLocation() *SourceLocation { return n.Loc }
+func (n *typedNode) DeclaredSymbols() []string          { return nil }
+func (n *typedNode) ReferencedSymbols() []string        { return nil }
+func (n *typedNode) Walk(fn func(Node) bool)            { fn(n) }
+
 func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelection, rec TypeScope, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var fieldType hm.Type
 	var err error
 
 	if len(field.Args) > 0 {
-		// Field has arguments - create a Select then FunCall to infer the type
-		// But use a synthetic receiver to get the field from the correct environment
-		selectNode := &Select{
-			Receiver: nil, // Will be handled by using rec environment directly
-			Field:    &Symbol{Name: field.Name, Loc: field.Loc},
-			AutoCall: false,
-			Loc:      field.Loc,
-		}
-
+		// Field has arguments: infer it as the call evaluation makes,
+		// `<receiver>.field(args)`. Only the field name is looked up on the
+		// receiver; the arguments are expressions of the enclosing scope.
 		funCall := &FunCall{
-			Fun:  selectNode,
+			Fun: &Select{
+				Receiver: &typedNode{Type: hm.NonNullType{Type: rec}, Loc: field.Loc},
+				Field:    &Symbol{Name: field.Name, Loc: field.Loc},
+				AutoCall: false,
+				Loc:      field.Loc,
+			},
 			Args: field.Args,
 			Loc:  field.Loc,
 		}
-
-		// Create a synthetic environment that combines rec and env
-		// Use rec for symbol lookup, env for argument evaluation
-		synthTypeScope := &OverlayTypeScope{
-			primary: rec,
-			lexical: env.(TypeScope),
-		}
-		fieldType, err = funCall.Infer(ctx, synthTypeScope, fresh)
+		fieldType, err = funCall.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}

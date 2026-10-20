@@ -1,5 +1,9 @@
 type Box {
+  n: Int! = 0
+
   saved(x: Int!): Int! { x }
+
+  keep(b: Box!): Int! { b.n }
 
   store(&block(x: Int!): Int!): Box! {
     self.saved = block
@@ -34,4 +38,8 @@ type Gauge {
   }
 
   level = self.level + 1
+
+  # A selection's arguments are in the default's scope, not the receiver's.
+  let box = Box
+  let selectedWith: Int! = box.{{keep(b: self)}}.keep
 }

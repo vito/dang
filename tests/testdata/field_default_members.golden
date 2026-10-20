@@ -1,170 +1,183 @@
-13 inference errors:
+14 inference errors:
 
 Error 1:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:26:22[0m
+  [2m[34m--> errors/field_default_members.dang:28:22[0m
  [2m    |[0m
- [2m 24 |   total: Int! { level + bonus }[0m
- [2m 25 | [0m
- [2m[34m[1m 26 | [0m  let called: Int! = read(1)
+ [2m 26 |   total: Int! { level + bonus }[0m
+ [2m 27 | [0m
+ [2m[34m[1m 28 | [0m  let called: Int! = read(1)
 [2m                            [31m^^^^[0m
- [2m 27 |   let ref = &read[0m
- [2m 28 |   let shadowed: Int! = double(2)[0m
+ [2m 29 |   let ref = &read[0m
+ [2m 30 |   let shadowed: Int! = double(2)[0m
  [2m    |[0m
 
 
 Error 2:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:27:14[0m
+  [2m[34m--> errors/field_default_members.dang:29:14[0m
  [2m    |[0m
- [2m 25 | [0m
- [2m 26 |   let called: Int! = read(1)[0m
- [2m[34m[1m 27 | [0m  let ref = &read
+ [2m 27 | [0m
+ [2m 28 |   let called: Int! = read(1)[0m
+ [2m[34m[1m 29 | [0m  let ref = &read
 [2m                    [31m^^^^[0m
- [2m 28 |   let shadowed: Int! = double(2)[0m
- [2m 29 |   let computed: Int! = total[0m
+ [2m 30 |   let shadowed: Int! = double(2)[0m
+ [2m 31 |   let computed: Int! = total[0m
  [2m    |[0m
 
 
 Error 3:
 [1m[31mError:[0m field defaults can't use `double`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:28:24[0m
+  [2m[34m--> errors/field_default_members.dang:30:24[0m
  [2m    |[0m
- [2m 26 |   let called: Int! = read(1)[0m
- [2m 27 |   let ref = &read[0m
- [2m[34m[1m 28 | [0m  let shadowed: Int! = double(2)
+ [2m 28 |   let called: Int! = read(1)[0m
+ [2m 29 |   let ref = &read[0m
+ [2m[34m[1m 30 | [0m  let shadowed: Int! = double(2)
 [2m                              [31m^^^^^^[0m
- [2m 29 |   let computed: Int! = total[0m
- [2m 30 |   let viaComputed = reader[0m
+ [2m 31 |   let computed: Int! = total[0m
+ [2m 32 |   let viaComputed = reader[0m
  [2m    |[0m
 
 
 Error 4:
 [1m[31mError:[0m field defaults can't use `total`, a computed field of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:29:24[0m
+  [2m[34m--> errors/field_default_members.dang:31:24[0m
  [2m    |[0m
- [2m 27 |   let ref = &read[0m
- [2m 28 |   let shadowed: Int! = double(2)[0m
- [2m[34m[1m 29 | [0m  let computed: Int! = total
+ [2m 29 |   let ref = &read[0m
+ [2m 30 |   let shadowed: Int! = double(2)[0m
+ [2m[34m[1m 31 | [0m  let computed: Int! = total
 [2m                              [31m^^^^^[0m
- [2m 30 |   let viaComputed = reader[0m
- [2m 31 |   let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }[0m
+ [2m 32 |   let viaComputed = reader[0m
+ [2m 33 |   let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }[0m
  [2m    |[0m
 
 
 Error 5:
 [1m[31mError:[0m field defaults can't use `reader`, a computed field of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:30:21[0m
+  [2m[34m--> errors/field_default_members.dang:32:21[0m
  [2m    |[0m
- [2m 28 |   let shadowed: Int! = double(2)[0m
- [2m 29 |   let computed: Int! = total[0m
- [2m[34m[1m 30 | [0m  let viaComputed = reader
+ [2m 30 |   let shadowed: Int! = double(2)[0m
+ [2m 31 |   let computed: Int! = total[0m
+ [2m[34m[1m 32 | [0m  let viaComputed = reader
 [2m                           [31m^^^^^^[0m
- [2m 31 |   let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }[0m
- [2m 32 |   let stored = Box.store { x => read(x) }[0m
+ [2m 33 |   let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }[0m
+ [2m 34 |   let stored = Box.store { x => read(x) }[0m
  [2m    |[0m
 
 
 Error 6:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:31:42[0m
+  [2m[34m--> errors/field_default_members.dang:33:42[0m
  [2m    |[0m
- [2m 29 |   let computed: Int! = total[0m
- [2m 30 |   let viaComputed = reader[0m
- [2m[34m[1m 31 | [0m  let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }
+ [2m 31 |   let computed: Int! = total[0m
+ [2m 32 |   let viaComputed = reader[0m
+ [2m[34m[1m 33 | [0m  let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }
 [2m                                                [31m^^^^[0m
- [2m 32 |   let stored = Box.store { x => read(x) }[0m
- [2m 33 | [0m
+ [2m 34 |   let stored = Box.store { x => read(x) }[0m
+ [2m 35 | [0m
  [2m    |[0m
 
 
 Error 7:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:32:33[0m
+  [2m[34m--> errors/field_default_members.dang:34:33[0m
  [2m    |[0m
- [2m 30 |   let viaComputed = reader[0m
- [2m 31 |   let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }[0m
- [2m[34m[1m 32 | [0m  let stored = Box.store { x => read(x) }
+ [2m 32 |   let viaComputed = reader[0m
+ [2m 33 |   let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }[0m
+ [2m[34m[1m 34 | [0m  let stored = Box.store { x => read(x) }
 [2m                                       [31m^^^^[0m
- [2m 33 | [0m
- [2m 34 |   let viaNested: Int! = {[0m
+ [2m 35 | [0m
+ [2m 36 |   let viaNested: Int! = {[0m
  [2m    |[0m
 
 
 Error 8:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:35:26[0m
+  [2m[34m--> errors/field_default_members.dang:37:26[0m
  [2m    |[0m
- [2m 33 | [0m
- [2m 34 |   let viaNested: Int! = {[0m
- [2m[34m[1m 35 | [0m    add(x: Int!): Int! { read(x) }
+ [2m 35 | [0m
+ [2m 36 |   let viaNested: Int! = {[0m
+ [2m[34m[1m 37 | [0m    add(x: Int!): Int! { read(x) }
 [2m                                [31m^^^^[0m
- [2m 36 |     1[0m
- [2m 37 |   }[0m
+ [2m 38 |     1[0m
+ [2m 39 |   }[0m
  [2m    |[0m
 
 
 Error 9:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:40:28[0m
+  [2m[34m--> errors/field_default_members.dang:42:28[0m
  [2m    |[0m
- [2m 38 | [0m
- [2m 39 |   let viaArgDefault: Int! = {[0m
- [2m[34m[1m 40 | [0m    add(x: Int!, k: Int! = read(1)): Int! { x + k }
+ [2m 40 | [0m
+ [2m 41 |   let viaArgDefault: Int! = {[0m
+ [2m[34m[1m 42 | [0m    add(x: Int!, k: Int! = read(1)): Int! { x + k }
 [2m                                  [31m^^^^[0m
- [2m 41 |     1[0m
- [2m 42 |   }[0m
+ [2m 43 |     1[0m
+ [2m 44 |   }[0m
  [2m    |[0m
 
 
 Error 10:
-[1m[31mError:[0m field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
-  [2m[34m--> errors/field_default_members.dang:45:33[0m
+[1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_members.dang:48:43[0m
  [2m    |[0m
- [2m 43 | [0m
- [2m 44 |   # Only new() sets these, after the defaults run.[0m
- [2m[34m[1m 45 | [0m  let withBonus: Int! = level + bonus
-[2m                                       [31m^^^^^[0m
- [2m 46 |   let noted = note[0m
- [2m 47 | [0m
+ [2m 46 |   # A selection's arguments are in the default's scope: this `read` is[0m
+ [2m 47 |   # Gauge's, not Box's.[0m
+ [2m[34m[1m 48 | [0m  let viaSelection: Int! = Box.{{saved(x: read(1))}}.saved
+[2m                                                 [31m^^^^[0m
+ [2m 49 | [0m
+ [2m 50 |   # Only new() sets these, after the defaults run.[0m
  [2m    |[0m
 
 
 Error 11:
-[1m[31mError:[0m field defaults can't use `note`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
-  [2m[34m--> errors/field_default_members.dang:46:15[0m
+[1m[31mError:[0m field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
+  [2m[34m--> errors/field_default_members.dang:51:33[0m
  [2m    |[0m
- [2m 44 |   # Only new() sets these, after the defaults run.[0m
- [2m 45 |   let withBonus: Int! = level + bonus[0m
- [2m[34m[1m 46 | [0m  let noted = note
-[2m                     [31m^^^^[0m
- [2m 47 | [0m
- [2m 48 |   level = read(1)[0m
+ [2m 49 | [0m
+ [2m 50 |   # Only new() sets these, after the defaults run.[0m
+ [2m[34m[1m 51 | [0m  let withBonus: Int! = level + bonus
+[2m                                       [31m^^^^^[0m
+ [2m 52 |   let noted = note[0m
+ [2m 53 | [0m
  [2m    |[0m
 
 
 Error 12:
-[1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:48:11[0m
+[1m[31mError:[0m field defaults can't use `note`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
+  [2m[34m--> errors/field_default_members.dang:52:15[0m
  [2m    |[0m
- [2m 46 |   let noted = note[0m
- [2m 47 | [0m
- [2m[34m[1m 48 | [0m  level = read(1)
-[2m                 [31m^^^^[0m
- [2m 49 |   note = "set in the body"[0m
- [2m 50 | [0m
+ [2m 50 |   # Only new() sets these, after the defaults run.[0m
+ [2m 51 |   let withBonus: Int! = level + bonus[0m
+ [2m[34m[1m 52 | [0m  let noted = note
+[2m                     [31m^^^^[0m
+ [2m 53 | [0m
+ [2m 54 |   level = read(1)[0m
  [2m    |[0m
 
 
 Error 13:
-[1m[31mError:[0m field defaults can't use `note`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
-  [2m[34m--> errors/field_default_members.dang:49:3[0m
+[1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_members.dang:54:11[0m
  [2m    |[0m
- [2m 47 | [0m
- [2m 48 |   level = read(1)[0m
- [2m[34m[1m 49 | [0m  note = "set in the body"
+ [2m 52 |   let noted = note[0m
+ [2m 53 | [0m
+ [2m[34m[1m 54 | [0m  level = read(1)
+[2m                 [31m^^^^[0m
+ [2m 55 |   note = "set in the body"[0m
+ [2m 56 | [0m
+ [2m    |[0m
+
+
+Error 14:
+[1m[31mError:[0m field defaults can't use `note`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
+  [2m[34m--> errors/field_default_members.dang:55:3[0m
+ [2m    |[0m
+ [2m 53 | [0m
+ [2m 54 |   level = read(1)[0m
+ [2m[34m[1m 55 | [0m  note = "set in the body"
 [2m         [31m^^^^[0m
- [2m 50 | [0m
- [2m 51 |   new(bonus: Int!) {[0m
+ [2m 56 | [0m
+ [2m 57 |   new(bonus: Int!) {[0m
  [2m    |[0m
 

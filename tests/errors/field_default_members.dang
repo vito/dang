@@ -1,6 +1,8 @@
 type Box {
   saved(x: Int!): Int! { x }
 
+  read(x: Int!): Int! { 1000 + x }
+
   store(&block(x: Int!): Int!): Box! {
     self.saved = block
     self
@@ -40,6 +42,10 @@ type Gauge {
     add(x: Int!, k: Int! = read(1)): Int! { x + k }
     1
   }
+
+  # A selection's arguments are in the default's scope: this `read` is
+  # Gauge's, not Box's.
+  let viaSelection: Int! = Box.{{saved(x: read(1))}}.saved
 
   # Only new() sets these, after the defaults run.
   let withBonus: Int! = level + bonus

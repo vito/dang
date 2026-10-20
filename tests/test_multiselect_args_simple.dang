@@ -25,4 +25,15 @@ assert { result.value == 0 }
 assert { result.add == 10 }
 assert { result.multiply == 0 }
 
+# Arguments are expressions of the enclosing scope and are evaluated there, so
+# they are typed there too, even when the receiver has a member of the same
+# name.
+type Label {
+  value: [String!]! = ["a", "b", "c"]
+
+  sized: Int! { Calculator(value: 1).{{add(amount: value.length)}}.add }
+}
+
+assert { Label.sized == 4 }
+
 print("Multi-select with arguments tests passed!")
