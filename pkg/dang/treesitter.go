@@ -60,7 +60,7 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 // tsEdition is the edition whose syntax the tree-sitter grammar describes.
 // Tree-sitter has no equivalent of the parser's edition option, so the
 // edition-dependent rules are resolved statically for this one edition.
-var tsEdition = DefaultEdition
+var tsEdition = LatestEdition
 
 // tsPredicates maps the PEG's edition predicates (rules whose body is a pigeon
 // code predicate) to their value in tsEdition. A reference to a predicate

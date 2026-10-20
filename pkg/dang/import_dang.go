@@ -188,11 +188,6 @@ func parseModuleBlocks(ctx context.Context, dir string) (context.Context, []*Fil
 // ctx compile-stack (see loadDangModule) precisely because the cache is fresh
 // per module and could not carry a cycle marker across the boundary.
 func moduleImportContext(ctx context.Context, dir string) (context.Context, error) {
-	// A module without its own dang.toml is part of the importing project, so
-	// it inherits the importer's edition. Captured before the importer's
-	// config is replaced below.
-	inheritedEdition := EditionFromContext(ctx)
-
 	// Clear the importer's schema imports and give the module fresh schema and
 	// Dang-module caches so neither GraphQL nor Dang types alias across the
 	// module boundary.
@@ -219,7 +214,9 @@ func moduleImportContext(ctx context.Context, dir string) (context.Context, erro
 
 	// No module-level dang.toml: install an empty project config so
 	// parseDirBlocks' ensureProjectImports treats the module as fully resolved
-	// and does not walk UP into the importer's directory tree.
-	ctx = ContextWithProjectConfig(ctx, configPath, &ProjectConfig{Edition: inheritedEdition})
+	// and does not walk UP into the importer's directory tree. (The module's
+	// edition does not come from this config: it depends only on the module's
+	// path, see EditionForDir.)
+	ctx = ContextWithProjectConfig(ctx, configPath, &ProjectConfig{})
 	return ctx, nil
 }

@@ -101,8 +101,7 @@ func WithSyntaxCache(ctx context.Context, cache *SyntaxCache) context.Context {
 	return context.WithValue(ctx, syntaxCacheKey{}, cache)
 }
 
-func parseFileWithSyntaxCache(ctx context.Context, filename string) (any, error) {
-	edition := EditionFromContext(ctx)
+func parseFileWithSyntaxCache(ctx context.Context, filename string, edition Edition) (any, error) {
 	cache, _ := ctx.Value(syntaxCacheKey{}).(*SyntaxCache)
 	if cache == nil {
 		return ParseFileWithRecovery(filename, GlobalStore("filePath", filename), WithEdition(edition))

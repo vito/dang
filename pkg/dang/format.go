@@ -38,7 +38,7 @@ type Formatter struct {
 	emittedComments map[int]bool
 
 	// Edition whose syntax to emit (e.g. object selection braces). Empty
-	// means DefaultEdition.
+	// means LatestEdition.
 	edition Edition
 }
 
@@ -49,9 +49,9 @@ func Format(node Node) string {
 	return f.buf.String()
 }
 
-// FormatFile parses and formats a Dang source file written in DefaultEdition.
+// FormatFile parses and formats a Dang source file written in LatestEdition.
 func FormatFile(source []byte) (string, error) {
-	return FormatFileWithEdition(source, DefaultEdition)
+	return FormatFileWithEdition(source, LatestEdition)
 }
 
 // FormatFileWithEdition parses and formats a Dang source file written in the

@@ -127,15 +127,63 @@ func TestProjectConfigEdition(t *testing.T) {
 
 func TestEditionFromContext(t *testing.T) {
 	ctx := context.Background()
-	assert.Equal(t, DefaultEdition, EditionFromContext(ctx))
+	assert.Equal(t, LatestEdition, EditionFromContext(ctx))
 
-	// An embedder's edition applies when no dang.toml governs the source.
+	// An embedder's edition applies to source no dang.toml governs.
 	hostCtx := ContextWithEdition(ctx, Edition1)
 	assert.Equal(t, Edition1, EditionFromContext(hostCtx))
 
-	// A dang.toml takes precedence, including its implicit default.
-	assert.Equal(t, DefaultEdition, EditionFromContext(
-		ContextWithProjectConfig(hostCtx, "dang.toml", &ProjectConfig{})))
-	assert.Equal(t, Edition1, EditionFromContext(
+	// A project config on the context does not decide the edition: only
+	// the source's path does (see TestEditionForDir).
+	assert.Equal(t, LatestEdition, EditionFromContext(
 		ContextWithProjectConfig(ctx, "dang.toml", &ProjectConfig{Edition: Edition1})))
+}
+
+func TestEditionForDir(t *testing.T) {
+	ctx := context.Background()
+	hostCtx := ContextWithEdition(ctx, Edition1)
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+	mkdir := func(rel string) string {
+		dir := filepath.Join(root, rel)
+		require.NoError(t, os.MkdirAll(dir, 0755))
+		return dir
+	}
+	write := func(rel, contents string) {
+		require.NoError(t, os.WriteFile(filepath.Join(root, rel), []byte(contents), 0644))
+	}
+
+	edition1 := mkdir("one/nested")
+	write("one/dang.toml", "edition = \"1\"\n")
+	implicit := mkdir("implicit")
+	write("implicit/dang.toml", "[imports.Dagger]\ndagger = true\n")
+	ungoverned := mkdir("ungoverned")
+	broken := mkdir("broken")
+	write("broken/dang.toml", "edition = 2\n")
+
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		dir  string
+		want Edition
+	}{
+		{"nearest dang.toml, walking up", ctx, edition1, Edition1},
+		{"dang.toml beats the embedder", hostCtx, filepath.Join(root, "one"), Edition1},
+		{"dang.toml without edition", hostCtx, implicit, DefaultEdition},
+		{"boundary reached: latest", ctx, ungoverned, LatestEdition},
+		{"boundary reached: embedder", hostCtx, ungoverned, Edition1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			edition, err := EditionForDir(tc.ctx, tc.dir)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, edition)
+		})
+	}
+
+	t.Run("broken dang.toml", func(t *testing.T) {
+		edition, err := EditionForDir(hostCtx, broken)
+		require.Error(t, err)
+		assert.Equal(t, Edition1, edition)
+	})
 }
