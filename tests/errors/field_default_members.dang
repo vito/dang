@@ -51,9 +51,6 @@ type Gauge {
   let withBonus: Int! = level + bonus
   let noted = note
 
-  level = read(1)
-  note = "set in the body"
-
   new(bonus: Int!) {
     self.bonus = bonus
     self

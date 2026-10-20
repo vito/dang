@@ -159,17 +159,19 @@ type Late {
 
 assert { Late.level == 50 and Late.held.saved(1) == 2 }
 
-# A bare `x = expr` in the type body is part of building the object, so a
-# closure created in a default reads the field as the body leaves it.
-type Bumped {
-  level: Int! = 1
+# Locals declared in a default's block can be written; the type's fields
+# can't (tests/errors/field_default_reassign.dang).
+type Tally {
+  items: [Int!]! = [1, 2, 3]
 
-  let held = Box.store { x => level + x }
-
-  level = 5
+  let total: Int! = {
+    let sum = 0
+    items.each { x => sum += x }
+    sum
+  }
 }
 
-assert { Bumped.held.saved(0) == 5 }
+assert { Tally.total == 6 }
 
 # A block default (`= { ... }`) is evaluated once, while the object is built;
 # a computed field (`{ ... }`, no `=`) on every read. `dang fmt` keeps them
@@ -195,15 +197,18 @@ reading.n = 10
 assert { reading.pair == [2, 11] }
 
 # Statics aren't field defaults: they are evaluated once and immutable, so
-# they may use the type's other statics, `self` included.
+# they may use the type's other statics, `self` included. Their `self { }`
+# block can't reassign them, but a static method's writes stay in its copy.
 type Scale {
   self {
     base: Int! = 2
     times(x: Int!): Int! { x * base }
     let f = &times
     let viaSelf: Int! = self.times(3)
+    rebased(x: Int!): Int! { base = x; base * 3 }
   }
 }
 
 assert { Scale.f(3) == 6 }
 assert { Scale.viaSelf == 6 }
+assert { Scale.rebased(10) == 30 and Scale.base == 2 }

@@ -698,7 +698,7 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	meta := instanceType.MetaType()
 	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
-	_, err := InferFormsWithPhases(ctx, forms, metaScope, fresh)
+	_, err := InferFormsWithPhases(withStaticsBody(ctx, meta), forms, metaScope, fresh)
 	return err
 }
 

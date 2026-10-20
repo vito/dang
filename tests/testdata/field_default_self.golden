@@ -1,4 +1,4 @@
-10 inference errors:
+9 inference errors:
 
 Error 1:
 [1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
@@ -106,26 +106,13 @@ Error 8:
 
 Error 9:
 [1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_self.dang:44:42[0m
+  [2m[34m--> errors/field_default_self.dang:42:42[0m
  [2m    |[0m
- [2m 42 |   # A selection's arguments are in the default's scope, not the receiver's.[0m
- [2m 43 |   let box = Box[0m
- [2m[34m[1m 44 | [0m  let selectedWith: Int! = box.{{keep(b: self)}}.keep
+ [2m 40 |   # A selection's arguments are in the default's scope, not the receiver's.[0m
+ [2m 41 |   let box = Box[0m
+ [2m[34m[1m 42 | [0m  let selectedWith: Int! = box.{{keep(b: self)}}.keep
 [2m                                                [31m^^^^[0m
- [2m 45 | }[0m
- [2m 46 | [0m
- [2m    |[0m
-
-
-Error 10:
-[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_self.dang:40:11[0m
- [2m    |[0m
- [2m 38 |   }[0m
- [2m 39 | [0m
- [2m[34m[1m 40 | [0m  level = self.level + 1
-[2m                 [31m^^^^[0m
- [2m 41 | [0m
- [2m 42 |   # A selection's arguments are in the default's scope, not the receiver's.[0m
+ [2m 43 | }[0m
+ [2m 44 | [0m
  [2m    |[0m
 

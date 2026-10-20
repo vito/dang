@@ -1,4 +1,4 @@
-14 inference errors:
+12 inference errors:
 
 Error 1:
 [1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
@@ -152,32 +152,6 @@ Error 12:
  [2m[34m[1m 52 | [0m  let noted = note
 [2m                     [31m^^^^[0m
  [2m 53 | [0m
- [2m 54 |   level = read(1)[0m
- [2m    |[0m
-
-
-Error 13:
-[1m[31mError:[0m field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
-  [2m[34m--> errors/field_default_members.dang:54:11[0m
- [2m    |[0m
- [2m 52 |   let noted = note[0m
- [2m 53 | [0m
- [2m[34m[1m 54 | [0m  level = read(1)
-[2m                 [31m^^^^[0m
- [2m 55 |   note = "set in the body"[0m
- [2m 56 | [0m
- [2m    |[0m
-
-
-Error 14:
-[1m[31mError:[0m field defaults can't use `note`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field
-  [2m[34m--> errors/field_default_members.dang:55:3[0m
- [2m    |[0m
- [2m 53 | [0m
- [2m 54 |   level = read(1)[0m
- [2m[34m[1m 55 | [0m  note = "set in the body"
-[2m         [31m^^^^[0m
- [2m 56 | [0m
- [2m 57 |   new(bonus: Int!) {[0m
+ [2m 54 |   new(bonus: Int!) {[0m
  [2m    |[0m
 

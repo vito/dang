@@ -528,6 +528,10 @@ func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
+		// A type body's own fields can't be reassigned while it's being built.
+		if err := checkDefaultWrite(ctx, env, r.Target); err != nil {
+			return nil, NewInferError(err, r)
+		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
 		// A location is not a function value escaping.

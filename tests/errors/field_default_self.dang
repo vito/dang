@@ -37,8 +37,6 @@ type Gauge {
     1
   }
 
-  level = self.level + 1
-
   # A selection's arguments are in the default's scope, not the receiver's.
   let box = Box
   let selectedWith: Int! = box.{{keep(b: self)}}.keep

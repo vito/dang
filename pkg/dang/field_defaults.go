@@ -9,19 +9,25 @@ import (
 
 // Field defaults are scoped like constructor parameter defaults.
 //
-// A type's field defaults (`x: T = expr`, `let x = expr`) and the other forms
-// in its body that aren't methods or computed fields (`x = expr`) run once,
-// while the object is being built: before new(), and before any later
-// copy-on-write. Without an explicit new() they are the constructor's
-// parameter defaults (`Computed("hello").combined`), so they are scoped like
-// them: they see the other fields' values and the enclosing scope, but not
-// `self`, and not the type's methods and computed fields, which belong to the
-// finished object. A field only new() sets has no value yet, so it can't be
-// used either. What a default reads is then always a value the object is
-// built with, including for closures created there: they read the fields as
-// the type body leaves them (a bare `x = expr` in the body included), and
-// neither new() nor any later write reaches them, so they can go anywhere,
-// like any closure that only reads its scope.
+// A type's field defaults (`x: T = expr`, `let x = expr`) run once, while the
+// object is being built: before new(), and before any later copy-on-write.
+// Without an explicit new() they are the constructor's parameter defaults
+// (`Computed("hello").combined`), so they are scoped like them: they see the
+// other fields' values and the enclosing scope, but not `self`, and not the
+// type's methods and computed fields, which belong to the finished object. A
+// field only new() sets has no value yet, so it can't be used either. And
+// like a parameter default, a field default can't assign other fields: a
+// bare `x = expr` in the type body (or in a block of a default) would
+// override x's default and any constructor argument behind the back of what
+// other defaults already read.
+//
+// What a default reads is then always the value the object is built with,
+// including for closures created there: neither new() nor any later write
+// reaches them, so they can go anywhere, like any closure that only reads its
+// scope.
+//
+// Statics (`self { }` members) may use `self` and each other, since they are
+// evaluated once and immutable, but their block can't reassign them either.
 //
 // Ordering is loose: defaults are inferred in dependency order and forced
 // lazily at runtime, so a default may refer to a field declared after it.
@@ -33,10 +39,13 @@ type typeBodyKey struct{}
 // typeBody is a type body whose field defaults are being inferred: its object
 // type, the members its field defaults can't use (see unavailableInDefaults),
 // and the type body it is nested in, when the type is declared in another
-// type's body (directly or in one of its field defaults).
+// type's body (directly or in one of its field defaults). For a `self { }`
+// block, statics is set and object is the meta-type: only the write check
+// applies.
 type typeBody struct {
 	object      *Type
 	unavailable map[string]memberKind
+	statics     bool
 	outer       *typeBody
 }
 
@@ -51,6 +60,16 @@ func withTypeBody(ctx context.Context, object *Type, unavailable map[string]memb
 		object:      object,
 		unavailable: unavailable,
 		outer:       typeBodyFrom(ctx),
+	})
+}
+
+// withStaticsBody marks ctx as inferring the `self { }` members of the type
+// whose meta-type is meta.
+func withStaticsBody(ctx context.Context, meta *Type) context.Context {
+	return context.WithValue(ctx, typeBodyKey{}, &typeBody{
+		object:  meta,
+		statics: true,
+		outer:   typeBodyFrom(ctx),
 	})
 }
 
@@ -147,9 +166,36 @@ func checkDefaultName(ctx context.Context, env hm.Env, name string) error {
 func checkDefaultSelf(ctx context.Context, env hm.Env) error {
 	self := selfTypeFrame(env)
 	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
-		if self == TypeScope(tb.object) {
+		if !tb.statics && self == TypeScope(tb.object) {
 			return fmt.Errorf("field defaults can't use `self`: %s", fieldDefaultScope)
 		}
+	}
+	return nil
+}
+
+// checkDefaultWrite rejects an assignment (target) to a field of a type
+// whose body is being inferred, outside its methods: directly in the body,
+// in a default's block, or in a type declared there. Locals declared there
+// can still be written; methods, computed fields and new() leave the body.
+func checkDefaultWrite(ctx context.Context, env hm.Env, target Node) error {
+	name, isSelf, _, ok := assignmentRoot(target)
+	if !ok || isSelf {
+		// `self.x = …` is rejected as a use of `self`.
+		return nil
+	}
+	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
+		if resolveBinding(env, name) != TypeScope(tb.object) {
+			continue
+		}
+		owner := tb.object.Named
+		if tb.statics {
+			return fmt.Errorf("statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `%s` a different default", name)
+		}
+		if inner, ok := selfTypeFrame(env).(*Type); ok && inner != tb.object {
+			return fmt.Errorf("`%s` is declared in %s's body, so it can't reassign `%s`, a field of %s: %s is still being built when %s is created; declare %s outside %s and pass it what it needs",
+				inner.Named, owner, name, owner, owner, inner.Named, inner.Named, owner)
+		}
+		return fmt.Errorf("fields can't be reassigned in a type body, which runs while the object is being built; give `%s` a different default, or set it in new()", name)
 	}
 	return nil
 }

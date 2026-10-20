@@ -1,0 +1,65 @@
+type Box {
+  saved(x: Int!): Int! { x }
+
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
+  }
+}
+
+# A bare reassignment in a type body would override the field's default and
+# any constructor argument after other defaults already read it.
+type Gauge {
+  level: Int! = 1
+
+  let held = Box.store { x => level + x }
+  let early: Int! = held.saved(0)
+
+  level = 5
+}
+
+# So would one in a default's block, or a compound one.
+type Meter {
+  level: Int! = 1
+  tags: [String!]! = []
+
+  let bumped: Int! = {
+    level = 3
+    level
+  }
+
+  tags += ["meter"]
+}
+
+# A field only new() sets can't be reassigned there either.
+type Dial {
+  note: String
+
+  note = "set in the body"
+
+  new {
+    self
+  }
+}
+
+# A type declared in another type's body can't reassign its fields, even from
+# a method.
+type Outer {
+  level: Int! = 1
+
+  type Inner {
+    bump: Int! {
+      level = 2
+      level
+    }
+  }
+}
+
+# A `self { }` block can't reassign its statics.
+type Registry {
+  self {
+    size: Int! = 0
+
+    size = 5
+  }
+}
