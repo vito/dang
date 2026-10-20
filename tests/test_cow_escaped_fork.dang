@@ -1,0 +1,40 @@
+# A method's receiver is a copy-on-write snapshot of the caller's `self` at the
+# time of the call. When it escapes the method (here `snap` returns it), writes
+# the caller makes to its own `self` after the call must not show through it —
+# the reverse of test_cow_block_receiver.dang, where the caller writes during
+# the call.
+
+type Counter {
+  n: Int! = 0
+
+  snap: Counter! { self }
+
+  bareThenSnap: [Int!]! {
+    let s = snap
+    n = 5
+    [s.n, n]
+  }
+
+  explicitThenSnap: [Int!]! {
+    let s = self.snap
+    n = 7
+    [s.n, n]
+  }
+
+  nested(k: Int!): Counter! {
+    if (k <= 0) { self } else { n += 1; nested(k - 1) }
+  }
+
+  nestedThenWrite: [Int!]! {
+    n = 1
+    let s = nested(2)
+    n = 100
+    [s.n, n]
+  }
+}
+
+let c = Counter(0)
+assert("a naked call's escaped fork is a snapshot") { c.bareThenSnap == [0, 5] }
+assert("an explicit call's escaped fork is a snapshot") { c.explicitThenSnap == [0, 7] }
+assert("a recursive call's escaped fork keeps its own writes") { c.nestedThenWrite == [3, 100] }
+assert("the original is untouched") { c.n == 0 }
