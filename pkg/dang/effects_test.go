@@ -2,9 +2,12 @@ package dang
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
@@ -320,7 +323,49 @@ func TestFieldPurity(t *testing.T) {
 			`,
 			want: "this assignment writes `total`, which is declared outside the field",
 		},
+		{
+			name: "nested function created inside a field writing an outer local",
+			src: `
+				run: Int! {
+					let n = 0
+					{{a: { bump: Int! { n += 1; n }; bump }}}.a
+				}
+			`,
+			want: "this assignment writes `n`, which is declared outside the field",
+		},
+		{
+			name: "write to a narrowed outer binding inside a field",
+			src: `
+				run: Int! {
+					let n: Int = null
+					{{a: if (n != null) { n = 1; 1 } else { 0 }}}.a
+				}
+			`,
+			want: "this assignment writes `n`, which is declared outside the field",
+		},
+		{
+			name: "nested record literals",
+			src: `
+				run: Int! {
+					let n = 0
+					{{a: {{b: if (true) { n += 1; n } else { 0 }}}.b}}.a
+				}
+			`,
+			want: "this assignment writes `n`, which is declared outside the field",
+		},
 	})
+}
+
+// A directory module's top-level frame spans its files: a function in one
+// file may not write a binding declared in another, while top-level script
+// code in either still may.
+func TestRunDirTopLevelImmutableAcrossFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte("pub count: Int! = 0\ncount = 1\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte("bump: Int! { count += 1; count }\n"), 0o600))
+	_, err := RunDir(context.Background(), dir, false)
+	require.ErrorContains(t, err, "cannot assign to `count`: top-level bindings are immutable")
+	require.ErrorContains(t, err, "b.dang")
 }
 
 // InferFormsWithPhases called directly (embedders, tests) is an entry point
@@ -584,6 +629,80 @@ func TestClosureEscapes(t *testing.T) {
 						loop { i += 1; if (i > x) { break } }
 						i
 					}
+				}
+			`,
+		},
+		{
+			name: "return nested in a builtin's block inside an escaping block",
+			src: `
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				run: Box! {
+					Box.store { x =>
+						[1].each { y => return Box }
+						x
+					}
+				}
+			`,
+			want: "cannot use `return`",
+		},
+		{
+			name: "either branch of a conditional escaping",
+			src: `
+				run: Int! {
+					let n = 0
+					bump(x: Int!): Int! { n += x; n }
+					double(x: Int!): Int! { x * 2 }
+					let f = if (true) { &double } else { &bump }
+					f(1)
+				}
+			`,
+			want: "`bump` writes `n`",
+		},
+		{
+			name: "impure closure in a record",
+			src: `
+				run: Int! {
+					let n = 0
+					bump(x: Int!): Int! { n += x; n }
+					let r = {{f: &bump}}
+					0
+				}
+			`,
+			want: "`bump` writes `n`",
+		},
+		{
+			name: "nested function closing over an escaping block parameter",
+			src: `
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! {
+						helper(x: Int!): Int! { block(x) + 1 }
+						self.saved = &helper
+						self
+					}
+				}
+				run: Int! {
+					let n = 0
+					Box.store { x => n += x; n }.saved(1)
+				}
+			`,
+			want: "`helper` calls `block` and escapes, so this block must not write outer state, but it writes `n`",
+		},
+		{
+			name: "escaping a pure nested function that reads outer state",
+			src: `
+				type Box {
+					saved(x: Int!): Int! { x }
+				}
+				run: Int! {
+					let k = 3
+					scale(x: Int!): Int! { x * k }
+					let b = Box
+					b.saved = &scale
+					b.saved(2)
 				}
 			`,
 		},
