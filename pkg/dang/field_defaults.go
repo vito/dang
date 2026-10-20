@@ -33,10 +33,10 @@ type typeBodyKey struct{}
 // typeBody is a type body whose field defaults are being inferred: its object
 // type, the members its field defaults can't use (see unavailableInDefaults),
 // and the type body it is nested in, when the type is declared in another
-// type's field default.
+// type's body (directly or in one of its field defaults).
 type typeBody struct {
 	object      *Type
-	unavailable map[string]string
+	unavailable map[string]memberKind
 	outer       *typeBody
 }
 
@@ -46,7 +46,7 @@ func typeBodyFrom(ctx context.Context) *typeBody {
 }
 
 // withTypeBody marks ctx as inferring object's field defaults.
-func withTypeBody(ctx context.Context, object *Type, unavailable map[string]string) context.Context {
+func withTypeBody(ctx context.Context, object *Type, unavailable map[string]memberKind) context.Context {
 	return context.WithValue(ctx, typeBodyKey{}, &typeBody{
 		object:      object,
 		unavailable: unavailable,
@@ -56,7 +56,7 @@ func withTypeBody(ctx context.Context, object *Type, unavailable map[string]stri
 
 // withoutTypeBody leaves the innermost type body, for a method's body: methods
 // run against their receiver, not the object under construction. The type
-// bodies the type itself is declared in still apply.
+// bodies the type itself is declared in still apply (see checkDefaultName).
 func withoutTypeBody(ctx context.Context) context.Context {
 	tb := typeBodyFrom(ctx)
 	if tb == nil {
@@ -75,12 +75,21 @@ func outsideTypeBodies(ctx context.Context) context.Context {
 	return context.WithValue(ctx, typeBodyKey{}, (*typeBody)(nil))
 }
 
+// memberKind is what a member a field default can't use is.
+type memberKind int
+
+const (
+	methodMember memberKind = iota
+	computedMember
+	newOnlyMember
+)
+
 // unavailableInDefaults maps the members of the type declared by forms that
-// its field defaults can't use to the error for using one: its methods and
-// computed fields, and, when the type has an explicit new(), the fields
-// without a default, which only new() sets.
-func unavailableInDefaults(typeName string, forms []Node, explicitNew bool) map[string]string {
-	unavailable := map[string]string{}
+// its field defaults can't use to what they are: its methods and computed
+// fields, and, when the type has an explicit new(), the fields without a
+// default, which only new() sets.
+func unavailableInDefaults(forms []Node, explicitNew bool) map[string]memberKind {
+	unavailable := map[string]memberKind{}
 	for _, form := range forms {
 		field, ok := form.(*FieldDecl)
 		if !ok {
@@ -89,22 +98,46 @@ func unavailableInDefaults(typeName string, forms []Node, explicitNew bool) map[
 		name := field.Name.Name
 		switch fd := field.funDecl(); {
 		case fd != nil && (len(fd.Args) > 0 || fd.BlockParam != nil):
-			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`, a method of %s: %s", name, typeName, fieldDefaultScope)
+			unavailable[name] = methodMember
 		case fd != nil:
-			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`, a computed field of %s: %s", name, typeName, fieldDefaultScope)
+			unavailable[name] = computedMember
 		case field.Value == nil && explicitNew:
-			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`: it has no default, so only %s's new() sets it, after the defaults run; use it in new() or a computed field", name, typeName)
+			unavailable[name] = newOnlyMember
 		}
 	}
 	return unavailable
 }
 
 // checkDefaultName rejects name, resolved in env, when it is a member of a
-// type whose field default is being inferred that defaults can't use.
+// type whose body is being inferred that its field defaults can't use. That
+// includes code in a type declared in such a body, methods and all: they are
+// created while the enclosing object is being built, and would keep using
+// it.
 func checkDefaultName(ctx context.Context, env hm.Env, name string) error {
 	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
-		if msg, ok := tb.unavailable[name]; ok && resolveBinding(env, name) == TypeScope(tb.object) {
-			return fmt.Errorf("%s", msg)
+		kind, ok := tb.unavailable[name]
+		if !ok || resolveBinding(env, name) != TypeScope(tb.object) {
+			continue
+		}
+		owner := tb.object.Named
+		if inner, ok := selfTypeFrame(env).(*Type); ok && inner != tb.object {
+			what := fmt.Sprintf("a method of %s", owner)
+			switch kind {
+			case computedMember:
+				what = fmt.Sprintf("a computed field of %s", owner)
+			case newOnlyMember:
+				what = fmt.Sprintf("a field only %s's new() sets", owner)
+			}
+			return fmt.Errorf("`%s` is declared in %s's body, so it can't use `%s`, %s: %s is still being built when %s is created; declare %s outside %s and pass it what it needs",
+				inner.Named, owner, name, what, owner, inner.Named, inner.Named, owner)
+		}
+		switch kind {
+		case methodMember:
+			return fmt.Errorf("field defaults can't use `%s`, a method of %s: %s", name, owner, fieldDefaultScope)
+		case computedMember:
+			return fmt.Errorf("field defaults can't use `%s`, a computed field of %s: %s", name, owner, fieldDefaultScope)
+		default:
+			return fmt.Errorf("field defaults can't use `%s`: it has no default, so only %s's new() sets it, after the defaults run; use it in new() or a computed field", name, owner)
 		}
 	}
 	return nil

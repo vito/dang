@@ -1,0 +1,30 @@
+# Types declared in A's body are created while A is being built, so their
+# code, methods included, can't use A's methods, computed fields, or fields
+# only A's new() sets.
+type A {
+  level: Int! = 1
+  bonus: Int!
+
+  read(x: Int!): Int! { level + x }
+
+  total: Int! { level + bonus }
+
+  type B {
+    n: Int! = 2
+
+    get: Int! { read(n) }
+  }
+
+  type C {
+    let sum: Int! = total
+  }
+
+  type D {
+    withBonus(x: Int!): Int! { x + bonus }
+  }
+
+  new(bonus: Int!) {
+    self.bonus = bonus
+    self
+  }
+}

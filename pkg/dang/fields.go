@@ -913,7 +913,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// defaults are scoped like constructor parameter defaults; methods leave
 	// that scope again (see withTypeBody).
 	bodyForms := c.bodyFormsWithoutNew()
-	unavailable := unavailableInDefaults(c.Name.Name, bodyForms, c.findNewConstructor() != nil)
+	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
