@@ -1674,7 +1674,13 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			for _, field := range frag.Fields {
 				fieldType, err := o.inferFieldType(withFieldFrame(ctx, nil), field, memberMod, env, fresh)
 				if err != nil {
-					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
+					// A field missing from the concrete type gets a message
+					// naming it; any other error (in its arguments, say)
+					// stands as reported.
+					if _, found := memberMod.SchemeOf(field.Name); !found {
+						return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
+					}
+					return nil, err
 				}
 				narrowedMember.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
 			}
