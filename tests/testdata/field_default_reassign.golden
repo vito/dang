@@ -1,4 +1,4 @@
-6 inference errors:
+7 inference errors:
 
 Error 1:
 [1m[31mError:[0m fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new()
@@ -82,14 +82,43 @@ Error 5:
 
 
 Error 6:
-[1m[31mError:[0m new()'s parameter defaults can't reassign `level`: they only read the fields' values; set it in new()'s body
-  [2m[34m--> errors/field_default_reassign.dang:71:19[0m
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `size` a different default
+  [2m[34m--> errors/field_default_reassign.dang:76:7[0m
  [2m    |[0m
- [2m 69 |   level: Int! = 1[0m
- [2m 70 | [0m
- [2m[34m[1m 71 | [0m  new(k: Int! = { level = 2; level }) {
+ [2m 74 | [0m
+ [2m 75 |     let n: Int! = {[0m
+ [2m[34m[1m 76 | [0m      self.size = 9
+[2m             [31m^^^^^^^^^^^^^[0m
+ [2m 77 |       size[0m
+ [2m 78 |     }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `tags` a different default
+  [2m[34m--> errors/field_default_reassign.dang:73:5[0m
+ [2m    |[0m
+ [2m 71 |     tags: [Int!]! = [][0m
+ [2m 72 | [0m
+ [2m[34m[1m 73 | [0m    self.tags += [1]
+[2m           [31m^^^^^^^^^^^^^^^^[0m
+ [2m 74 | [0m
+ [2m 75 |     let n: Int! = {[0m
+ [2m    |[0m
+
+
+Error 7:
+[1m[31mError:[0m new()'s parameter defaults can't reassign `level`: they only read the fields' values; set it in new()'s body
+  [2m[34m--> errors/field_default_reassign.dang:86:19[0m
+ [2m    |[0m
+ [2m 84 |   level: Int! = 1[0m
+ [2m 85 | [0m
+ [2m[34m[1m 86 | [0m  new(k: Int! = { level = 2; level }) {
 [2m                         [31m^^^^^^^^^[0m
- [2m 72 |     self[0m
- [2m 73 |   }[0m
+ [2m 87 |     self[0m
+ [2m 88 |   }[0m
  [2m    |[0m
 

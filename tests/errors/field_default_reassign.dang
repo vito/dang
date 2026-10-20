@@ -64,6 +64,21 @@ type Registry {
   }
 }
 
+# Neither through `self`, which statics may otherwise use.
+type Ledger {
+  self {
+    size: Int! = 0
+    tags: [Int!]! = []
+
+    self.tags += [1]
+
+    let n: Int! = {
+      self.size = 9
+      size
+    }
+  }
+}
+
 # new()'s parameter defaults can't reassign fields.
 type Knob {
   level: Int! = 1

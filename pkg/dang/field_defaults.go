@@ -215,9 +215,19 @@ func checkDefaultSelf(ctx context.Context, env hm.Env) error {
 // in a default's block, or in a type declared there. Locals declared there
 // can still be written; methods, computed fields and new() leave the body.
 func checkDefaultWrite(ctx context.Context, env hm.Env, target Node) error {
-	name, isSelf, _, ok := assignmentRoot(target)
-	if !ok || isSelf {
-		// `self.x = …` is rejected as a use of `self`.
+	name, isSelf, first, ok := assignmentRoot(target)
+	if !ok {
+		return nil
+	}
+	if isSelf {
+		// In a field default, `self.x = …` is rejected as a use of `self`;
+		// statics may use `self`, so their block needs the write check here.
+		self := selfTypeFrame(env)
+		for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
+			if tb.statics && self == TypeScope(tb.object) {
+				return fmt.Errorf("statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `%s` a different default", first)
+			}
+		}
 		return nil
 	}
 	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
