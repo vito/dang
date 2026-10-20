@@ -46,3 +46,6 @@ settings.githubToken = "cmd://gh auth token"
 
 [modules.staff]
 source = "github.com/vito/agents/staff@main"
+
+[modules.reviewer]
+source = "github.com/vito/agents/reviewer@main"
