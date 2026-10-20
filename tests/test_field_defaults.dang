@@ -1,6 +1,7 @@
-# Field defaults run against the object under construction, so a closure or
-# method ref created there that uses the object can't be kept (see
-# tests/errors/field_default_closure_*.dang). Everything here stays allowed.
+# Field defaults run once, while the object is being built, so they are scoped
+# like constructor parameter defaults: they see the other fields' values and the
+# enclosing scope, but not `self` or the type's methods and computed fields (see
+# tests/errors/field_default_*.dang). Everything here stays allowed.
 
 type Box {
   saved(x: Int!): Int! { x }
@@ -19,12 +20,18 @@ type Gauge {
 
   read(x: Int!): Int! { level + x }
 
-  # Blocks and calls a default runs right away see the object as it stands.
+  # Defaults may refer to fields declared after them.
+  let doubled: Int! = double(scale)
+  let scale = level + 1
+
+  # Blocks a default runs right away see the other fields' values.
   let total: Int! = [1, 2].reduce(0) { acc, x => acc + x + level }
-  let viaMethod: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }
-  let called: Int! = read(1)
-  let calledViaSelf: Int! = self.read(2)
-  let selected: Int! = self.{{level}}.level
+
+  # A local binding shadows a method, as anywhere else.
+  let shadowed: Int! = {
+    let read = 5
+    read + level
+  }
 
   # Stored function values that aren't Gauge's own methods are fine.
   let f = &double
@@ -34,8 +41,8 @@ type Gauge {
   # A stored block that doesn't use the object is fine.
   let plain = Box.store { x => x + 1 }
 
-  # Selections on another Gauge don't use the object under construction.
-  let other = Box.store { x => Gauge(bonus: 0).{{level}}.level + x }
+  # Selections on another Gauge read that Gauge, not this one.
+  let other = Box.store { x => Gauge(bonus: x).{{level, withDefault}}.withDefault }
 
   # Closures created in a method, computed field, or new() use the finished
   # object.
@@ -49,6 +56,10 @@ type Gauge {
 
   fromNew: Box! = Box
 
+  # Method argument defaults are evaluated when the method is called, against
+  # its receiver.
+  withDefault(k: Int! = level): Int! { k + bonus }
+
   new(bonus: Int!) {
     self.bonus = bonus
     self.fromNew = Box.store { x => level + bonus + x }
@@ -57,18 +68,18 @@ type Gauge {
 }
 
 let gauge = Gauge(bonus: 100)
+assert { gauge.doubled == 4 and gauge.scale == 2 }
 assert { gauge.total == 5 }
-assert { gauge.viaMethod == 5 }
-assert { gauge.called == 2 and gauge.calledViaSelf == 3 }
-assert { gauge.selected == 1 }
+assert { gauge.shadowed == 6 }
 assert { gauge.g(2) == 4 and gauge.fs[0](3) == 6 }
 assert { gauge.plain.saved(1) == 2 }
-assert { gauge.other.saved(1) == 2 }
+assert { gauge.other.saved(5) == 6 }
 assert { gauge.fromNew.saved(0) == 101 }
 
 gauge.level = 10
 assert { gauge.reader.saved(1) == 11 }
 assert { gauge.ref.saved(1) == 11 }
+assert { gauge.withDefault == 110 }
 
 # A field holding another instance's method isn't bound to this one, so it
 # can be stored like any other function value.
@@ -104,13 +115,16 @@ let reading = Reading
 reading.n = 10
 assert { reading.pair == [2, 11] }
 
-# Statics are immutable, so a ref to one can't go stale.
+# Statics aren't field defaults: they are evaluated once and immutable, so
+# they may use the type's other statics, `self` included.
 type Scale {
   self {
     base: Int! = 2
     times(x: Int!): Int! { x * base }
     let f = &times
+    let viaSelf: Int! = self.times(3)
   }
 }
 
 assert { Scale.f(3) == 6 }
+assert { Scale.viaSelf == 6 }

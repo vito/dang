@@ -237,7 +237,7 @@ method or computed field, which runs against the finished object, or in
 type Meter {
   level: Int! = 1
   read(x: Int!): Int! { level + x }
-  let total: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }
+  let total: Int! = [1, 2].map { x => level + x }.reduce(0) { a, b => a + b }
   reader: Host! { Host.store { x => read(x) } }
 }
 

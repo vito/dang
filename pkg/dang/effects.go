@@ -588,25 +588,103 @@ const initSelfFix = "create it in a method or computed field, or in new(), to us
 
 type typeBodyKey struct{}
 
-// typeBody is a type body being inferred: its object type, and the effect
-// frame current where the body starts.
+// typeBody is a type body being inferred: its object type, the effect frame
+// current where the body starts, the members its field defaults can't use
+// (see unavailableInDefaults), and the type body it is nested in, if the type
+// is declared in another type's field default.
 type typeBody struct {
-	object *Type
-	frame  *effFrame
+	object      *Type
+	frame       *effFrame
+	unavailable map[string]string
+	outer       *typeBody
+}
+
+func typeBodyFrom(ctx context.Context) *typeBody {
+	tb, _ := ctx.Value(typeBodyKey{}).(*typeBody)
+	return tb
 }
 
 // withTypeBody marks ctx as inferring object's field defaults.
-func withTypeBody(ctx context.Context, object *Type) context.Context {
-	return context.WithValue(ctx, typeBodyKey{}, &typeBody{object: object, frame: effFrameFrom(ctx)})
+func withTypeBody(ctx context.Context, object *Type, unavailable map[string]string) context.Context {
+	return context.WithValue(ctx, typeBodyKey{}, &typeBody{
+		object:      object,
+		frame:       effFrameFrom(ctx),
+		unavailable: unavailable,
+		outer:       typeBodyFrom(ctx),
+	})
 }
 
-// withoutTypeBody leaves a type body, for a method's body: methods run
-// against their receiver, not the object under construction.
+// withoutTypeBody leaves the innermost type body, for a method's body (methods
+// run against their receiver, not the object under construction) and for the
+// field names of a `{{ }}` selection (resolved against the receiver's type,
+// they aren't names in scope).
 func withoutTypeBody(ctx context.Context) context.Context {
-	if ctx.Value(typeBodyKey{}) == nil {
+	tb := typeBodyFrom(ctx)
+	if tb == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, typeBodyKey{}, (*typeBody)(nil))
+	return context.WithValue(ctx, typeBodyKey{}, tb.outer)
+}
+
+// Field defaults are scoped like constructor parameter defaults.
+//
+// A type's field defaults (`x: T = expr`, `let x = expr`) and the other forms
+// in its body that aren't methods or computed fields (`x = expr`) run once,
+// while the object is being built: before new(), and before any later
+// copy-on-write. Without an explicit new() they are the constructor's
+// parameter defaults (`Computed("hello").combined`), so they are scoped like
+// them: they see the other fields' values and the enclosing scope, but not
+// `self`, and not the type's methods and computed fields, which belong to the
+// finished object. A field only new() sets has no value yet, so it can't be
+// read either. What a default reads is then always a value, the one the
+// object starts with, including for closures created there.
+
+const fieldDefaultScope = "they run while the object is being built, so they only see the other fields' values; use a computed field or new()"
+
+// unavailableInDefaults maps the members of the type declared by forms that
+// its field defaults can't use to the error for using one: its methods and
+// computed fields, and, when the type has an explicit new(), the fields
+// without a default, which only new() sets.
+func unavailableInDefaults(typeName string, forms []Node, explicitNew bool) map[string]string {
+	unavailable := map[string]string{}
+	for _, form := range forms {
+		field, ok := form.(*FieldDecl)
+		if !ok {
+			continue
+		}
+		name := field.Name.Name
+		switch fd := field.funDecl(); {
+		case fd != nil && (len(fd.Args) > 0 || fd.BlockParam != nil):
+			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`, a method of %s: %s", name, typeName, fieldDefaultScope)
+		case fd != nil:
+			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`, a computed field of %s: %s", name, typeName, fieldDefaultScope)
+		case field.Value == nil && explicitNew:
+			unavailable[name] = fmt.Sprintf("field defaults can't read `%s`: it has no default, so only %s's new() sets it, after the defaults run; read it in new() or a computed field", name, typeName)
+		}
+	}
+	return unavailable
+}
+
+// checkDefaultName rejects name, resolved in env, when it is a member of a
+// type whose field default is being inferred that defaults can't use.
+func checkDefaultName(ctx context.Context, env hm.Env, name string) error {
+	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
+		if msg, ok := tb.unavailable[name]; ok && resolveBinding(env, name) == TypeScope(tb.object) {
+			return fmt.Errorf("%s", msg)
+		}
+	}
+	return nil
+}
+
+// checkDefaultSelf rejects `self` (resolved in env) in a field default.
+func checkDefaultSelf(ctx context.Context, env hm.Env) error {
+	self := selfTypeFrame(env)
+	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
+		if self == TypeScope(tb.object) {
+			return fmt.Errorf("field defaults can't use `self`: %s", fieldDefaultScope)
+		}
+	}
+	return nil
 }
 
 // typeBodyPosition reports whether the current position is in a field
@@ -641,23 +719,11 @@ func noteInitSelf(closures []*Effect, node Node, name string) {
 	}
 }
 
-type selectedFieldKey struct{}
-
-// withSelectedField marks ctx as resolving a field name of a `{{ }}`
-// selection against the type of a receiver other than `self`: whichever
-// object that is, the name is not a member of the object under construction.
-func withSelectedField(ctx context.Context) context.Context {
-	return context.WithValue(ctx, selectedFieldKey{}, true)
-}
-
 // noteTypeBodySymbol handles a bare reference to name (at node, of type t)
 // in a field default: when it is one of the type's own fields or methods, it
 // uses the object under construction. A ref to one of its methods (`&get`)
 // gets its own effect recording that, so that it cannot escape.
 func noteTypeBodySymbol(ctx context.Context, env hm.Env, name string, node Node, t hm.Type) hm.Type {
-	if selectedField, _ := ctx.Value(selectedFieldKey{}).(bool); selectedField {
-		return t
-	}
 	object, closures, ok := typeBodyPosition(ctx)
 	if !ok || resolveBinding(env, name) != TypeScope(object) {
 		return t

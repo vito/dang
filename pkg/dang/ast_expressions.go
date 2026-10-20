@@ -632,6 +632,9 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if !found {
 			return nil, fmt.Errorf("%q not found", s.Name)
 		}
+		if err := checkDefaultName(ctx, env, s.Name); err != nil {
+			return nil, err
+		}
 		t, _ := scheme.Type()
 		if s.AutoCall {
 			var err error
@@ -1855,18 +1858,14 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 			return nil, err
 		}
 	} else {
-		// No arguments - use symbol directly as before. Selected from `self`,
-		// the name is a member of the object under construction; selected
-		// from anything else, it isn't (see withSelectedField).
-		symCtx := ctx
-		if _, fromSelf := unwrapGrouped(o.Receiver).(*SelfKeyword); !fromSelf {
-			symCtx = withSelectedField(ctx)
-		}
+		// No arguments - use symbol directly as before. The name is the
+		// receiver's field, not one in scope, even when the receiver is
+		// another instance of a type whose field default this is.
 		fieldType, err = (&Symbol{
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      field.Loc,
-		}).Infer(symCtx, rec, fresh)
+		}).Infer(withoutTypeBody(ctx), rec, fresh)
 		if err != nil {
 			return nil, err
 		}
