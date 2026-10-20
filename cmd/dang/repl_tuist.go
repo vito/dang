@@ -576,7 +576,8 @@ func runREPLTUI(ctx context.Context, moduleDir string, debug bool) error {
 	}
 
 	// REPL input has no path of its own: it is written in the edition of the
-	// directory the REPL runs in.
+	// directory the REPL runs in. (Modules it imports still get their own
+	// path's edition; see dang.ContextWithEdition.)
 	ctx = dang.ContextWithEdition(ctx, dang.EditionForConfig(ctx, config))
 
 	// Load the Dagger module if present: find or create a Dagger import,

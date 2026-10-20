@@ -194,6 +194,9 @@ func moduleImportContext(ctx context.Context, dir string) (context.Context, erro
 	ctx = context.WithValue(ctx, importConfigsKey{}, []ImportConfig(nil))
 	ctx = WithSchemaModuleCache(ctx, &sync.Map{})
 	ctx = WithDangModuleCache(ctx, &sync.Map{})
+	// The importer's edition does not apply either: the module's edition
+	// depends only on its own path (see EditionForDir).
+	ctx = withoutContextEdition(ctx)
 
 	configPath := filepath.Join(dir, "dang.toml")
 	if _, statErr := os.Stat(configPath); statErr == nil {
@@ -215,8 +218,7 @@ func moduleImportContext(ctx context.Context, dir string) (context.Context, erro
 	// No module-level dang.toml: install an empty project config so
 	// parseDirBlocks' ensureProjectImports treats the module as fully resolved
 	// and does not walk UP into the importer's directory tree. (The module's
-	// edition does not come from this config: it depends only on the module's
-	// path, see EditionForDir.)
+	// edition does not come from this config either.)
 	ctx = ContextWithProjectConfig(ctx, configPath, &ProjectConfig{})
 	return ctx, nil
 }

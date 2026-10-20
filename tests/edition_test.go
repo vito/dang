@@ -133,6 +133,10 @@ piped: Int! = p.{{x}}.x.{ inc(_) }
 		_, err := dang.RunDir(ctx, filepath.Join(root, "app"), false)
 		require.NoError(t, err)
 
+		// An embedder's (or the REPL's) edition doesn't reach imports either.
+		_, err = dang.RunDir(dang.ContextWithEdition(ctx, dang.Edition1), filepath.Join(root, "app"), false)
+		require.NoError(t, err)
+
 		edition, err := dang.EditionForDir(ctx, filepath.Join(root, "lib"))
 		require.NoError(t, err)
 		require.Equal(t, dang.LatestEdition, edition)
