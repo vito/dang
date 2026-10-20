@@ -438,7 +438,9 @@ func effectArg(ctx context.Context, callee string, paramType, argType hm.Type, a
 // paramAcceptsFn reports whether a function value may be passed for a
 // parameter of type paramType to a callee of type callee without escaping:
 // the parameter is an effect variable (checked at the end), or the callee is
-// unknown to Dang (builtins, which never store their arguments).
+// unknown to Dang (builtins, which call their function arguments sequentially
+// during the call and never store them; TestBuiltinsNeverStoreFunctions
+// guards that list).
 func paramAcceptsFn(callee *hm.FunctionType, paramType hm.Type) bool {
 	if fnTypeOf(paramType) == nil {
 		return false
