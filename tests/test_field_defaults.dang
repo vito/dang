@@ -93,7 +93,7 @@ type Handler {
 }
 
 # A closure created in a default reads the other fields' values as the object
-# starts with them, just like `combined = prefix + suffix` does, so it can be
+# is built with them, just like `combined = prefix + suffix` does, so it can be
 # kept like any closure that only reads its scope.
 type Meter {
   level: Int! = 1
@@ -135,6 +135,18 @@ type Late {
 }
 
 assert { Late.level == 50 and Late.held.saved(1) == 2 }
+
+# A bare `x = expr` in the type body is part of building the object, so a
+# closure created in a default reads the field as the body leaves it.
+type Bumped {
+  level: Int! = 1
+
+  let held = Box.store { x => level + x }
+
+  level = 5
+}
+
+assert { Bumped.held.saved(0) == 5 }
 
 # A block default (`= { ... }`) is evaluated once, while the object is built;
 # a computed field (`{ ... }`, no `=`) on every read. `dang fmt` keeps them

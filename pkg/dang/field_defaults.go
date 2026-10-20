@@ -17,9 +17,11 @@ import (
 // them: they see the other fields' values and the enclosing scope, but not
 // `self`, and not the type's methods and computed fields, which belong to the
 // finished object. A field only new() sets has no value yet, so it can't be
-// read either. What a default reads is then always a value, the one the
-// object starts with, including for closures created there: they can go
-// anywhere, like any closure that only reads its scope.
+// used either. What a default reads is then always a value the object is
+// built with, including for closures created there: they read the fields as
+// the type body leaves them (a bare `x = expr` in the body included), and
+// neither new() nor any later write reaches them, so they can go anywhere,
+// like any closure that only reads its scope.
 //
 // Ordering is loose: defaults are inferred in dependency order and forced
 // lazily at runtime, so a default may refer to a field declared after it.
@@ -82,7 +84,7 @@ func unavailableInDefaults(typeName string, forms []Node, explicitNew bool) map[
 		case fd != nil:
 			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`, a computed field of %s: %s", name, typeName, fieldDefaultScope)
 		case field.Value == nil && explicitNew:
-			unavailable[name] = fmt.Sprintf("field defaults can't read `%s`: it has no default, so only %s's new() sets it, after the defaults run; read it in new() or a computed field", name, typeName)
+			unavailable[name] = fmt.Sprintf("field defaults can't use `%s`: it has no default, so only %s's new() sets it, after the defaults run; use it in new() or a computed field", name, typeName)
 		}
 	}
 	return unavailable

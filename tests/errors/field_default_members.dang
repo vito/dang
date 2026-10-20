@@ -46,6 +46,7 @@ type Gauge {
   let noted = note
 
   level = read(1)
+  note = "set in the body"
 
   new(bonus: Int!) {
     self.bonus = bonus
