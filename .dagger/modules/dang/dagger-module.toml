@@ -1,5 +1,5 @@
 name = "dang"
-engineVersion = "v0.21.6"
+engineVersion = "v1.0.0-0"
 source = "../.."
 
 [runtime]
