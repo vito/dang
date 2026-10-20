@@ -29,4 +29,13 @@ are different, each owned by its own chapter:
 - **directory-level modules** — split files however ([#modules])
 - **`assert { ... }` built in** — high-level testing without a framework ([#stdlib], [#errors])
 
-> Meta: runtime model in one paragraph, still to write — pitch it as "values are immutable; methods on `type`s look mutating but return a forked copy." That single line saves a lot of confusion later in [#mutation].
+## Immutable, copy-on-write, checked
+
+Values never change. Methods on `type`s look like they mutate, but each call
+works on its own copy of `self` and returns it, so whatever you hold stays as
+it was. Names are lexical: a block or method ref sees the variables and `self`
+where it was written, never the caller's. And the compiler rejects every way a
+write could leak out of the scope that owns it: functions can't write globals,
+nothing can write statics, closures that write their scope can't be stored,
+`{{ }}` fields can't write outside themselves, and defaults can't see a
+half-built object. See [#mutation].

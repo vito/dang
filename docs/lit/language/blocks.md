@@ -176,12 +176,10 @@ Inside a block, prefer `let` for locals; bare (public) declarations are for a
 type's or module's exported surface, where "public" actually means something.
 
 A block that writes a binding it didn't declare, like the two above, can be
-called or passed as an argument but not stored, returned, or put in a list or
-record (see [#impure-closures]). Inside a `{{ }}` field, a block can't write
-outside the field at all, because fields run concurrently (see
-[#concurrent-fields]). Top-level bindings are another limit: top-level script
-code like these examples may reassign them, but blocks inside a function or
-method can't (see [#top-level-bindings]).
+called or passed as an argument but not stored or returned (see
+[#impure-closures]), and a block in a `{{ }}` field can't write outside the
+field (see [#concurrent-fields]). Inside functions and methods, top-level
+bindings are read-only (see [#top-level-bindings]).
 
 ## Control-flow handoff
 

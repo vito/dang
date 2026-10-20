@@ -45,7 +45,7 @@ Vault.unlock(Account)   # "hunter2"
 - one positional parameter per non-default field, in **declaration order** (NOT required-first-then-defaults — a defaulted field may precede a required one; positional args still line up by declaration order)
   - e.g. `Mixed { pub publicWithDefault = "default"; let privateRequired: Int! }` constructs as `Mixed("default", 42)`
 - can also be called with named arguments (`Counter(value: 42)`)
-- field defaults act as the constructor's parameter defaults, so a default may reference sibling fields, e.g. `combined: String! = prefix + "_" + suffix` (`Computed("hello").combined` sees the passed `prefix`); like parameter defaults they see only values: not `self`, and not the type's methods or computed fields; and nothing in the type body outside methods, computed fields and `new()` can reassign a field (see [#field-defaults])
+- field defaults are the constructor's parameter defaults, so a default may reference sibling fields, e.g. `combined: String! = prefix + "_" + suffix` (`Computed("hello").combined` sees the passed `prefix`); they run while the object is built, so they see only values, not `self` or methods (see [#field-defaults])
 
 ```dang
 Person("Alice", age: 30)
@@ -79,7 +79,7 @@ type Greeter {
   - mutable: `foo = foo + 10` / `foo += foo` rebinds the arg, does NOT touch `self.foo`
   - shadow same-named fields and outer scope; bare name = arg, field write needs `self.field =`
   - NOT visible in method bodies — only in `new`
-- `new`'s parameter defaults run after the field defaults and before its body, scoped like field defaults: they read the fields' values and earlier parameters, but not `self`, methods, or computed fields (see [#field-defaults])
+- `new`'s parameter defaults follow the same rule as field defaults, and run after them (see [#field-defaults])
 - must return the constructed type (`self`, or a method chain that returns it): body's last expression must be `Foo!`
   - returning another type errors: `new() must return Wrong!, got String!`
   - returning `null` errors
@@ -89,7 +89,7 @@ type Greeter {
 
 ## `self`
 
-- bound during constructor, method, and computed-field execution; not in field defaults, which run before the object is finished (see [#field-defaults])
+- bound in `new`'s body, methods, and computed fields; not in defaults, which run before the object is finished (see [#field-defaults])
 - bare names inside a method resolve against the current receiver first: bare `name` reads `self.name`, bare `incrBy(1)` calls `self.incrBy(1)`
 - field **reads** never need `self.`; for **assignment**, both forms work:
   - bare `a += 1` / `value = v` on a field forks `self` and sets the field
@@ -152,7 +152,7 @@ Config.limit          # 100
 Config.default.host   # "localhost"
 ```
 
-- statics are immutable once initialized: `Config.limit = 5` is a compile error from anywhere, and a static method's writes to its own `self` stay in that call's copy (see [#top-level-bindings])
+- statics are immutable: `Config.limit = 5` is a compile error from anywhere (see [#top-level-bindings])
 - a scalar may also carry a `self { }` block — including static *stored* fields, even though instance stored fields on a scalar are forbidden (see [#scalar-bodies])
 
 ## Implements

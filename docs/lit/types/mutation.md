@@ -3,127 +3,151 @@
 
 # Mutation and copy-on-write {#mutation}
 
+Values in Dang never change. Code can still read as if it mutates
+(`n += 1`, `self.items += [x]`), but a write only rebinds a name in the
+writer's own scope, to a new value or an updated copy. A value someone else
+holds stays as it was. The compiler checks it:
+
+- **Immutable:** writing a field makes an updated copy; nothing changes in
+  place.
+- **Lexical:** blocks, nested functions and `&refs` use the variables, and the
+  `self`, of the place they were written.
+- **Checked:** a write can't reach past the scope that owns it.
+  - Functions and methods can't write top-level bindings, and nothing can
+    write statics. Functions return new values instead.
+  - A closure that writes its scope can be called or passed as an argument,
+    but not stored or returned.
+  - `{{ }}` fields run concurrently, so they can't write outside themselves.
+  - A type's defaults run while the object is being built, so they see only
+    values: no `self`, no methods.
+
+## Writes copy {#copy-on-write}
+
+A method works on its own copy of `self`. Writing a field, bare
+(`value += 1`) or explicit (`self.value += 1`), updates that copy. Return
+`self` to hand it back:
+
 ```dang
 type Counter {
   value: Int! = 0
   incr: Counter! {
-    value += 1   # bare field write forks the receiver; `self.value += 1` is the equivalent explicit form
+    value += 1
     self
   }
-  # a method can recurse: the naked `incrBy` call forks self just like `self.incrBy` would
-  incrBy(n: Int!): Counter! { if (n <= 0) { self } else { incr.incrBy(n - 1) } }
 }
-```
 
-```dang
-# a "mutating" method returns a fork — the original is untouched
+# each call starts from the receiver, which is never modified
 let answer = Counter(42)
-[answer.incr.value, answer.value]
+[answer.incr.value, answer.incr.incr.value, answer.value]
 ```
 
-```dang
-# recursion forks per call too: it accumulates into the returned fork and
-# leaves the original untouched
-let start = Counter(0)
-[start.incrBy(3).value, start.value]
-```
+Within one call, writes accumulate in that copy, including writes from blocks
+and nested functions in the method:
 
 ```dang
 type Image {
   packages: [String!]! = []
 
-  # chainable methods return the concrete type name — there is no `Self` keyword
+  # chainable methods return the type by name; there is no `Self` keyword
   with(pkg: String!): Image! {
     packages += [pkg]
     self
   }
 
   withAll(pkgs: [String!]!): Image! {
-    pkgs.each { p => packages += [p] }   # bare field write works inside a closure too
+    pkgs.each { p => packages += [p] }
     self
   }
 }
-```
 
-```dang
-# each call forks from the receiver, so forks of one base never compound,
-# and `base` itself is never modified
 let base = Image
-[base.with("git").packages, base.with("curl").packages, base.packages]
+[base.with("git").packages, base.withAll(["curl", "tini"]).packages, base.packages]
 ```
 
-```dang
-# within a single call, writes accumulate onto one fork
-Image.withAll(["git", "curl", "tini"]).packages
-```
+A value someone already holds keeps its fields, including another name for
+`self`:
 
 ```dang
-# pure functions have no `self`, so nothing forks — they just compute
-double(x: Int!): Int! { x * 2 }
-double(21)
-```
-
-```dang
-# plain bindings are not copy-on-write: a bare write to a local just rebinds it
-let n = 1
-n = 2
-n
-```
-
-```dang
-type Greeting {
-  text: String!
-  new(text: String!) {
-    # `self.` is needed only to disambiguate from a same-named arg/local;
-    # bare `text = ...` would rebind the arg, not the field
-    self.text = "hello, " + text
-    self
+type Snap {
+  n: Int! = 0
+  both: [Int!]! {
+    let before = self
+    n += 1
+    [before.n, n]
   }
 }
+
+Snap.both
 ```
 
-```dang
-Greeting("world").text
-```
+A write through a path copies each object along it, and shares the rest:
 
 ```dang
 type Leaf { c: Int! }
 type Node { leaf: Leaf! }
 type Tree {
   node: Node!
-  # assignment through a path forks each step; subtrees off the path are shared
   bump: Tree! { self.node.leaf.c += 100; self }
 }
-```
 
-```dang
-# the original is untouched at any depth
 let tree = Tree(Node(Leaf(42)))
 [tree.bump.node.leaf.c, tree.node.leaf.c]
 ```
 
+A plain variable is simply rebound, and a block can rebind the variables of
+the scope it's written in:
+
 ```dang
-# a loop threads one shared accumulator: writes are visible to the next
-# iteration and outlive the loop
 let total = 0
 [1, 2, 3].each { x => total += x }
 total
 ```
 
-Copy-on-write is Dang's only kind of mutation: a write changes the writer's
-own copy of `self`, or a local of the scope it runs in, never a value someone
-else holds. Three compile-time rules close the loopholes around that.
+## Names are lexical {#lexical-scope}
 
-## Top-level bindings are immutable {#top-level-bindings}
+A block, a nested function, or a `&ref` to a method runs against the scope it
+was written in, with that scope's variables and `self`, no matter who calls
+it:
 
-A top-level binding is immutable once initialized. Top-level script code
-(top-level forms and the blocks inside them, like the loop above) may still
-reassign it: that reassignment is part of initializing the package, and it
-keeps one-off scripts and the REPL working.
+```dang
+type Runner {
+  n: Int! = 100
+  hook(x: Int!): Int! { x }
+  run(&cb(x: Int!): Int!): Int! { cb(1) }
+  fire(x: Int!): Int! { hook(x) }
+}
 
-Nothing else can write one. Functions, methods, `new()`, type bodies, and the
-closures inside them are all rejected, path writes such as `shared.x = …`
-included:
+type Guest {
+  n: Int! = 10
+  helper(x: Int!): Int! { n + x }
+
+  # Runner calls the block, but `n` is still Guest's
+  viaBlock: Int! { Runner.run { x => n + x } }
+
+  # the same for a ref stored on a Runner
+  viaRef: Int! {
+    let r = Runner
+    r.hook = &helper
+    r.fire(1)
+  }
+}
+
+[Guest.viaBlock, Guest.viaRef]
+```
+
+They see that scope as it is when they run, not a snapshot: a ref or block
+created in a method sees the method's later writes. Within a scope, a name
+resolves to its nearest declaration, so when a parameter or local shadows a
+field, write the field as `self.name = …`.
+
+## Functions return, they don't write {#top-level-bindings}
+
+A function or method writes only its own locals and its own copy of `self`.
+To change anything else, return the new value, as `incr` does above.
+
+So top-level bindings are immutable once initialized. Only top-level script
+code, like the loop above, may reassign them, because it is still
+initializing the module:
 
 ```dang-failure
 count: Int! = 0
@@ -134,31 +158,18 @@ bump: Int! {
 }
 ```
 
-So a function or method has no side effects beyond its own copy of `self`.
-To change something, return the new value, as `incr` does on `Counter` above.
-
-Static members (the `self { }` block of a type, see [#static-members]) are
-immutable once initialized too, and from everywhere, top-level script code
-included. A static method's writes to its own `self` stay in that call's copy,
-just like an instance method's:
-
-```dang-failure
-type Registry {
-  self { size: Int! = 0 }
-}
-
-Registry.size = 5
-```
+Statics, the members of a type's `self { }` block (see [#static-members]), are
+immutable from everywhere. A static method's writes to its own `self` stay in
+its copy, like any method's.
 
 ## Closures that write can't escape {#impure-closures}
 
-A block or nested function can write the bindings of the scope it was written
-in: the loop above writes `total`, and a nested function in a method can write
-the method's locals or `self`. Such a closure (or a `&ref` to one) is
-*impure*. It may only be called or passed as an argument. Storing it in a
-`let` or field, returning it, or putting it in a list or record is a compile
-error: whoever ended up holding it could change that scope's state from
-anywhere, a shared mutable cell of exactly the kind copy-on-write rules out.
+A block or nested function can write the variables of the scope it was
+written in. Such a closure can only run while that scope does: it can be
+called or passed as an argument, but storing it, returning it, or putting it
+in a list or record is a compile error. A closure that writes nothing outside
+itself can go anywhere, and so can named functions and methods, and refs to
+them, since they only write their own locals and their own copy of `self`.
 
 ```dang-failure
 counter: Int! {
@@ -170,21 +181,8 @@ counter: Int! {
 }
 ```
 
-A closure that only reads its scope is pure and can go anywhere:
-
-```dang
-scaled: [Int!]! {
-  let k = 3
-  scale(x: Int!): Int! { x * k }
-  let f = &scale
-  [f(1), f(2)]
-}
-scaled
-```
-
-The same goes for block parameters. A function that stores, returns, or
-collects its block parameter (`self.saved = cb`) can only be given a pure
-block:
+A function that keeps its block parameter accepts only a block that writes
+nothing outside itself:
 
 ```dang
 type Host {
@@ -198,10 +196,8 @@ type Host {
 Host.store { x => x * 2 }.saved(21)
 ```
 
-The check happens where the block is passed:
-
 ```dang-failure
-type Guest {
+type Visitor {
   n: Int! = 10
   escape: Host! {
     Host.store { x =>
@@ -212,101 +208,12 @@ type Guest {
 }
 ```
 
-### Field defaults only see values {#field-defaults}
+## `{{ }}` fields only produce values {#concurrent-fields}
 
-A type's field defaults run once, while the object is still being built:
-before `new()` assigns its fields, and before any later write makes a new
-copy. Without an explicit `new()` they are the constructor's parameter
-defaults (`combined: String! = prefix + suffix` reads whatever `prefix` the
-caller passed), and they are scoped like them: a default sees the other
-fields' values and the enclosing scope, but not `self`, and not the type's
-methods or computed fields, which belong to the finished object. That holds
-anywhere in the default, blocks and nested functions included:
-
-```dang-failure
-type Gauge {
-  level: Int! = 1
-  read(x: Int!): Int! { level + x }
-  let reader = &read
-}
-```
-
-With an explicit `new()`, a field without a default has no value until
-`new()` assigns it, after the defaults have run, so a default can't read it
-either:
-
-```dang-failure
-type Dial {
-  level: Int!
-  let doubled = level * 2
-  new(level: Int!) {
-    self.level = level
-    self
-  }
-}
-```
-
-Nothing in the type body outside methods, computed fields, and `new()` can
-assign the type's fields, either. The object is still under construction
-there: a bare `level = 5` would override the field's default and any
-constructor argument after other defaults had already read it. Give the
-field a different default, or set it in `new()`:
-
-```dang-failure
-type Knob {
-  level: Int! = 1
-  let doubled = level * 2
-  level = 5
-}
-```
-
-`new()`'s own parameter defaults follow the same rule. They run after the
-field defaults and before `new()`'s body, so they read the fields as the
-defaults leave them, and the earlier parameters:
-
-```dang
-type Dimmer {
-  level: Int! = 1
-  out: Int!
-  new(k: Int! = level, j: Int! = k * 10) {
-    self.out = k + j
-    self
-  }
-}
-
-[Dimmer.out, Dimmer(2).out]
-```
-
-So whatever a default reads is a value the object is built with, and a
-closure created there is like any closure that only reads its scope: it can
-go anywhere, and neither `new()` nor any later write reaches it. To work with
-the finished object instead, use a method or computed field, which runs
-against the current receiver, or `new()`:
-
-```dang
-type Meter {
-  level: Int! = 1
-  read(x: Int!): Int! { level + x }
-  let held = Host.store { x => level + x }        # level as the object is built
-  reader: Host! { Host.store { x => read(x) } }   # level as it is now
-}
-
-let m = Meter
-m.level = 10
-[m.held.saved(1), m.reader.saved(1)]
-```
-
-## `{{ }}` fields can't write outside themselves {#concurrent-fields}
-
-Every `{{ }}` evaluates its fields concurrently, so fields communicate only
-by producing values. Inside a field, these are compile errors:
-
-- writing a binding declared outside the field, including the enclosing
-  method's locals and `self`. Each field works on a private copy, so the
-  write would otherwise be silently discarded.
-- calling a closure created outside the field that writes anything
-- calling a block parameter whose block isn't pure. This is checked where
-  the block is passed.
+Every `{{ }}` evaluates its fields concurrently, so a field can't write
+anything declared outside it, whether directly, through a closure, or
+through a block parameter. That includes the enclosing method's locals and
+`self`. Fields communicate by producing values:
 
 ```dang-failure
 let counter = 0
@@ -316,20 +223,9 @@ let counter = 0
 }}
 ```
 
-```dang-failure
-type Tally {
-  run: Int! {
-    let n = 0
-    bump: Int! { n += 1; n }
-    let r = {{ a: bump, b: n }}
-    r.a + r.b
-  }
-}
-```
-
 ```dang
-# method calls that return updated copies are fine: each field forks its
-# own receiver, and `ctr` itself is untouched
+# method calls that return updated copies are fine: each field gets its own
+# copy, and `ctr` itself is untouched
 let ctr = Counter(0)
 {{ a: ctr.incr.value, b: ctr.incr.incr.value, orig: ctr.value }}
 ```
@@ -339,19 +235,19 @@ let ctr = Counter(0)
 {{ sum: { let n = 0; [1, 2, 3].each { x => n += x }; n } }}.sum
 ```
 
+A block parameter called from a field must be given a block that writes
+nothing outside itself. That's checked where the block is passed:
+
 ```dang
-# a block parameter called from several fields at once...
 both(&block(x: Int!): Int!): Int! {
   let r = {{ a: block(1), b: block(2) }}
   r.a + r.b
 }
 
-# ...works with a pure block
 both { x => x * 10 }
 ```
 
 ```dang-failure
-# ...but rejects a block that writes outer state
 type Acc {
   total: Int! = 0
   runBoth: Acc! {
@@ -399,3 +295,76 @@ type User { name: String! }
 # queries in parallel
 {{ users: users.{{ name }}, repos: repos.{{ name }} }}
 ```
+
+## Defaults see only values {#field-defaults}
+
+A type's field defaults and its `new()`'s parameter defaults are the same
+kind of code. Without an explicit `new()`, the field defaults *are* the
+constructor's parameter defaults. Both run while the object is being built,
+so both follow one rule: a default sees the values that exist when it runs
+(the other fields, earlier parameters, and the enclosing scope), and nothing
+that needs the finished object. That rules out `self` and the type's methods
+and computed fields, anywhere in the default:
+
+```dang-failure
+type Gauge {
+  level: Int! = 1
+  read(x: Int!): Int! { level + x }
+  let reader = &read
+}
+```
+
+In order:
+
+1. Field defaults run first, and may name each other in any order. With an
+   explicit `new()`, a field without a default has no value yet, so a
+   default can't read it.
+2. `new()`'s parameter defaults run next, and see the fields as the defaults
+   left them, plus the earlier parameters.
+3. `new()`'s body runs last, with `self`.
+
+```dang
+type Dimmer {
+  level: Int! = 1
+  scale: Int! = level * 10
+  out: Int!
+  new(k: Int! = scale, j: Int! = k + 1) {
+    self.out = k + j
+    self
+  }
+}
+
+[Dimmer.out, Dimmer(2).out]
+```
+
+The type body can't reassign the type's fields either. Give the field a
+different default, or set it in `new()`:
+
+```dang-failure
+type Knob {
+  level: Int! = 1
+  let doubled = level * 2
+  level = 5
+}
+```
+
+So a closure created in a default captures values, like any closure that only
+reads, and can go anywhere. To work with the finished object, use a method or
+computed field instead:
+
+```dang
+type Meter {
+  level: Int! = 1
+  read(x: Int!): Int! { level + x }
+  let held = Host.store { x => level + x }        # level as the object was built
+  reader: Host! { Host.store { x => read(x) } }   # level as it is now
+}
+
+let m = Meter
+m.level = 10
+[m.held.saved(1), m.reader.saved(1)]
+```
+
+Method argument defaults aren't construction code: they run when the method
+is called, against its receiver. Statics aren't either: they're evaluated
+once and may use `self` and each other.
