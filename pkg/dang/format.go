@@ -977,7 +977,8 @@ func isFunctionDef(node Node) bool {
 	if _, ok := field.Value.(*FunDecl); ok {
 		return true
 	}
-	// Check if it's a field with a block body and type annotation (parameterless function)
+	// A typed block default (`foo: T = { ... }`) is a value, not a function,
+	// but is laid out like one: blank lines around it.
 	if _, ok := field.Value.(*Block); ok {
 		return field.Type_ != nil
 	}
@@ -994,7 +995,8 @@ func isSimpleAssignment(node Node) bool {
 		return false
 	}
 	if _, ok := field.Value.(*Block); ok {
-		// Block with type annotation is a function, not a simple assignment
+		// A typed block default is laid out like a function (see
+		// isFunctionDef).
 		return field.Type_ == nil
 	}
 	// Non-block value is a simple assignment
@@ -1370,18 +1372,14 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 	// Value and suffix directives - placement depends on value type
 	if s.Value != nil {
 		if block, ok := s.Value.(*Block); ok {
-			// Block value: suffix directives come before block
-			// pub foo: Type @directive { ... } OR pub foo @directive = { ... }
+			// Block value: suffix directives come before the block
+			// (pub foo: Type @directive = { ... }). Always keep the `=`:
+			// `foo: Type { ... }` without it is a computed field (a FunDecl,
+			// handled above), evaluated on every read rather than once.
 			f.formatSuffixDirectives(s.Directives, nameLine)
-			if s.Type_ != nil {
-				f.write(" {")
-				f.formatBlockContents(block)
-				f.write("}")
-			} else {
-				f.write(" = {")
-				f.formatBlockContents(block)
-				f.write("}")
-			}
+			f.write(" = {")
+			f.formatBlockContents(block)
+			f.write("}")
 		} else {
 			// Non-block value: suffix directives come before the default value,
 			// matching the grammar (Type <directives> = value).
