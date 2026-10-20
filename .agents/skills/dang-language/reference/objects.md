@@ -50,7 +50,7 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 ### Arguments
 - Named: `greet(name: "Alice")`. Positional: `greet("Alice")`.
 - **Mixed**: positional first, then named. `add(10, b: 20)` ✓; `add(a: 10, 20)` ✗ → `positional arguments must come before named arguments` (same rule for directive applications).
-- **Defaults**: `name: String! = "world"`. A default may reference *earlier parameters* in the same list (the param shadows any outer binding). In a free function it may reference enclosing scope; in a method it may reference fields of the same type. A nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`. Same rules for `new(...)`, whose defaults are additionally scoped like field defaults (see "Field defaults").
+- **Defaults**: `name: String! = "world"`. A default may reference *earlier parameters* in the same list (the param shadows any outer binding). In a free function it may reference enclosing scope; in a method it may reference fields of the same type. A nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`. Same rules for `new(...)` params, except that their defaults follow the field-default rule (see "Field defaults").
 - **Non-null with a default is nullable to the caller, non-null in the body.** A `T! = default` param is *optional* to callers — they may omit it, pass `null`, or pass a nullable `T` — and every such case falls back to the default; meanwhile the body sees a plain `T!`, so no null checks/assertions are needed. This is the idiomatic way to "excise null at the boundary": prefer `path: String! = ""` (or any sentinel default) over `path: String` + downstream null handling. (Verified: `greet(name: String! = "world")` accepts `greet`, `greet(null)`, and `greet(someNullableString)`, all yielding `"world"`.)
 
 ### Function references: `&fn`
@@ -144,14 +144,22 @@ Person("Alice", age: 30)
 Person(name: "Alice")
 ```
 
-### Field defaults
-- A field default (`x: T = expr`, `let x = expr`) runs **once, while the object is being built**: before `new()`, before any later write. It's scoped like a constructor parameter default: it sees the other fields' values (in any order: a default may name a field declared after it) and the enclosing scope, but **not `self`, the type's methods, or its computed fields** — anywhere inside it, blocks and nested functions included:
-  `` field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new() `` (same shape for `self` and computed fields).
-- With an explicit `new()`, a field without a default only gets its value in `new()`, after the defaults run, so a default can't use it: `` field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field ``.
-- **No field reassignment in the type body.** A bare `level = 5` (or `+=`) directly in the body, or in a default's block, would override the field's default and any constructor argument after other defaults read it: `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. Locals declared in a default can still be written. A type declared in another type's body can't reassign (or use the methods of) the outer type either, even from its methods. Statics' `self { }` block can't reassign statics (static methods' writes stay in their copy).
-- **`new()`'s parameter defaults** follow the same rule: they run after the field defaults, before the body, and read the fields' values (as the defaults leave them), earlier params (which shadow fields) and the outer scope — `new(k: Int! = level)` reads the field even if a top-level `level` exists — but not `self`, methods, computed fields, or fields only the body sets: `` new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body ``.
-- So a default only ever reads values the object is built with: a closure created there (`let held = Box.store { x => level + x }`) can be stored anywhere, and neither `new()` nor any later write reaches it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
-- Not field defaults: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), computed fields, methods, `new()`'s body, and statics (`self { }` members may use other statics and `self`: they're immutable, evaluated once).
+### Field defaults (and `new()` param defaults): only values
+Field defaults (`x: T = expr`, `let x = expr`) and `new()`'s parameter defaults are the same kind of code — without an explicit `new()`, field defaults *are* the constructor's param defaults. Both run **while the object is being built**, so one rule covers both: a default sees the values that exist when it runs (other fields, earlier params, the enclosing scope) and **nothing that needs the finished object: not `self`, the type's methods, or its computed fields** — anywhere inside it, blocks and nested functions included. Order:
+1. Field defaults, in any order (a default may name a field declared after it). With an explicit `new()`, a field without a default has no value yet, so defaults can't read it.
+2. `new()`'s param defaults: see the fields as the defaults left them, plus earlier params (which shadow fields). `new(k: Int! = level)` reads the field even if a top-level `level` exists.
+3. `new()`'s body, with `self`.
+
+Errors:
+- `` field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new() `` (same shape for `self` and computed fields).
+- `` field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field ``.
+- `` new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body ``.
+- **No field reassignment in the type body** (bare, `+=`, or in a default's block; locals declared in a default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A `self { }` block can't reassign its statics either.
+- A type declared in another type's body is part of that body: it can't use (or reassign) the outer type's methods, computed fields or `new()`-only fields, even from its methods.
+
+So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
+
+Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` members are evaluated once, immutable, and may use other statics and `self`).
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.
@@ -194,7 +202,7 @@ fullName: String! { firstName + " " + lastName }
 
 ## Mutation and copy-on-write
 
-**Values are immutable.** "Mutation" inside a method creates a **forked copy** of the receiver.
+**Immutable, copy-on-write, checked.** Values never change: a write rebinds a name in the writer's own scope, to a new value or an updated copy. Names are lexical (blocks, nested functions and `&refs` use the variables and `self` where they were written). The compiler rejects any write that could leak out of the scope that owns it.
 
 ```dang
 type Foo {
@@ -217,7 +225,7 @@ Foo(42).incr.a == 43          # original Foo(42) untouched
 - No CoW for pure functions (no `self`). Chaining is the natural pattern: `Counter(0).incr.incr.incr.value == 3`.
 
 ### Compile-time rules
-Copy-on-write is the only mutation. Three rules (all compile errors) close the loopholes:
+A write must stay in the scope that owns it. Four rules (all compile errors) enforce that:
 
 1. **Top-level bindings are immutable once initialized.** Top-level script code — top-level forms and blocks inside them (`let total = 0; xs.each { x => total += x }`) — may still reassign them; that's package initialization, and keeps scripts and the REPL working. Functions, methods, `new()`, type bodies and closures inside them can't write a top-level binding, path writes included (`shared.x = …`):
    `` cannot assign to `count`: top-level bindings are immutable once initialized; use a local `let`, a field, or return the new value ``.
@@ -230,6 +238,7 @@ Copy-on-write is the only mutation. Three rules (all compile errors) close the l
    ```dang
    {{ a: acc.bump.total, b: acc.bump.bump.total }}   # each field forks acc independently
    ```
+4. **Defaults see only values.** Field defaults and `new()` param defaults run while the object is being built: no `self`, methods, computed fields, or field reassignment (see "Field defaults" above).
 
 Named functions, methods, and stored callbacks are always pure under rules 1–2, so they're free to call from any field.
 

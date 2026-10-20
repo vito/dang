@@ -24,14 +24,16 @@ Four ideas the rest of the language hangs on:
   whatever schema you connect (Dagger, GitHub, your own API).
 - **Prototype objects** — `type Foo` declares both a type *and* its constructor
   function. Methods and fields are indistinguishable in syntax.
-- **Immutability + copy-on-write** — values never change. Methods that look
-  mutating return a **forked copy** of the receiver; mutating methods must
-  `return self` to surface it. `Foo(42).incr.a == 43`, original untouched.
-  The compiler closes the loopholes: top-level bindings and statics are
-  immutable once initialized (only top-level script code reassigns top-level
-  bindings), closures that write outer state can't be stored or returned,
-  and `{{ }}` fields can't write outside themselves. See
-  `reference/objects.md`.
+- **Immutable, copy-on-write, checked** — values never change. Methods that
+  look mutating work on their own **copy** of the receiver and must `return
+  self` to surface it: `Foo(42).incr.a == 43`, original untouched. Names are
+  lexical: blocks, nested functions and `&refs` use the variables and `self`
+  where they were written. The compiler rejects any write that could leak out
+  of the scope that owns it: functions and methods can't write top-level
+  bindings, nothing can write statics, closures that write their scope can't
+  be stored or returned, `{{ }}` fields can't write outside themselves, and
+  defaults (field defaults, `new()` param defaults) see only values, never
+  `self` or methods. See `reference/objects.md`.
 - **Null tracking** — `String` ≠ `String!` in the type system, with
   flow-sensitive narrowing so you rarely write casts.
 
@@ -81,7 +83,7 @@ Load the reference file that matches the question:
 |---|---|
 | `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
 | `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
-| `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write** and its compile-time rules (immutable top-level bindings, impure closures can't escape, `{{ }}` fields can't write outside themselves), **interfaces** & **unions** + variance |
+| `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write** and its compile-time rules (immutable top-level bindings and statics, closures that write their scope can't escape, `{{ }}` fields can't write outside themselves, defaults see only values), **interfaces** & **unions** + variance |
 | `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`raise`, the postfix `rescue` operator, the `Error` interface, when to raise vs. return null) |
 | `reference/stdlib.md` | top-level builtins (`assert`/`print`/`loop`/`toString`), **`String!` methods** (incl. regex/`Match`, base64), **`Path` scalar + methods**, **list `[T]!` methods**, **`JSON`/`YAML`/`TOML` codec namespaces** (`encode`/`decode`), `Random`, `UUID`, error types |
 | `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |
