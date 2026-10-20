@@ -49,6 +49,26 @@ func topLevelFrameFrom(ctx context.Context) TypeScope {
 	return f
 }
 
+// isTopLevelFrame reports whether frame is the top-level frame top or one it
+// extends: a session fork (a literate failure snippet) or a file's clone of
+// its module scope still sees the outer top-level bindings as top-level.
+func isTopLevelFrame(frame, top TypeScope) bool {
+	if frame == nil {
+		return false
+	}
+	for cur := top; cur != nil; {
+		if cur == frame {
+			return true
+		}
+		t, ok := cur.(*Type)
+		if !ok || t.Parent == nil {
+			return false
+		}
+		cur = t.Parent
+	}
+	return false
+}
+
 // envFrame returns the frame new bindings in env are added to.
 func envFrame(env hm.Env) TypeScope {
 	switch e := env.(type) {
@@ -121,7 +141,7 @@ func checkTopLevelWrite(ctx context.Context, env hm.Env, r *Reassignment) error 
 	if !ok || isSelf {
 		return nil
 	}
-	if resolveBinding(env, name) != top {
+	if !isTopLevelFrame(resolveBinding(env, name), top) {
 		return nil
 	}
 	return NewInferError(

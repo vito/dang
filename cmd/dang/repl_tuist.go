@@ -428,7 +428,7 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	}
 
 	fresh := hm.NewSimpleFresher()
-	_, err = dang.InferFormsWithPhases(r.ctx, forms, r.typeScope, fresh)
+	_, err = inferReplForms(r.ctx, forms, r.typeScope, fresh)
 	if err != nil {
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		ev.Update()

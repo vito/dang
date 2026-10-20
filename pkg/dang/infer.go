@@ -40,6 +40,40 @@ func Infer(ctx context.Context, env hm.Env, expr hm.Expression, hoist bool) (*hm
 	return closeOver(infer.t)
 }
 
+// InferTopLevel type-checks forms as the top level of an interactive session
+// (a REPL entry, a literate doc snippet, the playground) whose top-level
+// bindings live in env, accumulating across calls. Besides phased inference
+// it applies what the module entry points (RunFile, RunDir,
+// InferDirectoryFiles) do: env is the top-level frame, so functions and
+// methods may not write its bindings while the forms themselves (script code)
+// still may; and the effect checks that need the whole input inferred first
+// (escaping and `{{ }}` requirements on block parameters) run at the end.
+func InferTopLevel(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	ctx = withTopLevelFrame(ctx, env)
+	ctx, solver, ownSolver := withEffectSolver(ctx)
+	t, err := InferFormsWithPhases(ctx, forms, env, fresh)
+	if !ownSolver {
+		return t, err
+	}
+	effectErrs := solver.solve()
+	if len(effectErrs) == 0 {
+		return t, err
+	}
+	all := &InferenceErrors{}
+	if err != nil {
+		var ie *InferenceErrors
+		if errors.As(err, &ie) {
+			all.Errors = append(all.Errors, ie.Errors...)
+		} else {
+			all.Add(err)
+		}
+	}
+	for _, effErr := range effectErrs {
+		all.Add(effErr)
+	}
+	return nil, all
+}
+
 type inferer struct {
 	env hm.Env
 	t   hm.Type

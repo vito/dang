@@ -244,7 +244,7 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 	valueScope := sess.valueScope.Derive(true)
 
 	fresh := hm.NewSimpleFresher()
-	if _, err := dang.InferFormsWithPhases(context.Background(), forms, typeScope, fresh); err != nil {
+	if _, err := dang.InferTopLevel(context.Background(), forms, typeScope, fresh); err != nil {
 		return "", "type", err
 	}
 
@@ -289,7 +289,7 @@ func literateEvalCtx(base context.Context, source string, sess *literateSession)
 	forms := file.Forms
 
 	fresh := hm.NewSimpleFresher()
-	if _, err := dang.InferFormsWithPhases(base, forms, sess.typeScope, fresh); err != nil {
+	if _, err := dang.InferTopLevel(base, forms, sess.typeScope, fresh); err != nil {
 		return "", "", err
 	}
 
