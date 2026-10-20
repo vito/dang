@@ -96,5 +96,6 @@ Backtick templates in detail — backticks switch the lexer into template mode:
 - fields may reference each other in any order: `{{ total: a + b, a: 1, b: 2 }}` works regardless of declaration order; a cyclic reference is a compile error
 - a field's own name refers to the enclosing scope, not the field being defined: `{{ user: user.{{ name }} }}` reads the outer `user`
 - `{{ }}` is **always parallel** — independent fields are evaluated concurrently (a field that references a sibling waits for it) and evaluation fails fast on the first error. One rule for one construct: chained `recv.{{ … }}` selection behaves identically and fans out across a list's elements, so a record of GraphQL selections issues them at once (see [#interop])
+- because fields run concurrently, a field can't write anything declared outside it (the enclosing method's locals or `self` included), call a closure from outside that writes, or call a block parameter whose block isn't pure — all compile errors. Fields communicate by producing values: `{{ a: c.incr.value, b: c.incr.incr.value }}` is fine, since each method call returns its own updated copy (see [#concurrent-fields])
 
 > Meta: explicitly call out the double-brace syntax — it's the unusual one and the first reaction is "is that a typo?"

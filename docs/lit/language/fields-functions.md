@@ -62,6 +62,9 @@ total = 5         # reassigns the existing field
 ```
 
 - `name = newValue` mutates an existing field (or local/arg of that name)
+- a top-level field can be reassigned only by top-level script code; once
+  initialized it is immutable to functions, methods, and the closures inside
+  them — see [#top-level-bindings]
 - `+=` for compound update (Int add, String/List concatenation)
 - type must remain assignable to the field's declared type
 - assigning a function-valued field a bare function name *calls* it; use `&name`
@@ -167,11 +170,14 @@ greet(someNullableString)  # falls back to "world" when the value is null
 - a captured ref must still satisfy the target's block-parameter signature
 - a method ref is lexically bound: wherever it is stored or called from (even another object's methods), it runs against the `self` where it was written, never the caller's
 - inside a method, `&helper` and `&self.helper` read `self` when called, so they see field writes made after the ref was taken; a ref through any other receiver (`&r.helper`) holds that value, since values are immutable
+- a ref to a closure that writes outside itself (a nested function or block writing the enclosing method's locals or `self`) can be called or passed as an argument, but not stored, returned, or put in a list or record — see [#impure-closures]. Named functions and methods never write outside their own `self`, so refs to them can go anywhere
 
 ### Nested functions
 
 - functions declared inside method (or `new()`) bodies are closures, like blocks: they capture the enclosing scope lexically, so the method's args and locals shadow fields inside them just as in the method body
 - they share the method's `self`: field writes inside them (bare or `self.`) accumulate into the method's fork, so `let bump: Int! { n += 1; n }` called twice yields `1` then `2` and leaves `n == 2` for the rest of the method
+- a nested function that writes the method's locals or `self` can't escape the method (see [#impure-closures]), and calling it from inside a `{{ }}` field is a compile error, since fields run concurrently (see [#concurrent-fields])
+- editor hover on a closure lists what it writes outside itself and which block parameters it calls, e.g. `// Effects: writes n; calls block`
 - sibling methods differ: each call forks `self` on its own, and its changes surface only through a returned `self`
 
 > Meta: link forward to [#blocks] — block arguments are the more common form of "pass code." Function refs are for the cases where you need a true callable to store or rebind.
