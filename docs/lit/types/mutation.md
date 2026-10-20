@@ -125,7 +125,7 @@ Nothing else can write one. Functions, methods, `new()`, type bodies, and the
 closures inside them are all rejected, path writes such as `shared.x = …`
 included:
 
-```dang-static
+```dang-failure
 count: Int! = 0
 
 bump: Int! {
@@ -134,13 +134,21 @@ bump: Int! {
 }
 ```
 
-```
-Error: cannot assign to `count`: top-level bindings are immutable once
-initialized; use a local `let`, a field, or return the new value
-```
-
 So a function or method has no side effects beyond its own copy of `self`.
 To change something, return the new value, as `incr` does on `Counter` above.
+
+Static members (the `self { }` block of a type, see [#static-members]) are
+immutable once initialized too, and from everywhere, top-level script code
+included. A static method's writes to its own `self` stay in that call's copy,
+just like an instance method's:
+
+```dang-failure
+type Registry {
+  self { size: Int! = 0 }
+}
+
+Registry.size = 5
+```
 
 ## Closures that write can't escape {#impure-closures}
 
@@ -192,7 +200,7 @@ Host.store { x => x * 2 }.saved(21)
 
 The check happens where the block is passed:
 
-```dang-static
+```dang-failure
 type Guest {
   n: Int! = 10
   escape: Host! {
@@ -202,11 +210,6 @@ type Guest {
     }
   }
 }
-```
-
-```
-Error: `Host.store` stores, returns, or collects `cb`, so this block must not
-write outer state, but it writes `n`
 ```
 
 ## `{{ }}` fields can't write outside themselves {#concurrent-fields}
@@ -221,32 +224,23 @@ by producing values. Inside a field, these are compile errors:
 - calling a block parameter whose block isn't pure. This is checked where
   the block is passed.
 
-```dang-static
+```dang-failure
 let counter = 0
 {{
-  a: { counter += 1; counter },
-  b: { counter += 10; counter }
+  a: { counter += 1; counter },   # writing `counter` is an error...
+  b: counter * 10                 # ...reading it is fine
 }}
 ```
 
-```
-Error: {{ }} fields run concurrently; this assignment writes `counter`, which
-is declared outside the field
-```
-
-```dang-static
+```dang-failure
 type Tally {
   run: Int! {
     let n = 0
     bump: Int! { n += 1; n }
-    let r = {{ a: bump, b: bump }}
+    let r = {{ a: bump, b: n }}
     r.a + r.b
   }
 }
-```
-
-```
-Error: {{ }} fields run concurrently; `bump` writes `n`
 ```
 
 ```dang
@@ -272,7 +266,7 @@ both(&block(x: Int!): Int!): Int! {
 both { x => x * 10 }
 ```
 
-```dang-static
+```dang-failure
 # ...but rejects a block that writes outer state
 type Acc {
   total: Int! = 0
@@ -281,11 +275,6 @@ type Acc {
     self
   }
 }
-```
-
-```
-Error: `both` calls `block` inside {{ }}, whose fields run concurrently, so
-this block must not write outer state, but it writes `total`
 ```
 
 ```dang

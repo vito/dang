@@ -138,7 +138,7 @@ Color.luminance                # 0 — a bare all-default type still auto-constr
 ```
 
 ```dang
-# static stored fields hold singleton state on the type
+# static stored fields hold singleton values on the type
 type Config {
   host: String! = "localhost"
   self {
@@ -151,6 +151,7 @@ Config.limit          # 100
 Config.default.host   # "localhost"
 ```
 
+- statics are immutable once initialized: `Config.limit = 5` is a compile error from anywhere, and a static method's writes to its own `self` stay in that call's copy (see [#top-level-bindings])
 - a scalar may also carry a `self { }` block — including static *stored* fields, even though instance stored fields on a scalar are forbidden (see [#scalar-bodies])
 
 ## Implements
