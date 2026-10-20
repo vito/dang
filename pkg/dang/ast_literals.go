@@ -303,7 +303,6 @@ func (s *SelfKeyword) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	if err := checkDefaultSelf(ctx, env); err != nil {
 		return nil, NewInferError(err, s)
 	}
-	noteTypeBodySelf(ctx, s)
 	s.SetInferredType(t)
 	return t, nil
 }

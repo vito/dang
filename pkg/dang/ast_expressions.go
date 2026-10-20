@@ -648,9 +648,6 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				absorbCall(ctx, effectOf(before), s, s.Name)
 			}
 		}
-		// A field or method of the object under construction, used in a
-		// field default.
-		t = noteTypeBodySymbol(ctx, env, s.Name, s, t)
 		// A function value outside a call position escapes.
 		if fnTypeOf(t) != nil && !fnAllowedAt(ctx, s) {
 			if err := checkEscape(ctx, s, s.Name, t); err != nil {
@@ -969,16 +966,6 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			}
 		}
 
-		// `self.get` in a field default is bound to the object under
-		// construction, like `&get`: outside a call position it escapes.
-		if bound, ok := noteTypeBodySelect(ctx, d.Receiver, d.Field.Name, d, t); ok {
-			t = bound
-			if !fnAllowedAt(ctx, d) {
-				if err := checkEscape(ctx, d, d.Field.Name, t); err != nil {
-					return nil, err
-				}
-			}
-		}
 		// If receiver was nullable, make result nullable too
 		if isNullable {
 			// Remove any existing NonNullType wrapper from the field type

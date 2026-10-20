@@ -264,8 +264,8 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 
 // inferFunctionType provides shared type inference logic for functions
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
-	// A method runs against its receiver, not the object its type body's
-	// field defaults are evaluated against.
+	// A method runs against its receiver: its type body's field-default
+	// scope doesn't apply in it.
 	if methodSelfFrame(env) != nil {
 		ctx = withoutTypeBody(ctx)
 	}
@@ -462,19 +462,14 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 }
 
 // nameEffect names the function for effect diagnostics: `Type.method` for
-// methods, the plain name otherwise. It also records which type a method
-// belongs to.
+// methods, the plain name otherwise.
 func (f *FunDecl) nameEffect(env hm.Env) {
-	self := methodSelfFrame(env)
-	if f.EffectName == "" {
-		f.EffectName = f.Named
-		if self != nil {
-			f.EffectName = self.Named + "." + f.Named
-		}
+	if f.EffectName != "" {
+		return
 	}
-	if self != nil {
-		f.fnEffects().latent.methodOf = self
-		f.fnEffects().latent.methodName = f.Named
+	f.EffectName = f.Named
+	if self := methodSelfFrame(env); self != nil {
+		f.EffectName = self.Named + "." + f.Named
 	}
 }
 
