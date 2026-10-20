@@ -258,10 +258,18 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	var blocks []*dang.FileBlock
 	var currentBlock *dang.FileBlock
 
+	// Look up the directory's dang.toml once per analysis: it decides both the
+	// edition every file in the directory is parsed as and the imports.
+	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
+	if configErr != nil {
+		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
+	}
+	edition := dang.EditionForConfig(ctx, projectConfig)
+
 	for _, path := range files {
 		fileURI := toURI(path)
 
-		block, err := h.parseFileCached(path)
+		block, err := h.parseFileCached(path, edition)
 		if err != nil {
 			// IO errors (missing file, permission denied, broken symlink)
 			// are fatal — bail out so the caller can surface them. Parse
@@ -301,7 +309,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 
 	// Resolve import configs once for the directory, using a cache to avoid
 	// spawning new dagger sessions on every keystroke.
-	importConfigs, ctx := h.resolveImports(ctx, fileDir)
+	importConfigs, ctx := h.resolveImports(ctx, fileDir, configPath, projectConfig)
 	// Attach a long-lived schema-module cache for this directory BEFORE
 	// installing the import configs, so the configs' helpers find an existing
 	// cache and reuse it. Without this, each analyzeDirectory call gets a
@@ -423,21 +431,21 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 	return cache
 }
 
-// parseFileCached returns the parsed *FileBlock for path. When the file is
-// unchanged from the cached entry, the cached block is returned without
-// re-parsing. For files on disk, the fingerprint is mtime+size — a stat call
-// is enough to know if the cache is still good, avoiding even the file read.
-// For open buffers, the fingerprint is the buffer's text.
+// parseFileCached returns the parsed *FileBlock for path, parsed as edition.
+// When the file is unchanged from the cached entry, the cached block is
+// returned without re-parsing. For files on disk, the fingerprint is
+// mtime+size+edition — a stat call is enough to know if the cache is still
+// good, avoiding even the file read. For open buffers, the fingerprint is the
+// buffer's text and the edition. The edition is part of the fingerprint
+// because editing dang.toml's edition changes how an otherwise unchanged file
+// parses; callers resolve it once per directory (see analyzeDirectory).
 //
 // Auto-imports prepended into block.Forms by InferDirectoryFiles persist
 // across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
 // blocks keep their inferred schema modules, so the imports phase doesn't
 // re-introspect on cache hit.
-func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
+func (h *langHandler) parseFileCached(path string, edition dang.Edition) (*dang.FileBlock, error) {
 	uri := toURI(path)
-	// The edition is part of the fingerprint: editing dang.toml's edition
-	// changes how an otherwise unchanged file parses.
-	edition := editionForFile(path)
 
 	h.mu.Lock()
 	openFile := h.files[uri]
@@ -470,13 +478,13 @@ func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size(), edition: edition})
 }
 
-// editionForFile returns the edition governing the file at path, from the
-// nearest dang.toml. A broken dang.toml is reported elsewhere (import
-// resolution), so here it just falls back to the default edition.
-func editionForFile(path string) dang.Edition {
-	edition, err := dang.EditionForDir(filepath.Dir(path))
+// editionForFile returns the edition of the file at path (see
+// dang.EditionForDir). A broken dang.toml is reported elsewhere (import
+// resolution), so here it just falls back to the edition of ungoverned source.
+func editionForFile(ctx context.Context, path string) dang.Edition {
+	edition, err := dang.EditionForDir(ctx, filepath.Dir(path))
 	if err != nil {
-		slog.Warn("failed to determine edition", "path", path, "error", err)
+		slog.WarnContext(ctx, "failed to determine edition", "path", path, "error", err)
 	}
 	return edition
 }
@@ -569,14 +577,10 @@ func (f *File) waitForSnapshot() *File {
 }
 
 // resolveImports returns cached import configs for the given file directory,
-// resolving them on first access. The returned context has the project config
-// attached if a dang.toml was found.
-func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dang.ImportConfig, context.Context) {
-	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
-	if configErr != nil {
-		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
-	}
-
+// resolving them on first access. configPath and projectConfig are the result
+// of dang.FindProjectConfig for fileDir (empty and nil if none was found). The
+// returned context has the project config attached if a dang.toml was found.
+func (h *langHandler) resolveImports(ctx context.Context, fileDir, configPath string, projectConfig *dang.ProjectConfig) ([]dang.ImportConfig, context.Context) {
 	// Cache key: config path, or a synthetic key for auto-detected Dagger.
 	cacheKey := configPath
 	if cacheKey == "" {

@@ -26,12 +26,17 @@ const (
 	// and `recv.{ ... }` applies a block to the receiver.
 	Edition2 Edition = "2"
 
-	// DefaultEdition is the edition of a module that does not declare one.
+	// DefaultEdition is the edition of a dang.toml that does not declare one.
 	//
 	// It is pinned to the edition current when editions were introduced and
-	// must NOT advance when a new edition is added: a dang.toml or script
-	// without an `edition` key would otherwise silently change meaning.
+	// must NOT advance when a new edition is added: a dang.toml without an
+	// `edition` key would otherwise silently change meaning.
 	DefaultEdition = Edition2
+
+	// LatestEdition is the newest edition. Source that no dang.toml governs
+	// is written in it (see EditionForDir), so it advances with each new
+	// edition.
+	LatestEdition = Edition2
 )
 
 // Editions lists every supported edition, oldest first.
@@ -85,7 +90,7 @@ func (e Edition) selectionBraces() (openBrace, closeBrace string) {
 const editionStoreKey = "edition"
 
 // WithEdition is a parser option selecting the edition to parse source as.
-// Parsing without it uses DefaultEdition.
+// Parsing without it uses LatestEdition.
 func WithEdition(e Edition) Option {
 	return GlobalStore(editionStoreKey, e)
 }
@@ -95,39 +100,50 @@ func editionFromStore(store map[string]any) Edition {
 	if e, ok := store[editionStoreKey].(Edition); ok && e != "" {
 		return e
 	}
-	return DefaultEdition
+	return LatestEdition
 }
 
 type editionKey struct{}
 
-// ContextWithEdition sets the edition for source that is not governed by a
-// dang.toml. Embedders (e.g. a Dagger SDK pinning a module's edition from its
-// engine version) use it to choose the edition when no dang.toml is read;
-// a dang.toml found during evaluation takes precedence over it.
+// ContextWithEdition sets the edition of source that no dang.toml governs,
+// in place of LatestEdition. Embedders use it for source whose edition they
+// know some other way (e.g. a Dagger SDK pinning a module's edition from its
+// engine version), and for source that has no path at all (REPL input, or a
+// completion fragment of a file whose edition is already known). It never
+// overrides a dang.toml: see EditionForDir.
 func ContextWithEdition(ctx context.Context, e Edition) context.Context {
 	return context.WithValue(ctx, editionKey{}, e)
 }
 
-// EditionFromContext returns the edition in effect: the edition of the
-// project config attached to ctx if there is one (DefaultEdition when it
-// declares none), otherwise the edition set by ContextWithEdition, otherwise
-// DefaultEdition.
+// EditionFromContext returns the edition of source that no dang.toml
+// governs: the edition set by ContextWithEdition, or LatestEdition.
 func EditionFromContext(ctx context.Context) Edition {
-	if _, cfg := projectConfigFromContext(ctx); cfg != nil {
-		return cfg.EffectiveEdition()
-	}
 	if e, ok := ctx.Value(editionKey{}).(Edition); ok && e != "" {
 		return e
 	}
-	return DefaultEdition
+	return LatestEdition
 }
 
-// EditionForDir returns the edition governing source files in dir, found the
-// same way as dang.toml imports: the nearest dang.toml walking up from dir.
-func EditionForDir(dir string) (Edition, error) {
+// EditionForDir returns the edition of the source files in dir. It depends
+// only on where the source lives: the nearest dang.toml walking up from dir
+// decides (DefaultEdition if it declares none), regardless of who imports the
+// source or which dang.toml configured the evaluation. If discovery reaches a
+// repository boundary (.git) or the filesystem root first, no dang.toml
+// governs the source, and it is EditionFromContext(ctx).
+func EditionForDir(ctx context.Context, dir string) (Edition, error) {
 	_, cfg, err := FindProjectConfig(dir)
 	if err != nil {
-		return DefaultEdition, err
+		return EditionFromContext(ctx), err
 	}
-	return cfg.EffectiveEdition(), nil
+	return EditionForConfig(ctx, cfg), nil
+}
+
+// EditionForConfig returns the edition of source governed by cfg, the result
+// of FindProjectConfig for the source's directory (nil if none was found).
+// Callers that already looked up the config use it to avoid a second lookup.
+func EditionForConfig(ctx context.Context, cfg *ProjectConfig) Edition {
+	if cfg == nil {
+		return EditionFromContext(ctx)
+	}
+	return cfg.EffectiveEdition()
 }

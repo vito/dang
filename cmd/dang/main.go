@@ -323,7 +323,7 @@ func formatFile(path string, write, list bool) error {
 		return err
 	}
 
-	edition, err := dang.EditionForDir(filepath.Dir(path))
+	edition, err := dang.EditionForDir(context.Background(), filepath.Dir(path))
 	if err != nil {
 		return err
 	}

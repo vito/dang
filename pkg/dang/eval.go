@@ -3315,7 +3315,12 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(EditionFromContext(ctx)))
+	edition, err := EditionForDir(ctx, filepath.Dir(filePath))
+	if err != nil {
+		return fmt.Errorf("determining edition: %w", err)
+	}
+
+	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(edition))
 	if err != nil {
 		return err
 	}
@@ -3532,9 +3537,16 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Fi
 
 	sort.Strings(dangFiles)
 
+	// The edition depends only on where the source lives, not on the project
+	// or import configs already attached to ctx (e.g. by an embedder).
+	edition, err := EditionForDir(ctx, dirPath)
+	if err != nil {
+		return ctx, nil, fmt.Errorf("determining edition: %w", err)
+	}
+
 	blocks := make([]*FileBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
-		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(EditionFromContext(ctx)))
+		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithEdition(edition))
 		if err != nil {
 			return ctx, nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
