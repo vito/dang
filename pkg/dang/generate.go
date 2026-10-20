@@ -1,6 +1,6 @@
 package dang
 
-//go:generate go run github.com/mna/pigeon -support-left-recursion -o dang.peg.go dang.peg
+//go:generate go run github.com/mna/pigeon -support-left-recursion -optimize-parser -o dang.peg.go dang.peg
 
 // Refresh the embedded highlight query (highlight_ts.go go:embeds it) from the
 // canonical copy in the editors/zed submodule, symlinked into treesitter/queries.
