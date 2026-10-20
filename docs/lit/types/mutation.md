@@ -110,7 +110,7 @@ let total = 0
 total
 ```
 
-```dang
+```dang-failure
 # every `{{ }}` evaluates its fields concurrently, each in its own fork:
 # `b` can't see `a`'s write, and the outer `counter` stays untouched
 let counter = 0
