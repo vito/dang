@@ -67,4 +67,15 @@ assert { detailed_summaries[0].profile.bio == "Designer" }
 assert { detailed_summaries[1].name == "Frank" }
 assert { detailed_summaries[1].profile.bio == "Developer" }
 
+# A `let` member is private to its module, not its type: code in the same
+# module selects it with `{{ }}` like with `.`, with or without arguments.
+type Vault {
+  let secret: String! = "hunter2"
+
+  let doubled(n: Int!): Int! { n * 2 }
+}
+
+assert { Vault.{{secret}}.secret == "hunter2" }
+assert { Vault.{{doubled(n: 3)}}.doubled == 6 }
+
 print("Object selection tests passed!")

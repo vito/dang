@@ -25,6 +25,67 @@ type FunctionBase struct {
 
 	// ExpectedReturnType is set by checkArgumentType for bidirectional type inference
 	ExpectedReturnType hm.Type
+
+	// EffectName names the function in effect diagnostics.
+	EffectName string
+	effects    *fnEffects
+}
+
+// fnEffects holds a function's effect and the effect variables of its
+// function-typed parameters, created once per declaration and shared by every
+// function type built for it (hoisted signature, inferred type, the enclosing
+// FieldDecl's annotation).
+type fnEffects struct {
+	latent *Effect
+	params map[string]*Effect
+}
+
+func (f *FunctionBase) fnEffects() *fnEffects {
+	if f.effects == nil {
+		name := f.EffectName
+		if name == "" {
+			name = "function"
+		}
+		f.effects = &fnEffects{latent: newClosureEffect(name), params: map[string]*Effect{}}
+	}
+	return f.effects
+}
+
+func (f *FunctionBase) paramEffect(name string) *Effect {
+	fe := f.fnEffects()
+	if e, ok := fe.params[name]; ok {
+		return e
+	}
+	e := newParamEffect(fe.latent, name)
+	fe.params[name] = e
+	return e
+}
+
+// attachEffects annotates ft, a function type freshly built for this
+// declaration, with its effect and its parameters' effect variables.
+func (f *FunctionBase) attachEffects(ft *hm.FunctionType) {
+	if ft == nil {
+		return
+	}
+	ft.SetEffect(f.fnEffects().latent)
+	rec, _ := ft.Arg().(*RecordType)
+	f.attachParamEffects(rec, ft.Block())
+}
+
+// attachParamEffects annotates the function-typed parameters of a signature
+// with their effect variables. It must run before the body is inferred.
+func (f *FunctionBase) attachParamEffects(rec *RecordType, block *hm.FunctionType) {
+	if f.BlockParam != nil && block != nil {
+		block.SetEffect(f.paramEffect(f.BlockParam.Name.Name))
+	}
+	if rec != nil {
+		for _, field := range rec.Fields {
+			t, _ := field.Value.Type()
+			if argFn := fnTypeOf(t); argFn != nil {
+				argFn.SetEffect(f.paramEffect(field.Key))
+			}
+		}
+	}
 }
 
 // inferFunctionArguments processes FieldDecl arguments into function type arguments
@@ -135,6 +196,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.attachEffects(f.Inferred)
 	f.SetInferredType(f.Inferred)
 	return f.Inferred, nil
 }
@@ -169,6 +231,7 @@ func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.Function
 		Directives:     f.Directives,
 		BlockParamName: blockParamName,
 		IsDynamic:      hasDynamicScope,
+		Nested:         hasDynamicScope && inMethodBody(scope),
 	}
 }
 
@@ -201,16 +264,26 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 
 // inferFunctionType provides shared type inference logic for functions
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+	// A method runs against its receiver: its type body's field-default
+	// scope doesn't apply in it.
+	if methodSelfFrame(env) != nil {
+		ctx = withoutTypeBody(ctx)
+	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
-	functionCtx := contextWithInferFunctionControlBoundary(ctx)
+	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(TypeScope)
 
+	// Writes and calls in the body accumulate into the function's effect. A
+	// method or constructor owns its receiver: its `self` writes are forks.
+	// Argument defaults are evaluated by the call too, so they count as well.
+	effCtx, _ := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
+
 	// Process arguments using shared logic. Defaults are evaluated at function
 	// call time, so they must not inherit the caller's return/break/continue targets.
-	args, directives, docStrings, err := f.inferFunctionArguments(functionCtx, newEnv, fresh)
+	args, directives, docStrings, err := f.inferFunctionArguments(effCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
@@ -249,6 +322,10 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
+	// Annotate parameter types with their effect variables before the body is
+	// checked (and before skolemization copies them below).
+	f.attachParamEffects(argsRec, blockType)
+
 	// Skolemize the function's own signature type variables for the duration of
 	// the body check. Within the body these parameters are rigid: each stands
 	// for "some caller-chosen type" and so supports no operations — you cannot
@@ -284,7 +361,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// Ordinary functions are control-flow boundaries for break/continue; only
 	// block arguments may intentionally hand those effects to an enclosing call.
 	returnTarget := NewInferControlTarget(ReturnFrame)
-	bodyCtx := contextWithInferReturnTarget(functionCtx, returnTarget)
+	bodyCtx := contextWithInferReturnTarget(effCtx, returnTarget)
 	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
@@ -319,6 +396,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.Inferred.SetEffect(f.fnEffects().latent)
 	return f.Inferred, nil
 }
 
@@ -359,6 +437,7 @@ var _ hm.Inferer = &FunDecl{}
 var _ Hoister = &FunDecl{}
 
 func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	f.nameEffect(env)
 	switch pass {
 	case 0:
 		// Pass 0: Hoist function signature (declare type without inferring body).
@@ -382,7 +461,20 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 	return nil
 }
 
+// nameEffect names the function for effect diagnostics: `Type.method` for
+// methods, the plain name otherwise.
+func (f *FunDecl) nameEffect(env hm.Env) {
+	if f.EffectName != "" {
+		return
+	}
+	f.EffectName = f.Named
+	if self := methodSelfFrame(env); self != nil {
+		f.EffectName = self.Named + "." + f.Named
+	}
+}
+
 func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	f.nameEffect(env)
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
 		return f.inferFunctionType(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 	})
@@ -436,11 +528,28 @@ func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
+		// A type body's own fields can't be reassigned while it's being built.
+		if err := checkDefaultWrite(ctx, env, r.Target); err != nil {
+			return nil, NewInferError(err, r)
+		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
-		targetType, err := inferNodeWithoutAutoCall(ctx, env, fresh, r.Target)
+		// A location is not a function value escaping.
+		targetType, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, r.Target), env, fresh, r.Target)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
+		}
+		if err := r.checkInterfaceFieldWrite(); err != nil {
+			return nil, err
+		}
+		if err := checkStaticWrite(r); err != nil {
+			return nil, err
+		}
+		if err := checkTopLevelWrite(ctx, env, r); err != nil {
+			return nil, err
+		}
+		if name, isSelf, first, ok := assignmentRoot(r.Target); ok {
+			recordEffectWrite(ctx, env, r, name, isSelf, first)
 		}
 
 		// Infer the type of the value (right-hand side)
@@ -473,6 +582,36 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 		}
 	})
+}
+
+// checkInterfaceFieldWrite rejects a field write whose path runs through an
+// interface-typed value (`a.x = 2` with `a: HasX!`, or `a.iface.y = 2`). An
+// interface only promises its fields can be read: an implementation may
+// provide one as a computed `{ }` member, which has nothing to store into, so
+// interface fields are read-only.
+func (r *Reassignment) checkInterfaceFieldWrite() error {
+	sel, ok := r.Target.(*Select)
+	if !ok {
+		return nil
+	}
+	for ; sel != nil; sel, _ = sel.Receiver.(*Select) {
+		holder, ok := sel.Receiver.(interface{ GetInferredType() hm.Type })
+		if !ok {
+			continue
+		}
+		recvType := holder.GetInferredType()
+		if nn, ok := recvType.(hm.NonNullType); ok {
+			recvType = nn.Type
+		}
+		if mod, ok := recvType.(*Type); ok && mod.Kind == InterfaceKind {
+			target := strings.TrimSpace(Format(r.Target))
+			return NewInferError(
+				fmt.Errorf("cannot assign to %s: fields of interface %s are read-only", target, mod),
+				r,
+			)
+		}
+	}
+	return nil
 }
 
 func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.Env, fresh hm.Fresher, targetType, valueType hm.Type) error {
@@ -589,8 +728,34 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		return nil, fmt.Errorf("unexpected root node type: %T", rootNode)
 	}
 
+	// Every link on the path must be an object to copy. A nullable link that
+	// is null at runtime has nothing to write into, so report it as an error
+	// rather than panicking on the type assertion.
+	rootLabel := rootSymbolName
+	if rootLabel == "" {
+		rootLabel = "self"
+	}
+	asScope := func(v Value, depth int) (ValueScope, error) {
+		if vs, ok := v.(ValueScope); ok {
+			return vs, nil
+		}
+		link := strings.Join(append([]string{rootLabel}, path[:depth]...), ".")
+		target := strings.Join(append([]string{rootLabel}, path...), ".")
+		if _, isNull := v.(NullValue); isNull {
+			return nil, fmt.Errorf("cannot assign to %s: %s is null", target, link)
+		}
+		if _, isFn := v.(FunctionValue); isFn {
+			return nil, fmt.Errorf("cannot assign to %s: %s is computed, not a stored field", target, link)
+		}
+		return nil, fmt.Errorf("cannot assign to %s: %s is not an object", target, link)
+	}
+
 	// Clone the root object to begin the copy-on-write process
-	newRoot := rootObj.(ValueScope).Derive(false)
+	rootScope, err := asScope(rootObj, 0)
+	if err != nil {
+		return nil, err
+	}
+	newRoot := cowFork(rootScope)
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
@@ -603,8 +768,12 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
-		clonedVal := val.(ValueScope).Derive(false)
-		currentObj.Bind(fieldName, clonedVal.(Value), currentObj.Visibility(fieldName))
+		link, err := asScope(val, i+1)
+		if err != nil {
+			return nil, err
+		}
+		clonedVal := cowFork(link)
+		cowBind(currentObj, fieldName, clonedVal.(Value))
 		currentObj = clonedVal
 	}
 
@@ -615,7 +784,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: obj.field = value
-		currentObj.Bind(finalField, value, currentObj.Visibility(finalField))
+		cowBind(currentObj, finalField, value)
 	case "+":
 		// Compound assignment: obj.field += value
 		currentValue, found, err := currentObj.Lookup(ctx, finalField)
@@ -632,7 +801,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 			return nil, err
 		}
 
-		currentObj.Bind(finalField, newValue, currentObj.Visibility(finalField))
+		cowBind(currentObj, finalField, newValue)
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
@@ -646,6 +815,25 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 	}
 
 	return newRoot.(Value), nil
+}
+
+// cowFork copies one link of a copy-on-write path. Objects copy their top
+// write generation as a sibling (see Object.cowCopy) rather than deriving a
+// child, so repeated writes don't build ever-deeper parent chains.
+func cowFork(v ValueScope) ValueScope {
+	if obj, ok := v.(*Object); ok {
+		return obj.cowCopy()
+	}
+	return v.Derive(false)
+}
+
+// cowBind writes a field on a link cowFork just copied.
+func cowBind(v ValueScope, name string, value Value) {
+	if obj, ok := v.(*Object); ok {
+		obj.bindOverPending(name, value, obj.Visibility(name))
+		return
+	}
+	v.Bind(name, value, v.Visibility(name))
 }
 
 func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {

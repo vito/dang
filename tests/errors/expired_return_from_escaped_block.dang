@@ -1,19 +1,17 @@
 # return from an escaped block fails once its lexical function has returned
-let saved(x: Int!): Int! { x }
+type Box {
+  saved(x: Int!): Int! { x }
 
-store(&block(x: Int!): Int!): Int! {
-  saved = block
-  0
-}
-
-makeReturner: Int! {
-  store { x =>
-    return x
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
   }
-  0
 }
 
-let result = {
-  makeReturner
-  saved(1)
+makeReturner: Box! {
+  Box.store { x =>
+    return Box
+  }
 }
+
+let result = makeReturner.saved(1)

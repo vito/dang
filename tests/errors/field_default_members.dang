@@ -1,0 +1,58 @@
+type Box {
+  saved(x: Int!): Int! { x }
+
+  read(x: Int!): Int! { 1000 + x }
+
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
+  }
+}
+
+double(x: Int!): Int! { x * 2 }
+
+type Gauge {
+  level: Int! = 1
+  bonus: Int!
+  note: String
+
+  read(x: Int!): Int! { level + x }
+
+  # A method named like an outer function shadows it here too.
+  double(x: Int!): Int! { x * 3 }
+
+  reader: Box! { Box.store { x => read(x) } }
+
+  total: Int! { level + bonus }
+
+  let called: Int! = read(1)
+  let ref = &read
+  let shadowed: Int! = double(2)
+  let computed: Int! = total
+  let viaComputed = reader
+  let viaBlock: Int! = [1, 2].map { x => read(x) }.reduce(0) { a, b => a + b }
+  let stored = Box.store { x => read(x) }
+
+  let viaNested: Int! = {
+    add(x: Int!): Int! { read(x) }
+    1
+  }
+
+  let viaArgDefault: Int! = {
+    add(x: Int!, k: Int! = read(1)): Int! { x + k }
+    1
+  }
+
+  # A selection's arguments are in the default's scope: this `read` is
+  # Gauge's, not Box's.
+  let viaSelection: Int! = Box.{{saved(x: read(1))}}.saved
+
+  # Only new() sets these, after the defaults run.
+  let withBonus: Int! = level + bonus
+  let noted = note
+
+  new(bonus: Int!) {
+    self.bonus = bonus
+    self
+  }
+}

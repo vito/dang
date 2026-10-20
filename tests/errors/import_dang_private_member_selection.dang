@@ -1,0 +1,6 @@
+# Selecting a `let` member with `{{ }}` follows the same module-level
+# visibility as `.`: `secret` is private to Lib, so this module can't select
+# it (see import_dang_private_member).
+import Lib
+
+Lib.Greeter("Dang").{{secret}}

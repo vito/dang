@@ -27,7 +27,8 @@ z: Int!                   # declaration without value
 - A bare `name = value` mutates an existing field/local/arg. To declare a *new* field instead, give it a type (`total: Int! = 0`, public) or introduce it with `let` (`let total = 0`, local). `+=` for compound update.
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
-- Inside a `type`, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`.
+- Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself can't reassign fields (see "No field reassignment in the type body" under "Field defaults").
+- Top-level bindings can be reassigned only by top-level script code; functions, methods, `new()` and closures inside them can't write them (see "Compile-time rules" below).
 
 ## Functions
 
@@ -49,15 +50,28 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 ### Arguments
 - Named: `greet(name: "Alice")`. Positional: `greet("Alice")`.
 - **Mixed**: positional first, then named. `add(10, b: 20)` ✓; `add(a: 10, 20)` ✗ → `positional arguments must come before named arguments` (same rule for directive applications).
-- **Defaults**: `name: String! = "world"`. A default may reference *earlier parameters* in the same list (the param shadows any outer binding). In a free function it may reference enclosing scope; in a method it may reference fields of the same type. A nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`. Same rules for `new(...)`.
+- **Defaults**: `name: String! = "world"`. A default may reference *earlier parameters* in the same list (the param shadows any outer binding). In a free function it may reference enclosing scope; in a method it may reference fields of the same type. A nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`. Same rules for `new(...)` params, except that their defaults follow the field-default rule (see "Field defaults").
 - **Non-null with a default is nullable to the caller, non-null in the body.** A `T! = default` param is *optional* to callers — they may omit it, pass `null`, or pass a nullable `T` — and every such case falls back to the default; meanwhile the body sees a plain `T!`, so no null checks/assertions are needed. This is the idiomatic way to "excise null at the boundary": prefer `path: String! = ""` (or any sentinel default) over `path: String` + downstream null handling. (Verified: `greet(name: String! = "world")` accepts `greet`, `greet(null)`, and `greet(someNullableString)`, all yielding `"world"`.)
 
 ### Function references: `&fn`
 - `&` yields the function itself without calling it: `&greet`, `&user.greet`.
 - Needed to assign to a function-typed field, pass as an arg, etc. Re-reads its closure each call. A captured ref must still satisfy the target's block-parameter signature.
+- A method ref is **lexically bound**: wherever it is stored or called from (even another object's methods), it runs against the `self` where the ref was written, never the caller's.
+- Inside a method, `&helper` and `&self.helper` read `self` **when called**, so they see field writes the method makes after taking the ref (`let f = &helper; n += 5; f(1)` sees the new `n`). A ref through any other receiver (`&r.helper`, with `let r = self` or any other value) holds that value: values are immutable, so later writes (which fork `self`, or rebind `r`) don't reach it.
+- A ref to a closure that writes outer state (a nested function or block writing the enclosing method's locals or `self`) can only be called or passed as an argument — storing, returning, or collecting it is a compile error. Refs to named functions and methods are always storable (see "Compile-time rules"). A field default can't take a ref to the type's own methods at all (see "Field defaults").
 
 ### Nested functions
-- Functions declared inside method bodies capture enclosing scope, including `self` (the nested function still acts as a method on the receiver).
+- Functions declared inside method (or `new()`) bodies are **closures, like blocks**: names resolve lexically (the method's args and locals shadow fields inside them, just as in the method body), and they share the method's `self`, so field writes inside them (bare or `self.`) accumulate into the method's fork. That makes them usable as inline helpers:
+  ```dang
+  type Counter {
+    n: Int! = 0
+    run: [Int!]! { let bump: Int! { n += 1; n }; let a = bump; let b = bump; [a, b, n] }
+  }
+  Counter.run == [1, 2, 2]   # Counter.n is still 0
+  ```
+- Contrast sibling methods (`bump` declared on the type): each call forks `self` independently, so the changes surface only through a returned `self`.
+- A nested function that writes the method's state (like `bump` above) can't escape the method, and calling it inside a `{{ }}` field is a compile error.
+- LSP hover on a closure shows its effects: `// Effects: writes n; calls block` (outer bindings it writes, enclosing block params it calls). Pure functions show none.
 
 ## Blocks (the "lambda of Dang")
 
@@ -91,12 +105,13 @@ list.each { item, index => ... }
 - Reassignment **without** a shadowing `let` mutates the enclosing field — across nested blocks too. `+=` works on the outer field from inside a block.
 - Hoisting: a mutation inside a `loop` block is visible after the loop in the same scope.
 - Closures inside a method/constructor share `self` across iterations, so `source.each { item => self.items += [item] }` accumulates.
+- A block that writes outer state can be called or passed as an argument, never stored/returned/collected; inside a `{{ }}` field it can't write outside the field at all (see "Compile-time rules").
 
 ### Control-flow handoff
 - `return` inside a block unwinds the enclosing **function**, not just the block.
 - `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls. `break value` becomes the loop/call result; bare `break` yields `null`. `continue value` flows into `.map`'s result (bare → `null`, e.g. `[null]`); in `.each`/`loop` it just advances.
 - `break`/`continue` target the **innermost** block-taking call. An ordinary nested function declared inside a block does NOT inherit the break/continue target → `... outside of block-taking call`.
-- Escaped blocks (stored via `&block`, called after the receiving call returned) error at runtime: `break from expired block call` / `return from expired function`.
+- A block passed to a function that stores, returns, or collects its block param may outlive the call, so non-local `return`/`break` in it is a **compile error**: `` ... so this block may outlive this call and cannot use `return` `` (a `break` targeting a `loop` inside the block is fine).
 
 ## Objects (`type`)
 
@@ -122,12 +137,29 @@ Whether a member is a constructor param depends on having **NO default**, not on
 
 ### Implicit constructor
 - One positional param per non-default field, in **declaration order** (not required-first). A defaulted field may precede a required one; positional args still line up by declaration order.
-- Also callable with named args. Field defaults evaluate with `self` bound, so a default may reference earlier/sibling fields (`combined: String! = prefix + "_" + suffix`).
+- Also callable with named args. Field defaults are the constructor's parameter defaults, so a default may reference sibling fields (`combined: String! = prefix + "_" + suffix`; `Computed("hello").combined` sees the passed `prefix`).
 
 ```dang
 Person("Alice", age: 30)
 Person(name: "Alice")
 ```
+
+### Field defaults (and `new()` param defaults): only values
+Field defaults (`x: T = expr`, `let x = expr`) and `new()`'s parameter defaults are the same kind of code — without an explicit `new()`, field defaults *are* the constructor's param defaults. Both run **while the object is being built**, so one rule covers both: a default sees the values that exist when it runs (other fields, earlier params, the enclosing scope) and **nothing that needs the finished object: not `self`, the type's methods, or its computed fields** — anywhere inside it, blocks and nested functions included. Order:
+1. Field defaults, in any order (a default may name a field declared after it). With an explicit `new()`, a field without a default has no value yet, so defaults can't read it.
+2. `new()`'s param defaults: see the fields as the defaults left them, plus earlier params (which shadow fields). `new(k: Int! = level)` reads the field even if a top-level `level` exists.
+3. `new()`'s body, with `self`.
+
+Errors:
+- `` field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new() `` (same shape for `self` and computed fields).
+- `` field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field ``.
+- `` new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body ``.
+- **No field reassignment in the type body** (bare, `+=`, or in a default's block; locals declared in a default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A `self { }` block can't reassign its statics either.
+- A type declared in another type's body is part of that body: it can't use (or reassign) the outer type's methods, computed fields or `new()`-only fields, even from its methods.
+
+So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
+
+Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` members are evaluated once, immutable, and may use other statics and `self`).
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.
@@ -145,12 +177,12 @@ type Greeter {
 ```
 - `new(args) { body }` or `new { body }` (no parens when no args). No visibility keyword, no return-type annotation (both errors: `'new' is a constructor, not a method`). Only valid inside a `type` body.
 - Overrides the implicit constructor (fields no longer auto-become params; `new`'s arg list defines the signature).
-- Constructor args are *local* bindings, distinct from fields even when same-named: `foo = foo + 10` rebinds the arg, does NOT touch `self.foo`; shadows same-named fields; NOT visible in method bodies (only in `new`).
+- Constructor args are *local* bindings, distinct from fields even when same-named: `foo = foo + 10` rebinds the arg, does NOT touch `self.foo`; shadows same-named fields; NOT visible in method bodies (only in `new`). Its parameter defaults are scoped like field defaults (see "Field defaults").
 - Must return the constructed type (`self`, or a method chain returning it) — last expression must be `Foo!`. Returning another type → `new() must return Wrong!, got String!`; returning `null` errors.
 - May chain other methods (propagating their forked `self`); self-field mutation inside a loop accumulates into one fork. Can accept block args: `new(&condition: Boolean!) { ... }`.
 
 ### `self`
-- Bound during constructor, method, field-default, and computed-field execution.
+- Bound during constructor, method, and computed-field execution; not in field defaults (see "Field defaults").
 - Bare names resolve against the receiver first: bare `name` reads `self.name`; bare `incrBy(1)` calls `self.incrBy(1)`.
 - Field **reads** never need `self.`. For **assignment**: bare `a += 1` / `value = v` forks `self` and sets the field; `self.field = ...` is the explicit form, required only to disambiguate from a same-named local/arg.
 - `self` is the value returned by chainable methods.
@@ -170,7 +202,7 @@ fullName: String! { firstName + " " + lastName }
 
 ## Mutation and copy-on-write
 
-**Values are immutable.** "Mutation" inside a method creates a **forked copy** of the receiver.
+**Immutable, copy-on-write, checked.** Values never change: a write rebinds a name in the writer's own scope, to a new value or an updated copy. Names are lexical (blocks, nested functions and `&refs` use the variables and `self` where they were written). The compiler rejects any write that could leak out of the scope that owns it.
 
 ```dang
 type Foo {
@@ -190,7 +222,25 @@ Foo(42).incr.a == 43          # original Foo(42) untouched
 - **Within a method, mutations accumulate inside one fork**: `source.each { item => self.items += [item] }; self` builds up a single forked value. Return type is the concrete type name (`Builder!`) — there is no `Self` keyword.
 - **Nested field assignment** `self.a.b.c = x` clones every link on the path, leaving the original tree untouched. Compound forms (`data.a.b.c += 10`) work. Supported but expensive — avoid deep nesting.
 - **Bare reassignment vs. field mutation**: name resolution at the write site decides the target. A local/arg in scope → `x = value` rebinds it, no fork. A field (not shadowed) → bare `x = value` forks `self`. `self.x = value` always forks and sets the field.
-- No CoW for pure functions (no `self`) or top-level bindings (no `self` to fork). Chaining is the natural pattern: `Counter(0).incr.incr.incr.value == 3`.
+- No CoW for pure functions (no `self`). Chaining is the natural pattern: `Counter(0).incr.incr.incr.value == 3`.
+
+### Compile-time rules
+A write must stay in the scope that owns it. Four rules (all compile errors) enforce that:
+
+1. **Top-level bindings are immutable once initialized.** Top-level script code — top-level forms and blocks inside them (`let total = 0; xs.each { x => total += x }`) — may still reassign them; that's package initialization, and keeps scripts and the REPL working. Functions, methods, `new()`, type bodies and closures inside them can't write a top-level binding, path writes included (`shared.x = …`):
+   `` cannot assign to `count`: top-level bindings are immutable once initialized; use a local `let`, a field, or return the new value ``.
+   So functions and methods have **no side effects** beyond their own CoW `self`: return the new value instead.
+   **Statics** (members in a type's `self { }` block) are immutable once initialized too, from everywhere — top-level script code included: `` cannot assign to `Counter.count`: static members are immutable once initialized; a static method's writes to `self` stay in that call's copy ``.
+2. **Impure closures can't escape.** A block, nested function, or `&ref` to one that writes anything it doesn't declare may only be **called** or **passed as an argument** — not stored (`let`, field), returned, or put in a list/record:
+   `` `bump` writes `n`, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection ``.
+   A function whose block param escapes (`saved = block`, `self.cb = f`) must be given a **pure** block; the error is at the caller's block: `` `Host.store` stores, returns, or collects `cb`, so this block must not write outer state, but it writes `n` ``. Forwarding a param into such a function (`wrap { x => f(x) }`) passes the requirement on. Such escaping blocks also can't use non-local `return`/`break` (see Control-flow handoff above).
+3. **`{{ }}` fields can't write outside themselves**, because fields run concurrently. Inside a field it's an error to write a binding declared outside the field — including the enclosing method's locals or `self` (each field has a private copy, so the write would be silently discarded): `` {{ }} fields run concurrently; this assignment writes `total`, which is declared outside the field ``; to call a closure created outside the field that writes anything (`` {{ }} fields run concurrently; `bump` writes `n` ``); or to call a block param whose block isn't pure (reported at the caller's block: `` `Acc.both` calls `block` inside {{ }}, whose fields run concurrently, so this block must not write outer state, but it writes `total` ``). State declared inside the field is fine, and so are method calls returning updated copies — fields communicate by producing values:
+   ```dang
+   {{ a: acc.bump.total, b: acc.bump.bump.total }}   # each field forks acc independently
+   ```
+4. **Defaults see only values.** Field defaults and `new()` param defaults run while the object is being built: no `self`, methods, computed fields, or field reassignment (see "Field defaults" above).
+
+Named functions, methods, and stored callbacks are always pure under rules 1–2, so they're free to call from any field.
 
 ## Interfaces and unions
 

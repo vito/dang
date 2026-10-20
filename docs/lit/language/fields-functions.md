@@ -31,6 +31,9 @@ let secret = "shhh"       # local field (untyped is fine)
   constructor parameter; a `let` field *with* a default does not
 - private fields with defaults are preferred over outer-scope bindings of the
   same name inside the type
+- a field's default runs once, while the object is being built, so it sees
+  only values: the other fields and the enclosing scope, not `self` or
+  methods — see [#field-defaults]
 
 ### Visibility
 
@@ -62,15 +65,18 @@ total = 5         # reassigns the existing field
 ```
 
 - `name = newValue` mutates an existing field (or local/arg of that name)
+- only top-level script code can reassign a top-level field; functions and
+  methods can't — see [#top-level-bindings]
 - `+=` for compound update (Int add, String/List concatenation)
 - type must remain assignable to the field's declared type
 - assigning a function-valued field a bare function name *calls* it; use `&name`
   to assign the function itself — see the function references section below
 - nested-path mutation is copy-on-write: copying an object then writing
   `m.a.b.c = 2` leaves the original unchanged
-- inside a `type`, bare `name = ...` resolves to the field when nothing shadows
-  it; if a parameter (or local) shadows the field name, **field** mutation
-  requires `self.name = ...` — see [#mutation]
+- inside a `type`'s methods, bare `name = ...` resolves to the field when
+  nothing shadows it; if a parameter (or local) shadows the field name,
+  **field** mutation requires `self.name = ...` — see [#lexical-scope]
+- the type body itself can't reassign the type's fields — see [#field-defaults]
 
 ### Docstrings
 
@@ -141,7 +147,9 @@ Defaults:
 - in a free function a default may reference enclosing-scope names
 - in a method a default may reference fields of the same type
 - a nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`
-- same default rules apply to `new(...)` constructor params
+- `new(...)` params follow the same rules, except that their defaults follow
+  the field-default rule: they see the fields' values and earlier params, not
+  `self` — see [#field-defaults]
 
 A non-null parameter *with* a default (`name: String! = "world"`) is **nullable on the
 caller's side but non-null on the receiver's side**. Callers may omit it, pass `null`, or
@@ -165,11 +173,17 @@ greet(someNullableString)  # falls back to "world" when the value is null
 - needed for assignment to a function-typed field, passing as an arg, etc.
 - combined with `.method` selection: `&user.greet`
 - a captured ref must still satisfy the target's block-parameter signature
+- a method ref is lexical: wherever it is stored or called from, it runs against the `self` where it was written, never the caller's — see [#lexical-scope]
+- inside a method, `&helper` and `&self.helper` read `self` when called, so they see field writes made after the ref was taken; a ref through any other receiver (`&r.helper`) holds that value, since values are immutable
+- a ref to a closure that writes outside itself can be called or passed as an argument, but not stored or returned — see [#impure-closures]. Named functions and methods only write their own copy of `self`, so refs to them can go anywhere
 
 ### Nested functions
 
-- functions declared inside method bodies can capture enclosing scope
-- captured `self` works — nested function still acts as a method on the receiver
+- functions declared inside method (or `new()`) bodies are closures, like blocks: they capture the enclosing scope lexically, so the method's args and locals shadow fields inside them just as in the method body
+- they share the method's `self`: field writes inside them (bare or `self.`) accumulate into the method's fork, so `let bump: Int! { n += 1; n }` called twice yields `1` then `2` and leaves `n == 2` for the rest of the method
+- a nested function that writes the method's locals or `self` can't be stored or returned, or called from a `{{ }}` field — see [#impure-closures], [#concurrent-fields]
+- editor hover on a closure lists what it writes outside itself and which block parameters it calls, e.g. `// Effects: writes n; calls block`
+- sibling methods differ: each call forks `self` on its own, and its changes surface only through a returned `self`
 
 > Meta: link forward to [#blocks] — block arguments are the more common form of "pass code." Function refs are for the cases where you need a true callable to store or rebind.
 

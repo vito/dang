@@ -1,0 +1,17 @@
+interface Shape {
+  name: String!
+}
+
+type Sq implements Shape {
+  name: String! = "square"
+  side: Int! = 2
+
+  scaled(k: Int!): Int! { side * k }
+}
+
+# A fragment field's arguments are evaluated in the enclosing scope, so they
+# are typed there too: `side` is Sq's field, not a name in scope here.
+let shapes: [Shape!]! = [Sq]
+shapes.{{
+  ... on Sq {{ scaled(k: side) }}
+}}

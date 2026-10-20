@@ -1,0 +1,19 @@
+type Host {
+  saved(x: Int!): Int! { x }
+
+  store(&cb(x: Int!): Int!): Host! {
+    self.saved = cb
+    self
+  }
+}
+
+type Guest {
+  n: Int! = 10
+
+  escape: Host! {
+    Host.store { x =>
+      n += x
+      n
+    }
+  }
+}

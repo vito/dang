@@ -202,6 +202,13 @@ func hoverWithMarkdown(content string) *Hover {
 // typeDetailSuffix returns additional hover text for union and enum types,
 // showing their members or values.
 func typeDetailSuffix(t hm.Type) string {
+	// Closures show what they write outside themselves and which outer
+	// parameters they call (see dang.EffectSummary); pure functions show
+	// nothing extra.
+	if summary := dang.EffectSummary(t); summary != "" {
+		return "\n\n// Effects: " + summary
+	}
+
 	// Unwrap NonNull
 	if nn, ok := t.(hm.NonNullType); ok {
 		t = nn.Type

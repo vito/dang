@@ -121,7 +121,7 @@ export GITHUB_TOKEN="$(gh auth token)"
 }
 }{
 \dang-feature{Copy-on-write}{{{
-## shared state changes are copy-on-write
+## values are immutable; writes are copy-on-write
 
 type Counter {
   n: Int!

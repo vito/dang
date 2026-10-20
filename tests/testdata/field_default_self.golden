@@ -1,0 +1,118 @@
+9 inference errors:
+
+Error 1:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:19:12[0m
+ [2m    |[0m
+ [2m 17 |   read(x: Int!): Int! { level + x }[0m
+ [2m 18 | [0m
+ [2m[34m[1m 19 | [0m  let me = self
+[2m                  [31m^^^^[0m
+ [2m 20 |   let viaSelf: Int! = self.level[0m
+ [2m 21 |   let viaRef = &self.read[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:20:23[0m
+ [2m    |[0m
+ [2m 18 | [0m
+ [2m 19 |   let me = self[0m
+ [2m[34m[1m 20 | [0m  let viaSelf: Int! = self.level
+[2m                             [31m^^^^[0m
+ [2m 21 |   let viaRef = &self.read[0m
+ [2m 22 |   let picked: Int! = self.{{level}}.level[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:21:17[0m
+ [2m    |[0m
+ [2m 19 |   let me = self[0m
+ [2m 20 |   let viaSelf: Int! = self.level[0m
+ [2m[34m[1m 21 | [0m  let viaRef = &self.read
+[2m                       [31m^^^^[0m
+ [2m 22 |   let picked: Int! = self.{{level}}.level[0m
+ [2m 23 |   let inBlock = Box.store { x => self.level + x }[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:22:22[0m
+ [2m    |[0m
+ [2m 20 |   let viaSelf: Int! = self.level[0m
+ [2m 21 |   let viaRef = &self.read[0m
+ [2m[34m[1m 22 | [0m  let picked: Int! = self.{{level}}.level
+[2m                            [31m^^^^[0m
+ [2m 23 |   let inBlock = Box.store { x => self.level + x }[0m
+ [2m 24 | [0m
+ [2m    |[0m
+
+
+Error 5:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:23:34[0m
+ [2m    |[0m
+ [2m 21 |   let viaRef = &self.read[0m
+ [2m 22 |   let picked: Int! = self.{{level}}.level[0m
+ [2m[34m[1m 23 | [0m  let inBlock = Box.store { x => self.level + x }
+[2m                                        [31m^^^^[0m
+ [2m 24 | [0m
+ [2m 25 |   let aliased: Int! = {[0m
+ [2m    |[0m
+
+
+Error 6:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:26:14[0m
+ [2m    |[0m
+ [2m 24 | [0m
+ [2m 25 |   let aliased: Int! = {[0m
+ [2m[34m[1m 26 | [0m    let it = self
+[2m                    [31m^^^^[0m
+ [2m 27 |     1[0m
+ [2m 28 |   }[0m
+ [2m    |[0m
+
+
+Error 7:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:31:26[0m
+ [2m    |[0m
+ [2m 29 | [0m
+ [2m 30 |   let inNested: Int! = {[0m
+ [2m[34m[1m 31 | [0m    add(x: Int!): Int! { self.level + x }
+[2m                                [31m^^^^[0m
+ [2m 32 |     1[0m
+ [2m 33 |   }[0m
+ [2m    |[0m
+
+
+Error 8:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:36:28[0m
+ [2m    |[0m
+ [2m 34 | [0m
+ [2m 35 |   let inArgDefault: Int! = {[0m
+ [2m[34m[1m 36 | [0m    add(x: Int!, k: Int! = self.level): Int! { x + k }
+[2m                                  [31m^^^^[0m
+ [2m 37 |     1[0m
+ [2m 38 |   }[0m
+ [2m    |[0m
+
+
+Error 9:
+[1m[31mError:[0m field defaults can't use `self`: they run while the object is being built, so they only see the other fields' values; use a computed field or new()
+  [2m[34m--> errors/field_default_self.dang:42:42[0m
+ [2m    |[0m
+ [2m 40 |   # A selection's arguments are in the default's scope, not the receiver's.[0m
+ [2m 41 |   let box = Box[0m
+ [2m[34m[1m 42 | [0m  let selectedWith: Int! = box.{{keep(b: self)}}.keep
+[2m                                                [31m^^^^[0m
+ [2m 43 | }[0m
+ [2m 44 | [0m
+ [2m    |[0m
+

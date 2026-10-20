@@ -121,6 +121,17 @@ func nonNullType(env hm.Env, sym string) (hm.Type, bool) {
 // The env should already be cloned from a parent scope.
 func applyNarrowings(env hm.Env, narrowings []Narrowing) {
 	for _, n := range narrowings {
+		// The refinement shadows the binding's type, not the binding: a write
+		// still targets the original declaration (see resolveBinding). Only
+		// mark names this frame does not itself declare.
+		if frame, ok := envFrame(env).(*Type); ok {
+			if _, declared := frame.vars[n.Symbol]; !declared {
+				if frame.narrowed == nil {
+					frame.narrowed = map[string]bool{}
+				}
+				frame.narrowed[n.Symbol] = true
+			}
+		}
 		env.Add(n.Symbol, hm.NewScheme(nil, n.Type))
 	}
 }

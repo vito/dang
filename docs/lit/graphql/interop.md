@@ -33,6 +33,7 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 - a bare field is shorthand for aliasing it to itself: `user.{{ name }}` means `user.{{ name: name }}`, exactly as `{{ name }}` is shorthand for `{{ name: name }}` in a record literal (see [#objects])
 - aliases are emitted as real GraphQL aliases, so the **same field** can be selected more than once under different arguments: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`
 - `{{ }}` **always evaluates its fields concurrently**, failing fast on the first error (see [#syntax]): over a GraphQL receiver that is the single batched query above, over a plain object it is parallel Dang evaluation, and over a list it runs the elements in parallel
+- so fields produce values rather than write shared state: writing a binding declared outside a field, or calling a closure from outside it that writes, is a compile error (see [#concurrent-fields])
 - a record literal is `{{ }}` with no receiver, so it has the same parallelism: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` sends both queries at once
 - nested selections work to arbitrary depth
 - arguments on nested fields:

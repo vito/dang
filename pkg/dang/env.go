@@ -203,6 +203,10 @@ type Type struct {
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
 
+	// narrowed marks names bound here only as flow-sensitive refinements of
+	// an outer binding (see applyNarrowings).
+	narrowed map[string]bool
+
 	// Scalar-body runtime hooks: Dang-defined methods and the new()
 	// materialization hook for scalars declared with a body. Written once by
 	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).

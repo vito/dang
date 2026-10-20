@@ -78,6 +78,7 @@ greet(
 - Fields may reference each other in **any order** (`{{ total: a + b, a: 1, b: 2 }}`); a cyclic reference is a compile error.
 - A field's **own name resolves to the enclosing scope**, not the field being defined: `{{ user: user.{{name}} }}` reads the outer `user`. Siblings still see the field.
 - `{{ }}` is **always parallel** — independent fields evaluate concurrently (a field that references a sibling waits for it) and evaluation fails fast on the first error. One rule for one construct: chained `recv.{{ … }}` selection behaves identically and fans out across a list's elements, so a record of GraphQL selections issues them at once.
+- Because fields run concurrently, a field can't write a binding declared outside it (the enclosing method's locals or `self` included), call a writing closure created outside it, or call a block param whose block isn't pure — compile errors. Fields communicate by producing values (`{{ a: c.incr.value, b: c.incr.incr.value }}` is fine). See objects.md "Compile-time rules".
 
 ## Operators
 
@@ -124,7 +125,7 @@ greet(
 - `expr rescue fallback` and `expr rescue { clauses }` — postfix error handling; binds tighter than `??`, looser than `or`; left-associative (chains re-raise into the next `rescue`). A bare `{` after `rescue` always starts a clause block. Semantics in control-flow.md.
 
 ### Compound assignment
-- `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field or `let` local.
+- `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field or `let` local (a top-level binding only from top-level script code, not from inside a function or method).
 - `=` is plain reassignment, not an operator on the precedence chain.
 
 ### Unary

@@ -217,7 +217,7 @@ func evalSource(source, token string) map[string]any {
 
 	// Type-check.
 	fresh := hm.NewSimpleFresher()
-	if _, err := dang.InferFormsWithPhases(baseCtx, forms, typeScope, fresh); err != nil {
+	if _, err := dang.InferTopLevel(baseCtx, forms, typeScope, fresh); err != nil {
 		return result("", "", err.Error(), "type")
 	}
 
@@ -286,7 +286,7 @@ func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, val
 	}
 	forms := file.Forms
 
-	if _, err := dang.InferFormsWithPhases(ctx, forms, typeScope, fresh); err != nil {
+	if _, err := dang.InferTopLevel(ctx, forms, typeScope, fresh); err != nil {
 		return "", false, err, "type"
 	}
 

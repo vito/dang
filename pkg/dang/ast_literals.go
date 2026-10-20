@@ -300,6 +300,9 @@ func (s *SelfKeyword) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	if t == nil {
 		return nil, NewInferError(fmt.Errorf("'self' is not available in this context"), s)
 	}
+	if err := checkDefaultSelf(ctx, env); err != nil {
+		return nil, NewInferError(err, s)
+	}
 	s.SetInferredType(t)
 	return t, nil
 }

@@ -1,0 +1,7 @@
+type Counter {
+  self {
+    count: Int! = 0
+  }
+}
+
+Counter.count = 5

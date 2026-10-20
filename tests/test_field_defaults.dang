@@ -1,0 +1,278 @@
+# Field defaults run once, while the object is being built, so they are scoped
+# like constructor parameter defaults: they see the other fields' values and the
+# enclosing scope, but not `self` or the type's methods and computed fields (see
+# tests/errors/field_default_*.dang). Everything here stays allowed.
+
+type Box {
+  saved(x: Int!): Int! { x }
+
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
+  }
+}
+
+double(x: Int!): Int! { x * 2 }
+
+type Gauge {
+  level: Int! = 1
+  bonus: Int!
+
+  read(x: Int!): Int! { level + x }
+
+  # Defaults may refer to fields declared after them.
+  let doubled: Int! = double(scale)
+  let scale = level + 1
+
+  # Blocks a default runs right away see the other fields' values.
+  let total: Int! = [1, 2].reduce(0) { acc, x => acc + x + level }
+
+  # A local binding shadows a method, as anywhere else.
+  let shadowed: Int! = {
+    let read = 5
+    read + level
+  }
+
+  # Stored function values that aren't Gauge's own methods are fine.
+  let f = &double
+  let g = f
+  let fs = [f]
+
+  # A stored block that doesn't use the object is fine.
+  let plain = Box.store { x => x + 1 }
+
+  # Selections on another Gauge read that Gauge, not this one.
+  let other = Box.store { x => Gauge(bonus: x).{{level, withDefault}}.withDefault }
+
+  # Closures created in a method, computed field, or new() use the finished
+  # object.
+  reader: Box! { Box.store { x => read(x) } }
+
+  ref: Box! {
+    let b = Box
+    b.saved = &read
+    b
+  }
+
+  fromNew: Box! = Box
+
+  # Method argument defaults are evaluated when the method is called, against
+  # its receiver.
+  withDefault(k: Int! = level): Int! { k + bonus }
+
+  new(bonus: Int!) {
+    self.bonus = bonus
+    self.fromNew = Box.store { x => level + bonus + x }
+    self
+  }
+}
+
+let gauge = Gauge(bonus: 100)
+assert { gauge.doubled == 4 and gauge.scale == 2 }
+assert { gauge.total == 5 }
+assert { gauge.shadowed == 6 }
+assert { gauge.g(2) == 4 and gauge.fs[0](3) == 6 }
+assert { gauge.plain.saved(1) == 2 }
+assert { gauge.other.saved(5) == 6 }
+assert { gauge.fromNew.saved(0) == 101 }
+
+gauge.level = 10
+assert { gauge.reader.saved(1) == 11 }
+assert { gauge.ref.saved(1) == 11 }
+assert { gauge.withDefault == 110 }
+
+# A field holding another instance's method isn't bound to this one, so it
+# can be stored like any other function value.
+type Handler {
+  next: Handler
+
+  handle(x: Int!): Int! { x }
+
+  let fallback = next.handle
+  let chain = [fallback]
+}
+
+# The same goes for a type declared in another type's body: selecting from an
+# instance of the outer type reads that instance, whether through `.` or
+# `{{ }}`.
+type Outer {
+  level: Int! = 1
+
+  total: Int! { level * 2 }
+
+  type Inner {
+    o: Outer!
+
+    let viaDot: Int! = o.total
+    let viaSelection: Int! = o.{{total}}.total
+  }
+
+  pair: [Int!]! {
+    let inner = Inner(self)
+    [inner.viaDot, inner.viaSelection]
+  }
+}
+
+assert { Outer(level: 5).pair == [10, 10] }
+
+# A closure created in a default reads the other fields' values as the object
+# is built with them, just like `combined = prefix + suffix` does, so it can be
+# kept like any closure that only reads its scope.
+type Meter {
+  level: Int! = 1
+
+  let held = Box.store { x => level + x }
+  let collected = [Box.store { x => level * x }]
+  let inner = Box.store { x => [x].map { y => level + y }.reduce(0) { a, b => a + b } }
+
+  let viaNested: Box! = {
+    add(x: Int!, k: Int! = level): Int! { x + k }
+    twice(x: Int!): Int! { add(add(x)) }
+    let b = Box
+    b.saved = &twice
+    b
+  }
+}
+
+let meter = Meter(5)
+assert { meter.held.saved(1) == 6 }
+assert { meter.collected[0].saved(2) == 10 }
+assert { meter.inner.saved(1) == 6 }
+assert { meter.viaNested.saved(1) == 11 }
+
+# Later writes make new copies; what the default captured stays put.
+meter.level = 100
+assert { meter.held.saved(1) == 6 }
+
+# Defaults run before new(), so they capture the value a field starts with,
+# not the one new() assigns.
+type Late {
+  level: Int! = 1
+
+  let held = Box.store { x => level + x }
+
+  new {
+    self.level = 50
+    self
+  }
+}
+
+assert { Late.level == 50 and Late.held.saved(1) == 2 }
+
+# new()'s own parameter defaults are scoped like field defaults too: they run
+# after the field defaults, against the fields as those leave them, and see
+# the earlier parameters, which shadow fields. A top-level binding of the same
+# name doesn't shadow the field.
+let level = 7
+
+type Dial {
+  level: Int! = 1
+  bonus: Int! = level + 1
+  out: [Int!]!
+
+  new(k: Int! = level, j: Int! = k + bonus, level: Int! = 0, m: Int! = level) {
+    self.out = [k, j, m]
+    self
+  }
+}
+
+assert { Dial.out == [1, 3, 0] }
+assert { Dial(5).out == [5, 7, 0] }
+assert { Dial(level: 4).out == [1, 3, 4] }
+
+# As for any function, an explicit null for a defaulted parameter falls back
+# to the default, non-null parameters included.
+assert { Dial(null).out == [1, 3, 0] }
+assert { Dial(5, null, null).out == [5, 7, 0] }
+
+type Named {
+  name: String!
+
+  new(n: String! = "anon") {
+    self.name = n
+    self
+  }
+}
+
+assert { Named(null).name == "anon" }
+
+# The same with a block parameter.
+type Knob {
+  n: Int! = 3
+  r: Int!
+
+  new(m: Int! = n, &f(x: Int!): Int!) {
+    self.r = f(m)
+    self
+  }
+}
+
+assert { Knob { x => x * 2 }.r == 6 }
+
+# A closure created in a parameter default sees only the parameters before
+# it: a later parameter named like a field doesn't replace the field it read.
+type Later {
+  j: Int! = 1
+  out: Int!
+
+  new(k: Box! = Box.store { x => j + x }, j: Int! = 100) {
+    self.out = k.saved(0) + j
+    self
+  }
+}
+
+assert { Later.out == 101 }
+
+# Locals declared in a default's block can be written; the type's fields
+# can't (tests/errors/field_default_reassign.dang).
+type Tally {
+  items: [Int!]! = [1, 2, 3]
+
+  let total: Int! = {
+    let sum = 0
+    items.each { x => sum += x }
+    sum
+  }
+}
+
+assert { Tally.total == 6 }
+
+# A block default (`= { ... }`) is evaluated once, while the object is built;
+# a computed field (`{ ... }`, no `=`) on every read. `dang fmt` keeps them
+# apart, so this file staying formatted pins it too.
+type Reading {
+  n: Int! = 1
+
+  let once: Int! = {
+    let base = n
+    base + 1
+  }
+
+  let each: Int! {
+    let base = n
+    base + 1
+  }
+
+  pair: [Int!]! { [once, each] }
+}
+
+let reading = Reading
+reading.n = 10
+assert { reading.pair == [2, 11] }
+
+# Statics aren't field defaults: they are evaluated once and immutable, so
+# they may use the type's other statics, `self` included. Their `self { }`
+# block can't reassign them, but a static method's writes stay in its copy.
+type Scale {
+  self {
+    base: Int! = 2
+    times(x: Int!): Int! { x * base }
+    let f = &times
+    let viaSelf: Int! = self.times(3)
+    rebased(x: Int!): Int! { base = x; base * 3 }
+  }
+}
+
+assert { Scale.f(3) == 6 }
+assert { Scale.viaSelf == 6 }
+assert { Scale.rebased(10) == 30 and Scale.base == 2 }

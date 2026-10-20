@@ -1,13 +1,14 @@
 ---
 name: dang-internals
-description: Non-obvious invariants in Dang's compiler — multi-pass hoisting, the Fork/Clone/dynamic-scope-cell model, and `Module.Eq` subtyping. Use when editing `pkg/dang/` infer/eval/scope code, adding a new type-like declaration, or debugging mutation/scoping issues.
+description: Non-obvious invariants in Dang's compiler — multi-pass hoisting, the Fork/Clone/dynamic-scope-cell model, the effect/escape checks (top-level immutability, closure purity, `{{ }}` purity), and `Module.Eq` subtyping. Use when editing `pkg/dang/` infer/eval/scope code, adding a new type-like declaration, adding a builtin that takes a block, or debugging mutation/scoping/purity issues.
 ---
 
 # Dang Internals — Hoisting and Scoping
 
-The two non-obvious invariants in `pkg/dang/`: how the compiler resolves
-forward references (multi-pass hoisting) and how copy-on-write mutation
-interacts with closures (shared vs fresh dynamic-scope cells).
+The non-obvious invariants in `pkg/dang/`: how the compiler resolves forward
+references (multi-pass hoisting), how copy-on-write mutation interacts with
+closures (shared vs fresh dynamic-scope cells), and how the compile-time
+effect checks keep shared writes out of escaping closures and `{{ }}` fields.
 
 ## Multi-pass hoisting
 
@@ -90,8 +91,23 @@ type Builder {
 
 `Clone` and `Fork` both share the dynamic-scope cell (a `*DynamicScope`
 pointer). Only `NewDynamicScope` creates a fresh one. So everything inside
-a single method call — closures, nested `.each`, user blocks — sees the
-same `self`, while distinct method calls are isolated.
+a single method call — closures, nested `.each`, user blocks, and nested
+functions declared in the body (`FunctionValue.Nested`, which run on a derive
+of their closure rather than through `BoundMethod.Call`) — sees the same
+`self`, while distinct method calls are isolated.
+
+### Whose `self` a function runs against
+
+Always the `self` where it was written, never the caller's:
+
+- Blocks and nested functions close over their scope, `self` cell included.
+- A method referenced by bare name (`helper(1)`, `&helper`) or through
+  `self` (`&self.helper`) is bound to the referencing scope
+  (`FunctionValue.SelfScope`, see `bindLexicalSelf`); calls dispatch on that
+  scope's `self`, read at call time. So a ref stored on another object and
+  invoked from its methods still runs against the object it came from.
+- `&obj.helper` with any other receiver is a `BoundMethod` on that value;
+  values are immutable, so binding it early is equivalent.
 
 ### Copy-on-write field assignment
 
@@ -103,11 +119,18 @@ without aliasing back to the caller.
 
 ### Bare vs `self.` field assignment in methods
 
-Both work and produce the same result:
+Both fork `self` and produce the same result:
 
-- Bare `field = value` reassigns through the Fork (the method body's env
-  includes the receiver's fields).
 - `self.field = value` takes the copy-on-write path explicitly.
+- Bare `field = value` resolves through the method's outermost frame
+  (`newSelfFrame`, `selfParent`), whose effective parent is the *current*
+  value of the `self` cell rather than a fixed receiver frame
+  (`Object.nextFrame`). So bare reads see `self.x = v` writes, and a bare
+  write that reaches a field of `self` forks it (`forkWithField`) and puts
+  the fork in the cell. Receiver frames are never written in place — an
+  alias of `self` (`let r = self`, a stored or returned `self`) keeps the
+  generation it captured.
+- A local/arg shadowing the field is found first and rebound, no fork.
 
 Use `self.` when a parameter shadows a field name (`new(x: Int!) { self.x = x }`).
 
@@ -122,9 +145,23 @@ still-running tasks. Every task is awaited, then one error is chosen
 deterministically: the lowest-index *genuine* error, preferring it over the
 `context.Canceled` errors our own cancellation may have induced in siblings
 (so the real cause is never masked by cancellation noise from a lower index).
-`n <= 1` runs inline. Callers fork the scope per task (`scope.Derive(true)`) so
-a task's incidental writes stay private while the receiver and lexical scope are
-only read.
+`n <= 1` runs inline. Callers fork the scope per task (`forkTaskScope`: a sealed
+`Derive(true)` plus a **task-private `self` cell** seeded with the enclosing
+`self`) so a task's incidental writes — bare or `self.x = v` — stay private
+while the receiver and lexical scope are only read. Without the private cell, a
+`self.x = v` in a task would write the enclosing method's shared cell (a race,
+and a leak past the `{{ }}`). Name resolution from the task frame threads that
+private cell (see `nextFrame`), and a sealed frame still forks `self` for a
+bare *field* write (`resolvesToSelfField`) while keeping local/arg writes
+local, so bare and `self.` forms see each other inside a task exactly as in a
+method body. Record-literal fields use `recordFieldScope` (block.go): the record
+frame first for siblings, then the private fork, with writes and `self` routed
+to the fork. A closure created *outside* the `{{ }}` still writes its own scope
+when a task calls it; those writes are unordered across tasks, so the
+`DynamicScope` cell is mutex-guarded (leaf lock) and field writes install their
+fork with a compare-and-swap. Checked programs never do this: the compiler
+rejects shared writes from `{{ }}` fields (see "Effects and escapes" below), so
+the locks are a memory-safety backstop, not a semantics.
 
 The selection paths (`ObjectSelection.evalFieldsBySelection`, the `ListValue`
 case of `evalSelectionOnValue`, and the inline-fragment-over-list case) are thin
@@ -173,6 +210,97 @@ Two things to preserve when touching this:
   cycles the static graph can't see — module-level cycles routed through an
   auto-called function (`module_lazy_cycle`) — and is what stops a
   self-referential force from deadlocking on its own `pendingInit.mu`.
+
+## Effects and escapes (compile-time purity)
+
+Three checks, layered so that none needs to track function values through
+storage. Files: `purity.go` (layer 1), `effects.go` (layer 2 and the shared
+machinery), `fields_purity.go` (layer 3). `hm.FunctionType` carries an opaque
+`hm.Effect` that hm only copies through `Apply`/`Normalize` (`Eq` ignores it);
+Dang's `*Effect` is either a **closure effect** (a function body: what it
+writes outside itself, which outer parameters it calls, any non-local
+`return`/`break`) or a **parameter effect variable** (a function-typed param,
+with "must be pure" reasons once discovered).
+
+1. **Top-level bindings are immutable from functions.** `checkTopLevelWrite`
+   rejects an assignment whose root resolves (`resolveBinding`) to the
+   top-level frame (or a frame it extends) when inferring inside a function,
+   method, constructor or type body (`withFunctionBody`). Top-level script
+   code — top-level forms and blocks inside them, REPL prompts, doc
+   snippets — may still reassign. Statics (`self { }` members) can't be
+   written from outside at all (`checkStaticWrite`); a static method's
+   `self` writes fork per call like an instance method's. Consequence: **named
+   functions and methods never write shared state** — their only writes are
+   locals and their own `self` fork (methods/constructors own their receiver
+   frame, `methodSelfFrame`).
+2. **Impure closures can't escape.** A block, nested function, or `&ref` to
+   one whose effect writes a binding it doesn't declare may appear only as a
+   callee or as an argument for a function-typed parameter. Escape detection
+   is source-based: `FunCall` marks the callee and eligible arguments with
+   `withAllowedFn`; any other `Symbol`/`FunctionRef` producing a function
+   value calls `checkEscape`. A parameter that escapes (or a closure calling
+   one) gets a "must be pure" reason. Builtins are assumed to call their
+   function args sequentially and never store them (`paramAcceptsFn`;
+   `TestBuiltinsNeverStoreFunctions` lists them — extend it when adding one).
+   A function's argument defaults count as its own effect (its effect frame
+   is entered before they're inferred): they run when it is called.
+   **Field defaults** need no escape check of their own, because they are
+   scoped like constructor parameter defaults (`field_defaults.go`): while a
+   type body's non-method forms are inferred (`withTypeBody`, carrying
+   `unavailableInDefaults`; methods leave it via `withoutTypeBody` in
+   `inferFunctionType`, and `new()`'s body never enters it), `self`
+   (`checkDefaultSelf`) and a bare name resolving to one of the type's methods
+   or computed fields, or, with an explicit `new()`, to a field without a
+   default (`checkDefaultName`), are compile errors, anywhere inside the
+   default, and so is assigning one of the type's fields (`checkDefaultWrite`,
+   from `Reassignment.Infer`). `new()`'s parameter defaults get the same
+   checks (`withNewParams` in `inferNewConstructor`), and at runtime
+   `ConstructorFunction.Call` evaluates them over the instance after its field
+   defaults, with earlier params on top. A `self { }` block is marked with
+   `withStaticsBody`: only the write check applies there. Code of a type
+   declared in such a body (its methods included)
+   stays under the outer body's scope, since it is created while the outer
+   object is built. A `{{ }}` selection's field names belong to the receiver,
+   so `inferFieldType` resolves them outside every type body
+   (`outsideTypeBodies`), and infers its arguments in the enclosing scope,
+   where they are evaluated. What a default reads
+   is then always a value, so closures created there are ordinary closures.
+3. **`{{ }}` fields.** Each field is an `effFrame{field: true}`. Inside a field:
+   a write to a binding not declared within it is an error
+   (`checkFieldWrite`/`declaredWithin`; blocks written directly in a field
+   register their scope with it); calling a closure created outside the field
+   that writes anything is an error; calling a parameter makes it "must be
+   pure" (concurrently).
+
+Effects are computed **in source order** on a stack of `effFrame`s carried in
+ctx (`withEffFrame` for bodies, `withFieldFrame` for fields): writes
+(`absorbWrite`) and calls (`absorbCall`) land in the innermost body frame,
+dropping targets it owns (`effFrame.inside` walks `*Type.Parent`). Nested
+functions aren't hoisted, so a closure's effect is complete before anything
+can reference it — no fixed point. What can't be decided in place is whether
+an argument meets a parameter's "must be pure" requirement, because hoisting
+infers callers before callees: `effectArg` records bindings on the
+`effectSolver` and `solve()` propagates requirements through forwarded
+parameters (a monotone boolean propagation) and reports violations, including
+blocks with non-local `return`/`break` that may escape (this replaced the old
+runtime "expired frame" checks).
+
+**Every inference entry point must solve.** `Infer`, `InferDirectoryFiles(Focused)`
+and `InferFormsWithPhases` install a solver when ctx has none and solve it at
+the end; nested calls reuse the outer one. `InferTopLevel` is
+`InferFormsWithPhases` plus marking the top-level frame — use it for REPL-like
+sessions (REPL, playground, literate docs). Errors found during inference
+(escapes, field violations) go through `reportEffectError` so they're
+reported with the deferred ones without failing the expression's type.
+
+Gotchas:
+- Flow-sensitive narrowing re-adds a name to a clone frame; `Type.narrowed`
+  marks those so writes resolve to the real declaration.
+- `Coerce` wraps field values after inference; look through it
+  (`FieldDecl.funDecl`) when you need the `FunDecl`.
+- Effects attach to fresh function types only (`attachEffects` on
+  `FunTypeNode` results and freshly built signatures); never `SetEffect` a
+  shared type — use `WithEffect` for a copy.
 
 ## Subtyping via `Module.Eq`
 

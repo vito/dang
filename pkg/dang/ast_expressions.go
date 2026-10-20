@@ -101,13 +101,15 @@ func (c *FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		fun, err := c.Fun.Infer(ctx, env, fresh)
+		// The callee is a call position: a function value here does not escape.
+		fun, err := c.Fun.Infer(withAllowedFn(ctx, unwrapGrouped(c.Fun)), env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
+			absorbCall(ctx, effectOf(ft), c, calleeNameOf(c.Fun))
 			t, err := c.inferFunctionType(ctx, env, fresh, ft)
 			if err != nil {
 				return nil, err
@@ -160,9 +162,13 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		coerced, subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
+		coerced, argType, subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, ft, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
+		}
+		if scheme, has := argRecord.SchemeOf(k); has {
+			paramType, _ := scheme.Type()
+			effectArg(ctx, calleeNameOf(c.Fun), paramType, argType, arg.Value)
 		}
 		c.Args[i].Value = coerced
 		if subs != nil {
@@ -196,6 +202,9 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			return nil, fmt.Errorf("block argument: %w", err)
 		}
 		blockArgSubs = subs
+		if ft.Block() != nil && c.BlockArg.Inferred != nil {
+			effectArg(ctx, calleeNameOf(c.Fun), ft.Block(), c.BlockArg.Inferred, c.BlockArg)
+		}
 	}
 
 	// Check that all required arguments are provided
@@ -281,28 +290,44 @@ func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, ind
 // parameter type and returns the (possibly Coerce-wrapped) argument node along
 // with any substitutions produced by unification. The substitutions are used to
 // resolve type variables from argument types before inferring block args.
-func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) (Node, hm.Subs, error) {
+func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, callee *hm.FunctionType, value Node, recordType *RecordType, key string) (Node, hm.Type, hm.Subs, error) {
 	scheme, has := recordType.SchemeOf(key)
 	if !has {
-		return value, nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
+		return value, nil, nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
 	}
 
 	dt, isMono := scheme.Type()
 	if !isMono {
-		return value, nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
+		return value, nil, nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
 	}
 
-	// Infer the argument type
-	it, err := value.Infer(ctx, env, fresh)
+	// Infer the argument type. A function value passed for a parameter that
+	// is checked (or never stored) is not escaping.
+	argCtx := ctx
+	if paramAcceptsFn(callee, dt) {
+		argCtx = withAllowedFn(ctx, unwrapGrouped(value))
+	}
+	it, err := value.Infer(argCtx, env, fresh)
 	if err != nil {
-		return value, nil, fmt.Errorf("FunCall.Infer: %w", err)
+		return value, nil, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
 	subs, err := assignableForValue(it, dt, value)
 	if err != nil {
-		return value, nil, NewInferError(err, value)
+		return value, it, nil, NewInferError(err, value)
 	}
-	return wrapCoerce(value, dt, key), subs, nil
+	return wrapCoerce(value, dt, key), it, subs, nil
+}
+
+// unwrapGrouped strips parentheses around an expression.
+func unwrapGrouped(n Node) Node {
+	for {
+		g, ok := n.(*Grouped)
+		if !ok {
+			return n
+		}
+		n = g.Expr
+	}
 }
 
 var _ hm.Apply = (*FunCall)(nil)
@@ -341,7 +366,6 @@ func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		// by the block so a break can exit this whole call expression.
 		if c.BlockArg != nil {
 			blockCallFrame = NewControlFrame(BlockCallFrame)
-			defer blockCallFrame.Deactivate()
 
 			frame := deriveFrame(ctx)
 			frame.blockCallFrame = blockCallFrame
@@ -608,11 +632,25 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if !found {
 			return nil, fmt.Errorf("%q not found", s.Name)
 		}
+		if err := checkDefaultName(ctx, env, s.Name); err != nil {
+			return nil, err
+		}
 		t, _ := scheme.Type()
 		if s.AutoCall {
 			var err error
-			t, _, err = autoCallFnType(t)
+			var called bool
+			before := t
+			t, called, err = autoCallFnType(t)
 			if err != nil {
+				return nil, err
+			}
+			if called && fnTypeOf(before) != nil {
+				absorbCall(ctx, effectOf(before), s, s.Name)
+			}
+		}
+		// A function value outside a call position escapes.
+		if fnTypeOf(t) != nil && !fnAllowedAt(ctx, s) {
+			if err := checkEscape(ctx, s, s.Name, t); err != nil {
 				return nil, err
 			}
 		}
@@ -652,6 +690,13 @@ func (s *Symbol) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		if val == nil {
 			return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
+		}
+
+		// A bare reference to a method or nested function binds it to this
+		// scope's `self`, so it keeps that receiver even if it escapes (e.g.
+		// `&helper` stored on another object and called from its methods).
+		if fn, ok := val.(FunctionValue); ok {
+			val = fn.bindLexicalSelf(scope)
 		}
 
 		// Auto-call zero-arity functions when accessed as symbols
@@ -705,17 +750,33 @@ func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool 
 	return home != nil && cur != nil && home == cur
 }
 
+// checkMemberAccessible enforces module-level visibility for selecting name
+// from a receiver of type rec (`x.name`, `x.{{name}}`): a `let` member is
+// private to the module that declares its type — reachable anywhere within
+// that module (any file, sibling type, via self or a local value) but
+// rejected from another module, so user code cannot reach a prelude type's
+// `let` helpers. Enforced only when both the member's home module and the
+// current module are known and differ; nil on either side (builtins, schema
+// types, an un-instrumented entry point) falls open. Bare names aren't
+// selections and are unaffected.
+func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) error {
+	recType, ok := rec.(*Type)
+	if !ok || recType.Visibility(name) != PrivateVisibility {
+		return nil
+	}
+	if home := recType.HomeModule(); home != nil {
+		if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
+			return fmt.Errorf("%q is a private member of %s and cannot be accessed from another module", name, recType.Named)
+		}
+	}
+	return nil
+}
+
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		// Handle nil receiver (symbol calls) - look up type in environment
+		// Every Select has a receiver: bare names are Symbols.
 		if d.Receiver == nil {
-			scheme, found := env.SchemeOf(d.Field.Name)
-			if !found {
-				return nil, fmt.Errorf("%q not found in env", d.Field.Name)
-			}
-			t, _ := scheme.Type()
-			d.SetInferredType(t)
-			return t, nil
+			return nil, fmt.Errorf("Select.Infer: internal error: %q has no receiver", d.Field.Name)
 		}
 
 		// Static member resolution. When the receiver names a type directly
@@ -889,20 +950,8 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			d.SetInferredType(tv)
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
-		// Module-level visibility: a `let` member is private to the module that
-		// declares its type — reachable anywhere within that module (any file,
-		// sibling type, via self or a local value) but rejected from another
-		// module, so user code cannot reach a prelude type's `let` helpers.
-		// Enforced only when both the member's home module and the current
-		// module are known and differ; nil on either side (builtins, schema
-		// types, an un-instrumented entry point) falls open. Bare-name access
-		// took the nil-receiver branch far above and is unaffected.
-		if recType, ok := rec.(*Type); ok && recType.Visibility(d.Field.Name) == PrivateVisibility {
-			if home := recType.HomeModule(); home != nil {
-				if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
-					return nil, fmt.Errorf("%q is a private member of %s and cannot be accessed from another module", d.Field.Name, recType.Named)
-				}
-			}
+		if err := checkMemberAccessible(ctx, rec, d.Field.Name); err != nil {
+			return nil, err
 		}
 		t, mono := scheme.Type()
 		if !mono {
@@ -910,9 +959,14 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 		if d.AutoCall {
 			var err error
-			t, _, err = autoCallFnType(t)
+			var called bool
+			before := t
+			t, called, err = autoCallFnType(t)
 			if err != nil {
 				return nil, err
+			}
+			if called && fnTypeOf(before) != nil {
+				absorbCall(ctx, effectOf(before), d, d.Field.Name)
 			}
 		}
 
@@ -938,16 +992,7 @@ func (d *Select) DeclaredSymbols() []string {
 }
 
 func (d *Select) ReferencedSymbols() []string {
-	var symbols []string
-
-	// When Receiver is nil, this is a top-level function call like createPerson()
-	if d.Receiver == nil {
-		symbols = append(symbols, d.Field.Name)
-	} else {
-		symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
-	}
-
-	return symbols
+	return d.Receiver.ReferencedSymbols()
 }
 
 func (d *Select) Body() hm.Expression { return d }
@@ -984,17 +1029,10 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return val, nil
 		}
 
-		var receiverVal Value
-		var err error
-
 		// Handle normal receiver evaluation
-		if d.Receiver != nil {
-			receiverVal, err = EvalNode(ctx, scope, d.Receiver)
-			if err != nil {
-				return nil, fmt.Errorf("evaluating receiver: %w", err)
-			}
-		} else {
-			receiverVal = scope
+		receiverVal, err := EvalNode(ctx, scope, d.Receiver)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating receiver: %w", err)
 		}
 
 		val, err := (func() (Value, error) {
@@ -1009,6 +1047,15 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				} else if found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
 					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
+						// Through `self` itself, bind like a bare reference
+						// instead (see bindLexicalSelf): `self` can change
+						// generations within a method, and `&self.helper`
+						// must read it when called, exactly like `&helper`.
+						// Any other receiver is an immutable value, so
+						// binding it now is equivalent.
+						if _, isSelf := d.Receiver.(*SelfKeyword); isSelf && fnVal.IsDynamic && !fnVal.IsBlockArg {
+							return fnVal.bindLexicalSelf(scope), nil
+						}
 						return BoundMethod{Method: fnVal, Receiver: rec}, nil
 					}
 					return val, nil
@@ -1613,9 +1660,15 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			// Validate each field in the fragment exists on the concrete type
 			// and add it to the narrowed module (including nested selections)
 			for _, field := range frag.Fields {
-				fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
+				fieldType, err := o.inferFieldType(withFieldFrame(ctx, nil), field, memberMod, env, fresh)
 				if err != nil {
-					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
+					// A field missing from the concrete type gets a message
+					// naming it; any other error (in its arguments, say)
+					// stands as reported.
+					if _, found := memberMod.SchemeOf(field.Name); !found {
+						return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
+					}
+					return nil, err
 				}
 				narrowedMember.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
 			}
@@ -1744,7 +1797,8 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 
 	mod := NewType("", ObjectKind)
 	for _, field := range o.Fields {
-		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
+		// Selected fields (and list elements) evaluate concurrently.
+		fieldType, err := o.inferFieldType(withFieldFrame(ctx, nil), field, rec, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1754,43 +1808,63 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 	return mod, nil
 }
 
+// typedNode stands in, during inference, for an expression whose type is
+// already known, such as the receiver of a `{{ }}` selection while one of its
+// fields is inferred. It is never evaluated.
+type typedNode struct {
+	InferredTypeHolder
+	Type hm.Type
+	Loc  *SourceLocation
+}
+
+var _ Node = (*typedNode)(nil)
+
+func (n *typedNode) Infer(context.Context, hm.Env, hm.Fresher) (hm.Type, error) {
+	n.SetInferredType(n.Type)
+	return n.Type, nil
+}
+func (n *typedNode) Body() hm.Expression                { return n }
+func (n *typedNode) GetSourceLocation() *SourceLocation { return n.Loc }
+func (n *typedNode) DeclaredSymbols() []string          { return nil }
+func (n *typedNode) ReferencedSymbols() []string        { return nil }
+func (n *typedNode) Walk(fn func(Node) bool)            { fn(n) }
+
 func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelection, rec TypeScope, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var fieldType hm.Type
 	var err error
 
 	if len(field.Args) > 0 {
-		// Field has arguments - create a Select then FunCall to infer the type
-		// But use a synthetic receiver to get the field from the correct environment
-		selectNode := &Select{
-			Receiver: nil, // Will be handled by using rec environment directly
-			Field:    &Symbol{Name: field.Name, Loc: field.Loc},
-			AutoCall: false,
-			Loc:      field.Loc,
-		}
-
+		// Field has arguments: infer it as the call evaluation makes,
+		// `<receiver>.field(args)`. Only the field name is looked up on the
+		// receiver; the arguments are expressions of the enclosing scope.
 		funCall := &FunCall{
-			Fun:  selectNode,
+			Fun: &Select{
+				Receiver: &typedNode{Type: hm.NonNullType{Type: rec}, Loc: field.Loc},
+				Field:    &Symbol{Name: field.Name, Loc: field.Loc},
+				AutoCall: false,
+				Loc:      field.Loc,
+			},
 			Args: field.Args,
 			Loc:  field.Loc,
 		}
-
-		// Create a synthetic environment that combines rec and env
-		// Use rec for symbol lookup, env for argument evaluation
-		synthTypeScope := &OverlayTypeScope{
-			primary: rec,
-			lexical: env.(TypeScope),
-		}
-		fieldType, err = funCall.Infer(ctx, synthTypeScope, fresh)
+		fieldType, err = funCall.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		// No arguments - use symbol directly as before
+		// No arguments - use symbol directly as before. The name is the
+		// receiver's field, not one in scope, so no type body's field-default
+		// scope applies to it, even when the receiver is an instance of a
+		// type whose body is being inferred. It's a selection, so the same
+		// visibility rule as `x.name` applies.
+		if err := checkMemberAccessible(ctx, rec, field.Name); err != nil {
+			return nil, NewInferError(err, field)
+		}
 		fieldType, err = (&Symbol{
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      field.Loc,
-		}).Infer(ctx, rec, fresh)
+		}).Infer(outsideTypeBodies(ctx), rec, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -2284,7 +2358,7 @@ func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, s
 		// elements are selected concurrently (each forks the scope for isolation)
 		// and fail fast; results stay in source order.
 		results, err := evalParallel(ctx, len(v.Elements), func(ctx context.Context, i int) (Value, error) {
-			return o.evalSelectionOnValue(v.Elements[i], ctx, scope.Derive(true))
+			return o.evalSelectionOnValue(v.Elements[i], ctx, forkTaskScope(scope))
 		})
 		if err != nil {
 			return nil, err
@@ -2320,7 +2394,7 @@ func (o *ObjectSelection) evalFieldsBySelection(recv Value, ctx context.Context,
 	// and lexical scope are only read. Results are bound in source order, so the
 	// record layout is deterministic regardless of completion order.
 	vals, err := evalParallel(ctx, len(o.Fields), func(ctx context.Context, i int) (Value, error) {
-		return o.evalFieldSelection(recv, o.Fields[i], ctx, scope.Derive(true))
+		return o.evalFieldSelection(recv, o.Fields[i], ctx, forkTaskScope(scope))
 	})
 	if err != nil {
 		return nil, err
@@ -2879,6 +2953,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		b.Target = target
 		b.TargetKind = target.Kind
 		b.HasValue = b.Value != nil
+		markNonLocalBreak(ctx, b, target)
 
 		if b.Value != nil {
 			valueType, err := b.Value.Infer(ctx, env, fresh)
@@ -2899,7 +2974,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 func (b *Break) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentBreakFrame(ctx)
-	if target == nil || !target.Active {
+	if target == nil {
 		return nil, &BreakException{Target: target, Location: b.Loc}
 	}
 
@@ -2982,7 +3057,7 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 func (c *Continue) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentContinueFrame(ctx)
-	if target == nil || !target.Active {
+	if target == nil {
 		return nil, &ContinueException{Target: target, Location: c.Loc}
 	}
 
@@ -3016,12 +3091,6 @@ type BreakException struct {
 }
 
 func (e *BreakException) Error() string {
-	if e.Target != nil && !e.Target.Active {
-		switch e.Target.Kind {
-		case BlockCallFrame:
-			return "break from expired block call"
-		}
-	}
 	return "break outside of block-taking call"
 }
 
@@ -3034,12 +3103,6 @@ type ContinueException struct {
 }
 
 func (e *ContinueException) Error() string {
-	if e.Target != nil && !e.Target.Active {
-		switch e.Target.Kind {
-		case BlockInvocationFrame:
-			return "continue from expired block invocation"
-		}
-	}
 	return "continue outside of block-taking call"
 }
 
@@ -3264,6 +3327,9 @@ type BlockArg struct {
 	// ImplicitUnderscore is set during Infer when the block declares no explicit
 	// parameters but references `_`, giving it a single implicit parameter `_`.
 	ImplicitUnderscore bool
+
+	// effect is the block's closure effect (see effects.go).
+	effect *Effect
 }
 
 // blockArgUsesImplicitUnderscore reports whether the body references the
@@ -3398,6 +3464,16 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// still targets the enclosing function from the surrounding context.
 		continueTarget := NewInferControlTarget(BlockInvocationFrame)
 		bodyCtx := contextWithInferContinueTarget(ctx, continueTarget)
+		// A block is a closure: its writes and calls make up its effect,
+		// incurred wherever it is called. A break targeting the call that
+		// receives the block leaves the block.
+		if b.effect == nil {
+			b.effect = newClosureEffect("block")
+		}
+		var fr *effFrame
+		bodyCtx, fr = withEffFrame(bodyCtx, b.effect.reset(), newEnv, nil)
+		fr.block = true
+		fr.entryBreak = currentInferBreakTarget(ctx)
 		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
@@ -3463,6 +3539,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Build the function type
 		b.Inferred = hm.NewFnType(NewRecordType("", argSchemes...), bodyType)
+		b.Inferred.SetEffect(b.effect)
 		t := b.Inferred
 		b.SetInferredType(t)
 		return t, nil

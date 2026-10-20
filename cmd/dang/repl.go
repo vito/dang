@@ -1,10 +1,23 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
 )
+
+// inferReplForms type-checks one REPL entry against the session's type scope.
+// The prompt is top-level script code: entries may reassign the session's
+// bindings, while functions and methods defined at the prompt may not, and
+// the post-inference effect checks ({{ }} and block-parameter purity) run on
+// every entry.
+func inferReplForms(ctx context.Context, forms []dang.Node, typeScope dang.TypeScope, fresh hm.Fresher) (hm.Type, error) {
+	return dang.InferTopLevel(ctx, forms, typeScope, fresh)
+}
 
 // replEntry groups an input line with its associated output.
 type replEntry struct {

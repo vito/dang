@@ -1,0 +1,11 @@
+[1m[31mError:[0m "side" not found
+  [2m[34m--> errors/inline_fragment_arg_scope.dang:16:26[0m
+ [2m    |[0m
+ [2m 14 | let shapes: [Shape!]! = [Sq][0m
+ [2m 15 | shapes.{{[0m
+ [2m[34m[1m 16 | [0m  ... on Sq {{ scaled(k: side) }}
+[2m                                [31m^^^^[0m
+ [2m 17 | }}[0m
+ [2m 18 | [0m
+ [2m    |[0m
+

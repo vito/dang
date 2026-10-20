@@ -1,19 +1,17 @@
 # break from an escaped block fails once the receiving call has returned
-let savedBreak(x: Int!): Int! { x }
+type Box {
+  saved(x: Int!): Int! { x }
 
-storeBreak(&block(x: Int!): Int!): Int! {
-  savedBreak = block
-  0
-}
-
-makeBreaker: Int! {
-  storeBreak { x =>
-    break x
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
   }
-  0
 }
 
-let result = {
-  makeBreaker
-  savedBreak(1)
+makeBreaker: Box! {
+  Box.store { x =>
+    break Box
+  }
 }
+
+let result = makeBreaker.saved(1)

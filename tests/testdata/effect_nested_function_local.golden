@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m {{ }} fields run concurrently; `bump` writes `n`
+  [2m[34m--> errors/effect_nested_function_local.dang:8:18[0m
+ [2m    |[0m
+ [2m  6 |       n[0m
+ [2m  7 |     }[0m
+ [2m[34m[1m  8 | [0m    let r = {{a: bump, b: bump}}
+[2m                        [31m^^^^[0m
+ [2m  9 |     r.a + r.b[0m
+ [2m 10 |   }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m {{ }} fields run concurrently; `bump` writes `n`
+  [2m[34m--> errors/effect_nested_function_local.dang:8:27[0m
+ [2m    |[0m
+ [2m  6 |       n[0m
+ [2m  7 |     }[0m
+ [2m[34m[1m  8 | [0m    let r = {{a: bump, b: bump}}
+[2m                                 [31m^^^^[0m
+ [2m  9 |     r.a + r.b[0m
+ [2m 10 |   }[0m
+ [2m    |[0m
+

@@ -1,0 +1,43 @@
+type Box {
+  n: Int! = 0
+
+  saved(x: Int!): Int! { x }
+
+  keep(b: Box!): Int! { b.n }
+
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
+  }
+}
+
+type Gauge {
+  level: Int! = 1
+
+  read(x: Int!): Int! { level + x }
+
+  let me = self
+  let viaSelf: Int! = self.level
+  let viaRef = &self.read
+  let picked: Int! = self.{{level}}.level
+  let inBlock = Box.store { x => self.level + x }
+
+  let aliased: Int! = {
+    let it = self
+    1
+  }
+
+  let inNested: Int! = {
+    add(x: Int!): Int! { self.level + x }
+    1
+  }
+
+  let inArgDefault: Int! = {
+    add(x: Int!, k: Int! = self.level): Int! { x + k }
+    1
+  }
+
+  # A selection's arguments are in the default's scope, not the receiver's.
+  let box = Box
+  let selectedWith: Int! = box.{{keep(b: self)}}.keep
+}

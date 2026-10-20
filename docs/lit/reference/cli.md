@@ -83,4 +83,5 @@ Input keys: Tab completion, Up/Down history, Alt+Enter (or Shift+Enter under a K
 ## Editor integration
 
 - LSP via `dang --lsp` (handler in `pkg/lsp`) — point your editor's LSP client at the `dang` binary with that flag
+- hover shows a symbol's type; on a closure it also lists the effects that limit where it can go — what it writes outside itself and which block parameters it calls, e.g. `// Effects: writes n; calls block` (see [#impure-closures])
 - editor configs under `editors/` (`nvim`, `vscode`, `zed`)

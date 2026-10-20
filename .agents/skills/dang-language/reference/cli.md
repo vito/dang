@@ -64,5 +64,5 @@ Input keys: Tab completion, Up/Down history, Alt+Enter (or Shift+Enter under a K
 - `1` — any error (runtime, assertion failure, type/parse error, or CLI usage error); no distinct code per failure kind
 
 ## Editor integration
-- Dang ships a language server: run `dang --lsp` and point your editor's LSP client at the `dang` binary with that flag (autocomplete, type-on-hover, diagnostics).
+- Dang ships a language server: run `dang --lsp` and point your editor's LSP client at the `dang` binary with that flag (autocomplete, type-on-hover, diagnostics). Hover on a closure also shows its effects, e.g. `// Effects: writes n; calls block` — what it writes outside itself and which enclosing block params it calls (these decide where it may be stored or called; see objects.md "Compile-time rules").
 - Ready-made editor configs ship for Neovim, VS Code, and Zed (see `editors/` in the Dang repo).

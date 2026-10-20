@@ -198,6 +198,23 @@ func (FormatSuite) TestVisibilityFormatting(ctx context.Context, t *testctx.T) {
 			input:    "type T {\n  let secret: String! = \"x\"\n}",
 			expected: "type T {\n  let secret: String! = \"x\"\n}\n",
 		},
+		{
+			// `= { ... }` is a default evaluated once; dropping the `=` would
+			// turn it into a computed field, evaluated on every read.
+			name:     "typed block default keeps its =",
+			input:    "type T {\n  n: Int! = 1\n  let a: Int! = { n + 1 }\n}",
+			expected: "type T {\n  n: Int! = 1\n\n  let a: Int! = { n + 1 }\n}\n",
+		},
+		{
+			name:     "typed multi-line block default keeps its =",
+			input:    "type T {\n  let a: Int! = {\n    let x = 1\n    x + 1\n  }\n}",
+			expected: "type T {\n  let a: Int! = {\n    let x = 1\n    x + 1\n  }\n}\n",
+		},
+		{
+			name:     "computed field stays computed",
+			input:    "type T {\n  let a: Int! { 2 }\n}",
+			expected: "type T {\n  let a: Int! { 2 }\n}\n",
+		},
 	}
 
 	for _, tt := range tests {

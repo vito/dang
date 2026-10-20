@@ -1,0 +1,296 @@
+# Copy-on-write through control flow: within one method call, field writes
+# made in `if`/`case` arms, `rescue` operands and arms, `loop`, `.each`/`.map`/
+# `.filter` blocks and user block-arg calls all accumulate into that call's
+# fork of `self`, and early exits (`return`, `break`) surface the generation
+# current at the exit.
+#
+# The rescue cases below pin what falls out of copy-on-write rather than a
+# designed transactional rule: `rescue` doesn't roll anything back, so writes
+# that already ran in the same method stay, while a raising callee never
+# returns its fork, so its writes are lost. Neither is a guarantee worth
+# relying on; these tests guard against accidental changes.
+
+type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+type Acc {
+  total: Int! = 0
+  log: [String!]! = []
+
+  twice(&block(x: Int!): Int!): Int! { block(1); block(2); total }
+
+  # if / case arms
+  ifBare(b: Boolean!): Acc! { if (b) { total += 1 } else { total += 10 }; self }
+
+  ifSelf(b: Boolean!): Acc! { if (b) { self.total += 1 } else { self.total += 10 }; self }
+
+  ifExpr: Int! { let r = if (true) { total += 1; total } else { 0 }; r + total }
+
+  caseVal(n: Int!): Acc! {
+    case (n) {
+      1 => { total += 1 }
+      2 => { self.total += 2 }
+      else => { total += 100 }
+    }
+    self
+  }
+
+  casePet(p: Pet!): Acc! {
+    case (p) {
+      c: Cat => { total += 1; log += [c.name] }
+      d: Dog => { self.total += 2; self.log += [d.name] }
+    }
+    self
+  }
+
+  # rescue: no rollback, so writes that ran before the raise remain
+  rescBare: Acc! { { total += 1; raise "boom" } rescue null; self }
+
+  rescSelf: Acc! { { self.total += 1; raise "boom" } rescue null; self }
+
+  rescArm: Acc! {
+    { raise "boom" } rescue {
+      e: Error => { total += 5; null }
+    }
+    self
+  }
+
+  rescArmSelf: Acc! {
+    { raise "boom" } rescue {
+      e: Error => { self.total += 5; null }
+    }
+    self
+  }
+
+  rescEach: Acc! {
+    {
+      [1, 2, 3].each { x =>
+        total += x
+        if (x == 2) { raise "stop" }
+      }
+    } rescue null
+    self
+  }
+
+  rescBlock: Acc! {
+    twice { x =>
+      total += x
+      raise "b"
+    } rescue 0
+    self
+  }
+
+  # ...while a raising callee never returns its fork, so its writes are lost
+  boomAfter: Acc! { total += 1; raise "x" }
+
+  rescCallee: Int! { boomAfter rescue null; total }
+
+  rescCalleeSelf: Int! { self.boomAfter rescue null; total }
+
+  # loop / break value / continue
+  loopW: Acc! {
+    let i = 0
+    loop {
+      i += 1
+      if (i > 3) { break }
+      if (i == 2) { continue }
+      total += i
+    }
+    self
+  }
+
+  loopBreakVal: Int! {
+    let r = loop {
+      total += 1
+      if (total >= 3) { break total * 10 }
+    }
+    (r ?? 0) + total
+  }
+
+  loopBreakSelf: Acc! {
+    loop {
+      total += 1
+      if (total == 3) { break self }
+    }
+  }
+
+  loopBreakSelfForm: Acc! {
+    loop {
+      self.total += 1
+      if (self.total == 3) { break self }
+    }
+  }
+
+  # list blocks
+  mapW: Acc! {
+    let ys = [1, 2, 3].map { x =>
+      total += x
+      x * 2
+    }
+    log = ys.map { y => toString(y) }
+    self
+  }
+
+  filterW: Acc! {
+    let ys = [1, 2, 3, 4].filter { x =>
+      total += 1
+      x % 2 == 0
+    }
+    self.log = ys.map { y => toString(y) }
+    self
+  }
+
+  contMap: Acc! {
+    let ys = [1, 2, 3].map { x =>
+      total += x
+      if (x == 2) { continue 0 }
+      x
+    }
+    log = ys.map { y => toString(y) }
+    self
+  }
+
+  localsW: Int! { let n = 0; [1, 2, 3].each { x => n += x }; n }
+
+  # early return returns the generation current at the return
+  retEach: Acc! {
+    [1, 2, 3, 4].each { x =>
+      total += x
+      if (x == 2) { return self }
+    }
+    total = 999
+    self
+  }
+
+  retEachSelf: Acc! {
+    [1, 2, 3, 4].each { x =>
+      self.total += x
+      if (x == 2) { return self }
+    }
+    total = 999
+    self
+  }
+
+  retTwice: Acc! {
+    twice { x =>
+      total += x * 10
+      return self
+    }
+    total = 999
+    self
+  }
+
+  retLoop: Acc! {
+    loop {
+      self.total += 1
+      if (total == 3) { return self }
+    }
+  }
+
+  retRescued: Acc! { { total += 1; return self } rescue Acc(total: -5); total = 999; self }
+
+  retCase(p: Pet!): Acc! {
+    [1, 2].each { x =>
+      case (p) {
+        c: Cat => { total += 1; if (x == 2) { return self } }
+        d: Dog => { self.total += 10; return self }
+      }
+    }
+    total = 999
+    self
+  }
+
+  # break out of a user block-arg call mid-mutation
+  brk: Acc! {
+    let r = twice { x =>
+      total += x
+      if (x == 1) { break 100 }
+      total
+    }
+    total += r
+    self
+  }
+
+  brkSelf: Acc! {
+    let r = twice { x =>
+      self.total += x
+      if (x == 1) { break 100 }
+      total
+    }
+    self.total += r
+    self
+  }
+
+  # recursion
+  countdown(n: Int!): Acc! { if (n == 0) { self } else { total += n; countdown(n - 1) } }
+
+  rec(n: Int!): Acc! { if (n == 0) { raise "bottom" }; total += n; rec(n - 1) rescue self }
+
+  walk(n: Int!): Acc! {
+    [1].each { x => if (n > 0) { total += n; return walk(n - 1) } }
+    self
+  }
+
+  # nested functions share the method's self, like blocks
+  nestedFn: Acc! { inc: Acc! { total += 1; self }; let a = inc; a }
+
+  nestedFnTwice: Int! { inc: Int! { total += 1; total }; inc; inc; total }
+}
+
+assert("if: bare, then") { Acc.ifBare(true).total == 1 }
+assert("if: bare, else") { Acc.ifBare(false).total == 10 }
+assert("if: self., then") { Acc.ifSelf(true).total == 1 }
+assert("if: self., else") { Acc.ifSelf(false).total == 10 }
+assert("if as an expression") { Acc.ifExpr == 2 }
+assert("case value arm, bare") { Acc.caseVal(1).total == 1 }
+assert("case value arm, self.") { Acc.caseVal(2).total == 2 }
+assert("case else arm") { Acc.caseVal(3).total == 100 }
+assert("case type arm, bare") { Acc.casePet(Cat("c")).log == ["c"] }
+assert("case type arm, self.") { Acc.casePet(Dog("d")).log == ["d"] }
+
+assert("no rollback: a bare write before the raise remains") { Acc.rescBare.total == 1 }
+assert("no rollback: a self. write before the raise remains") { Acc.rescSelf.total == 1 }
+assert("rescue arm write, bare") { Acc.rescArm.total == 5 }
+assert("rescue arm write, self.") { Acc.rescArmSelf.total == 5 }
+assert("rescue around .each keeps earlier iterations") { Acc.rescEach.total == 3 }
+assert("rescue around a block-arg call keeps the block's write") { Acc.rescBlock.total == 1 }
+assert("raising callee's fork is discarded") { Acc.rescCallee == 0 }
+assert("raising callee's fork is discarded, self.") { Acc.rescCalleeSelf == 0 }
+
+assert("loop with break/continue") { Acc.loopW.total == 4 }
+assert("loop break value") { Acc.loopBreakVal == 33 }
+assert("loop break self") { Acc.loopBreakSelf.total == 3 }
+assert("loop break self, self. form") { Acc.loopBreakSelfForm.total == 3 }
+
+assert(".map block writes") { Acc.mapW.total == 6 }
+assert(".map result") { Acc.mapW.log == ["2", "4", "6"] }
+assert(".filter block writes") { Acc.filterW.total == 4 }
+assert(".filter result") { Acc.filterW.log == ["2", "4"] }
+assert(".map continue value") { Acc.contMap.log == ["1", "0", "3"] }
+assert(".map continue keeps writes") { Acc.contMap.total == 6 }
+assert(".each writes a local") { Acc.localsW == 6 }
+
+assert("return from .each") { Acc.retEach.total == 3 }
+assert("return from .each, self.") { Acc.retEachSelf.total == 3 }
+assert("return from a user block") { Acc.retTwice.total == 10 }
+assert("return from loop") { Acc.retLoop.total == 3 }
+assert("return is not rescued") { Acc.retRescued.total == 1 }
+assert("return from a case arm in .each") { Acc.retCase(Cat("c")).total == 2 }
+assert("return from a case arm in .each, self.") { Acc.retCase(Dog("d")).total == 10 }
+
+assert("break out of a block-arg call") { Acc.brk.total == 101 }
+assert("break out of a block-arg call, self.") { Acc.brkSelf.total == 101 }
+
+assert("recursion accumulates through forks") { Acc.countdown(3).total == 6 }
+assert("recursion with rescue") { Acc.rec(3).total == 6 }
+assert("recursion via return from a block") { Acc.walk(3).total == 6 }
+
+assert("nested function writes self") { Acc.nestedFn.total == 1 }
+assert("nested function calls accumulate in the caller") { Acc.nestedFnTwice == 2 }

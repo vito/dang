@@ -175,6 +175,12 @@ tries
 Inside a block, prefer `let` for locals; bare (public) declarations are for a
 type's or module's exported surface, where "public" actually means something.
 
+A block that writes a binding it didn't declare, like the two above, can be
+called or passed as an argument but not stored or returned (see
+[#impure-closures]), and a block in a `{{ }}` field can't write outside the
+field (see [#concurrent-fields]). Inside functions and methods, top-level
+bindings are read-only (see [#top-level-bindings]).
+
 ## Control-flow handoff
 
 > Meta: the cute Ruby-esque part. `return` inside a `.map`/`.each` block unwinds the *enclosing function*, not just the block. The full `break`/`continue` spec lives in [#control-flow]; keep only the block-specific wrinkles here.
@@ -212,14 +218,18 @@ wrinkles:
 - an **ordinary nested function** declared inside a block does NOT inherit
   the block's break/continue target — `break`/`continue` there errors
   `... outside of block-taking call`
-- escaped blocks (stored via `&block`, then called after the receiving
-  call/function has already returned) error at runtime:
-  `break from expired block call` / `return from expired function`
+- a block passed to a function that stores, returns, or collects its block
+  parameter may outlive the call, so it can't use `return` or `break` to
+  leave itself. That's a compile error, reported as
+  `` ... so this block may outlive this call and cannot use `return` ``.
+  A `break` inside a `loop` within the block is fine.
 
 ## When to use a block vs. a function reference
 
 - block: inline code, common case
-- `&fn`: store a callable, rebind it, pass it around as data (see [#functions])
+- `&fn`: store a callable, rebind it, pass it around as data (see
+  [#functions]). Only a closure that writes nothing outside itself can be
+  stored (see [#impure-closures])
 
 ## Dot-block application (piping) {#dot-block}
 

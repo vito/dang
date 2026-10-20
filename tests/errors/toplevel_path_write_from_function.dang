@@ -1,0 +1,12 @@
+type Foo {
+  x: Int!
+}
+
+let shared = Foo(1)
+
+bumpShared: Int! {
+  shared.x = shared.x + 1
+  shared.x
+}
+
+print(bumpShared)

@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to `count`: top-level bindings are immutable once initialized; use a local `let`, a field, or return the new value
+  [2m[34m--> errors/toplevel_write_from_method.dang:7:5[0m
+ [2m    |[0m
+ [2m  5 | [0m
+ [2m  6 |   bump: Int! {[0m
+ [2m[34m[1m  7 | [0m    count += 1
+[2m           [31m^^^^^^^^^^[0m
+ [2m  8 |     count[0m
+ [2m  9 |   }[0m
+ [2m    |[0m
+

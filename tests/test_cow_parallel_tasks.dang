@@ -1,0 +1,33 @@
+# Copy-on-write across `{{ }}` tasks. Every `{{ }}` evaluates its fields
+# concurrently. Writes from inside a field to state declared outside it are
+# compile errors (see tests/errors/effect_*), so what remains observable is
+# that fields read the enclosing `self`, and that methods called from parallel
+# fields fork their receivers independently.
+
+type Acc {
+  total: Int! = 0
+  log: [String!]! = []
+
+  plus(n: Int!): Int! { total + n }
+
+  # Record literal fields read the enclosing `self`.
+  recRead: Int! { {{a: self.total, b: 1}}.a }
+
+  # Selection fields read it too.
+  selRead: Int! { self.{{x: plus(n: 1), y: plus(n: 2)}}.y }
+
+  # Mutating method calls in parallel fields each fork the receiver.
+  bump: Acc! { total += 1; self }
+
+  recCalls: [Int!]! { let r = {{a: bump.total, b: bump.bump.total, c: total}}; [r.a, r.b, r.c] }
+
+  # A pure block passed in from outside may run from several tasks at once.
+  both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }
+
+  runBoth: Int! { both { x => total + x * 10 } }
+}
+
+assert("record literal reads self") { Acc(7).recRead == 7 }
+assert("selection reads self") { Acc(7).selRead == 9 }
+assert("parallel method calls fork independently") { Acc(0).recCalls == [1, 2, 0] }
+assert("pure block from parallel tasks") { Acc(1).runBoth == 32 }

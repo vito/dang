@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use String! as Int!
+  [2m[34m--> errors/selection_arg_scope.dang:12:40[0m
+ [2m    |[0m
+ [2m 10 |   value: String! = "abc"[0m
+ [2m 11 | [0m
+ [2m[34m[1m 12 | [0m  sum: Int! { Calculator.{{add(amount: value)}}.add }
+[2m                                              [31m^^^^^[0m
+ [2m 13 | }[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

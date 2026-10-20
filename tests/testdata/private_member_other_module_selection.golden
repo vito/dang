@@ -1,0 +1,10 @@
+[1m[31mError:[0m "cleanPath" is a private member of Path and cannot be accessed from another module
+  [2m[34m--> errors/private_member_other_module_selection.dang:4:15[0m
+ [2m    |[0m
+ [2m  2 | # module-level visibility as `.` (see private_member_other_module): Path's[0m
+ [2m  3 | # cleanPath is private to the prelude.[0m
+ [2m[34m[1m  4 | [0mPath("a/b").{{cleanPath(raw: "x//y")}}.cleanPath
+[2m                     [31m^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

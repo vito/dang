@@ -1,0 +1,9 @@
+name = "dang-dev"
+engineVersion = "v1.0.0-0"
+
+[runtime]
+  source = "dang"
+
+[[dependencies]]
+  name = "dang"
+  source = "../dang"

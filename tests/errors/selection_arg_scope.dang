@@ -1,0 +1,13 @@
+type Calculator {
+  value: Int! = 0
+
+  add(amount: Int!): Int! { value + amount }
+}
+
+# A selection's arguments are typed in the enclosing scope, where they are
+# evaluated: here `value` is Label's String, not Calculator's Int.
+type Label {
+  value: String! = "abc"
+
+  sum: Int! { Calculator.{{add(amount: value)}}.add }
+}

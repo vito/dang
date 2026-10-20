@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to a.x: fields of interface HasX are read-only
+  [2m[34m--> errors/interface_field_write.dang:11:3[0m
+ [2m    |[0m
+ [2m  9 | check: Int! {[0m
+ [2m 10 |   let a: HasX! = Bar(1)[0m
+ [2m[34m[1m 11 | [0m  a.x = 2
+[2m         [31m^^^^^^^[0m
+ [2m 12 |   a.x[0m
+ [2m 13 | }[0m
+ [2m    |[0m
+

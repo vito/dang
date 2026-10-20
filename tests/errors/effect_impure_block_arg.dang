@@ -1,0 +1,16 @@
+type Acc {
+  total: Int! = 0
+
+  both(&block(x: Int!): Int!): Int! {
+    let r = {{a: block(1), b: block(2)}}
+    r.a + r.b
+  }
+
+  runBoth: Acc! {
+    both { x =>
+      total += x
+      total
+    }
+    self
+  }
+}

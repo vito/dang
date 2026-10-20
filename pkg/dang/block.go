@@ -240,6 +240,11 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 	errs := &InferenceErrors{}
 	classified := classifyForms(forms)
 
+	// Called outside any entry point (an embedder, a test), this is the
+	// entry point: run the post-inference effect checks here too, so no
+	// checked program reaches evaluation without them.
+	ctx, solver, ownSolver := withEffectSolver(ctx)
+
 	phases := []struct {
 		name string
 		fn   func(*InferenceErrors) (hm.Type, error)
@@ -285,6 +290,12 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 		}
 		if t != nil {
 			lastT = t
+		}
+	}
+
+	if ownSolver {
+		for _, err := range solver.solve() {
+			errs.Add(err)
 		}
 	}
 
@@ -413,6 +424,16 @@ var _ hm.Inferer = (*Block)(nil)
 func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		newEnv := env.Clone()
+
+		// A block written directly in a `{{ }}` field declares its bindings
+		// inside that field, even when the field's own scope is not an
+		// ancestor of its environment (a selected field's arguments are
+		// inferred against the receiver and the enclosing scope).
+		if fr := effFrameFrom(ctx); fr != nil && fr.field {
+			if own := envFrame(newEnv); own != nil {
+				fr.owns = append(fr.owns, own)
+			}
+		}
 
 		// Store the environment, even if inference fails
 		if typeScope, ok := newEnv.(TypeScope); ok {
@@ -567,7 +588,9 @@ func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 	// Infer in dependency order so a field can reference siblings that are
 	// declared later in source order.
 	for _, idx := range order {
-		if _, err := o.Fields[idx].Infer(ctx, inferTypeScope, fresh); err != nil {
+		// Fields evaluate concurrently (see fields_purity.go).
+		fieldCtx := withFieldFrame(ctx, mod)
+		if _, err := o.Fields[idx].Infer(fieldCtx, inferTypeScope, fresh); err != nil {
 			return nil, err
 		}
 	}
@@ -582,7 +605,6 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 		return nil, errors.New("object has no module inferred")
 	}
 	newMod := NewObject(o.Mod)
-	valueScope := CreateOverlayValueScope(newMod, scope)
 
 	// Bind each field as a lazy initializer in the object, then force them all
 	// concurrently. Lazy resolution evaluates fields in dependency order for
@@ -595,9 +617,10 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 		field := field
 		name := field.Name.Name
 		newMod.BindLazy(name, func(ctx context.Context) (Value, error) {
-			// Fork so a field's incidental local writes stay private; sibling
-			// references resolve through newMod, forcing them on demand.
-			fieldScope := valueScope.Derive(true)
+			// Each field is a task: sibling references resolve through newMod,
+			// forcing them on demand, and everything else through a private
+			// fork of the enclosing scope (see recordFieldScope).
+			fieldScope := recordFieldScope{CreateOverlayValueScope(newMod.Derive(true), forkTaskScope(scope))}
 			// A field's own name refers to the enclosing scope, not the field
 			// being defined, so `users: users.{{...}}` reads the outer `users`
 			// rather than recursing into itself. Redirect it to the outer scope
@@ -627,6 +650,33 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 		return nil, err
 	}
 	return newMod, nil
+}
+
+// recordFieldScope is the scope one record-literal field (one `{{ }}` task)
+// evaluates in: primary is a sealed frame over the record, so siblings resolve
+// first and the field's own `let`s stay in it; lexical is a private fork of the
+// enclosing scope (forkTaskScope), with its own `self` cell. Writes to names
+// primary doesn't bind already go to lexical (OverlayValueScope.Update), where
+// writes to the enclosing locals and fields stay task-local but resolve
+// exactly as in the enclosing method body.
+//
+// `self` writes must go there too: a plain overlay would MutateSelf primary,
+// opening a new cell on the record frame that bare reads (which resolve
+// through lexical) never consult, so `self.total = 5; total` would read the
+// old value.
+type recordFieldScope struct {
+	OverlayValueScope
+}
+
+func (s recordFieldScope) MutateSelf(value Value) {
+	s.lexical.MutateSelf(value)
+}
+
+func (s recordFieldScope) Derive(sealed bool) ValueScope {
+	return recordFieldScope{OverlayValueScope{
+		primary: s.primary.Derive(sealed),
+		lexical: s.lexical,
+	}}
 }
 
 func (o *ObjectLiteral) Walk(fn func(Node) bool) {

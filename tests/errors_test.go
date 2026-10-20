@@ -56,24 +56,22 @@ func (DangSuite) TestRunDirControlFlowSourceErrors(ctx context.Context, t *testc
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
 	path := filepath.Join(dir, "main.dang")
-	err = os.WriteFile(path, []byte(`let saved(x: Int!): Int! { x }
+	err = os.WriteFile(path, []byte(`type Box {
+  saved(x: Int!): Int! { x }
 
-store(&block(x: Int!): Int!): Int! {
-  saved = block
-  0
-}
-
-makeReturner: Int! {
-  store { x =>
-    return x
+  store(&block(x: Int!): Int!): Box! {
+    self.saved = block
+    self
   }
-  0
 }
 
-pub result = {
-  makeReturner
-  saved(1)
+makeReturner: Box! {
+  Box.store { x =>
+    return Box
+  }
 }
+
+pub result = makeReturner.saved(1)
 `), 0644)
 	require.NoError(t, err)
 
@@ -82,8 +80,8 @@ pub result = {
 
 	message := err.Error()
 	require.Contains(t, message, "Error:")
-	require.Contains(t, message, "return from expired function")
-	require.Contains(t, message, "return x")
+	require.Contains(t, message, "cannot use `return`")
+	require.Contains(t, message, "return Box")
 	require.Contains(t, message, path)
 }
 

@@ -199,6 +199,43 @@ func TestCodeBlockFailureRouting(t *testing.T) {
 	}
 }
 
+// Literate snippets are top-level script code: they may reassign the
+// session's bindings, but get the same effect checks as a module — functions
+// may not write those bindings, and {{ }} / block-parameter purity is checked
+// after each snippet is inferred.
+func TestLiterateEffectChecks(t *testing.T) {
+	sess := literateSessionFor(&booklit.Section{Path: "effects.md"})
+	eval := func(src string) (string, error) {
+		t.Helper()
+		_, value, err := literateEval(src, sess)
+		return value, err
+	}
+
+	if _, err := eval("let total = 0\n[1, 2].each { x => total += x }"); err != nil {
+		t.Fatalf("top-level script reassignment: %v", err)
+	}
+	if v, err := eval("total"); err != nil || v != "3" {
+		t.Fatalf("total = %q, %v; want 3", v, err)
+	}
+
+	if _, err := eval("bump: Int! { total += 1; total }"); err == nil || !strings.Contains(err.Error(), "top-level bindings are immutable") {
+		t.Errorf("function writing a session binding: err = %v", err)
+	}
+
+	if _, err := eval("both(&block(x: Int!): Int!): Int! { let r = {{a: block(1), b: block(2)}}; r.a + r.b }"); err != nil {
+		t.Fatalf("declaring both: %v", err)
+	}
+	if _, err := eval("run: Int! { let n = 0; both { x => n += x; n } }"); err == nil || !strings.Contains(err.Error(), "`both` calls `block` inside {{ }}") {
+		t.Errorf("impure block passed to both: err = %v", err)
+	}
+
+	// A failure snippet runs against a fork of the session; the fork still
+	// counts the session's bindings as top-level.
+	if _, stage, err := literateFailEval("bump2: Int! { total += 1; total }", sess); stage != "type" || err == nil || !strings.Contains(err.Error(), "top-level bindings are immutable") {
+		t.Errorf("failure snippet: stage %q, err %v", stage, err)
+	}
+}
+
 // Booklit's dev server re-loads the whole book on every page request,
 // concurrently across requests, and Dang scopes are not safe for concurrent
 // use — so each load must get its own sessions. Each goroutine here simulates

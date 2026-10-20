@@ -1,0 +1,10 @@
+[1m[31mError:[0m "secret" is a private member of Greeter and cannot be accessed from another module
+  [2m[34m--> errors/import_dang_private_member_selection.dang:6:23[0m
+ [2m    |[0m
+ [2m  4 | import Lib[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mLib.Greeter("Dang").{{secret}}
+[2m                             [31m^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

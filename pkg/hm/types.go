@@ -161,15 +161,45 @@ func (ntv NullableTypeVariable) Format(s fmt.State, c rune) {
 	_, _ = fmt.Fprintf(s, "%s?", string(ntv.TypeVariable))
 }
 
+// Effect is an opaque annotation on a function type describing what calling
+// the function may do besides producing its result (e.g. which shared state it
+// may write). hm never interprets it: substitution, normalization and
+// unification carry it along untouched, and Eq ignores it. The host language
+// owns its meaning and solves effect constraints itself, after inference,
+// because effects of hoisted declarations are not known yet when their call
+// sites are unified.
+type Effect interface {
+	EffectName() string
+}
+
 // FunctionType represents a function type
 type FunctionType struct {
-	arg   Type
-	ret   Type
-	block *FunctionType // Optional block argument type (Ruby-style blocks)
+	arg    Type
+	ret    Type
+	block  *FunctionType // Optional block argument type (Ruby-style blocks)
+	effect Effect        // Optional latent effect; nil means "unknown to hm"
 }
 
 func NewFnType(arg, ret Type) *FunctionType {
 	return &FunctionType{arg: arg, ret: ret}
+}
+
+// Effect returns the function's latent effect annotation, if any.
+func (ft *FunctionType) Effect() Effect {
+	return ft.effect
+}
+
+// SetEffect sets the function's latent effect annotation in place. Only use
+// it on a function type you just built; types are otherwise shared.
+func (ft *FunctionType) SetEffect(e Effect) {
+	ft.effect = e
+}
+
+// WithEffect returns a shallow copy of the function type carrying e.
+func (ft *FunctionType) WithEffect(e Effect) *FunctionType {
+	cp := *ft
+	cp.effect = e
+	return &cp
 }
 
 func (ft *FunctionType) Name() string {
@@ -178,8 +208,9 @@ func (ft *FunctionType) Name() string {
 
 func (ft *FunctionType) Apply(subs Subs) Substitutable {
 	result := &FunctionType{
-		arg: ft.arg.Apply(subs).(Type),
-		ret: ft.ret.Apply(subs).(Type),
+		arg:    ft.arg.Apply(subs).(Type),
+		ret:    ft.ret.Apply(subs).(Type),
+		effect: ft.effect,
 	}
 	if ft.block != nil {
 		result.block = ft.block.Apply(subs).(*FunctionType)
@@ -204,7 +235,7 @@ func (ft *FunctionType) Normalize(k, v TypeVarSet) (Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &FunctionType{arg: arg, ret: ret}
+	result := &FunctionType{arg: arg, ret: ret, effect: ft.effect}
 	if ft.block != nil {
 		block, err := ft.block.Normalize(k, v)
 		if err != nil {

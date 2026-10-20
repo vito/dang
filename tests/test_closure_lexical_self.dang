@@ -1,0 +1,172 @@
+# Closures and function references are lexically scoped: they run against the
+# `self` of the method they were written in, never whichever object's method
+# ends up invoking them.
+#
+# Before the fix a bare reference to a method or nested function (`&helper`,
+# `&inner`) was rebound to the *caller's* `self` on every call, so once stored
+# on another object it read that object's fields: A(n: 10)'s `&helper` called
+# from B(n: 100) returned 101 instead of 11.
+
+type Host {
+  n: Int! = 100
+
+  hook(x: Int!): Int! { x }
+
+  # Naked and explicit-receiver calls of a stored function field.
+  fire(x: Int!): Int! { hook(x) }
+
+  fireSelf(x: Int!): Int! { self.hook(x) }
+
+  run(&cb(x: Int!): Int!): Int! { cb(1) }
+
+  runTwice(&cb(x: Int!): Int!): Int! { cb(1); cb(2); n }
+
+  nested(&cb(x: Int!): Int!): Int! { run { x => cb(x) } }
+
+  let saved(x: Int!): Int! { x }
+
+  store(&cb(x: Int!): Int!): Host! { self.saved = cb; self }
+
+  callSaved(x: Int!): Int! { saved(x) }
+}
+
+topTwice(&cb(x: Int!): Int!): Int! { cb(1); cb(2) }
+
+type Guest {
+  n: Int! = 10
+
+  helper(x: Int!): Int! { n + x }
+
+  # A method reference stored on another object keeps its own receiver.
+  refFire: Int! { let h = Host; h.hook = &helper; h.fire(1) }
+
+  refFireSelf: Int! { let h = Host; h.hook = &helper; h.fireSelf(1) }
+
+  refEscape: Host! { let h = Host; h.hook = &helper; h }
+
+  bumpThenRef: Host! { n += 5; let h = Host; h.hook = &helper; h }
+
+  # Refs through `self` read it when called, like bare refs; refs through any
+  # other receiver hold that (immutable) value.
+  refBareThenWrite: Int! { let f = &helper; n += 5; f(1) }
+
+  refSelfThenWrite: Int! { let f = &self.helper; n += 5; f(1) }
+
+  refAliasThenWrite: Int! { let r = self; let f = &r.helper; n += 5; f(1) }
+
+  selfRefEscape: Host! { let h = Host; h.hook = &self.helper; h }
+
+  # Same for a function declared inside the method.
+  nestedFire: Int! {
+    inner(x: Int!): Int! { n + x }
+    let h = Host
+    h.hook = &inner
+    h.fire(1)
+  }
+
+  nestedEscape: Host! {
+    inner(x: Int!): Int! { n + x * 2 }
+    let h = Host
+    h.hook = &inner
+    h
+  }
+
+  # Blocks handed to another type's methods see this method's self.
+  blockRead: Int! { Host.run { x => n + x } }
+
+  blockSelf: Int! { Host.run { x => self.n + x } }
+
+  blockSibling: Int! { Host.run { x => helper(x) } }
+
+  blockThroughLevels: Int! { Host.nested { x => helper(x) } }
+
+  blockRef: Int! {
+    let f = &helper
+    Host.run { x => f(x) }
+  }
+
+  # Their writes accumulate in this method's fork, not the host's.
+  blockWrite: Guest! {
+    Host.runTwice { x =>
+      n += x
+      n
+    }
+    self
+  }
+
+  blockWriteSelf: Guest! {
+    Host.runTwice { x =>
+      self.n += x
+      n
+    }
+    self
+  }
+
+  blockWriteHost: Int! {
+    Host.runTwice { x =>
+      n += x
+      n
+    }
+  }
+
+  blockWriteLevels: Guest! {
+    Host.nested { x =>
+      n += 5
+      n
+    }
+    self
+  }
+
+  # Top-level functions and builtins taking blocks behave the same.
+  viaTopLevel: Guest! {
+    topTwice { x =>
+      n += x
+      n
+    }
+    self
+  }
+
+  viaMap: Guest! {
+    [1, 2].map { x =>
+      n += x
+      n
+    }
+    self
+  }
+}
+
+let g = Guest
+
+assert("stored method ref, naked call") { g.refFire == 11 }
+assert("stored method ref, self. call") { g.refFireSelf == 11 }
+assert("escaped method ref, called from the host") { g.refEscape.fire(1) == 11 }
+assert("escaped method ref, called directly") { g.refEscape.hook(1) == 11 }
+assert("ref sees the referencing method's self") { g.bumpThenRef.hook(1) == 16 }
+assert("bare ref reads self when called") { g.refBareThenWrite == 16 }
+assert("self. ref reads self when called") { g.refSelfThenWrite == 16 }
+assert("ref through an alias keeps the alias's value") { g.refAliasThenWrite == 11 }
+assert("escaped self. ref keeps its own receiver") { g.selfRefEscape.fire(1) == 11 }
+
+# A ref through a variable holds the value, not the variable.
+let gVar = Guest
+let gRef = &gVar.helper
+gVar.n = 50
+assert("ref through a variable keeps the value") { gRef(1) == 11 and gVar.n == 50 }
+assert("stored nested fn ref") { g.nestedFire == 11 }
+assert("escaped nested fn ref") { g.nestedEscape.fire(1) == 12 }
+assert("escaped nested fn ref, called directly") { g.nestedEscape.hook(1) == 12 }
+
+assert("block reads its own fields") { g.blockRead == 11 }
+assert("block's self is its own") { g.blockSelf == 11 }
+assert("block's naked sibling call") { g.blockSibling == 11 }
+assert("block through two levels of methods") { g.blockThroughLevels == 11 }
+assert("method ref called from a block") { g.blockRef == 11 }
+
+assert("block writes land in the enclosing fork") { g.blockWrite.n == 13 }
+assert("self. block writes too") { g.blockWriteSelf.n == 13 }
+assert("host's fields are untouched") { g.blockWriteHost == 100 }
+assert("block writes through two levels") { g.blockWriteLevels.n == 15 }
+assert("top-level block-taking function") { g.viaTopLevel.n == 13 }
+assert("builtin block-taking method") { g.viaMap.n == 13 }
+
+assert("receiver untouched") { g.n == 10 }

@@ -1,0 +1,11 @@
+[1m[31mError:[0m `Host.store` stores, returns, or collects `cb`, so this block must not write outer state, but it writes `n`
+  [2m[34m--> errors/closure_escape_impure_block.dang:14:16[0m
+ [2m    |[0m
+ [2m 12 | [0m
+ [2m 13 |   escape: Host! {[0m
+ [2m[34m[1m 14 | [0m    Host.store { x =>
+[2m                      [31m^^^^^^[0m
+ [2m 15 |       n += x[0m
+ [2m 16 |       n[0m
+ [2m    |[0m
+
