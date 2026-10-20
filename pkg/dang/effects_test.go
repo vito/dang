@@ -323,6 +323,28 @@ func TestFieldPurity(t *testing.T) {
 	})
 }
 
+// InferFormsWithPhases called directly (embedders, tests) is an entry point
+// too: the deferred checks run, so an escaping block with a non-local return
+// can never reach evaluation, where nothing would catch it.
+func TestInferFormsWithPhasesRunsDeferredChecks(t *testing.T) {
+	src := `
+		type Box {
+			saved(x: Int!): Int! { x }
+			store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+		}
+		makeReturner: Box! { Box.store { x => return Box } }
+	`
+	parsed, err := ParseWithRecovery("effects", []byte(src))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	typeScope, _ := BuildScopesFromImports("", nil)
+	_, err = InferFormsWithPhases(context.Background(), parsed.(*FileBlock).Forms, typeScope, hm.NewSimpleFresher())
+	if err == nil || !strings.Contains(err.Error(), "cannot use `return`") {
+		t.Fatalf("expected the escaping return to be rejected, got %v", err)
+	}
+}
+
 func TestEffectSummary(t *testing.T) {
 	src := `
 		run: Int! {

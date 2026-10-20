@@ -1946,7 +1946,6 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 
 	if f.IsBlockArg {
 		invocationFrame := NewControlFrame(BlockInvocationFrame)
-		defer invocationFrame.Deactivate()
 
 		frame.returnFrame = f.CapturedReturnFrame
 		frame.breakFrame = f.CapturedBreakFrame
@@ -1972,7 +1971,6 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 	}
 
 	returnFrame := NewControlFrame(ReturnFrame)
-	defer returnFrame.Deactivate()
 	frame.enterFunctionControlBoundary()
 	frame.returnFrame = returnFrame
 	fnCtx := withFrame(ctx, frame)
@@ -2888,7 +2886,6 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 	}
 
 	returnFrame := NewControlFrame(ReturnFrame)
-	defer returnFrame.Deactivate()
 	frame.returnFrame = returnFrame
 	methodCtx := withFrame(ctx, frame)
 
@@ -2947,7 +2944,6 @@ func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[
 	fnScope.EnterSelf(b.Receiver)
 
 	returnFrame := NewControlFrame(ReturnFrame)
-	defer returnFrame.Deactivate()
 	frame.returnFrame = returnFrame
 	methodCtx := withFrame(ctx, frame)
 
@@ -3156,7 +3152,6 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		// defaults were evaluated above — is never written in place.
 		newBodyScope := CreateConstructorScope(instance, argScope, c.Closure)
 		returnFrame := NewControlFrame(ReturnFrame)
-		defer returnFrame.Deactivate()
 		frame.returnFrame = returnFrame
 		newBodyCtx := withFrame(ctx, frame)
 

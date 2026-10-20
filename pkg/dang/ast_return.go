@@ -58,7 +58,7 @@ func (r *Return) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 func (r *Return) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentReturnFrame(ctx)
-	if target == nil || !target.Active {
+	if target == nil {
 		return nil, &ReturnException{Target: target, Location: r.Loc}
 	}
 
@@ -85,9 +85,6 @@ type ReturnException struct {
 }
 
 func (e *ReturnException) Error() string {
-	if e.Target != nil && !e.Target.Active {
-		return "return from expired function"
-	}
 	return "return outside of function"
 }
 

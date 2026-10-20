@@ -15,25 +15,28 @@ const (
 	BlockInvocationFrame
 )
 
+// ControlFrame is a target for return/break/continue: a function call, a
+// block-taking call, or one invocation of a block. Exceptions carry the frame
+// they target and are caught by the evaluation that pushed it.
+//
+// A block that outlives the call it was passed to could raise an exception
+// targeting a frame no longer on the stack. Checked programs cannot: a block
+// with a non-local `return`/`break` that may escape is a compile error
+// (effects.go), every inference entry point runs that check, and builtins
+// never store the blocks they are given (TestBuiltinsNeverStoreFunctions).
+// Should one slip through anyway, nothing catches the exception and it
+// surfaces as an "outside of function/block-taking call" error.
 type ControlFrame struct {
-	ID     uint64
-	Kind   ControlFrameKind
-	Active bool
+	ID   uint64
+	Kind ControlFrameKind
 }
 
 var nextControlFrameID uint64
 
 func NewControlFrame(kind ControlFrameKind) *ControlFrame {
 	return &ControlFrame{
-		ID:     atomic.AddUint64(&nextControlFrameID, 1),
-		Kind:   kind,
-		Active: true,
-	}
-}
-
-func (f *ControlFrame) Deactivate() {
-	if f != nil {
-		f.Active = false
+		ID:   atomic.AddUint64(&nextControlFrameID, 1),
+		Kind: kind,
 	}
 }
 

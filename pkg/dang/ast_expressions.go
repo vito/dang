@@ -366,7 +366,6 @@ func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		// by the block so a break can exit this whole call expression.
 		if c.BlockArg != nil {
 			blockCallFrame = NewControlFrame(BlockCallFrame)
-			defer blockCallFrame.Deactivate()
 
 			frame := deriveFrame(ctx)
 			frame.blockCallFrame = blockCallFrame
@@ -2958,7 +2957,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 func (b *Break) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentBreakFrame(ctx)
-	if target == nil || !target.Active {
+	if target == nil {
 		return nil, &BreakException{Target: target, Location: b.Loc}
 	}
 
@@ -3041,7 +3040,7 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 func (c *Continue) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentContinueFrame(ctx)
-	if target == nil || !target.Active {
+	if target == nil {
 		return nil, &ContinueException{Target: target, Location: c.Loc}
 	}
 
@@ -3075,12 +3074,6 @@ type BreakException struct {
 }
 
 func (e *BreakException) Error() string {
-	if e.Target != nil && !e.Target.Active {
-		switch e.Target.Kind {
-		case BlockCallFrame:
-			return "break from expired block call"
-		}
-	}
 	return "break outside of block-taking call"
 }
 
@@ -3093,12 +3086,6 @@ type ContinueException struct {
 }
 
 func (e *ContinueException) Error() string {
-	if e.Target != nil && !e.Target.Active {
-		switch e.Target.Kind {
-		case BlockInvocationFrame:
-			return "continue from expired block invocation"
-		}
-	}
 	return "continue outside of block-taking call"
 }
 

@@ -240,6 +240,11 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 	errs := &InferenceErrors{}
 	classified := classifyForms(forms)
 
+	// Called outside any entry point (an embedder, a test), this is the
+	// entry point: run the post-inference effect checks here too, so no
+	// checked program reaches evaluation without them.
+	ctx, solver, ownSolver := withEffectSolver(ctx)
+
 	phases := []struct {
 		name string
 		fn   func(*InferenceErrors) (hm.Type, error)
@@ -285,6 +290,12 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 		}
 		if t != nil {
 			lastT = t
+		}
+	}
+
+	if ownSolver {
+		for _, err := range solver.solve() {
+			errs.Add(err)
 		}
 	}
 
