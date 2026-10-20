@@ -252,8 +252,12 @@ with "must be pure" reasons once discovered).
    (`checkDefaultSelf`) and a bare name resolving to one of the type's methods
    or computed fields, or, with an explicit `new()`, to a field without a
    default (`checkDefaultName`), are compile errors, anywhere inside the
-   default. A `{{ }}` selection's field names belong to the receiver, so
-   `inferFieldType` resolves them outside the type body. What a default reads
+   default. Code of a type declared in such a body (its methods included)
+   stays under the outer body's scope, since it is created while the outer
+   object is built. A `{{ }}` selection's field names belong to the receiver,
+   so `inferFieldType` resolves them outside every type body
+   (`outsideTypeBodies`), and infers its arguments in the enclosing scope,
+   where they are evaluated. What a default reads
    is then always a value, so closures created there are ordinary closures.
 3. **`{{ }}` fields.** Each field is an `effFrame{field: true}`. Inside a field:
    a write to a binding not declared within it is an error
