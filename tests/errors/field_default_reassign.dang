@@ -63,3 +63,12 @@ type Registry {
     size = 5
   }
 }
+
+# new()'s parameter defaults can't reassign fields.
+type Knob {
+  level: Int! = 1
+
+  new(k: Int! = { level = 2; level }) {
+    self
+  }
+}

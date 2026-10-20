@@ -1,0 +1,53 @@
+4 inference errors:
+
+Error 1:
+[1m[31mError:[0m new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body
+  [2m[34m--> errors/new_param_defaults.dang:10:17[0m
+ [2m    |[0m
+ [2m  8 |   out: Int![0m
+ [2m  9 | [0m
+ [2m[34m[1m 10 | [0m  new(k: Int! = self.level) {
+[2m                       [31m^^^^[0m
+ [2m 11 |     self.out = k[0m
+ [2m 12 |     self[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m new()'s parameter defaults can't use `read`, a method of ViaMethod: they run before new()'s body, so they only see the fields' values; use it in new()'s body
+  [2m[34m--> errors/new_param_defaults.dang:22:17[0m
+ [2m    |[0m
+ [2m 20 |   read(x: Int!): Int! { level + x }[0m
+ [2m 21 | [0m
+ [2m[34m[1m 22 | [0m  new(k: Int! = read(1)) {
+[2m                       [31m^^^^[0m
+ [2m 23 |     self.out = k[0m
+ [2m 24 |     self[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m new()'s parameter defaults can't use `doubled`, a computed field of ViaComputed: they run before new()'s body, so they only see the fields' values; use it in new()'s body
+  [2m[34m--> errors/new_param_defaults.dang:34:17[0m
+ [2m    |[0m
+ [2m 32 |   doubled: Int! { level * 2 }[0m
+ [2m 33 | [0m
+ [2m[34m[1m 34 | [0m  new(k: Int! = doubled) {
+[2m                       [31m^^^^^^^[0m
+ [2m 35 |     self.out = k[0m
+ [2m 36 |     self[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m new()'s parameter defaults can't use `out`: it has no default, so only the body of ViaNewOnly's new() sets it, after they run; use it there
+  [2m[34m--> errors/new_param_defaults.dang:43:17[0m
+ [2m    |[0m
+ [2m 41 |   out: Int![0m
+ [2m 42 | [0m
+ [2m[34m[1m 43 | [0m  new(k: Int! = out) {
+[2m                       [31m^^^[0m
+ [2m 44 |     self.out = k[0m
+ [2m 45 |     self[0m
+ [2m    |[0m
+

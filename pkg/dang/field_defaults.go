@@ -26,6 +26,11 @@ import (
 // reaches them, so they can go anywhere, like any closure that only reads its
 // scope.
 //
+// new()'s own parameter defaults follow the same rule: they run after the
+// field defaults, against the fields as those leave them (plus the earlier
+// parameters), before new()'s body (see inferNewConstructor and
+// ConstructorFunction.Call).
+//
 // Statics (`self { }` members) may use `self` and each other, since they are
 // evaluated once and immutable, but their block can't reassign them either.
 //
@@ -46,7 +51,25 @@ type typeBody struct {
 	object      *Type
 	unavailable map[string]memberKind
 	statics     bool
-	outer       *typeBody
+	// params marks new()'s parameter defaults rather than field defaults.
+	params bool
+	outer  *typeBody
+}
+
+// subject names what is being checked, for messages.
+func (tb *typeBody) subject() string {
+	if tb.params {
+		return "new()'s parameter defaults"
+	}
+	return "field defaults"
+}
+
+// why explains, for messages, what the checked defaults can use instead.
+func (tb *typeBody) why() string {
+	if tb.params {
+		return "they run before new()'s body, so they only see the fields' values; use it in new()'s body"
+	}
+	return fieldDefaultScope
 }
 
 func typeBodyFrom(ctx context.Context) *typeBody {
@@ -59,6 +82,17 @@ func withTypeBody(ctx context.Context, object *Type, unavailable map[string]memb
 	return context.WithValue(ctx, typeBodyKey{}, &typeBody{
 		object:      object,
 		unavailable: unavailable,
+		outer:       typeBodyFrom(ctx),
+	})
+}
+
+// withNewParams marks ctx as inferring the parameter defaults of object's
+// explicit new(), which are scoped like its field defaults.
+func withNewParams(ctx context.Context, object *Type, unavailable map[string]memberKind) context.Context {
+	return context.WithValue(ctx, typeBodyKey{}, &typeBody{
+		object:      object,
+		unavailable: unavailable,
+		params:      true,
 		outer:       typeBodyFrom(ctx),
 	})
 }
@@ -152,10 +186,13 @@ func checkDefaultName(ctx context.Context, env hm.Env, name string) error {
 		}
 		switch kind {
 		case methodMember:
-			return fmt.Errorf("field defaults can't use `%s`, a method of %s: %s", name, owner, fieldDefaultScope)
+			return fmt.Errorf("%s can't use `%s`, a method of %s: %s", tb.subject(), name, owner, tb.why())
 		case computedMember:
-			return fmt.Errorf("field defaults can't use `%s`, a computed field of %s: %s", name, owner, fieldDefaultScope)
+			return fmt.Errorf("%s can't use `%s`, a computed field of %s: %s", tb.subject(), name, owner, tb.why())
 		default:
+			if tb.params {
+				return fmt.Errorf("new()'s parameter defaults can't use `%s`: it has no default, so only the body of %s's new() sets it, after they run; use it there", name, owner)
+			}
 			return fmt.Errorf("field defaults can't use `%s`: it has no default, so only %s's new() sets it, after the defaults run; use it in new() or a computed field", name, owner)
 		}
 	}
@@ -167,7 +204,7 @@ func checkDefaultSelf(ctx context.Context, env hm.Env) error {
 	self := selfTypeFrame(env)
 	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
 		if !tb.statics && self == TypeScope(tb.object) {
-			return fmt.Errorf("field defaults can't use `self`: %s", fieldDefaultScope)
+			return fmt.Errorf("%s can't use `self`: %s", tb.subject(), tb.why())
 		}
 	}
 	return nil
@@ -194,6 +231,9 @@ func checkDefaultWrite(ctx context.Context, env hm.Env, target Node) error {
 		if inner, ok := selfTypeFrame(env).(*Type); ok && inner != tb.object {
 			return fmt.Errorf("`%s` is declared in %s's body, so it can't reassign `%s`, a field of %s: %s is still being built when %s is created; declare %s outside %s and pass it what it needs",
 				inner.Named, owner, name, owner, owner, inner.Named, inner.Named, owner)
+		}
+		if tb.params {
+			return fmt.Errorf("new()'s parameter defaults can't reassign `%s`: they only read the fields' values; set it in new()'s body", name)
 		}
 		return fmt.Errorf("fields can't be reassigned in a type body, which runs while the object is being built; give `%s` a different default, or set it in new()", name)
 	}

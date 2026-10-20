@@ -1,4 +1,4 @@
-5 inference errors:
+6 inference errors:
 
 Error 1:
 [1m[31mError:[0m fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new()
@@ -78,5 +78,18 @@ Error 5:
 [2m           [31m^^^^^^^^[0m
  [2m 64 |   }[0m
  [2m 65 | }[0m
+ [2m    |[0m
+
+
+Error 6:
+[1m[31mError:[0m new()'s parameter defaults can't reassign `level`: they only read the fields' values; set it in new()'s body
+  [2m[34m--> errors/field_default_reassign.dang:71:19[0m
+ [2m    |[0m
+ [2m 69 |   level: Int! = 1[0m
+ [2m 70 | [0m
+ [2m[34m[1m 71 | [0m  new(k: Int! = { level = 2; level }) {
+[2m                         [31m^^^^^^^^^[0m
+ [2m 72 |     self[0m
+ [2m 73 |   }[0m
  [2m    |[0m
 

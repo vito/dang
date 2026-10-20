@@ -3114,9 +3114,12 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		// only consulted for reads (Lookup), while writes (Bind/Update) go
 		// to the instance as before.
 		argScope := NewObject(NewType("_constructor_args_", ObjectKind))
-		// Build a temporary env layered on the closure so that default
-		// expressions for later parameters can see earlier parameters.
-		defaultScope := c.Closure.Derive(false)
+		// Parameter defaults are scoped like field defaults: they read the
+		// fields as the field defaults left them, and the earlier parameters,
+		// which shadow fields. defaultParams holds those parameters, over the
+		// instance (and the closure behind it).
+		defaultParams := NewObject(NewType("_constructor_defaults_", ObjectKind))
+		defaultScope := CreateOverlayValueScope(defaultParams, instanceScope)
 		for _, param := range c.Parameters {
 			var val Value
 			if arg, found := args[param.Name.Name]; found {

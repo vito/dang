@@ -1121,11 +1121,14 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 
 	// Create an environment with the constructor args in scope
 	newEnv := env.Clone().(*OverlayTypeScope)
+	// Argument defaults run after the field defaults, against the fields as
+	// those leave them, and are scoped like them (see field_defaults.go).
+	argCtx := withNewParams(constructorCtx, c.Inferred, unavailableInDefaults(c.bodyFormsWithoutNew(), true))
 	for _, arg := range newDecl.Args {
 		// Fully infer constructor arguments here so default expressions are
 		// validated during normal inference. Declaration may have recorded the
 		// signature without checking computed defaults.
-		argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+		argType, err := arg.Infer(argCtx, newEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 		}

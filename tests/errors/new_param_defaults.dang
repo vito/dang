@@ -1,0 +1,47 @@
+# new()'s parameter defaults are scoped like field defaults: they run after the
+# field defaults and before new()'s body, so they can read the fields' values
+# but not `self`, the type's methods or computed fields, or fields only the
+# body sets. Each type below has one bad default (only the first error in a
+# new() is reported).
+type ViaSelf {
+  level: Int! = 1
+  out: Int!
+
+  new(k: Int! = self.level) {
+    self.out = k
+    self
+  }
+}
+
+type ViaMethod {
+  level: Int! = 1
+  out: Int!
+
+  read(x: Int!): Int! { level + x }
+
+  new(k: Int! = read(1)) {
+    self.out = k
+    self
+  }
+}
+
+type ViaComputed {
+  level: Int! = 1
+  out: Int!
+
+  doubled: Int! { level * 2 }
+
+  new(k: Int! = doubled) {
+    self.out = k
+    self
+  }
+}
+
+type ViaNewOnly {
+  out: Int!
+
+  new(k: Int! = out) {
+    self.out = k
+    self
+  }
+}
