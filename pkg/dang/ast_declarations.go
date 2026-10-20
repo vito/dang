@@ -204,7 +204,7 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
-	functionCtx := contextWithInferFunctionControlBoundary(ctx)
+	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(TypeScope)
@@ -444,6 +444,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
 		if err := r.checkInterfaceFieldWrite(); err != nil {
+			return nil, err
+		}
+		if err := checkTopLevelWrite(ctx, env, r); err != nil {
 			return nil, err
 		}
 

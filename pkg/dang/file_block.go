@@ -78,6 +78,7 @@ func (m *FileBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 
 		// Use phased inference approach for proper dependency handling
+		ctx = withTopLevelFrame(ctx, newEnv)
 		return InferFormsWithPhases(ctx, forms, newEnv, fresh)
 	})
 }

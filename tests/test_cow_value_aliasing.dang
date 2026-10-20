@@ -110,18 +110,6 @@ assert("interface-typed aliases are not affected") {
   a.x == 2 and h.x == 1 and hs[0].x == 1
 }
 
-let shared = Foo(1)
-let sharedAlias = shared
-
-bumpShared: Int! {
-  shared.x = shared.x + 1
-  shared.x
-}
-
-assert("top-level binding reassigned from a function leaves aliases alone") {
-  bumpShared == 2 and shared.x == 2 and sharedAlias.x == 1
-}
-
 assert("many repeated writes stay correct") {
   let a = Foo(0)
   let b = a

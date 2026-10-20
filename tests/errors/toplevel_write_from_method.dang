@@ -1,0 +1,10 @@
+count: Int! = 0
+
+type Counter {
+  value: Int! = 0
+
+  bump: Int! {
+    count += 1
+    count
+  }
+}

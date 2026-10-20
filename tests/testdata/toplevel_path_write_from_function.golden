@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to `shared`: top-level bindings are immutable once initialized; use a local `let`, a field, or return the new value
+  [2m[34m--> errors/toplevel_path_write_from_function.dang:8:3[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | bumpShared: Int! {[0m
+ [2m[34m[1m  8 | [0m  shared.x = shared.x + 1
+[2m         [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  9 |   shared.x[0m
+ [2m 10 | }[0m
+ [2m    |[0m
+
