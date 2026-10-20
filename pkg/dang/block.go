@@ -414,6 +414,16 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		newEnv := env.Clone()
 
+		// A block written directly in a `{{ }}` field declares its bindings
+		// inside that field, even when the field's own scope is not an
+		// ancestor of its environment (a selected field's arguments are
+		// inferred against the receiver and the enclosing scope).
+		if fr := effFrameFrom(ctx); fr != nil && fr.field {
+			if own := envFrame(newEnv); own != nil {
+				fr.owns = append(fr.owns, own)
+			}
+		}
+
 		// Store the environment, even if inference fails
 		if typeScope, ok := newEnv.(TypeScope); ok {
 			b.TypeScope = typeScope

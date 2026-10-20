@@ -284,6 +284,42 @@ func TestFieldPurity(t *testing.T) {
 				}
 			`,
 		},
+		{
+			name: "let inside an if block in a selection field's arguments",
+			src: `
+				type Acc {
+					total: Int! = 0
+					plus(n: Int!): Int! { total + n }
+					run: Int! { self.{{x: plus(n: if (true) { let y = 1; y += 1; y } else { 0 })}}.x }
+					runList: [Int!]! { [self, self].{{x: plus(n: if (true) { let y = 1; y += 1; y } else { 0 })}}.map { r => r.x } }
+				}
+			`,
+		},
+		{
+			name: "selection field's arguments writing an outer local",
+			src: `
+				type Acc {
+					total: Int! = 0
+					plus(n: Int!): Int! { total + n }
+					run: Int! {
+						let y = 0
+						self.{{x: plus(n: if (true) { y += 1; y } else { 0 })}}.x
+					}
+				}
+			`,
+			want: "this assignment writes `y`, which is declared outside the field",
+		},
+		{
+			name: "selection field's arguments writing self",
+			src: `
+				type Acc {
+					total: Int! = 0
+					plus(n: Int!): Int! { total + n }
+					run: Int! { self.{{x: plus(n: if (true) { total += 1; 1 } else { 0 })}}.x }
+				}
+			`,
+			want: "this assignment writes `total`, which is declared outside the field",
+		},
 	})
 }
 
