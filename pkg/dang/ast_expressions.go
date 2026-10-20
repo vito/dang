@@ -1859,13 +1859,14 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		}
 	} else {
 		// No arguments - use symbol directly as before. The name is the
-		// receiver's field, not one in scope, even when the receiver is
-		// another instance of a type whose field default this is.
+		// receiver's field, not one in scope, so no type body's field-default
+		// scope applies to it, even when the receiver is an instance of a
+		// type whose body is being inferred.
 		fieldType, err = (&Symbol{
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      field.Loc,
-		}).Infer(withoutTypeBody(ctx), rec, fresh)
+		}).Infer(outsideTypeBodies(ctx), rec, fresh)
 		if err != nil {
 			return nil, err
 		}

@@ -54,16 +54,25 @@ func withTypeBody(ctx context.Context, object *Type, unavailable map[string]stri
 	})
 }
 
-// withoutTypeBody leaves the innermost type body, for a method's body (methods
-// run against their receiver, not the object under construction) and for the
-// field names of a `{{ }}` selection (resolved against the receiver's type,
-// they aren't names in scope).
+// withoutTypeBody leaves the innermost type body, for a method's body: methods
+// run against their receiver, not the object under construction. The type
+// bodies the type itself is declared in still apply.
 func withoutTypeBody(ctx context.Context) context.Context {
 	tb := typeBodyFrom(ctx)
 	if tb == nil {
 		return ctx
 	}
 	return context.WithValue(ctx, typeBodyKey{}, tb.outer)
+}
+
+// outsideTypeBodies leaves every type body, for a name that isn't resolved in
+// scope: the field names of a `{{ }}` selection, which belong to the
+// receiver.
+func outsideTypeBodies(ctx context.Context) context.Context {
+	if typeBodyFrom(ctx) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, typeBodyKey{}, (*typeBody)(nil))
 }
 
 // unavailableInDefaults maps the members of the type declared by forms that

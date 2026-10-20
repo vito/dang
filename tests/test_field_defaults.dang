@@ -92,6 +92,29 @@ type Handler {
   let chain = [fallback]
 }
 
+# The same goes for a type declared in another type's body: selecting from an
+# instance of the outer type reads that instance, whether through `.` or
+# `{{ }}`.
+type Outer {
+  level: Int! = 1
+
+  total: Int! { level * 2 }
+
+  type Inner {
+    o: Outer!
+
+    let viaDot: Int! = o.total
+    let viaSelection: Int! = o.{{total}}.total
+  }
+
+  pair: [Int!]! {
+    let inner = Inner(self)
+    [inner.viaDot, inner.viaSelection]
+  }
+}
+
+assert { Outer(level: 5).pair == [10, 10] }
+
 # A closure created in a default reads the other fields' values as the object
 # is built with them, just like `combined = prefix + suffix` does, so it can be
 # kept like any closure that only reads its scope.
