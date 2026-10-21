@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
@@ -53,6 +54,140 @@ func FindDaggerModule(startPath string) string {
 type daggerSessionParams struct {
 	Port         int    `json:"port"`
 	SessionToken string `json:"session_token"`
+}
+
+// DaggerSource is the `dagger` key of a dang.toml import, which makes the
+// import connect to a Dagger Engine session. It is the Dagger API version the
+// import's source is written against, written like the `dang` key:
+//
+//	[imports.Dagger]
+//	dagger = "v0.19.0"
+//
+// The engine serves its core API as of that release, the way it does for a
+// Dagger module's engineVersion: it maps a client's version to an API view
+// (engine.APIViewVersion), so newer engines keep serving the API the source
+// was written against. The session is started with `dagger session --version
+// vX.Y.Z`, and a Dagger module's schema is introspected with
+// ModuleSource.withEngineVersion("vX.Y.Z"). In a Dagger module, the version
+// should equal the module's engineVersion: Dagger runs the module's functions
+// at that version, whatever dang.toml says, so a different one type-checks
+// the module against an API it doesn't run with.
+//
+// Prerelease and build suffixes are dropped (see parseVersion), as
+// engine.APIViewVersion drops them, so an engineVersion such as
+// "v1.0.0-beta.19" can be copied verbatim.
+//
+// `dagger = true`, the older spelling, connects without declaring a version:
+// `dagger session` then sends its own CLI version as the client version, so
+// the API served follows the dagger CLI that starts the session, and a Dagger
+// module's schema is introspected at its engineVersion.
+type DaggerSource struct {
+	// Enabled reports whether the import connects to Dagger: `dagger = true`
+	// or a version.
+	Enabled bool
+
+	// Version is the declared Dagger version, or zero for `dagger = true`.
+	Version Version
+}
+
+// UnmarshalTOML decodes the `dagger` key of a dang.toml import: true, false,
+// or a Dagger version.
+func (d *DaggerSource) UnmarshalTOML(data any) error {
+	parsed, err := parseDaggerSource(data)
+	if err != nil {
+		return err
+	}
+	*d = parsed
+	return nil
+}
+
+// UnmarshalJSON decodes the `dagger` field of an ImportSource printed by a
+// service, like UnmarshalTOML.
+func (d *DaggerSource) UnmarshalJSON(data []byte) error {
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	parsed, err := parseDaggerSource(v)
+	if err != nil {
+		return err
+	}
+	*d = parsed
+	return nil
+}
+
+func parseDaggerSource(data any) (DaggerSource, error) {
+	switch v := data.(type) {
+	case bool:
+		return DaggerSource{Enabled: v}, nil
+	case string:
+		version, err := parseVersion("Dagger", v)
+		if err != nil {
+			return DaggerSource{}, err
+		}
+		if version.IsZero() {
+			// The zero Version means `dagger = true`; there is no Dagger 0.0.0.
+			return DaggerSource{}, fmt.Errorf("invalid Dagger version %q", v)
+		}
+		return DaggerSource{Enabled: true, Version: version}, nil
+	default:
+		return DaggerSource{}, fmt.Errorf("the Dagger version must be a string, e.g. dagger = %q", "v0.19.0")
+	}
+}
+
+// daggerVersionString formats a Dagger version the way Dagger writes one,
+// vMAJOR.MINOR.PATCH. Dagger guesses at forms without the "v" or the patch
+// (engine.NormalizeVersion), so a version is always passed to it this way.
+func daggerVersionString(v Version) string {
+	return fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch)
+}
+
+// daggerSessionCommand is the default service command of a Dagger import.
+// A declared version is passed with --version, which sets the session's
+// client version and so the API view the engine serves it.
+func daggerSessionCommand(version Version) []string {
+	return daggerServiceCommand([]string{"dagger", "session"}, version)
+}
+
+// daggerServiceCommand appends a declared version to a Dagger import's
+// service command, which runs a `dagger session` (e.g. of a dev CLI).
+func daggerServiceCommand(service []string, version Version) []string {
+	cmd := slices.Clone(service)
+	if !version.IsZero() {
+		cmd = append(cmd, "--version", daggerVersionString(version))
+	}
+	return cmd
+}
+
+// checkDaggerVersion verifies that a freshly started session serves the
+// declared version's API. An engine older than the version can't serve it: it
+// would silently serve its own, older API and echo the requested view in
+// __schemaVersion, so the engine's version is compared instead. (An engine
+// refuses a view older than its minimum client version itself, failing
+// `dagger session` on startup.)
+func checkDaggerVersion(ctx context.Context, client graphql.Client, version Version) error {
+	want := daggerVersionString(version)
+	var resp struct {
+		Version       string `json:"version"`
+		SchemaVersion string `json:"__schemaVersion"`
+	}
+	err := client.MakeRequest(ctx, &graphql.Request{
+		Query:  `query DangDaggerVersion { version __schemaVersion }`,
+		OpName: "DangDaggerVersion",
+	}, &graphql.Response{Data: &resp})
+	if err != nil {
+		return fmt.Errorf("checking Dagger version %s: %w", want, err)
+	}
+	// Prerelease and build suffixes are dropped, as the engine drops them when
+	// comparing versions: a v1.0.0-beta engine serves v1.0.0. An unparseable
+	// engine version (e.g. a dev build's) is not compared.
+	if engine, err := parseVersion("Dagger engine", resp.Version); err == nil && !engine.IsZero() && engine.Before(version) {
+		return fmt.Errorf("this project's Dagger version is %s, but the Dagger engine is %s; upgrade Dagger", want, resp.Version)
+	}
+	if resp.SchemaVersion != want {
+		return fmt.Errorf("the Dagger session serves the API of %q, not of the declared %s", resp.SchemaVersion, want)
+	}
+	return nil
 }
 
 // otelPropagator propagates trace context and baggage via headers.
@@ -174,16 +309,30 @@ func newDaggerClient(params *daggerSessionParams) graphql.Client {
 // DaggerModuleSchema introspects a Dagger module's schema via raw GraphQL.
 // This is the equivalent of dag.ModuleSource(moduleDir).IntrospectionSchemaJSON().Contents().
 func DaggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir string) (*introspection.Schema, error) {
-	slog.Debug("querying module introspection schema", "moduleDir", moduleDir)
+	return daggerModuleSchema(ctx, client, moduleDir, Version{})
+}
+
+// daggerModuleSchema is DaggerModuleSchema at a declared Dagger version. The
+// module-facing schema shows the core API at the module's engineVersion, not
+// at the session's, so a declared version replaces the engineVersion for the
+// introspection:
+// dag.ModuleSource(moduleDir).WithEngineVersion(version).IntrospectionSchemaJSON().
+// The zero version keeps the module's engineVersion.
+func daggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir string, version Version) (*introspection.Schema, error) {
+	slog.Debug("querying module introspection schema", "moduleDir", moduleDir, "version", daggerVersionString(version))
+	type schemaJSON struct {
+		IntrospectionSchemaJSON struct {
+			Contents string `json:"contents"`
+		} `json:"introspectionSchemaJSON"`
+	}
 	var resp struct {
 		ModuleSource struct {
-			IntrospectionSchemaJSON struct {
-				Contents string `json:"contents"`
-			} `json:"introspectionSchemaJSON"`
+			schemaJSON
+			WithEngineVersion *schemaJSON `json:"withEngineVersion"`
 		} `json:"moduleSource"`
 	}
 
-	err := client.MakeRequest(ctx, &graphql.Request{
+	req := &graphql.Request{
 		Query: `query DangModuleSchema($ref: String!) {
 			moduleSource(refString: $ref) {
 				introspectionSchemaJSON {
@@ -195,13 +344,37 @@ func DaggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir st
 			"ref": moduleDir,
 		},
 		OpName: "DangModuleSchema",
-	}, &graphql.Response{Data: &resp})
+	}
+	if !version.IsZero() {
+		req.Query = `query DangModuleSchema($ref: String!, $version: String!) {
+			moduleSource(refString: $ref) {
+				withEngineVersion(version: $version) {
+					introspectionSchemaJSON {
+						contents
+					}
+				}
+			}
+		}`
+		req.Variables = map[string]any{
+			"ref":     moduleDir,
+			"version": daggerVersionString(version),
+		}
+	}
+	err := client.MakeRequest(ctx, req, &graphql.Response{Data: &resp})
 	if err != nil {
 		return nil, fmt.Errorf("module introspection query: %w", err)
 	}
 
+	contents := resp.ModuleSource.IntrospectionSchemaJSON.Contents
+	if !version.IsZero() {
+		if resp.ModuleSource.WithEngineVersion == nil {
+			return nil, fmt.Errorf("module introspection response missing withEngineVersion")
+		}
+		contents = resp.ModuleSource.WithEngineVersion.IntrospectionSchemaJSON.Contents
+	}
+
 	var introspResp introspection.Response
-	if err := json.Unmarshal([]byte(resp.ModuleSource.IntrospectionSchemaJSON.Contents), &introspResp); err != nil {
+	if err := json.Unmarshal([]byte(contents), &introspResp); err != nil {
 		return nil, fmt.Errorf("parsing module introspection JSON: %w", err)
 	}
 	if introspResp.Schema == nil {

@@ -45,17 +45,28 @@ func (c *ProjectConfig) EffectiveVersion() Version {
 
 // ImportSource describes where an import's GraphQL schema comes from.
 type ImportSource struct {
-	// Dagger indicates this import connects to a Dagger Engine session.
+	// Dagger makes this import connect to a Dagger Engine session, written
+	// against the Dagger API version it declares (see DaggerSource):
+	//
+	//   [imports.Dagger]
+	//   dagger = "v0.19.0"
+	//
 	// The service command (default: ["dagger", "session"]) outputs
 	// {"port": N, "session_token": "..."} and the client is configured
-	// with basic auth and OpenTelemetry trace propagation.
+	// with basic auth and OpenTelemetry trace propagation. A declared
+	// version is appended to it as `--version vX.Y.Z`, so a custom service
+	// must accept the flag like `dagger session` does. `dagger = true`
+	// connects without declaring a version.
 	//
 	// To use a dev engine, point the service at a custom CLI binary:
 	//
 	//   [imports.Dagger]
-	//   dagger = true
+	//   dagger = "v0.19.0"
 	//   service = ["~/src/dagger/bin/dagger", "session"]
-	Dagger bool `toml:"dagger,omitempty"`
+	//
+	// Embedders that supply their own Dagger client (ContextWithImportConfigs)
+	// skip dang.toml's imports; they can read the declared version here.
+	Dagger DaggerSource `toml:"dagger,omitempty"`
 
 	// Path points at a native Dang module directory (relative to dang.toml).
 	// Unlike the GraphQL source kinds above, the import binds to another Dang
@@ -81,7 +92,7 @@ type ImportSource struct {
 	// If Schema is also set, the schema is used for type checking and the
 	// service is only started when runtime queries are needed.
 	//
-	// When dagger = true, defaults to ["dagger", "session"].
+	// For a Dagger import, defaults to ["dagger", "session"].
 	Service []string `toml:"service,omitempty"`
 
 	// Authorization is the Authorization header value (e.g. "Bearer token").
@@ -206,7 +217,7 @@ func ResolveDaggerImport(ctx context.Context, configs []ImportConfig, dir string
 		var schema *introspection.Schema
 		var err error
 		if moduleDir != "" {
-			schema, err = DaggerModuleSchema(ctx, ic.Client, moduleDir)
+			schema, err = daggerModuleSchema(ctx, ic.Client, moduleDir, ic.DaggerVersion)
 		} else {
 			schema, err = IntrospectSchema(ctx, ic.Client, true)
 		}
@@ -225,11 +236,17 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	ic := ImportConfig{Name: name}
 	configPath := filepath.Join(configDir, "dang.toml")
 
+	// A Dagger version selects what a `dagger session` started by Dang
+	// serves. An endpoint serves whatever version it was started with.
+	if !source.Dagger.Version.IsZero() && source.Endpoint != "" {
+		return ic, fmt.Errorf("a Dagger version cannot be combined with 'endpoint'; use dagger = true")
+	}
+
 	// Native Dang module import (local path). Resolved lazily from source when
 	// the import is inferred, so no client/schema is set up here. Mutually
 	// exclusive with the GraphQL source kinds.
 	if source.Path != "" {
-		if source.Dagger || source.Schema != "" || source.Endpoint != "" || len(source.Service) > 0 {
+		if source.Dagger.Enabled || source.Schema != "" || source.Endpoint != "" || len(source.Service) > 0 {
 			return ic, fmt.Errorf("'path' cannot be combined with 'dagger', 'schema', 'endpoint', or 'service'")
 		}
 		modDir := source.Path
@@ -242,19 +259,22 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 
 	// For Dagger imports, default the service command and set up the
 	// lazy client that starts a dagger session.
-	if source.Dagger {
+	if source.Dagger.Enabled {
+		version := source.Dagger.Version
 		ic.Dagger = true
-		service := source.Service
-		if len(service) == 0 {
-			service = []string{"dagger", "session"}
+		ic.DaggerVersion = version
+		service := daggerSessionCommand(version)
+		if len(source.Service) > 0 {
+			service = daggerServiceCommand(source.Service, version)
 		}
 		svc := &serviceProcess{
-			ctx:      ctx,
-			cmd:      service,
-			dir:      configDir,
-			parent:   source,
-			services: servicesFromContext(ctx),
-			dagger:   true,
+			ctx:           ctx,
+			cmd:           service,
+			dir:           configDir,
+			parent:        source,
+			services:      servicesFromContext(ctx),
+			dagger:        true,
+			daggerVersion: version,
 		}
 		ic.Client = svc
 
@@ -311,7 +331,7 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 			if err == nil && cachedSchema != nil {
 				ic.Schema = cachedSchema
 			} else {
-				schema, err := introspectSchema(ctx, ic.Client, source.Dagger)
+				schema, err := introspectSchema(ctx, ic.Client, source.Dagger.Enabled)
 				if err != nil {
 					return ic, fmt.Errorf("introspecting %s: %w", endpoint, err)
 				}
@@ -360,12 +380,13 @@ func makeClient(endpoint, authorization string, headers map[string]string) (grap
 // field, that service is started recursively. Resolution must eventually
 // produce an "endpoint" or it is an error.
 type serviceProcess struct {
-	ctx    context.Context // long-lived context for process lifetime
-	cmd    []string
-	dir    string
-	parent *ImportSource // static config fields to use as defaults
-	depth  int
-	dagger bool // true if service speaks the dagger session protocol
+	ctx           context.Context // long-lived context for process lifetime
+	cmd           []string
+	dir           string
+	parent        *ImportSource // static config fields to use as defaults
+	depth         int
+	dagger        bool    // true if service speaks the dagger session protocol
+	daggerVersion Version // dagger only: the declared version the session must serve
 
 	services *ServiceRegistry
 
@@ -380,9 +401,9 @@ type serviceProcess struct {
 func NewDaggerServiceProcess(ctx context.Context) graphql.Client {
 	return &serviceProcess{
 		ctx:      ctx,
-		cmd:      []string{"dagger", "session"},
+		cmd:      daggerSessionCommand(Version{}),
 		dir:      "",
-		parent:   &ImportSource{Dagger: true},
+		parent:   &ImportSource{Dagger: DaggerSource{Enabled: true}},
 		services: servicesFromContext(ctx),
 		dagger:   true,
 	}
@@ -454,7 +475,17 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 
 	if s.dagger {
 		slog.Debug("waiting for dagger session params", "pid", cmd.Process.Pid)
-		return s.startDagger(ctx, stdout)
+		client, err := s.startDagger(ctx, stdout)
+		if err != nil {
+			return nil, err
+		}
+		if !s.daggerVersion.IsZero() {
+			if err := checkDaggerVersion(ctx, client, s.daggerVersion); err != nil {
+				_ = killProcessGroup(cmd)
+				return nil, err
+			}
+		}
+		return client, nil
 	}
 
 	// Read a JSON object from stdout
