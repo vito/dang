@@ -146,8 +146,10 @@ and `fmt/stale` before committing.
   the project config that happens to be on the context. Use `VersionForDir`.
 - **`ContextWithVersion` never overrides a version a dang.toml declares**,
   but does apply under a dang.toml without the key (it may predate the key,
-  e.g. a pinned Dagger module's import-only dang.toml). It is cleared when
-  crossing into an imported module (`moduleImportContext`).
+  e.g. a pinned Dagger module's import-only dang.toml). It is bound to that
+  dang.toml (`bindContextVersion`): it carries into imported modules the
+  same dang.toml governs, and is cleared for any other import
+  (`importContextVersion`).
 - **Running code never writes files**: only `dang init` and `dang migrate`
   stamp `dang = "..."`.
 - **The zero `Version` means `CurrentVersion`**, everywhere (parser option,

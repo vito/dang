@@ -221,6 +221,17 @@ func versionFromStore(store map[string]any) Version {
 
 type versionKey struct{}
 
+// versionPin is the version set by ContextWithVersion.
+type versionPin struct {
+	version Version
+	// bound reports whether the source the pin was set for has been reached
+	// (see bindContextVersion), and config is then the dang.toml without a
+	// `dang` key that governs it, if any: the pin applies to everything that
+	// dang.toml governs, including the modules it imports by path.
+	bound  bool
+	config string
+}
+
 // ContextWithVersion sets the version of the source evaluated directly with
 // ctx (the directory or file passed to RunDir, DeclareDir or RunFile, or
 // source with no path at all, such as REPL input or a completion fragment)
@@ -230,12 +241,12 @@ type versionKey struct{}
 // module's version from its engine version: such a module may well have a
 // dang.toml for its imports from before the key existed.
 //
-// It never overrides a version a dang.toml declares (see VersionForDir), and
-// it does not reach the modules that source imports: an imported module's
-// version depends only on its own path, so an ungoverned import is
-// CurrentVersion.
+// It never overrides a version a dang.toml declares (see VersionForDir). It
+// reaches the modules that source imports only if the same dang.toml without
+// a `dang` key governs them: otherwise an imported module's version depends
+// only on its own path, so an ungoverned import is CurrentVersion.
 func ContextWithVersion(ctx context.Context, v Version) context.Context {
-	return context.WithValue(ctx, versionKey{}, v)
+	return context.WithValue(ctx, versionKey{}, versionPin{version: v})
 }
 
 // withoutContextVersion clears ContextWithVersion, for crossing into an
@@ -244,13 +255,45 @@ func withoutContextVersion(ctx context.Context) context.Context {
 	return ContextWithVersion(ctx, Version{})
 }
 
+// bindContextVersion binds a ContextWithVersion pin to the source in dir it
+// was set for, if it isn't bound yet: from then on, it carries over into an
+// imported module only if the dang.toml without a `dang` key that governs dir
+// also governs that module (see importContextVersion).
+func bindContextVersion(ctx context.Context, dir string) context.Context {
+	pin, ok := ctx.Value(versionKey{}).(versionPin)
+	if !ok || pin.version.IsZero() || pin.bound {
+		return ctx
+	}
+	pin.bound = true
+	if configPath, cfg, err := FindProjectConfig(dir); err == nil && cfg != nil && cfg.Dang.IsZero() {
+		pin.config = configPath
+	}
+	return context.WithValue(ctx, versionKey{}, pin)
+}
+
+// importContextVersion returns ctx with the ContextWithVersion pin it should
+// carry into the module imported from dir: kept if the pin is bound to the
+// dang.toml without a `dang` key that governs dir too, cleared otherwise.
+func importContextVersion(ctx context.Context, dir string) context.Context {
+	pin, ok := ctx.Value(versionKey{}).(versionPin)
+	if !ok || pin.version.IsZero() {
+		return ctx
+	}
+	if pin.bound && pin.config != "" {
+		if configPath, _, err := FindProjectConfig(dir); err == nil && configPath == pin.config {
+			return ctx
+		}
+	}
+	return withoutContextVersion(ctx)
+}
+
 // contextVersion returns the version set by ContextWithVersion, if any.
 func contextVersion(ctx context.Context) (Version, bool) {
-	v, ok := ctx.Value(versionKey{}).(Version)
-	if !ok || v.IsZero() {
+	pin, ok := ctx.Value(versionKey{}).(versionPin)
+	if !ok || pin.version.IsZero() {
 		return Version{}, false
 	}
-	return v, true
+	return pin.version, true
 }
 
 // VersionFromContext returns the version of source that no dang.toml
