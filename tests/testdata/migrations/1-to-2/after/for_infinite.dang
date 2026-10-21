@@ -1,0 +1,16 @@
+# Edition 1's `for { ... }` loops until a break. Edition 2 spells it
+# `loop { ... }`.
+
+let sum = 0
+let i = 0
+loop {
+  i = i + 1
+  if (i == 2) {
+    continue
+  }
+  if (i > 3) {
+    break
+  }
+  sum = sum + i
+}
+assert { sum == 4 } # 1 + 3

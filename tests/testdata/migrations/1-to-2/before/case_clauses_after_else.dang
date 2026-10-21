@@ -1,0 +1,9 @@
+# Edition 1 tries case clauses in order, so clauses after `else` never run.
+# Edition 2 rejects them as unreachable; the migration drops them.
+
+let result = case (5) {
+  1 => "one"
+  else => "default"
+  5 => "five"
+}
+assert { result == "default" }
