@@ -57,24 +57,24 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 	"CommentToken":              "comment_token",
 }
 
-// tsEdition is the edition whose syntax the tree-sitter grammar describes.
-// Tree-sitter has no equivalent of the parser's edition option, so the
-// edition-dependent rules are resolved statically for this one edition.
-var tsEdition = LatestEdition
+// tsVersion is the Dang version whose syntax the tree-sitter grammar
+// describes. Tree-sitter has no equivalent of the parser's version option, so
+// the version-dependent rules are resolved statically for this one version.
+var tsVersion = CurrentVersion
 
-// tsPredicates maps the PEG's edition predicates (rules whose body is a pigeon
-// code predicate) to their value in tsEdition. A reference to a predicate
+// tsPredicates maps the PEG's version predicates (rules whose body is a pigeon
+// code predicate) to their value in tsVersion. A reference to a predicate
 // matches nothing; a sequence the predicate rules out (`P x` where P is false,
 // or `!P x` where P is true) can never match, so it is pruned from its choice.
 var tsPredicates = map[string]bool{
-	"SingleBraceSelection": tsEdition.singleBraceSelection(),
-	"ForLoops":             tsEdition.forLoops(),
-	"CommaFormSep":         tsEdition.commaFormSep(),
+	"SingleBraceSelection": tsVersion.singleBraceSelection(),
+	"ForLoops":             tsVersion.forLoops(),
+	"CommaFormSep":         tsVersion.commaFormSep(),
 }
 
-// tsInlinedRules are PEG rules that only exist to switch syntax by edition.
+// tsInlinedRules are PEG rules that only exist to switch syntax by version.
 // Their bodies are inlined at each reference instead of becoming named nodes,
-// so the tree-sitter grammar keeps the shape it has for tsEdition alone.
+// so the tree-sitter grammar keeps the shape it has for tsVersion alone.
 var tsInlinedRules = map[string]bool{
 	"SelectionOpen":  true,
 	"SelectionClose": true,
@@ -92,14 +92,14 @@ func tsGrammarRule(name string) *rule {
 	panic(fmt.Sprintf("unknown grammar rule: %s", name))
 }
 
-// tsEditionOnly reports whether a rule is resolved away by tsPredicates or
+// tsVersionOnly reports whether a rule is resolved away by tsPredicates or
 // tsInlinedRules rather than emitted into the tree-sitter grammar.
-func tsEditionOnly(name string) bool {
+func tsVersionOnly(name string) bool {
 	_, isPredicate := tsPredicates[name]
 	return isPredicate || tsInlinedRules[name]
 }
 
-// tsNeverMatches reports whether expr cannot match in tsEdition, given the
+// tsNeverMatches reports whether expr cannot match in tsVersion, given the
 // static values of tsPredicates.
 func tsNeverMatches(expr any) bool {
 	switch t := expr.(type) {
@@ -137,7 +137,7 @@ func tsNeverMatches(expr any) bool {
 	return false
 }
 
-// tsInlineRule translates an edition-only rule's body for use in place of a
+// tsInlineRule translates a version-only rule's body for use in place of a
 // reference to it. A label at the top of the body only names the value for
 // the rule's action, so it is dropped rather than becoming a field.
 func tsInlineRule(name string, prec int) *treesitter.Rule {
@@ -312,12 +312,12 @@ func TreesitterGrammar() treesitter.Grammar {
 	// whether PEG-only inline whitespace should be preserved for tree-sitter.
 	ts.Externals = tsExternalRules()
 
-	// Precedence descends with rule order. Edition-only rules don't count, so
+	// Precedence descends with rule order. Version-only rules don't count, so
 	// they leave the precedences of the emitted rules unchanged.
 	var emitted []*rule
 	for _, rule := range g.rules {
-		if tsEditionOnly(rule.name) {
-			slog.Info("resolving edition-only grammar rule", "rule", rule.name, "edition", tsEdition)
+		if tsVersionOnly(rule.name) {
+			slog.Info("resolving version-only grammar rule", "rule", rule.name, "version", tsVersion.String())
 			continue
 		}
 		emitted = append(emitted, rule)
@@ -347,7 +347,7 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 		ts.Type = treesitter.RuleTypeChoice
 		for i, expr := range t.alternatives {
 			if tsNeverMatches(expr) {
-				// ruled out by an edition predicate
+				// ruled out by a version predicate
 				continue
 			}
 			sub := treesitterRule(&rule{

@@ -136,7 +136,7 @@ func ArgsOf(t hm.Type, partial string, alreadyProvided []string) []Completion {
 // InferReceiverType parses and type-checks a receiver expression, returning
 // its inferred type. Returns nil if parsing or inference fails.
 func InferReceiverType(ctx context.Context, typeScope TypeScope, expr string) hm.Type {
-	parsed, err := Parse("completion", []byte(expr), WithEdition(EditionFromContext(ctx)))
+	parsed, err := Parse("completion", []byte(expr), WithVersion(VersionFromContext(ctx)))
 	if err != nil {
 		return nil
 	}

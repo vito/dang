@@ -1,9 +1,9 @@
-# Edition 1's `for { ... }` loops until a break. Edition 2 spells it
+# Dang 1.0's `for { ... }` loops until a break. Dang 2.0 spells it
 # `loop { ... }`.
 
 let sum = 0
 let i = 0
-loop {
+for {
   i = i + 1
   if (i == 2) {
     continue

@@ -1,0 +1,8 @@
+# Dang 1.0 tries case clauses in order, so clauses after `else` never run.
+# Dang 2.0 rejects them as unreachable; the migration drops them.
+
+let result = case (5) {
+  1 => "one"
+  else => "default"
+}
+assert { result == "default" }

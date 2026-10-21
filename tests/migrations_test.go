@@ -13,15 +13,16 @@ import (
 	"gotest.tools/v3/golden"
 )
 
-// migrationsDir holds one directory per migration path between editions,
-// named <from>-to-<to>. Its before/ directory's dang.toml declares edition
-// <from>, and it holds one script per form the migration rewrites, written
-// the old way. after/ declares <to> and holds, under the same names, what
-// `dang migrate` makes of each script: golden files, regenerated with
-// -update. Each script asserts its own behaviour and runs both before and
-// after migrating, so a pair of files covers one migration end to end.
+// migrationsDir holds one directory per migration path between Dang versions,
+// named <from>-to-<to> (e.g. 1.0-to-2.0). Its before/ directory's dang.toml
+// declares version <from>, and it holds one script per form the migration
+// rewrites, written the old way. after/ declares <to> and holds, under the
+// same names, what `dang migrate` makes of each script: golden files,
+// regenerated with -update. Each script asserts its own behaviour and runs
+// both before and after migrating, so a pair of files covers one migration
+// end to end.
 //
-// Adding an edition gate means adding its script here. The before/
+// Adding a version gate means adding its script here. The before/
 // directories are excluded from `dang fmt`, which would print them in the
 // current spelling (see .dagger/main.dang).
 const migrationsDir = "testdata/migrations"
@@ -34,15 +35,15 @@ func (DangSuite) TestMigrations(ctx context.Context, t *testctx.T) {
 	for _, pathDir := range paths {
 		name := filepath.Base(pathDir)
 		fromName, toName, _ := strings.Cut(name, "-to-")
-		from, err := dang.ParseEdition(fromName)
+		from, err := dang.ParseVersion(fromName)
 		require.NoError(t, err, "migration path %s", name)
-		to, err := dang.ParseEdition(toName)
+		to, err := dang.ParseVersion(toName)
 		require.NoError(t, err, "migration path %s", name)
 
 		beforeDir := filepath.Join(pathDir, "before")
 		afterDir := filepath.Join(pathDir, "after")
-		requireDirEdition(t, beforeDir, from)
-		requireDirEdition(t, afterDir, to)
+		requireDirVersion(t, beforeDir, from)
+		requireDirVersion(t, afterDir, to)
 
 		scripts, err := filepath.Glob(filepath.Join(beforeDir, "*.dang"))
 		require.NoError(t, err)
@@ -74,8 +75,8 @@ func (DangSuite) TestMigrations(ctx context.Context, t *testctx.T) {
 	}
 }
 
-func requireDirEdition(t *testctx.T, dir string, want dang.Edition) {
-	edition, err := dang.EditionForDir(context.Background(), dir)
+func requireDirVersion(t *testctx.T, dir string, want dang.Version) {
+	version, err := dang.VersionForDir(context.Background(), dir)
 	require.NoError(t, err)
-	require.Equal(t, want, edition, "%s must be governed by a dang.toml declaring edition %q", dir, want)
+	require.Equal(t, want, version, "%s must be governed by a dang.toml declaring dang = %q", dir, want.String())
 }

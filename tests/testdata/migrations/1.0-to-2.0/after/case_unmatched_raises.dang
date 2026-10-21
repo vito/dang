@@ -1,6 +1,6 @@
-# In edition 1, a case that matches no clause raises, so a case without
-# `else` is non-null. In edition 2 it yields null instead; the migration
-# keeps edition 1's behaviour with an explicit raising `else`.
+# In Dang 1.0, a case that matches no clause raises, so a case without
+# `else` is non-null. In Dang 2.0 it yields null instead; the migration
+# keeps 1.0's behaviour with an explicit raising `else`.
 
 classify(x: Int!): String! {
   case (x) {

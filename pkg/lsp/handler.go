@@ -85,7 +85,7 @@ type parsedFile struct {
 	mtime   time.Time
 	size    int64
 	open    bool         // true if sourced from an open buffer
-	edition dang.Edition // edition the block was parsed as
+	version dang.Version // Dang version the block was parsed as
 }
 
 // File is
@@ -259,17 +259,17 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	var currentBlock *dang.FileBlock
 
 	// Look up the directory's dang.toml once per analysis: it decides both the
-	// edition every file in the directory is parsed as and the imports.
+	// Dang version every file in the directory is parsed as and the imports.
 	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
 	if configErr != nil {
 		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
 	}
-	edition := dang.EditionForConfig(ctx, projectConfig)
+	version := dang.VersionForConfig(ctx, projectConfig)
 
 	for _, path := range files {
 		fileURI := toURI(path)
 
-		block, err := h.parseFileCached(path, edition)
+		block, err := h.parseFileCached(path, version)
 		if err != nil {
 			// IO errors (missing file, permission denied, broken symlink)
 			// are fatal — bail out so the caller can surface them. Parse
@@ -431,27 +431,27 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 	return cache
 }
 
-// parseFileCached returns the parsed *FileBlock for path, parsed as edition.
-// When the file is unchanged from the cached entry, the cached block is
-// returned without re-parsing. For files on disk, the fingerprint is
-// mtime+size+edition — a stat call is enough to know if the cache is still
+// parseFileCached returns the parsed *FileBlock for path, parsed as Dang
+// version. When the file is unchanged from the cached entry, the cached block
+// is returned without re-parsing. For files on disk, the fingerprint is
+// mtime+size+version — a stat call is enough to know if the cache is still
 // good, avoiding even the file read. For open buffers, the fingerprint is the
-// buffer's text and the edition. The edition is part of the fingerprint
-// because editing dang.toml's edition changes how an otherwise unchanged file
+// buffer's text and the version. The version is part of the fingerprint
+// because editing dang.toml's version changes how an otherwise unchanged file
 // parses; callers resolve it once per directory (see analyzeDirectory).
 //
 // Auto-imports prepended into block.Forms by InferDirectoryFiles persist
 // across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
 // blocks keep their inferred schema modules, so the imports phase doesn't
 // re-introspect on cache hit.
-func (h *langHandler) parseFileCached(path string, edition dang.Edition) (*dang.FileBlock, error) {
+func (h *langHandler) parseFileCached(path string, version dang.Version) (*dang.FileBlock, error) {
 	uri := toURI(path)
 
 	h.mu.Lock()
 	openFile := h.files[uri]
 	cached, hit := h.parseCache[path]
 	h.mu.Unlock()
-	hit = hit && cached.edition == edition
+	hit = hit && cached.version == version
 
 	if openFile != nil {
 		openFile.mu.Lock()
@@ -460,7 +460,7 @@ func (h *langHandler) parseFileCached(path string, edition dang.Edition) (*dang.
 		if hit && cached.open && cached.text == text {
 			return cached.block, nil
 		}
-		return h.parseAndStore(path, text, parsedFile{open: true, text: text, edition: edition})
+		return h.parseAndStore(path, text, parsedFile{open: true, text: text, version: version})
 	}
 
 	info, err := os.Stat(path)
@@ -475,22 +475,23 @@ func (h *langHandler) parseFileCached(path string, edition dang.Edition) (*dang.
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size(), edition: edition})
+	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size(), version: version})
 }
 
-// editionForFile returns the edition of the file at path (see
-// dang.EditionForDir). A broken dang.toml is reported elsewhere (import
-// resolution), so here it just falls back to the edition of ungoverned source.
-func editionForFile(ctx context.Context, path string) dang.Edition {
-	edition, err := dang.EditionForDir(ctx, filepath.Dir(path))
+// versionForFile returns the Dang version of the file at path (see
+// dang.VersionForDir). A broken dang.toml is reported elsewhere (import
+// resolution), so here it just falls back to the version of ungoverned
+// source.
+func versionForFile(ctx context.Context, path string) dang.Version {
+	version, err := dang.VersionForDir(ctx, filepath.Dir(path))
 	if err != nil {
-		slog.WarnContext(ctx, "failed to determine edition", "path", path, "error", err)
+		slog.WarnContext(ctx, "failed to determine Dang version", "path", path, "error", err)
 	}
-	return edition
+	return version
 }
 
 func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.FileBlock, error) {
-	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path), dang.WithEdition(entry.edition))
+	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path), dang.WithVersion(entry.version))
 	if err != nil {
 		return nil, err
 	}

@@ -12,52 +12,52 @@ import (
 	"strings"
 )
 
-// MigrateSource rewrites source written in edition from as edition to.
+// MigrateSource rewrites source written in Dang version from as version to.
 // filename is only used in errors.
 //
-// It needs no per-change migration code: every edition parses into the same
+// It needs no per-change migration code: every version parses into the same
 // AST (old forms desugar to their current equivalents in the parser; see
-// Edition), so migrating is parsing as from and formatting as to. What it
-// cannot do is fix code that a later edition merely rejects, e.g. because a
+// Version), so migrating is parsing as from and formatting as to. What it
+// cannot do is fix code that a later version merely rejects, e.g. because a
 // type check became stricter; that surfaces as a compile error after
 // migrating.
 //
 // The result is checked twice. It must mean the same as the source: parsed
-// as edition to, it must be the same AST, source locations aside, as the
-// source formatted and parsed as edition from. That catches text the
+// as version to, it must be the same AST, source locations aside, as the
+// source formatted and parsed as version from. That catches text the
 // formatter echoes verbatim, like a #nofmt region, whose meaning changed
-// between the editions; such a region has to be migrated by hand. And it must
-// be stable: formatting it again as edition to must reproduce it exactly.
-func MigrateSource(filename string, source []byte, from, to Edition) (string, error) {
+// between the versions; such a region has to be migrated by hand. And it must
+// be stable: formatting it again as version to must reproduce it exactly.
+func MigrateSource(filename string, source []byte, from, to Version) (string, error) {
 	if to.Before(from) {
-		return "", fmt.Errorf("cannot migrate from edition %q back to %q", from, to)
+		return "", fmt.Errorf("cannot migrate from Dang %s back to %s", from, to)
 	}
 	migrated, err := formatSource(filename, source, from, to)
 	if err != nil {
-		return "", fmt.Errorf("%w as edition %q: %w", errUnparseable, from, EnhanceParseError(err, filename, source))
+		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, EnhanceParseError(err, filename, source))
 	}
-	got, err := Parse(filename, []byte(migrated), WithEdition(to))
+	got, err := Parse(filename, []byte(migrated), WithVersion(to))
 	if err != nil {
-		return "", fmt.Errorf("migrated source does not parse as edition %q: %w", to, EnhanceParseError(err, filename, []byte(migrated)))
+		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, EnhanceParseError(err, filename, []byte(migrated)))
 	}
-	if from != to {
-		// Compare against the source formatted in its own edition, so that
+	if from.orCurrent() != to.orCurrent() {
+		// Compare against the source formatted in its own version, so that
 		// formatting's own normalizations (e.g. dropping empty parens) don't
 		// count as differences.
 		formatted, err := formatSource(filename, source, from, from)
 		if err != nil {
 			return "", err
 		}
-		want, err := Parse(filename, []byte(formatted), WithEdition(from))
+		want, err := Parse(filename, []byte(formatted), WithVersion(from))
 		if err != nil {
-			return "", fmt.Errorf("formatted source does not parse as edition %q: %w", from, err)
+			return "", fmt.Errorf("formatted source does not parse as Dang %s: %w", from, err)
 		}
 		if loc, differs := firstASTDifference(want.(Node), got.(Node)); differs {
 			where := "it"
 			if loc != nil {
 				where = fmt.Sprintf("line %d", loc.Line)
 			}
-			return "", fmt.Errorf("migrating to edition %q would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
+			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
 		}
 	}
 	again, err := formatSource(filename, []byte(migrated), to, to)
@@ -65,7 +65,7 @@ func MigrateSource(filename string, source []byte, from, to Edition) (string, er
 		return "", err
 	}
 	if again != migrated {
-		return "", fmt.Errorf("migrated source is not stable when formatted as edition %q", to)
+		return "", fmt.Errorf("migrated source is not stable when formatted as Dang %s", to)
 	}
 	return migrated, nil
 }
@@ -158,13 +158,13 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 }
 
 // A ProjectMigration moves the source governed by one dang.toml to a newer
-// edition. The dang.toml and every .dang file it governs change together:
-// changing only the config would change what the files mean.
+// Dang version. The dang.toml and every .dang file it governs change
+// together: changing only the config would change what the files mean.
 type ProjectMigration struct {
-	// ConfigPath is the dang.toml whose edition changes. It is created if
+	// ConfigPath is the dang.toml whose version changes. It is created if
 	// the project had none (see MigrateOptions.UngovernedFrom).
 	ConfigPath string
-	From, To   Edition
+	From, To   Version
 	// Config is the new dang.toml contents.
 	Config []byte
 	// Files lists every .dang file the config governs that parses as From,
@@ -172,20 +172,20 @@ type ProjectMigration struct {
 	Files []FileMigration
 	// Unparseable lists the governed files that do not parse as From (e.g.
 	// deliberately broken test fixtures). They can't be migrated, so Write
-	// leaves them alone, but bumping the edition still changes how they
+	// leaves them alone, but bumping the version still changes how they
 	// parse.
 	Unparseable []UnparseableFile
 }
 
 // An UnparseableFile is a governed file that can't be migrated because it
-// does not parse in the project's edition.
+// does not parse in the project's version.
 type UnparseableFile struct {
 	Path string
 	Err  error
 }
 
 // errUnparseable marks a MigrateSource failure caused by the source not
-// parsing in its own edition.
+// parsing in its own version.
 var errUnparseable = errors.New("does not parse")
 
 // A FileMigration is one source file's migration.
@@ -215,24 +215,24 @@ func (m *ProjectMigration) Write() error {
 
 // MigrateOptions configures PlanMigrations.
 type MigrateOptions struct {
-	// UngovernedFrom, if set, is the edition of the source under root that
-	// no dang.toml governs, such as a module whose embedder pins its edition
-	// with ContextWithEdition. That source is then migrated as one project,
-	// creating a dang.toml at root that declares the target edition, which
+	// UngovernedFrom, if set, is the version of the source under root that
+	// no dang.toml governs, such as a module whose embedder pins its version
+	// with ContextWithVersion. That source is then migrated as one project,
+	// creating a dang.toml at root that declares the target version, which
 	// takes precedence over the embedder's pin from then on. Without it,
-	// ungoverned source is left alone: by its path, it is LatestEdition.
-	UngovernedFrom Edition
+	// ungoverned source is left alone: by its path, it is CurrentVersion.
+	UngovernedFrom Version
 }
 
-// PlanMigrations plans migrating every project under root to edition to,
+// PlanMigrations plans migrating every project under root to Dang version to,
 // without changing anything. A project is the set of .dang files governed by
-// one dang.toml (see EditionForDir); projects already at or past to are left
+// one dang.toml (see VersionForDir); projects already at or past to are left
 // alone. Nested repositories (directories with a .git) are not entered.
 //
 // A project whose dang.toml lives above root is an error rather than a partial
-// migration, since bumping its edition would change files outside root. So is
+// migration, since bumping its version would change files outside root. So is
 // a file whose migration would change its meaning (see MigrateSource).
-func PlanMigrations(root string, to Edition, opts MigrateOptions) ([]*ProjectMigration, error) {
+func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMigration, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -240,7 +240,7 @@ func PlanMigrations(root string, to Edition, opts MigrateOptions) ([]*ProjectMig
 
 	type project struct {
 		configPath string
-		from       Edition
+		from       Version
 		files      []string
 	}
 	projects := map[string]*project{}
@@ -280,7 +280,7 @@ func PlanMigrations(root string, to Edition, opts MigrateOptions) ([]*ProjectMig
 			} else {
 				p = projects[configPath]
 				if p == nil {
-					p = &project{configPath: configPath, from: config.EffectiveEdition()}
+					p = &project{configPath: configPath, from: config.EffectiveVersion()}
 					projects[configPath] = p
 				}
 			}
@@ -293,7 +293,7 @@ func PlanMigrations(root string, to Edition, opts MigrateOptions) ([]*ProjectMig
 		return nil, err
 	}
 
-	if opts.UngovernedFrom != "" && len(ungoverned.files) > 0 {
+	if !opts.UngovernedFrom.IsZero() && len(ungoverned.files) > 0 {
 		projects[ungoverned.configPath] = ungoverned
 	}
 
@@ -321,7 +321,7 @@ func PlanMigrations(root string, to Edition, opts MigrateOptions) ([]*ProjectMig
 			ConfigPath: configPath,
 			From:       p.from,
 			To:         to,
-			Config:     setConfigEdition(configSource, to),
+			Config:     setConfigVersion(configSource, to),
 		}
 		sort.Strings(p.files)
 		for _, path := range p.files {
@@ -345,22 +345,22 @@ func PlanMigrations(root string, to Edition, opts MigrateOptions) ([]*ProjectMig
 }
 
 var (
-	configEditionLine = regexp.MustCompile(`(?m)^[ \t]*edition[ \t]*=.*$`)
+	configVersionLine = regexp.MustCompile(`(?m)^[ \t]*dang[ \t]*=.*$`)
 	configTableHeader = regexp.MustCompile(`(?m)^[ \t]*\[`)
 )
 
-// setConfigEdition returns dang.toml contents declaring edition e, editing
-// the top-level `edition` key in place (or adding it first) so the rest of
-// the file, comments included, is untouched.
-func setConfigEdition(config []byte, e Edition) []byte {
-	line := fmt.Sprintf("edition = %q", string(e))
+// setConfigVersion returns dang.toml contents declaring Dang version v,
+// editing the top-level `dang` key in place (or adding it first) so the rest
+// of the file, comments included, is untouched.
+func setConfigVersion(config []byte, v Version) []byte {
+	line := fmt.Sprintf("dang = %q", v.String())
 
 	// Top-level keys precede the first table header.
 	top := config
 	if loc := configTableHeader.FindIndex(config); loc != nil {
 		top = config[:loc[0]]
 	}
-	if loc := configEditionLine.FindIndex(top); loc != nil {
+	if loc := configVersionLine.FindIndex(top); loc != nil {
 		out := append([]byte{}, config[:loc[0]]...)
 		out = append(out, line...)
 		return append(out, config[loc[1]:]...)
@@ -371,4 +371,63 @@ func setConfigEdition(config []byte, e Edition) []byte {
 		header += "\n"
 	}
 	return append([]byte(header), config...)
+}
+
+// A ProjectInit is what InitProject did.
+type ProjectInit struct {
+	// ConfigPath is the project's dang.toml.
+	ConfigPath string
+	// Version is the Dang version it now declares.
+	Version Version
+	// Created reports whether the dang.toml was created; otherwise an
+	// existing one was stamped with the version it already meant.
+	Created bool
+	// AlreadyDeclared reports whether the dang.toml already declared its
+	// version, so nothing changed.
+	AlreadyDeclared bool
+}
+
+// InitProject makes dir a Dang project that declares its Dang version.
+//
+// Without a dang.toml governing dir, it creates dir/dang.toml declaring
+// CurrentVersion, which is what dir's source already means (see
+// VersionForDir). A dang.toml in dir that declares no version is stamped with
+// the version it already means, DefaultVersion, so that nothing changes
+// meaning; `dang migrate` moves it forward. A dir governed by a dang.toml
+// further up is an error: a new dang.toml there would cut its source off
+// from that project's version and imports.
+func InitProject(dir string) (*ProjectInit, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	configPath, config, err := FindProjectConfig(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	if configPath == "" {
+		configPath = filepath.Join(dir, "dang.toml")
+		if err := os.WriteFile(configPath, setConfigVersion(nil, CurrentVersion), 0644); err != nil {
+			return nil, err
+		}
+		return &ProjectInit{ConfigPath: configPath, Version: CurrentVersion, Created: true}, nil
+	}
+
+	if filepath.Dir(configPath) != dir {
+		return nil, fmt.Errorf("%s is already part of the project at %s; run init there", dir, configPath)
+	}
+	if !config.Dang.IsZero() {
+		return &ProjectInit{ConfigPath: configPath, Version: config.Dang, AlreadyDeclared: true}, nil
+	}
+
+	source, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	version := config.EffectiveVersion()
+	if err := os.WriteFile(configPath, setConfigVersion(source, version), 0644); err != nil {
+		return nil, err
+	}
+	return &ProjectInit{ConfigPath: configPath, Version: version}, nil
 }

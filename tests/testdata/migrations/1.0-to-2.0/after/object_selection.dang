@@ -1,4 +1,4 @@
-# Edition 1 spells object selection with single braces; edition 2 uses double
+# Dang 1.0 spells object selection with single braces; Dang 2.0 uses double
 # braces, freeing `recv.{ ... }` for dot-block application.
 
 type Address {

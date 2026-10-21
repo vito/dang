@@ -17,68 +17,68 @@ func migrateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "migrate [flags] [dir...]",
-		Short: "Migrate Dang source to a newer edition",
+		Short: "Migrate Dang source to a newer Dang version",
 		Long: `Migrate every project under the given directories (default: the current
-directory) to a newer edition: each .dang file a dang.toml governs is
-rewritten in the target edition's syntax and formatted, and the dang.toml's
-edition is updated to match.
+directory) to a newer Dang version: each .dang file a dang.toml governs is
+rewritten in the target version's syntax and formatted, and the dang.toml's
+` + "`dang`" + ` version is updated to match.
 
 By default, migrate only reports what it would change. Use -w to write.
 
-Source no dang.toml governs is already in the latest edition, unless
-something else decides its edition (e.g. a Dagger engine version). Use
---from to say which edition it is in; migrating it creates a dang.toml
-declaring the new edition.
+Source no dang.toml governs is already in the current version, unless
+something else decides its version (e.g. a Dagger engine version). Use
+--from to say which version it is in; migrating it creates a dang.toml
+declaring the new version.
 
-Migration rewrites syntax. Code that a newer edition rejects for other
+Migration rewrites syntax. Code that a newer version rejects for other
 reasons (e.g. a stricter type check) is left for you to fix; run the
 migrated project to find it. A file that doesn't parse in its project's
-edition can't be migrated: migrate refuses to write, unless
+version can't be migrated: migrate refuses to write, unless
 --skip-unparseable leaves such files as they are.`,
-		Example: `  # See what migrating the current project to the latest edition changes
+		Example: `  # See what migrating the current project to this Dang's version changes
   dang migrate
 
   # Migrate it
   dang migrate -w
 
-  # Migrate a project to a specific edition
-  dang migrate -w --to 2 ./my-module
+  # Migrate a project to a specific version
+  dang migrate -w --to 2.0 ./my-module
 
-  # Migrate a module without a dang.toml that is written in edition 1
-  dang migrate -w --from 1 ./my-module`,
+  # Migrate a module without a dang.toml that is written for Dang 1.0
+  dang migrate -w --from 1.0 ./my-module`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				args = []string{"."}
 			}
-			target := dang.LatestEdition
+			target := dang.CurrentVersion
 			if to != "" {
-				e, err := dang.ParseEdition(to)
+				v, err := dang.ParseVersion(to)
 				if err != nil {
 					return err
 				}
-				target = e
+				target = v
 			}
 			var opts dang.MigrateOptions
 			if from != "" {
-				e, err := dang.ParseEdition(from)
+				v, err := dang.ParseVersion(from)
 				if err != nil {
 					return err
 				}
-				opts.UngovernedFrom = e
+				opts.UngovernedFrom = v
 			}
 			return runMigrate(cmd, args, target, opts, write, skipUnparseable)
 		},
 	}
 
-	cmd.Flags().StringVar(&to, "to", "", "Edition to migrate to (default: the latest edition)")
-	cmd.Flags().StringVar(&from, "from", "", "Edition of source that no dang.toml governs")
+	cmd.Flags().StringVar(&to, "to", "", "Dang version to migrate to (default: this Dang's version)")
+	cmd.Flags().StringVar(&from, "from", "", "Dang version of source that no dang.toml governs")
 	cmd.Flags().BoolVarP(&write, "write", "w", false, "Write the migrated files and dang.toml")
-	cmd.Flags().BoolVar(&skipUnparseable, "skip-unparseable", false, "Leave files that don't parse in their edition as they are")
+	cmd.Flags().BoolVar(&skipUnparseable, "skip-unparseable", false, "Leave files that don't parse in their version as they are")
 
 	return cmd
 }
 
-func runMigrate(cmd *cobra.Command, dirs []string, to dang.Edition, opts dang.MigrateOptions, write, skipUnparseable bool) error {
+func runMigrate(cmd *cobra.Command, dirs []string, to dang.Version, opts dang.MigrateOptions, write, skipUnparseable bool) error {
 	out := cmd.OutOrStdout()
 
 	// Plan everything before writing anything, so a failure in one directory
@@ -100,13 +100,13 @@ func runMigrate(cmd *cobra.Command, dirs []string, to dang.Edition, opts dang.Mi
 	}
 
 	if len(plans) == 0 {
-		_, _ = fmt.Fprintf(out, "nothing to migrate: no project is older than edition %q\n", to)
+		_, _ = fmt.Fprintf(out, "nothing to migrate: no project is older than Dang %s\n", to)
 		return nil
 	}
 
 	var unparseable int
 	for _, plan := range plans {
-		_, _ = fmt.Fprintf(out, "%s: edition %q -> %q\n", plan.ConfigPath, plan.From, plan.To)
+		_, _ = fmt.Fprintf(out, "%s: Dang %s -> %s\n", plan.ConfigPath, plan.From, plan.To)
 		for _, f := range plan.Files {
 			if f.Changed() {
 				_, _ = fmt.Fprintf(out, "  %s\n", f.Path)
@@ -123,7 +123,7 @@ func runMigrate(cmd *cobra.Command, dirs []string, to dang.Edition, opts dang.Mi
 		return nil
 	}
 	if unparseable > 0 && !skipUnparseable {
-		return fmt.Errorf("%d file(s) don't parse in their project's edition; fix them, or use --skip-unparseable to leave them as they are", unparseable)
+		return fmt.Errorf("%d file(s) don't parse in their project's Dang version; fix them, or use --skip-unparseable to leave them as they are", unparseable)
 	}
 	for _, plan := range plans {
 		if err := plan.Write(); err != nil {

@@ -106,6 +106,7 @@ It provides type-safe, composable abstractions for container operations.`,
 
 	// Add subcommands
 	rootCmd.AddCommand(fmtCmd())
+	rootCmd.AddCommand(initCmd())
 	rootCmd.AddCommand(migrateCmd())
 
 	// Use fang for styled execution with enhanced features
@@ -324,12 +325,12 @@ func formatFile(path string, write, list bool) error {
 		return err
 	}
 
-	edition, err := dang.EditionForDir(context.Background(), filepath.Dir(path))
+	version, err := dang.VersionForDir(context.Background(), filepath.Dir(path))
 	if err != nil {
 		return err
 	}
 
-	formatted, err := dang.FormatFileWithEdition(source, edition)
+	formatted, err := dang.FormatFileWithVersion(source, version)
 	if err != nil {
 		return err
 	}
