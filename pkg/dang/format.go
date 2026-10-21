@@ -40,6 +40,11 @@ type Formatter struct {
 	// Edition whose syntax to emit (e.g. object selection braces). Empty
 	// means LatestEdition.
 	edition Edition
+
+	// migrating is set when the source was parsed in an older edition than
+	// edition. Templates then re-print their ${...} interpolations instead
+	// of echoing them (see formatTemplate).
+	migrating bool
 }
 
 // Format formats a node and returns the formatted source code
@@ -57,7 +62,13 @@ func FormatFile(source []byte) (string, error) {
 // FormatFileWithEdition parses and formats a Dang source file written in the
 // given edition, emitting that edition's syntax.
 func FormatFileWithEdition(source []byte, edition Edition) (string, error) {
-	result, commentMap, err := ParseWithComments("format", source, WithEdition(edition))
+	return formatSource("format", source, edition, edition)
+}
+
+// formatSource parses source written in edition from and formats it in
+// edition to's syntax. With from != to it is a migration (see MigrateSource).
+func formatSource(filename string, source []byte, from, to Edition) (string, error) {
+	result, commentMap, err := ParseWithComments(filename, source, WithEdition(from))
 	if err != nil {
 		return "", err
 	}
@@ -71,7 +82,8 @@ func FormatFileWithEdition(source []byte, edition Edition) (string, error) {
 		source:          source,
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
-		edition:         edition,
+		edition:         to,
+		migrating:       from != to,
 	}
 	f.formatNode(result.(*FileBlock))
 
@@ -2391,6 +2403,9 @@ func (f *Formatter) formatTemplate(t *Template) {
 	// indentation from multi-line content. Preserving source also keeps
 	// any comments living inside ${...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
+		if f.migrating {
+			orig = f.migrateInterpolations(t, orig)
+		}
 		if t.Fence >= 3 {
 			f.write(f.normalizeMultilineLiteral(t, orig))
 		} else {
@@ -2448,6 +2463,72 @@ func (f *Formatter) formatTemplate(t *Template) {
 	}
 	f.writeIndent()
 	f.write(fence)
+}
+
+// migrateInterpolations returns orig, the source text of template t, with
+// each ${...} interpolation re-printed in f's edition. The literal text, and
+// so the template's layout, is kept byte for byte; only the code inside the
+// interpolations changes, since that is what an edition can spell
+// differently.
+func (f *Formatter) migrateInterpolations(t *Template, orig string) string {
+	if t.Loc == nil {
+		return orig
+	}
+	start := f.lineColumnToOffset(t.Loc.Line, t.Loc.Column)
+	if start < 0 {
+		return orig
+	}
+	var b strings.Builder
+	last := 0
+	for _, p := range t.Parts {
+		if p.Expr == nil {
+			continue
+		}
+		startLine, startCol, endLine, endCol, ok := nodeExtent(p.Expr)
+		if !ok {
+			continue
+		}
+		from := f.lineColumnToOffset(startLine, startCol) - start
+		to := f.lineColumnToOffset(endLine, endCol) - start
+		if from < last || to < from || to > len(orig) {
+			continue
+		}
+		sub := &Formatter{
+			comments:        f.comments,
+			source:          f.source,
+			commentMap:      f.commentMap,
+			emittedComments: f.emittedComments,
+			edition:         f.edition,
+			migrating:       true,
+		}
+		sub.formatNodeInline(p.Expr)
+		b.WriteString(orig[last:from])
+		b.WriteString(sub.buf.String())
+		last = to
+	}
+	b.WriteString(orig[last:])
+	return b.String()
+}
+
+// nodeExtent returns the source span covered by node and everything beneath
+// it. A node's own Loc doesn't always cover its children: an object
+// selection's starts at its braces, after its receiver.
+func nodeExtent(node Node) (startLine, startCol, endLine, endCol int, ok bool) {
+	node.Walk(func(n Node) bool {
+		loc := n.GetSourceLocation()
+		if loc == nil || loc.End == nil {
+			return true
+		}
+		if !ok || loc.Line < startLine || (loc.Line == startLine && loc.Column < startCol) {
+			startLine, startCol = loc.Line, loc.Column
+		}
+		if !ok || loc.End.Line > endLine || (loc.End.Line == endLine && loc.End.Column > endCol) {
+			endLine, endCol = loc.End.Line, loc.End.Column
+		}
+		ok = true
+		return true
+	})
+	return
 }
 
 func (f *Formatter) formatTemplatePart(p TemplatePart) {
@@ -2933,6 +3014,11 @@ func (f *Formatter) formatCase(c *Case) {
 				f.emitTrailingComment(clause.Loc.Line)
 			}
 			f.newline()
+		}
+		// Comments after the last clause stay inside the case, rather than
+		// landing after it (and then moving again when reformatted).
+		if c.Loc != nil && c.Loc.End != nil {
+			f.emitCommentsBeforeClose(c.Loc.End.Line)
 		}
 	})
 	f.writeIndent()
