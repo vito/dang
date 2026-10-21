@@ -26,32 +26,37 @@ import (
 //
 // Gate syntax on a named feature method (see singleBraceSelection) defined by
 // comparing against the version that changed it, e.g. v.Before(Version2_0).
-// Versions are major.minor: from now on, patch releases must not change the
-// language. Before versions were declared, some did: 2.1.x patches switched
-// inline fragment bodies to double braces and reserved `rescue`. So a
-// version means the syntax of that minor's latest release, e.g. 2.1 is
-// 2.1.4's, and code relying on an earlier patch's spelling may need fixing by
-// hand (`rescue` used as a name is such a case: it has no gate).
+// Dang versions are major.minor: from now on, patch releases must not change
+// the language, so a patch in `dang = "..."` is accepted and ignored. Before
+// versions were declared, some did: 2.1.x patches switched inline fragment
+// bodies to double braces and reserved `rescue`. So a version means the
+// syntax of that minor's latest release, e.g. 2.1 is 2.1.4's, and code
+// relying on an earlier patch's spelling may need fixing by hand (`rescue`
+// used as a name is such a case: it has no gate).
 //
-// The zero Version means CurrentVersion.
+// The same type holds the other versions dang.toml declares, which are
+// written by the same rules (see parseVersion) and may need the patch.
+//
+// As a Dang version, the zero Version means CurrentVersion (String and Before
+// treat it so); other versions check IsZero themselves.
 type Version struct {
-	Major, Minor int
+	Major, Minor, Patch int
 }
 
 var (
 	// Version1_0 is the language of the github.com/vito/dang v1 line, where
 	// `recv.{ a, b }` is object selection and there is no dot-block
 	// application.
-	Version1_0 = Version{1, 0}
+	Version1_0 = Version{Major: 1, Minor: 0}
 
 	// Version2_0 changed object selection to `recv.{{ a, b }}`, so that
 	// `recv.{ ... }` applies a block to the receiver.
-	Version2_0 = Version{2, 0}
+	Version2_0 = Version{Major: 2, Minor: 0}
 
 	// Version2_1 removed `for` loops and commas between forms, made a case
 	// that matches nothing yield null instead of raising, and spelled inline
 	// fragment bodies with double braces.
-	Version2_1 = Version{2, 1}
+	Version2_1 = Version{Major: 2, Minor: 1}
 
 	// CurrentVersion is the language version this build of Dang implements:
 	// the major.minor that main will release as. Bump it in the commit that
@@ -71,9 +76,13 @@ var (
 	DefaultVersion = Version2_1
 )
 
-// String returns the version as written in dang.toml, e.g. "2.1".
+// String returns the version as written in dang.toml: major.minor, e.g.
+// "2.1", and the patch too if it has one, e.g. "0.19.1".
 func (v Version) String() string {
 	v = v.orCurrent()
+	if v.Patch != 0 {
+		return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+	}
 	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
 }
 
@@ -95,31 +104,55 @@ func (v Version) Before(other Version) bool {
 	if v.Major != other.Major {
 		return v.Major < other.Major
 	}
-	return v.Minor < other.Minor
+	if v.Minor != other.Minor {
+		return v.Minor < other.Minor
+	}
+	return v.Patch < other.Patch
 }
 
-var versionPattern = regexp.MustCompile(`^(\d+)\.(\d+)$`)
+// versionPattern matches a version as written in dang.toml: an optional "v",
+// major.minor with an optional patch, and optional semver prerelease and
+// build suffixes, e.g. "2.1", "v0.19.0" or "v1.0.0-beta.19".
+var versionPattern = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?` +
+	`(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?` +
+	`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
-// ParseVersion parses and validates a version as written in dang.toml. It
-// must be a major.minor between Version1_0 and CurrentVersion: a newer one
-// needs a newer Dang.
-func ParseVersion(s string) (Version, error) {
+// parseVersion parses a version by the rules every version in dang.toml is
+// written by (see versionPattern). A missing patch is 0, and prerelease and
+// build suffixes are dropped: a version names its base release, the way
+// Dagger picks an API view. what names the version in errors, e.g. "Dang".
+func parseVersion(what, s string) (Version, error) {
 	m := versionPattern.FindStringSubmatch(s)
 	if m == nil {
-		return Version{}, fmt.Errorf("invalid Dang version %q: want major.minor, e.g. %q", s, CurrentVersion.String())
+		return Version{}, fmt.Errorf("invalid %s version %q: want major.minor or major.minor.patch, optionally with a leading v", what, s)
 	}
-	major, err := strconv.Atoi(m[1])
+	var v Version
+	for i, field := range []*int{&v.Major, &v.Minor, &v.Patch} {
+		if m[i+1] == "" {
+			continue
+		}
+		n, err := strconv.Atoi(m[i+1])
+		if err != nil {
+			return Version{}, fmt.Errorf("invalid %s version %q: %w", what, s, err)
+		}
+		*field = n
+	}
+	return v, nil
+}
+
+// ParseVersion parses and validates a Dang version as written in dang.toml
+// (see parseVersion), e.g. "2.1", "v2.1" or "2.1.4". Its patch is dropped,
+// since patch releases don't change the language. It must be between
+// Version1_0 and CurrentVersion: a newer one needs a newer Dang.
+func ParseVersion(s string) (Version, error) {
+	v, err := parseVersion("Dang", s)
 	if err != nil {
-		return Version{}, fmt.Errorf("invalid Dang version %q: %w", s, err)
+		return Version{}, err
 	}
-	minor, err := strconv.Atoi(m[2])
-	if err != nil {
-		return Version{}, fmt.Errorf("invalid Dang version %q: %w", s, err)
-	}
-	v := Version{major, minor}
+	v.Patch = 0
 	// Compare fields directly: Before treats the zero Version ("0.0") as
 	// CurrentVersion.
-	if major < Version1_0.Major {
+	if v.Major < Version1_0.Major {
 		return Version{}, fmt.Errorf("unsupported Dang version %q: the oldest supported version is %s", s, Version1_0)
 	}
 	if CurrentVersion.Before(v) {

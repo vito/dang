@@ -17,13 +17,21 @@ func TestParseVersion(t *testing.T) {
 		{in: "1.0", want: "1.0"},
 		{in: "2.0", want: "2.0"},
 		{in: CurrentVersion.String(), want: CurrentVersion.String()},
+		// A leading v, a patch and prerelease or build suffixes are
+		// accepted; a Dang version is major.minor, so the patch is dropped.
+		{in: "v2.0", want: "2.0"},
+		{in: "2.0.1", want: "2.0"},
+		{in: "v2.1.4", want: "2.1"},
+		{in: "2.1.0-rc.1+abc", want: "2.1"},
 		{in: "2", err: "want major.minor"},
-		{in: "2.0.1", err: "want major.minor"},
-		{in: "v2.0", err: "want major.minor"},
+		{in: "2.0.", err: "want major.minor"},
+		{in: "02.0", err: "want major.minor"},
+		{in: "V2.0", err: "want major.minor"},
+		{in: "2.0.0-", err: "want major.minor"},
 		{in: "0.9", err: "the oldest supported version is 1.0"},
 		{in: "0.0", err: "the oldest supported version is 1.0"},
 		{in: "99.0", err: "upgrade Dang"},
-		{in: Version{CurrentVersion.Major, CurrentVersion.Minor + 1}.String(), err: "upgrade Dang"},
+		{in: Version{Major: CurrentVersion.Major, Minor: CurrentVersion.Minor + 1}.String(), err: "upgrade Dang"},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			v, err := ParseVersion(tc.in)
@@ -39,8 +47,10 @@ func TestParseVersion(t *testing.T) {
 
 func TestVersionOrder(t *testing.T) {
 	assert.True(t, Version1_0.Before(Version2_0))
-	assert.True(t, Version{1, 9}.Before(Version2_0))
-	assert.True(t, Version2_0.Before(Version{2, 10}))
+	assert.True(t, Version{Major: 1, Minor: 9}.Before(Version2_0))
+	assert.True(t, Version2_0.Before(Version{Major: 2, Minor: 10}))
+	assert.True(t, Version{Major: 0, Minor: 19}.Before(Version{Major: 0, Minor: 19, Patch: 1}))
+	assert.Equal(t, "0.19.1", Version{Major: 0, Minor: 19, Patch: 1}.String())
 	assert.False(t, Version2_0.Before(Version1_0))
 	assert.False(t, Version2_0.Before(Version2_0))
 	// The zero value is the current version, like an unset parser option.
@@ -54,6 +64,12 @@ func TestProjectConfigVersion(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, Version1_0, config.Dang)
 		assert.Equal(t, Version1_0, config.EffectiveVersion())
+	})
+
+	t.Run("declared version with a v and a patch", func(t *testing.T) {
+		config, err := LoadProjectConfig(writeConfig(t, "dang = \"v2.0.3\"\n"))
+		require.NoError(t, err)
+		assert.Equal(t, Version2_0, config.Dang)
 	})
 
 	t.Run("missing version is the default", func(t *testing.T) {
