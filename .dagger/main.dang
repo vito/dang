@@ -105,6 +105,10 @@ type Dang {
   fail type-checking (like the removed try/catch and bare-binding forms) get
   reformatted — possibly into valid code — so they must be fmt-stable or live
   in Go tests as inline sources instead.
+
+  Skips the before/ halves of the edition migration fixtures
+  (tests/testdata/migrations/*/before), which are written in old editions
+  and would be reprinted in the current spelling.
   """
   @generate
   fmt: Changeset! {
@@ -113,7 +117,7 @@ type Dang {
       .withExec([
         "bash", "-c",
         """
-        find . -name '*.dang' | while read f; do
+        find . -path './tests/testdata/migrations/*/before' -prune -o -name '*.dang' -print | while read f; do
           dang fmt -lw "$f" || echo "skipping unparseable file: $f" >&2
         done
         """,

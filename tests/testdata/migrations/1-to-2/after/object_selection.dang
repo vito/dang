@@ -1,0 +1,22 @@
+# Edition 1 spells object selection with single braces; edition 2 uses double
+# braces, freeing `recv.{ ... }` for dot-block application.
+
+type Address {
+  city: String! = "Lisbon"
+  zip: String! = "1000"
+}
+
+type User {
+  name: String! = "alice"
+  age: Int! = 30
+  address: Address! = Address
+}
+
+let user = User
+
+let picked = user.{{name, address.{{city}}}}
+assert { picked.name == "alice" }
+assert { picked.address.city == "Lisbon" }
+
+# Template interpolations are code too.
+assert { `${user.{{age}}.age}` == "30" }
