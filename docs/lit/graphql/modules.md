@@ -34,7 +34,7 @@ a `.git` boundary).
 dang = "2.1"
 
 [imports.Dagger]
-dagger = true
+dagger = "v0.19.0"
 
 [imports.MyApi]
 schema = "./schema.graphqls"
@@ -54,7 +54,7 @@ environment expansion; `$(...)` command substitution is not supported.
 - `schema = "..."` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP
 - `endpoint = "..."` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it
 - `service = [...]` — command that starts a GraphQL server, printing its endpoint URL as the first stdout line; started lazily, killed on exit
-- `dagger = true` — connect to a Dagger Engine session; `service` defaults to `["dagger", "session"]`
+- `dagger = "X.Y.Z"` — connect to a Dagger Engine session, written against that Dagger version's API: like a Dagger module's `engineVersion` (copy it verbatim; a prerelease such as `v1.0.0-beta.19` gets its base release's API), written like `dang = "..."` (`v` and patch optional). `service` defaults to `["dagger", "session"]`; Dang appends `--version vX.Y.Z` to it, so newer engines keep serving that API, and introspects a Dagger module's schema at it. An engine older than the version is an error asking you to upgrade Dagger; a version older than the engine still supports (`v0.19.0` as of Dagger 0.19) fails to start the session. Can't be combined with `endpoint`. In a Dagger module, keep it equal to the module's `engineVersion`: Dagger runs the module's functions at that version
 - `authorization = "..."` — value for the `Authorization` header
 - `[imports.<Name>.headers]` — extra HTTP headers (table of key = value)
 - `authorization` / `endpoint` / `headers` values support `${ENV_VAR}` expansion (note: the old `DANG_GRAPHQL_*` env-var config was dropped)
