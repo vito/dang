@@ -103,7 +103,7 @@ Mutation.createUser(input: CreateUserInput(name: "Alice", email: "..."))
 dang = "2.1"
 
 [imports.Dagger]
-dagger = true
+dagger = "v0.19.0"
 
 [imports.MyApi]
 schema = "./schema.graphqls"
@@ -120,7 +120,7 @@ X-Custom = "value"
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.
 - `service` — command starting a GraphQL server that prints its endpoint URL as the first stdout line; started lazily, killed on exit.
-- `dagger = true` — connect to a Dagger Engine session; `service` defaults to `["dagger", "session"]`.
+- `dagger = "X.Y.Z"` — connect to a Dagger Engine session, written against that Dagger version's API (like a module's `engineVersion`, copyable verbatim; a prerelease such as `v1.0.0-beta.19` gets its base release's API; `v` and patch optional, as for `dang`). `service` defaults to `["dagger", "session"]`; Dang appends `--version vX.Y.Z` and introspects a Dagger module's schema at it. An engine older than the version is an error (upgrade Dagger); a version below the engine's minimum (`v0.19.0` today) fails to start the session. Not combinable with `endpoint`. In a Dagger module, keep it equal to `engineVersion` (Dagger runs the module's functions at that).
 - `authorization` — value for the `Authorization` header. `[imports.<Name>.headers]` — extra HTTP headers.
 - `authorization` / `endpoint` / `headers` support `${ENV_VAR}` expansion; `$(...)` command substitution is **not** supported. (The old `DANG_GRAPHQL_*` env config was dropped.)
 - Discovery walks **up** from the working directory, stopping at a `.git` boundary. Commit `dang.toml` — don't include credentials inline; reference env vars.
