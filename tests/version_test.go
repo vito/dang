@@ -191,9 +191,14 @@ assert { pair.{a}.a == 1 }
 		_, err = dang.RunDir(ctx, root, false)
 		require.Error(t, err)
 
-		// A dang.toml always wins over the embedder's version, including
-		// its implicit default.
+		// A dang.toml without a `dang` key (e.g. one for imports, from
+		// before the key existed) leaves the version to the embedder...
 		writeFiles(root, map[string]string{"dang.toml": ""})
+		_, err = dang.RunDir(dang.ContextWithVersion(ctx, dang.Version1_0), root, false)
+		require.NoError(t, err)
+
+		// ...but a version it declares always wins over the embedder's.
+		writeFiles(root, map[string]string{"dang.toml": "dang = \"2.1\"\n"})
 		_, err = dang.RunDir(dang.ContextWithVersion(ctx, dang.Version1_0), root, false)
 		require.Error(t, err)
 	})

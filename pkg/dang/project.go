@@ -26,7 +26,8 @@ import (
 // ProjectConfig represents a dang.toml project configuration file.
 type ProjectConfig struct {
 	// Dang is the Dang version the project's source is written in, e.g.
-	// `dang = "2.1"`. Zero means DefaultVersion; use EffectiveVersion.
+	// `dang = "2.1"`. Zero means DefaultVersion, unless an embedder's
+	// ContextWithVersion says otherwise; use VersionForConfig.
 	Dang Version `toml:"dang"`
 
 	// Imports maps import names to their source configurations.
