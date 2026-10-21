@@ -378,3 +378,7 @@ Checklist:
 6. Formatter case in `pkg/dang/format.go`.
 7. Editor syntaxes — see the `editor-syntaxes` skill for the three files
    that need keyword updates.
+
+If a grammar change removes, respells or changes the meaning of existing
+syntax, old code must keep parsing behind a version gate — see the
+`language-versions` skill.
