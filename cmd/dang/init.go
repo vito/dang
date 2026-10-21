@@ -19,9 +19,10 @@ is what the directory's source already means. An existing dang.toml that
 declares no version gets the version it already means (` + dang.DefaultVersion.String() + `), so
 nothing changes meaning; use dang migrate to move it forward.
 
-Source whose version something else decides (e.g. a Dagger engine version)
-should use dang migrate --from instead, which records the version it is
-really written in.`,
+Source whose version something else decides (e.g. a Dagger engine version),
+or a project from a Dang older than ` + dang.DefaultVersion.String() + ` whose dang.toml predates the
+key, should use dang migrate --from instead, which records the version it
+is really written for.`,
 		Example: `  # Start a project in the current directory
   dang init
 

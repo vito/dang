@@ -3335,7 +3335,7 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 		f.write("!")
 	}
 	if len(frag.Fields) > 0 {
-		openBrace, closeBrace := f.version.selectionBraces()
+		openBrace, closeBrace := f.version.fragmentBraces()
 		f.write(" " + openBrace)
 		for i, field := range frag.Fields {
 			if i > 0 {

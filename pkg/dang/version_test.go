@@ -68,6 +68,36 @@ func TestVersionSelectionSyntax(t *testing.T) {
 	})
 }
 
+func TestVersionFragmentBraces(t *testing.T) {
+	for _, tc := range []struct {
+		version Version
+		src     string
+	}{
+		{Version1_0, `node.{... on User {name}}`},
+		{Version2_0, `node.{{... on User {name}}}`},
+		{Version2_1, `node.{{... on User {{name}}}}`},
+	} {
+		t.Run(tc.version.String(), func(t *testing.T) {
+			node := parseSingleForm(t, tc.src, tc.version)
+			sel, ok := node.(*ObjectSelection)
+			require.True(t, ok, "expected *ObjectSelection, got %T", node)
+			require.Len(t, sel.InlineFragments, 1)
+			assert.Equal(t, "name", sel.InlineFragments[0].Fields[0].Name)
+		})
+	}
+
+	t.Run("migrating rewrites each brace in its own version", func(t *testing.T) {
+		src := "let x = node.{... on User {name}}\n"
+		migrated, err := MigrateSource("version_test.dang", []byte(src), Version1_0, Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = node.{{... on User { name }}}\n", migrated)
+
+		migrated, err = MigrateSource("version_test.dang", []byte(migrated), Version2_0, Version2_1)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = node.{{... on User {{ name }}}}\n", migrated)
+	})
+}
+
 func TestVersionFormatting(t *testing.T) {
 	src := "let x = user.{name, posts.{title}}\nlet y = node.{... on User {name}}\n"
 

@@ -18,7 +18,7 @@ func TestMigrateSource(t *testing.T) {
 		src := "# keep me\nlet x = user.{name, posts.{title}}\nlet y = node.{... on User {name}}\n"
 		migrated, err := migrate(src, Version1_0, Version2_0)
 		require.NoError(t, err)
-		assert.Equal(t, "# keep me\nlet x = user.{{name, posts.{{title}}}}\nlet y = node.{{... on User {{ name }}}}\n", migrated)
+		assert.Equal(t, "# keep me\nlet x = user.{{name, posts.{{title}}}}\nlet y = node.{{... on User { name }}}\n", migrated)
 	})
 
 	t.Run("#nofmt regions stay verbatim", func(t *testing.T) {
@@ -213,13 +213,34 @@ func TestPlanMigrations(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, plans, "ungoverned source is the current version by default")
 
-		plans, err = PlanMigrations(mod, Version2_0, MigrateOptions{UngovernedFrom: Version1_0})
+		plans, err = PlanMigrations(mod, Version2_0, MigrateOptions{UndeclaredFrom: Version1_0})
 		require.NoError(t, err)
 		require.Len(t, plans, 1)
 		require.NoError(t, plans[0].Write())
 		assert.Equal(t, "let x = user.{{name}}\n", read("pinned/main.dang"))
 		// The new dang.toml takes precedence over an embedder's pin.
 		assert.Equal(t, "dang = \"2.0\"\n", read("pinned/dang.toml"))
+	})
+
+	t.Run("an old dang.toml without a version", func(t *testing.T) {
+		// A 2.0 project already had a dang.toml, for its imports, but no
+		// `dang` key: by default that means 2.1, so --from says otherwise.
+		mod := filepath.Join(root, "unversioned")
+		write("unversioned/.git/HEAD", "")
+		write("unversioned/dang.toml", "[imports.Dagger]\ndagger = true\n")
+		write("unversioned/main.dang", "for { break }\n")
+
+		plans, err := PlanMigrations(mod, Version2_1, MigrateOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, plans, "an unversioned dang.toml is the default version")
+
+		plans, err = PlanMigrations(mod, Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
+		require.NoError(t, err)
+		require.Len(t, plans, 1)
+		assert.Equal(t, Version2_0, plans[0].From)
+		require.NoError(t, plans[0].Write())
+		assert.Equal(t, "loop { break }\n", read("unversioned/main.dang"))
+		assert.Equal(t, "dang = \"2.1\"\n\n[imports.Dagger]\ndagger = true\n", read("unversioned/dang.toml"))
 	})
 }
 

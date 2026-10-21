@@ -193,7 +193,7 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 // together: changing only the config would change what the files mean.
 type ProjectMigration struct {
 	// ConfigPath is the dang.toml whose version changes. It is created if
-	// the project had none (see MigrateOptions.UngovernedFrom).
+	// the project had none (see MigrateOptions.UndeclaredFrom).
 	ConfigPath string
 	From, To   Version
 	// Config is the new dang.toml contents.
@@ -246,13 +246,17 @@ func (m *ProjectMigration) Write() error {
 
 // MigrateOptions configures PlanMigrations.
 type MigrateOptions struct {
-	// UngovernedFrom, if set, is the version of the source under root that
-	// no dang.toml governs, such as a module whose embedder pins its version
-	// with ContextWithVersion. That source is then migrated as one project,
-	// creating a dang.toml at root that declares the target version, which
-	// takes precedence over the embedder's pin from then on. Without it,
-	// ungoverned source is left alone: by its path, it is CurrentVersion.
-	UngovernedFrom Version
+	// UndeclaredFrom, if set, is the version of the source under root whose
+	// version nothing declares: source no dang.toml governs (such as a
+	// module whose embedder pins its version with ContextWithVersion), and
+	// source governed by a dang.toml without a `dang` key, which would
+	// otherwise mean DefaultVersion (e.g. a project from before the key
+	// existed, written for an older Dang). Ungoverned source is migrated as
+	// one project, creating a dang.toml at root that declares the target
+	// version, which takes precedence over an embedder's pin from then on.
+	// Without it, ungoverned source is left alone: by its path, it is
+	// CurrentVersion.
+	UndeclaredFrom Version
 }
 
 // PlanMigrations plans migrating every project under root to Dang version to,
@@ -278,7 +282,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 	configForDir := map[string]*project{}
 	ungoverned := &project{
 		configPath: filepath.Join(root, "dang.toml"),
-		from:       opts.UngovernedFrom,
+		from:       opts.UndeclaredFrom,
 	}
 
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -311,7 +315,11 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 			} else {
 				p = projects[configPath]
 				if p == nil {
-					p = &project{configPath: configPath, from: config.EffectiveVersion()}
+					from := config.EffectiveVersion()
+					if config.Dang.IsZero() && !opts.UndeclaredFrom.IsZero() {
+						from = opts.UndeclaredFrom
+					}
+					p = &project{configPath: configPath, from: from}
 					projects[configPath] = p
 				}
 			}
@@ -324,7 +332,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 		return nil, err
 	}
 
-	if !opts.UngovernedFrom.IsZero() && len(ungoverned.files) > 0 {
+	if !opts.UndeclaredFrom.IsZero() && len(ungoverned.files) > 0 {
 		projects[ungoverned.configPath] = ungoverned
 	}
 

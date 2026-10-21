@@ -26,7 +26,12 @@ import (
 //
 // Gate syntax on a named feature method (see singleBraceSelection) defined by
 // comparing against the version that changed it, e.g. v.Before(Version2_0).
-// Patch releases never change the language, so versions are major.minor.
+// Versions are major.minor: from now on, patch releases must not change the
+// language. Before versions were declared, some did: 2.1.x patches switched
+// inline fragment bodies to double braces and reserved `rescue`. So a
+// version means the syntax of that minor's latest release, e.g. 2.1 is
+// 2.1.4's, and code relying on an earlier patch's spelling may need fixing by
+// hand (`rescue` used as a name is such a case: it has no gate).
 //
 // The zero Version means CurrentVersion.
 type Version struct {
@@ -43,8 +48,9 @@ var (
 	// `recv.{ ... }` applies a block to the receiver.
 	Version2_0 = Version{2, 0}
 
-	// Version2_1 removed `for` loops and commas between forms, and made a
-	// case that matches nothing yield null instead of raising.
+	// Version2_1 removed `for` loops and commas between forms, made a case
+	// that matches nothing yield null instead of raising, and spelled inline
+	// fragment bodies with double braces.
 	Version2_1 = Version{2, 1}
 
 	// CurrentVersion is the language version this build of Dang implements:
@@ -144,6 +150,13 @@ func (v Version) singleBraceSelection() bool {
 	return v.Before(Version2_0)
 }
 
+// singleBraceFragments reports whether inline fragment bodies use single
+// braces (`... on User { name }`), as before 2.1 (where they are
+// `... on User {{ name }}`, like the selection around them).
+func (v Version) singleBraceFragments() bool {
+	return v.Before(Version2_1)
+}
+
 // forLoops reports whether `for (cond) { ... }` and `for { ... }` are loops,
 // as before 2.1 removed them (where `for` is an ordinary identifier). They
 // parse as the equivalent `loop` call; see desugarForLoop.
@@ -172,10 +185,19 @@ func (v Version) commaFormSep() bool {
 	return v.Before(Version2_1)
 }
 
-// selectionBraces returns the delimiters for object selections and inline
-// fragment bodies in this version.
+// selectionBraces returns the delimiters for object selections in this
+// version.
 func (v Version) selectionBraces() (openBrace, closeBrace string) {
 	if v.singleBraceSelection() {
+		return "{", "}"
+	}
+	return "{{", "}}"
+}
+
+// fragmentBraces returns the delimiters for inline fragment bodies in this
+// version.
+func (v Version) fragmentBraces() (openBrace, closeBrace string) {
+	if v.singleBraceFragments() {
 		return "{", "}"
 	}
 	return "{{", "}}"

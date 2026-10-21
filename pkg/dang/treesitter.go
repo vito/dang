@@ -68,6 +68,7 @@ var tsVersion = CurrentVersion
 // or `!P x` where P is true) can never match, so it is pruned from its choice.
 var tsPredicates = map[string]bool{
 	"SingleBraceSelection": tsVersion.singleBraceSelection(),
+	"SingleBraceFragment":  tsVersion.singleBraceFragments(),
 	"ForLoops":             tsVersion.forLoops(),
 	"CommaFormSep":         tsVersion.commaFormSep(),
 }
@@ -78,6 +79,8 @@ var tsPredicates = map[string]bool{
 var tsInlinedRules = map[string]bool{
 	"SelectionOpen":  true,
 	"SelectionClose": true,
+	"FragmentOpen":   true,
+	"FragmentClose":  true,
 	"DotBlockArg":    true,
 	"ForLoop":        true,
 	"ForToken":       true,
