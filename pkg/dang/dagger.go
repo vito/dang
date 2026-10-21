@@ -81,13 +81,24 @@ type daggerSessionParams struct {
 // `dagger session` then sends its own CLI version as the client version, so
 // the API served follows the dagger CLI that starts the session, and a Dagger
 // module's schema is introspected at its engineVersion.
+//
+// Format the version with VersionString (or DaggerVersionString), not
+// Version.String, which writes Dang versions: it drops a zero patch and
+// prints the zero Version as the current Dang version.
 type DaggerSource struct {
 	// Enabled reports whether the import connects to Dagger: `dagger = true`
 	// or a version.
 	Enabled bool
 
-	// Version is the declared Dagger version, or zero for `dagger = true`.
+	// Version is the declared Dagger version; zero means `dagger = true` (or
+	// no Dagger import). Format it with DaggerVersionString, not String.
 	Version Version
+}
+
+// VersionString returns the declared Dagger version as Dagger writes it,
+// "vX.Y.Z", or "" if none is declared (`dagger = true` or false).
+func (d DaggerSource) VersionString() string {
+	return DaggerVersionString(d.Version)
 }
 
 // UnmarshalTOML decodes the `dagger` key of a dang.toml import: true, false,
@@ -101,8 +112,14 @@ func (d *DaggerSource) UnmarshalTOML(data any) error {
 	return nil
 }
 
+// MarshalTOML encodes the `dagger` key as UnmarshalTOML decodes it: false,
+// true, or "vX.Y.Z".
+func (d DaggerSource) MarshalTOML() ([]byte, error) {
+	return d.MarshalJSON() // the three forms are spelled alike in TOML
+}
+
 // UnmarshalJSON decodes the `dagger` field of an ImportSource printed by a
-// service, like UnmarshalTOML.
+// service, like UnmarshalTOML. null means no Dagger import.
 func (d *DaggerSource) UnmarshalJSON(data []byte) error {
 	var v any
 	if err := json.Unmarshal(data, &v); err != nil {
@@ -116,8 +133,23 @@ func (d *DaggerSource) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON encodes the `dagger` field as UnmarshalJSON decodes it: false,
+// true, or "vX.Y.Z".
+func (d DaggerSource) MarshalJSON() ([]byte, error) {
+	switch {
+	case !d.Enabled:
+		return []byte("false"), nil
+	case d.Version.IsZero():
+		return []byte("true"), nil
+	default:
+		return json.Marshal(d.VersionString())
+	}
+}
+
 func parseDaggerSource(data any) (DaggerSource, error) {
 	switch v := data.(type) {
+	case nil:
+		return DaggerSource{}, nil
 	case bool:
 		return DaggerSource{Enabled: v}, nil
 	case string:
@@ -135,10 +167,16 @@ func parseDaggerSource(data any) (DaggerSource, error) {
 	}
 }
 
-// daggerVersionString formats a Dagger version the way Dagger writes one,
-// vMAJOR.MINOR.PATCH. Dagger guesses at forms without the "v" or the patch
-// (engine.NormalizeVersion), so a version is always passed to it this way.
-func daggerVersionString(v Version) string {
+// DaggerVersionString formats a Dagger version the way Dagger writes one,
+// vMAJOR.MINOR.PATCH, or returns "" for the zero Version, which declares no
+// version (`dagger = true`). Dagger guesses at forms without the "v" or the
+// patch (engine.NormalizeVersion), so a version is always passed to it this
+// way. Use it for ImportSource.Dagger.Version and ImportConfig.DaggerVersion
+// rather than Version.String, which formats Dang versions.
+func DaggerVersionString(v Version) string {
+	if v.IsZero() {
+		return ""
+	}
 	return fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch)
 }
 
@@ -154,7 +192,7 @@ func daggerSessionCommand(version Version) []string {
 func daggerServiceCommand(service []string, version Version) []string {
 	cmd := slices.Clone(service)
 	if !version.IsZero() {
-		cmd = append(cmd, "--version", daggerVersionString(version))
+		cmd = append(cmd, "--version", DaggerVersionString(version))
 	}
 	return cmd
 }
@@ -166,7 +204,7 @@ func daggerServiceCommand(service []string, version Version) []string {
 // refuses a view older than its minimum client version itself, failing
 // `dagger session` on startup.)
 func checkDaggerVersion(ctx context.Context, client graphql.Client, version Version) error {
-	want := daggerVersionString(version)
+	want := DaggerVersionString(version)
 	var resp struct {
 		Version       string `json:"version"`
 		SchemaVersion string `json:"__schemaVersion"`
@@ -319,7 +357,7 @@ func DaggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir st
 // dag.ModuleSource(moduleDir).WithEngineVersion(version).IntrospectionSchemaJSON().
 // The zero version keeps the module's engineVersion.
 func daggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir string, version Version) (*introspection.Schema, error) {
-	slog.Debug("querying module introspection schema", "moduleDir", moduleDir, "version", daggerVersionString(version))
+	slog.Debug("querying module introspection schema", "moduleDir", moduleDir, "version", DaggerVersionString(version))
 	type schemaJSON struct {
 		IntrospectionSchemaJSON struct {
 			Contents string `json:"contents"`
@@ -357,7 +395,7 @@ func daggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir st
 		}`
 		req.Variables = map[string]any{
 			"ref":     moduleDir,
-			"version": daggerVersionString(version),
+			"version": DaggerVersionString(version),
 		}
 	}
 	err := client.MakeRequest(ctx, req, &graphql.Response{Data: &resp})

@@ -65,7 +65,9 @@ type ImportSource struct {
 	//   service = ["~/src/dagger/bin/dagger", "session"]
 	//
 	// Embedders that supply their own Dagger client (ContextWithImportConfigs)
-	// skip dang.toml's imports; they can read the declared version here.
+	// skip dang.toml's imports; they can read the declared version here, with
+	// Dagger.VersionString() ("vX.Y.Z"), not Dagger.Version.String(), which
+	// formats Dang versions. A zero Dagger.Version means `dagger = true`.
 	Dagger DaggerSource `toml:"dagger,omitempty"`
 
 	// Path points at a native Dang module directory (relative to dang.toml).

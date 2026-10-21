@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +24,7 @@ func TestDaggerSource(t *testing.T) {
 	for _, tc := range []struct {
 		name, value string
 		enabled     bool
-		version     string // daggerVersionString of the version, "" for none
+		version     string // the version's VersionString, "" for none
 		err         string
 	}{
 		{name: "true", value: `true`, enabled: true},
@@ -55,21 +57,72 @@ func TestDaggerSource(t *testing.T) {
 			require.NoError(t, err)
 			src := config.Imports["Dagger"].Dagger
 			assert.Equal(t, tc.enabled, src.Enabled)
-			if tc.version == "" {
-				assert.True(t, src.Version.IsZero())
-			} else {
-				assert.Equal(t, tc.version, daggerVersionString(src.Version))
-			}
+			assert.Equal(t, tc.version, src.VersionString())
+			assert.Equal(t, tc.version, DaggerVersionString(src.Version))
+			assert.Equal(t, tc.version == "", src.Version.IsZero())
 		})
 	}
 
 	t.Run("JSON from a service", func(t *testing.T) {
+		for _, tc := range []struct {
+			json string
+			want DaggerSource
+		}{
+			{`{"dagger": "v0.19"}`, DaggerSource{Enabled: true, Version: Version{Major: 0, Minor: 19}}},
+			{`{"dagger": true}`, DaggerSource{Enabled: true}},
+			{`{"dagger": false}`, DaggerSource{}},
+			{`{"dagger": null}`, DaggerSource{}},
+			{`{}`, DaggerSource{}},
+		} {
+			var src ImportSource
+			require.NoError(t, json.Unmarshal([]byte(tc.json), &src), tc.json)
+			assert.Equal(t, tc.want, src.Dagger, tc.json)
+		}
 		var src ImportSource
-		require.NoError(t, json.Unmarshal([]byte(`{"dagger": "v0.19"}`), &src))
-		assert.Equal(t, DaggerSource{Enabled: true, Version: Version{Major: 0, Minor: 19}}, src.Dagger)
-		require.NoError(t, json.Unmarshal([]byte(`{"dagger": true}`), &src))
-		assert.Equal(t, DaggerSource{Enabled: true}, src.Dagger)
 		require.ErrorContains(t, json.Unmarshal([]byte(`{"dagger": 1}`), &src), "the Dagger version must be a string")
+	})
+
+	sources := []struct {
+		src  DaggerSource
+		json string
+	}{
+		{DaggerSource{}, `false`},
+		{DaggerSource{Enabled: true}, `true`},
+		{DaggerSource{Enabled: true, Version: Version{Major: 0, Minor: 19}}, `"v0.19.0"`},
+		{DaggerSource{Enabled: true, Version: Version{Major: 1, Minor: 0, Patch: 2}}, `"v1.0.2"`},
+	}
+
+	t.Run("JSON round trip", func(t *testing.T) {
+		for _, tc := range sources {
+			encoded, err := json.Marshal(tc.src)
+			require.NoError(t, err)
+			assert.Equal(t, tc.json, string(encoded))
+
+			in := ImportSource{Dagger: tc.src, Service: []string{"dagger", "session"}}
+			encoded, err = json.Marshal(in)
+			require.NoError(t, err)
+			var out ImportSource
+			require.NoError(t, json.Unmarshal(encoded, &out), string(encoded))
+			assert.Equal(t, in, out, string(encoded))
+		}
+	})
+
+	t.Run("TOML round trip", func(t *testing.T) {
+		type config struct {
+			Imports map[string]*ImportSource `toml:"imports"`
+		}
+		for _, tc := range sources {
+			in := config{Imports: map[string]*ImportSource{"Dagger": {Dagger: tc.src, Schema: "schema.graphqls"}}}
+			var buf strings.Builder
+			require.NoError(t, toml.NewEncoder(&buf).Encode(in))
+			var out config
+			_, err := toml.Decode(buf.String(), &out)
+			require.NoError(t, err, buf.String())
+			assert.Equal(t, in, out, buf.String())
+			if tc.src.Enabled {
+				assert.Contains(t, buf.String(), "dagger = "+tc.json+"\n")
+			}
+		}
 	})
 }
 
