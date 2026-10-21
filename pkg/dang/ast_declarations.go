@@ -1204,6 +1204,14 @@ type ImportConfig struct {
 	// Used by the LSP to find the client for module introspection.
 	Dagger bool
 
+	// DaggerVersion is the Dagger API version a Dagger import is written
+	// against (see DaggerSource), or zero for `dagger = true`. The session
+	// Dang starts serves it, and a Dagger module's schema is introspected at
+	// it instead of at the module's engineVersion. Zero declares no version:
+	// the API served follows the version of the dagger CLI that starts the
+	// session, and a module's schema follows its engineVersion.
+	DaggerVersion Version
+
 	// DangModuleDir, when non-empty, marks this as a native Dang module import
 	// (not a GraphQL schema). It is the resolved absolute path to the module's
 	// directory; the module is compiled from source and its `pub` declarations
