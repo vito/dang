@@ -1,34 +1,26 @@
-# Edition 1's `for (cond) { ... }` loops while cond holds. Edition 2 removed
+# Dang 1.0's `for (cond) { ... }` loops while cond holds. Dang 2.0 removed
 # it; the equivalent is `loop { if (cond) { ... } else { break } }`.
 
 let counter = 0
 let result = ""
-loop {
-  if (counter < 3) {
-    result = result + "loop"
-    counter = counter + 1
-  } else {
-    break
-  }
+for (counter < 3) {
+  result = result + "loop"
+  counter = counter + 1
 }
 assert { result == "looplooploop" }
 
 # break and continue still target the loop.
 let sum = 0
 let i = 0
-loop {
-  if (i < 10) {
-    i += 1
-    if (i == 2) {
-      continue
-    }
-    if (i > 4) {
-      break
-    }
-    sum += i
-  } else {
+for (i < 10) {
+  i += 1
+  if (i == 2) {
+    continue
+  }
+  if (i > 4) {
     break
   }
+  sum += i
 }
 assert { sum == 8 } # 1 + 3 + 4
 
@@ -37,18 +29,13 @@ optional(s: String): String { s }
 
 whileCondNarrows(s: String): String! {
   let x = optional(s)
-  let found = loop {
-    if (x != null) {
-      let y: String! = x
-      break y
-    } else {
-      break
-    }
+  let found = for (x != null) {
+    let y: String! = x
+    break y
   }
   if (found == null) {
     raise "missing"
   }
   found
 }
-
 assert { whileCondNarrows("present") == "present" }

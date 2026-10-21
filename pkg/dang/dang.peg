@@ -25,11 +25,11 @@ CommaToken <- ','
 
 // FormSep separates forms in a sequence (code) — block bodies, the file
 // top-level, and block-argument bodies. Collection and argument contexts use
-// Sep (comma) instead. Both accept a bare newline. Edition 1 also accepts a
-// comma here, as it did before f692eba.
+// Sep (comma) instead. Both accept a bare newline. Before Dang 2.0, a comma
+// also separates forms here.
 FormSep <- (_ SemiToken / CommaFormSep _ CommaToken / _lineSpace '\n') _
 SemiToken <- ';'
-CommaFormSep <- &{ return editionFromStore(c.globalStore).commaFormSep(), nil }
+CommaFormSep <- &{ return versionFromStore(c.globalStore).commaFormSep(), nil }
 
 Expr <- Import / Decl / Reassignment / Form
 
@@ -237,16 +237,17 @@ IndexOrCall <- left:Term ImmediateBracket _ index:Form _ ']' args:ArgValues? {
 }
 ImmediateBracket <- '['
 
-// Edition-dependent selection syntax. Edition 1 spells object selection with
-// single braces (`recv.{ a, b }`) and has no dot-block application; later
-// editions use double braces (`recv.{{ a, b }}`), freeing `recv.{ ... }` for
-// DotBlockArg. Both spellings produce the same ObjectSelection node.
-SingleBraceSelection <- &{ return editionFromStore(c.globalStore).singleBraceSelection(), nil }
+// Version-dependent selection syntax. Before Dang 2.0, object selection is
+// spelled with single braces (`recv.{ a, b }`) and there is no dot-block
+// application; 2.0 uses double braces (`recv.{{ a, b }}`), freeing
+// `recv.{ ... }` for DotBlockArg. Both spellings produce the same
+// ObjectSelection node.
+SingleBraceSelection <- &{ return versionFromStore(c.globalStore).singleBraceSelection(), nil }
 SelectionOpen <- SingleBraceSelection '{' / !SingleBraceSelection "{{"
 SelectionClose <- SingleBraceSelection '}' / !SingleBraceSelection "}}"
 
-// Dot-block application: `recv.{ x => ... }`. Unavailable in edition 1, where
-// that syntax is object selection.
+// Dot-block application: `recv.{ x => ... }`. Unavailable before Dang 2.0,
+// where that syntax is object selection.
 DotBlockArg <- !SingleBraceSelection b:BlockArg {
   return b, nil
 }
@@ -1210,10 +1211,10 @@ ElseToken <- "else" !WordChar
 OrToken <- "or" !WordChar
 AndToken <- "and" !WordChar
 
-// Edition 1's `for (cond) { ... }` and `for { ... }` loops, removed in
-// edition 2, where `for` is an ordinary identifier. They parse as the
-// equivalent `loop` call (see desugarForLoop).
-ForLoops <- &{ return editionFromStore(c.globalStore).forLoops(), nil }
+// Dang 1.0's `for (cond) { ... }` and `for { ... }` loops, removed in 2.0,
+// where `for` is an ordinary identifier. They parse as the equivalent `loop`
+// call (see desugarForLoop).
+ForLoops <- &{ return versionFromStore(c.globalStore).forLoops(), nil }
 ForLoop <- ForLoops ForToken _ '(' _ cond:Form _ ')' _ body:Block {
   return desugarForLoop(cond.(Node), body.(*Block), c.Loc()), nil
 } / ForLoops ForToken _ body:Block {
@@ -1265,7 +1266,7 @@ Case <- CaseToken _ operand:('(' _ expr:Form _ ')' { return expr, nil })? _ '{' 
   return &Case{
     Expr: expr,
     NoOperand: operand == nil,
-    Clauses: editionCaseClauses(editionFromStore(c.globalStore), sliceOfAppend[*CaseClause](cs, last), c.Loc()),
+    Clauses: versionCaseClauses(versionFromStore(c.globalStore), sliceOfAppend[*CaseClause](cs, last), c.Loc()),
     Loc: c.Loc(),
   }, nil
 }

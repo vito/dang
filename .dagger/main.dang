@@ -106,8 +106,8 @@ type Dang {
   reformatted — possibly into valid code — so they must be fmt-stable or live
   in Go tests as inline sources instead.
 
-  Skips the before/ halves of the edition migration fixtures
-  (tests/testdata/migrations/*/before), which are written in old editions
+  Skips the before/ halves of the Dang version migration fixtures
+  (tests/testdata/migrations/*/before), which are written for old versions
   and would be reprinted in the current spelling.
   """
   @generate

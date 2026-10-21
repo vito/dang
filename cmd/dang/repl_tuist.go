@@ -411,7 +411,7 @@ func (r *replComponent) HandleKeyPress(ctx tuist.Context, ev uv.KeyPressEvent) b
 func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	ev := r.activeEntryView()
 
-	result, err := dang.ParseWithRecovery("repl", []byte(expr), dang.WithEdition(dang.EditionFromContext(r.ctx)))
+	result, err := dang.ParseWithRecovery("repl", []byte(expr), dang.WithVersion(dang.VersionFromContext(r.ctx)))
 	if err != nil {
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		ev.Update()
@@ -575,10 +575,10 @@ func runREPLTUI(ctx context.Context, moduleDir string, debug bool) error {
 		}
 	}
 
-	// REPL input has no path of its own: it is written in the edition of the
-	// directory the REPL runs in. (Modules it imports still get their own
-	// path's edition; see dang.ContextWithEdition.)
-	ctx = dang.ContextWithEdition(ctx, dang.EditionForConfig(ctx, config))
+	// REPL input has no path of its own: it is written in the Dang version of
+	// the directory the REPL runs in. (Modules it imports still get their own
+	// path's version; see dang.ContextWithVersion.)
+	ctx = dang.ContextWithVersion(ctx, dang.VersionForConfig(ctx, config))
 
 	// Load the Dagger module if present: find or create a Dagger import,
 	// serve the module, and introspect the live schema.

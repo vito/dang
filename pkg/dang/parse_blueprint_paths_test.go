@@ -23,7 +23,7 @@ func TestParseBlueprintAcrossPaths(t *testing.T) {
 		if err := os.WriteFile(filename, source, 0600); err != nil {
 			t.Fatal(err)
 		}
-		got, err := parseFileBlueprintWithCache(filename, DefaultEdition, cache)
+		got, err := parseFileBlueprintWithCache(filename, CurrentVersion, cache)
 		if err != nil {
 			t.Fatal(err)
 		}

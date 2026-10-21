@@ -37,12 +37,12 @@ type Formatter struct {
 	// Set of line numbers whose comments have already been emitted.
 	emittedComments map[int]bool
 
-	// Edition whose syntax to emit (e.g. object selection braces). Empty
-	// means LatestEdition.
-	edition Edition
+	// Dang version whose syntax to emit (e.g. object selection braces).
+	// Zero means CurrentVersion.
+	version Version
 
-	// migrating is set when the source was parsed in an older edition than
-	// edition. Templates then re-print their ${...} interpolations instead
+	// migrating is set when the source was parsed in an older version than
+	// version. Templates then re-print their ${...} interpolations instead
 	// of echoing them (see formatTemplate).
 	migrating bool
 }
@@ -54,21 +54,21 @@ func Format(node Node) string {
 	return f.buf.String()
 }
 
-// FormatFile parses and formats a Dang source file written in LatestEdition.
+// FormatFile parses and formats a Dang source file written in CurrentVersion.
 func FormatFile(source []byte) (string, error) {
-	return FormatFileWithEdition(source, LatestEdition)
+	return FormatFileWithVersion(source, CurrentVersion)
 }
 
-// FormatFileWithEdition parses and formats a Dang source file written in the
-// given edition, emitting that edition's syntax.
-func FormatFileWithEdition(source []byte, edition Edition) (string, error) {
-	return formatSource("format", source, edition, edition)
+// FormatFileWithVersion parses and formats a Dang source file written in the
+// given Dang version, emitting that version's syntax.
+func FormatFileWithVersion(source []byte, version Version) (string, error) {
+	return formatSource("format", source, version, version)
 }
 
-// formatSource parses source written in edition from and formats it in
-// edition to's syntax. With from != to it is a migration (see MigrateSource).
-func formatSource(filename string, source []byte, from, to Edition) (string, error) {
-	result, commentMap, err := ParseWithComments(filename, source, WithEdition(from))
+// formatSource parses source written in version from and formats it in
+// version to's syntax. With from != to it is a migration (see MigrateSource).
+func formatSource(filename string, source []byte, from, to Version) (string, error) {
+	result, commentMap, err := ParseWithComments(filename, source, WithVersion(from))
 	if err != nil {
 		return "", err
 	}
@@ -82,8 +82,8 @@ func formatSource(filename string, source []byte, from, to Edition) (string, err
 		source:          source,
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
-		edition:         to,
-		migrating:       from != to,
+		version:         to,
+		migrating:       from.orCurrent() != to.orCurrent(),
 	}
 	f.formatNode(result.(*FileBlock))
 
@@ -2466,9 +2466,9 @@ func (f *Formatter) formatTemplate(t *Template) {
 }
 
 // migrateInterpolations returns orig, the source text of template t, with
-// each ${...} interpolation re-printed in f's edition. The literal text, and
+// each ${...} interpolation re-printed in f's version. The literal text, and
 // so the template's layout, is kept byte for byte; only the code inside the
-// interpolations changes, since that is what an edition can spell
+// interpolations changes, since that is what a version can spell
 // differently.
 func (f *Formatter) migrateInterpolations(t *Template, orig string) string {
 	if t.Loc == nil {
@@ -2498,7 +2498,7 @@ func (f *Formatter) migrateInterpolations(t *Template, orig string) string {
 			source:          f.source,
 			commentMap:      f.commentMap,
 			emittedComments: f.emittedComments,
-			edition:         f.edition,
+			version:         f.version,
 			migrating:       true,
 		}
 		sub.formatNodeInline(p.Expr)
@@ -3221,7 +3221,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 	// Check if the selection was originally multiline
 	multiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
 
-	openBrace, closeBrace := f.edition.selectionBraces()
+	openBrace, closeBrace := f.version.selectionBraces()
 
 	// Handle inline fragments
 	if len(o.InlineFragments) > 0 {
@@ -3334,7 +3334,7 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 		f.write("!")
 	}
 	if len(frag.Fields) > 0 {
-		openBrace, closeBrace := f.edition.selectionBraces()
+		openBrace, closeBrace := f.version.selectionBraces()
 		f.write(" " + openBrace)
 		for i, field := range frag.Fields {
 			if i > 0 {

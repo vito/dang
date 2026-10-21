@@ -27,9 +27,9 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 	if env != nil {
 		// Completion re-parses fragments of the buffer (e.g. the receiver
 		// before a `.`), which have no path of their own: parse them in the
-		// edition of the file they came from.
+		// Dang version of the file they came from.
 		if path, err := fromURI(params.TextDocument.URI); err == nil {
-			ctx = dang.ContextWithEdition(ctx, editionForFile(ctx, path))
+			ctx = dang.ContextWithVersion(ctx, versionForFile(ctx, path))
 		}
 		result := dang.Complete(ctx, env, f.Text, params.Position.Line, params.Position.Character)
 		if len(result.Items) > 0 {
