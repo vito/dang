@@ -6,7 +6,8 @@ description: How Dang's per-project language versions (`dang = "X.Y"` in dang.to
 # Language Versions
 
 A project's `dang.toml` declares the Dang version its source is written for —
-the major.minor of a Dang release:
+the major.minor of a Dang release (`ParseVersion` also accepts a leading `v`
+and a patch, which it drops):
 
 ```toml
 dang = "2.1"
