@@ -138,12 +138,15 @@ and `fmt/stale` before committing.
 ## Invariants (don't break these)
 
 - **`DefaultVersion` is pinned forever** (2.1). It's what a dang.toml without
-  the key means; moving it would silently change existing projects.
+  the key means (absent an embedder's `ContextWithVersion`); moving it would
+  silently change existing projects.
 - **The version comes only from the source's path**: nearest `dang.toml`
   walking up, stopping at `.git`; no dang.toml means `CurrentVersion` (or an
   embedder's `ContextWithVersion`). Never from the importer, and never from
   the project config that happens to be on the context. Use `VersionForDir`.
-- **`ContextWithVersion` never overrides a dang.toml** and is cleared when
+- **`ContextWithVersion` never overrides a version a dang.toml declares**,
+  but does apply under a dang.toml without the key (it may predate the key,
+  e.g. a pinned Dagger module's import-only dang.toml). It is cleared when
   crossing into an imported module (`moduleImportContext`).
 - **Running code never writes files**: only `dang init` and `dang migrate`
   stamp `dang = "..."`.

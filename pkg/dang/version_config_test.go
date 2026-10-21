@@ -124,7 +124,8 @@ func TestVersionForDir(t *testing.T) {
 	}{
 		{"nearest dang.toml, walking up", ctx, nested, Version1_0},
 		{"dang.toml beats the embedder", hostCtx, filepath.Join(root, "one"), Version1_0},
-		{"dang.toml without a version", hostCtx, implicit, DefaultVersion},
+		{"dang.toml without a version", ctx, implicit, DefaultVersion},
+		{"dang.toml without a version: embedder", hostCtx, implicit, Version1_0},
 		{"boundary reached: current", ctx, ungoverned, CurrentVersion},
 		{"boundary reached: embedder", hostCtx, ungoverned, Version1_0},
 	} {

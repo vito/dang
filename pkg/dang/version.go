@@ -224,13 +224,16 @@ type versionKey struct{}
 // ContextWithVersion sets the version of the source evaluated directly with
 // ctx (the directory or file passed to RunDir, DeclareDir or RunFile, or
 // source with no path at all, such as REPL input or a completion fragment)
-// when no dang.toml governs it, in place of CurrentVersion. Embedders use it
-// for source whose version they know some other way, e.g. a Dagger SDK
-// pinning a module's version from its engine version.
+// when no dang.toml declares one, in place of CurrentVersion (no dang.toml)
+// or DefaultVersion (a dang.toml without a `dang` key). Embedders use it for
+// source whose version they know some other way, e.g. a Dagger SDK pinning a
+// module's version from its engine version: such a module may well have a
+// dang.toml for its imports from before the key existed.
 //
-// It never overrides a dang.toml (see VersionForDir), and it does not reach
-// the modules that source imports: an imported module's version depends only
-// on its own path, so an ungoverned import is CurrentVersion.
+// It never overrides a version a dang.toml declares (see VersionForDir), and
+// it does not reach the modules that source imports: an imported module's
+// version depends only on its own path, so an ungoverned import is
+// CurrentVersion.
 func ContextWithVersion(ctx context.Context, v Version) context.Context {
 	return context.WithValue(ctx, versionKey{}, v)
 }
@@ -241,20 +244,30 @@ func withoutContextVersion(ctx context.Context) context.Context {
 	return ContextWithVersion(ctx, Version{})
 }
 
+// contextVersion returns the version set by ContextWithVersion, if any.
+func contextVersion(ctx context.Context) (Version, bool) {
+	v, ok := ctx.Value(versionKey{}).(Version)
+	if !ok || v.IsZero() {
+		return Version{}, false
+	}
+	return v, true
+}
+
 // VersionFromContext returns the version of source that no dang.toml
 // governs: the version set by ContextWithVersion, or CurrentVersion.
 func VersionFromContext(ctx context.Context) Version {
-	if v, ok := ctx.Value(versionKey{}).(Version); ok {
-		return v.orCurrent()
+	if v, ok := contextVersion(ctx); ok {
+		return v
 	}
 	return CurrentVersion
 }
 
 // VersionForDir returns the version of the source files in dir. It depends
 // only on where the source lives: the nearest dang.toml walking up from dir
-// decides (DefaultVersion if it declares none), regardless of who imports the
-// source or which dang.toml configured the evaluation. If discovery reaches a
-// repository boundary (.git) or the filesystem root first, no dang.toml
+// decides, regardless of who imports the source or which dang.toml
+// configured the evaluation. If that dang.toml declares no version, it is the
+// version set by ContextWithVersion, or DefaultVersion. If discovery reaches
+// a repository boundary (.git) or the filesystem root first, no dang.toml
 // governs the source, and it is VersionFromContext(ctx).
 func VersionForDir(ctx context.Context, dir string) (Version, error) {
 	_, cfg, err := FindProjectConfig(dir)
@@ -270,6 +283,11 @@ func VersionForDir(ctx context.Context, dir string) (Version, error) {
 func VersionForConfig(ctx context.Context, cfg *ProjectConfig) Version {
 	if cfg == nil {
 		return VersionFromContext(ctx)
+	}
+	if cfg.Dang.IsZero() {
+		if v, ok := contextVersion(ctx); ok {
+			return v
+		}
 	}
 	return cfg.EffectiveVersion()
 }
