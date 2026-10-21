@@ -28,6 +28,10 @@ import (
 // formatter echoes verbatim, like a #nofmt region, whose meaning changed
 // between the versions; such a region has to be migrated by hand. And it must
 // be stable: formatting it again as version to must reproduce it exactly.
+//
+// Source that is spelled the same in both versions is returned as is, not
+// reformatted, so moving to a version that changed no syntax this file uses
+// leaves it alone.
 func MigrateSource(filename string, source []byte, from, to Version) (string, error) {
 	if to.Before(from) {
 		return "", fmt.Errorf("cannot migrate from Dang %s back to %s", from, to)
@@ -59,6 +63,14 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 			}
 			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
 		}
+		// Nothing in the file is spelled differently in the two versions
+		// (e.g. a minor version that changed no syntax), so leave it as it
+		// is rather than reformatting it, provided it means the same as
+		// written. The formatted texts agreeing is not enough: formatting
+		// normalizes old spellings like 1.0's comma separators.
+		if formatted == migrated && sameMeaning(filename, source, from, to) {
+			return string(source), nil
+		}
 	}
 	again, err := formatSource(filename, []byte(migrated), to, to)
 	if err != nil {
@@ -71,6 +83,21 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 }
 
 var sourceLocationPtrType = reflect.TypeOf((*SourceLocation)(nil))
+
+// sameMeaning reports whether source parses, unchanged, to the same AST in
+// versions from and to.
+func sameMeaning(filename string, source []byte, from, to Version) bool {
+	inFrom, err := Parse(filename, source, WithVersion(from))
+	if err != nil {
+		return false
+	}
+	inTo, err := Parse(filename, source, WithVersion(to))
+	if err != nil {
+		return false
+	}
+	_, differs := firstASTDifference(inFrom.(Node), inTo.(Node))
+	return !differs
+}
 
 // firstASTDifference compares two parsed trees field by field, ignoring
 // source locations and inference results, and reports whether they differ,
@@ -345,28 +372,30 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 }
 
 var (
-	configVersionLine = regexp.MustCompile(`(?m)^[ \t]*dang[ \t]*=.*$`)
-	configTableHeader = regexp.MustCompile(`(?m)^[ \t]*\[`)
+	// configVersionValue matches the value of a `dang = ...` key, so that
+	// replacing it keeps the rest of the line (a trailing comment, a CR).
+	configVersionValue = regexp.MustCompile(`(?m)^[ \t]*dang[ \t]*=[ \t]*("[^"\r\n]*"|'[^'\r\n]*'|[^\s#]+)`)
+	configTableHeader  = regexp.MustCompile(`(?m)^[ \t]*\[`)
 )
 
 // setConfigVersion returns dang.toml contents declaring Dang version v,
-// editing the top-level `dang` key in place (or adding it first) so the rest
-// of the file, comments included, is untouched.
+// editing the value of the top-level `dang` key in place (or adding the key
+// first) so the rest of the file, comments included, is untouched.
 func setConfigVersion(config []byte, v Version) []byte {
-	line := fmt.Sprintf("dang = %q", v.String())
+	value := fmt.Sprintf("%q", v.String())
 
 	// Top-level keys precede the first table header.
 	top := config
 	if loc := configTableHeader.FindIndex(config); loc != nil {
 		top = config[:loc[0]]
 	}
-	if loc := configVersionLine.FindIndex(top); loc != nil {
-		out := append([]byte{}, config[:loc[0]]...)
-		out = append(out, line...)
-		return append(out, config[loc[1]:]...)
+	if loc := configVersionValue.FindSubmatchIndex(top); loc != nil {
+		out := append([]byte{}, config[:loc[2]]...)
+		out = append(out, value...)
+		return append(out, config[loc[3]:]...)
 	}
 
-	header := line + "\n"
+	header := "dang = " + value + "\n"
 	if len(config) > 0 && !strings.HasPrefix(string(config), "\n") {
 		header += "\n"
 	}

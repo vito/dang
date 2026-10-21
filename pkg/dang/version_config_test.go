@@ -21,6 +21,7 @@ func TestParseVersion(t *testing.T) {
 		{in: "2.0.1", err: "want major.minor"},
 		{in: "v2.0", err: "want major.minor"},
 		{in: "0.9", err: "the oldest supported version is 1.0"},
+		{in: "0.0", err: "the oldest supported version is 1.0"},
 		{in: "99.0", err: "upgrade Dang"},
 		{in: Version{CurrentVersion.Major, CurrentVersion.Minor + 1}.String(), err: "upgrade Dang"},
 	} {
