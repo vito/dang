@@ -311,6 +311,27 @@ service = ["/usr/local/bin/dagger-dev", "session"]
 			assert.NotNil(t, ic.Client)
 		}
 	})
+
+	t.Run("a dang.toml does not auto-detect a Dagger module", func(t *testing.T) {
+		// A script in a Dagger module runs without Dagger when no dang.toml
+		// governs it, so one written just to declare the Dang version (as
+		// `dang init` does) must not start a Dagger session either.
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, "dagger.json"), []byte("{}"), 0644))
+		scripts := filepath.Join(root, "scripts")
+		require.NoError(t, os.Mkdir(scripts, 0755))
+
+		ctx := context.Background()
+		before, err := ensureProjectImports(ctx, scripts)
+		require.NoError(t, err)
+		assert.Empty(t, importConfigsFromContext(before))
+
+		require.NoError(t, os.WriteFile(filepath.Join(scripts, "dang.toml"), []byte("dang = \"2.1\"\n"), 0644))
+		after, err := ensureProjectImports(ctx, scripts)
+		require.NoError(t, err)
+		assert.Empty(t, importConfigsFromContext(after))
+	})
 }
 
 func TestExpandEnvVars(t *testing.T) {
