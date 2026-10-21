@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -3458,8 +3459,14 @@ func ensureProjectImports(ctx context.Context, dir string) (context.Context, err
 		return ctx, err
 	}
 
-	// Resolve Dagger import (from dang.toml or auto-detected from Dagger module config)
-	resolved = ResolveDaggerImport(ctx, resolved, dir)
+	// Resolve a Dagger import dang.toml declares, making it auto-imported and
+	// module-aware. Don't auto-detect one from a Dagger module config, as the
+	// REPL and LSP do: a script runs without a dang.toml, so whether it talks
+	// to Dagger must not depend on whether one exists (e.g. after `dang init`
+	// writes one just to declare the Dang version).
+	if slices.ContainsFunc(resolved, func(ic ImportConfig) bool { return ic.Dagger }) {
+		resolved = ResolveDaggerImport(ctx, resolved, dir)
+	}
 
 	// Merge: project configs go first, then any existing context configs
 	// (existing configs take priority by name in loadImportConfig)
