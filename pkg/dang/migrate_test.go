@@ -54,10 +54,26 @@ func TestMigrateSource(t *testing.T) {
 		assert.Equal(t, "let x = 1\n", migrated)
 	})
 
-	t.Run("a minor version without syntax changes is formatting", func(t *testing.T) {
-		migrated, err := migrate("let x   = user.{{name}}\n", Version2_0, Version{2, 1})
+	t.Run("a file spelled the same in both versions is left alone", func(t *testing.T) {
+		// 2.1 changed no syntax, so nothing is reformatted either.
+		src := "let x   = user.{{name}}\n"
+		migrated, err := migrate(src, Version2_0, Version{2, 1})
 		require.NoError(t, err)
-		assert.Equal(t, "let x = user.{{name}}\n", migrated)
+		assert.Equal(t, src, migrated)
+
+		// Likewise for a 1.0 file that uses none of what 2.0 changed.
+		src = "let x   = 1\n"
+		migrated, err = migrate(src, Version1_0, Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, src, migrated)
+	})
+
+	t.Run("a file is reformatted when its old spelling must go", func(t *testing.T) {
+		// Formatting already prints 1.0's comma separator as `;` in both
+		// versions, but the comma itself doesn't parse in 2.0.
+		migrated, err := migrate("let x = { let a   = 1, a }\n", Version1_0, Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = { let a = 1; a }\n", migrated)
 	})
 
 	t.Run("source must parse as its version", func(t *testing.T) {
@@ -76,9 +92,14 @@ func TestSetConfigVersion(t *testing.T) {
 		name, config, want string
 	}{
 		{
-			"replaces the key in place",
+			"replaces the value in place, keeping comments",
 			"# my project\ndang = \"1.0\" # old\n\n[imports.Dagger]\ndagger = true\n",
-			"# my project\ndang = \"2.0\"\n\n[imports.Dagger]\ndagger = true\n",
+			"# my project\ndang = \"2.0\" # old\n\n[imports.Dagger]\ndagger = true\n",
+		},
+		{
+			"keeps CRLF line endings",
+			"dang = '1.0'\r\n[imports.A]\r\n",
+			"dang = \"2.0\"\r\n[imports.A]\r\n",
 		},
 		{
 			"adds a missing key before any table",

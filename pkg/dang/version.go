@@ -44,17 +44,19 @@ var (
 	Version2_0 = Version{2, 0}
 
 	// CurrentVersion is the language version this build of Dang implements:
-	// the major.minor of the release it belongs to. Bump it when releasing a
-	// new minor or major version, and gate any language change on the
-	// version that introduces it. Source no dang.toml governs is written in
-	// it (see VersionForDir), and `dang init` stamps it into new projects.
+	// the major.minor that main will release as. Bump it in the commit that
+	// adds the first gate for a new version (a gate on a version newer than
+	// CurrentVersion could never be enabled, since ParseVersion refuses that
+	// version), and at the latest when releasing a new minor or major.
+	// Source no dang.toml governs is written in it (see VersionForDir), and
+	// `dang init` stamps it into new projects.
 	CurrentVersion = Version{2, 1}
 
 	// DefaultVersion is the version of a dang.toml that does not declare
-	// one, i.e. one written before the `dang` key existed. It is pinned to
-	// the version current when the key was introduced and must NOT advance:
-	// such a dang.toml would otherwise silently change meaning. `dang init`
-	// and `dang migrate` stamp it explicitly.
+	// one, i.e. one written before the `dang` key existed: those were
+	// written for Dang 2.0.x or 2.1.x, whose syntax is 2.0's. It is pinned
+	// and must NOT advance: such a dang.toml would otherwise silently change
+	// meaning. `dang init` and `dang migrate` stamp it explicitly.
 	DefaultVersion = Version2_0
 )
 
@@ -104,7 +106,9 @@ func ParseVersion(s string) (Version, error) {
 		return Version{}, fmt.Errorf("invalid Dang version %q: %w", s, err)
 	}
 	v := Version{major, minor}
-	if v.Before(Version1_0) {
+	// Compare fields directly: Before treats the zero Version ("0.0") as
+	// CurrentVersion.
+	if major < Version1_0.Major {
 		return Version{}, fmt.Errorf("unsupported Dang version %q: the oldest supported version is %s", s, Version1_0)
 	}
 	if CurrentVersion.Before(v) {
