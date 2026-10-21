@@ -100,6 +100,8 @@ Mutation.createUser(input: CreateUserInput(name: "Alice", email: "..."))
 
 ### `dang.toml`
 ```toml
+dang = "2.1"
+
 [imports.Dagger]
 dagger = true
 
@@ -113,6 +115,7 @@ authorization = "Bearer ${API_TOKEN}"
 [imports.Remote.headers]
 X-Custom = "value"
 ```
+- `dang = "X.Y"` — the Dang version (release major.minor) the source is written for. Old versions' syntax keeps parsing; `dang migrate` moves a project forward, `dang init` writes the key. Left out it means `"2.0"`; newer than the running Dang is an error. Source no `dang.toml` governs uses the running Dang's version. The version comes only from the source's path (nearest `dang.toml`), never from the importer.
 - One `[imports.<Name>]` per source; `<Name>` is the qualifier (`MyApi.User`). Must specify at least one of `dagger`, `schema`, `endpoint`, `service` — or `path` (native Dang module, below).
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.
