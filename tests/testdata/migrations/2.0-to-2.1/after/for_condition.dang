@@ -1,4 +1,4 @@
-# Dang 1.0's `for (cond) { ... }` loops while cond holds. Dang 2.0 removed
+# Dang 2.0's `for (cond) { ... }` loops while cond holds. Dang 2.1 removed
 # it; the equivalent is `loop { if (cond) { ... } else { break } }`.
 
 let counter = 0

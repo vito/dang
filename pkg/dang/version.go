@@ -15,7 +15,7 @@ import (
 // Every version runs on the same interpreter, because every version parses
 // into the same AST: a form a newer version removed or changed stays in the
 // grammar behind a version gate, and the gated rule's action builds the AST
-// of the current equivalent (e.g. 1.0's `for (c) { ... }` parses as a
+// of the current equivalent (e.g. 2.0's `for (c) { ... }` parses as a
 // `loop`). Old versions therefore cost parsing rules, never interpreter
 // branches, and modules of different versions import each other freely.
 //
@@ -43,6 +43,10 @@ var (
 	// `recv.{ ... }` applies a block to the receiver.
 	Version2_0 = Version{2, 0}
 
+	// Version2_1 removed `for` loops and commas between forms, and made a
+	// case that matches nothing yield null instead of raising.
+	Version2_1 = Version{2, 1}
+
 	// CurrentVersion is the language version this build of Dang implements:
 	// the major.minor that main will release as. Bump it in the commit that
 	// adds the first gate for a new version (a gate on a version newer than
@@ -50,14 +54,15 @@ var (
 	// version), and at the latest when releasing a new minor or major.
 	// Source no dang.toml governs is written in it (see VersionForDir), and
 	// `dang init` stamps it into new projects.
-	CurrentVersion = Version{2, 1}
+	CurrentVersion = Version2_1
 
 	// DefaultVersion is the version of a dang.toml that does not declare
-	// one, i.e. one written before the `dang` key existed: those were
-	// written for Dang 2.0.x or 2.1.x, whose syntax is 2.0's. It is pinned
-	// and must NOT advance: such a dang.toml would otherwise silently change
-	// meaning. `dang init` and `dang migrate` stamp it explicitly.
-	DefaultVersion = Version2_0
+	// one, i.e. one written before the `dang` key existed. It is the version
+	// Dang implemented when the key was introduced, so such a dang.toml
+	// keeps meaning what it meant then. It is pinned and must NOT advance:
+	// such a dang.toml would otherwise silently change meaning. `dang init`
+	// and `dang migrate` stamp it explicitly.
+	DefaultVersion = Version2_1
 )
 
 // String returns the version as written in dang.toml, e.g. "2.1".
@@ -140,31 +145,31 @@ func (v Version) singleBraceSelection() bool {
 }
 
 // forLoops reports whether `for (cond) { ... }` and `for { ... }` are loops,
-// as before 2.0 removed them (where `for` is an ordinary identifier). They
+// as before 2.1 removed them (where `for` is an ordinary identifier). They
 // parse as the equivalent `loop` call; see desugarForLoop.
 func (v Version) forLoops() bool {
-	return v.Before(Version2_0)
+	return v.Before(Version2_1)
 }
 
 // unmatchedCaseRaises reports whether a case that matches no clause raises,
-// as before 2.0 (where it yields null, making the case's type nullable
+// as before 2.1 (where it yields null, making the case's type nullable
 // unless its clauses are exhaustive). See versionCaseClauses.
 func (v Version) unmatchedCaseRaises() bool {
-	return v.Before(Version2_0)
+	return v.Before(Version2_1)
 }
 
 // deadClausesAfterElse reports whether case clauses may follow the else
-// clause, as before 2.0 (where they are an unreachable-clause error). Clauses
-// match in order, so they never ran; see versionCaseClauses.
+// clause, as before 2.1 (where they are an unreachable-clause error, since
+// 2.1.x). Clauses match in order, so they never ran; see versionCaseClauses.
 func (v Version) deadClausesAfterElse() bool {
-	return v.Before(Version2_0)
+	return v.Before(Version2_1)
 }
 
 // commaFormSep reports whether a comma separates forms in blocks, block
-// arguments and the file top level, as before 2.0 (where only `;` or a
+// arguments and the file top level, as before 2.1 (where only `;` or a
 // newline does).
 func (v Version) commaFormSep() bool {
-	return v.Before(Version2_0)
+	return v.Before(Version2_1)
 }
 
 // selectionBraces returns the delimiters for object selections and inline
@@ -247,9 +252,10 @@ func VersionForConfig(ctx context.Context, cfg *ProjectConfig) Version {
 	return cfg.EffectiveVersion()
 }
 
-// unmatchedCaseError is the message 1.0 raised when no case clause matched.
-// 1.0 went on to print the operand's value, which the desugared clause can't
-// refer to without evaluating the operand a second time.
+// unmatchedCaseError is the message raised before 2.1 when no case clause
+// matched. Those versions went on to print the operand's value, which the
+// desugared clause can't refer to without evaluating the operand a second
+// time.
 const unmatchedCaseError = "no case clause matched"
 
 // versionCaseClauses builds the current equivalent of a case's clauses as
@@ -285,19 +291,19 @@ func versionCaseClauses(v Version, clauses []*CaseClause, loc *SourceLocation) [
 	})
 }
 
-// desugarForLoop builds the current equivalent of 1.0's `for` loops:
-// `for { body }` is `loop { body }`, and `for (cond) { body }` is
+// desugarForLoop builds the current equivalent of the `for` loops of Dang
+// before 2.1: `for { body }` is `loop { body }`, and `for (cond) { body }` is
 //
 //	loop { if (cond) { body } else { break } }
 //
 // Keeping the body in the then-branch keeps the condition narrowing it, as
-// it did in 1.0.
+// it did before.
 //
 // Two differences remain: a `for` yielded its last body value when it ended
 // (by its condition going false, or a bare `break`), where `loop` yields
 // null. Only `break value` gives both the same result. And the desugared
 // call names the `loop` builtin, so a module that binds its own `loop`
-// (legal in 1.0, which had no such builtin) shadows it.
+// (legal before 2.1, which added the builtin) shadows it.
 func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 	loopBody := body
 	if cond != nil {

@@ -62,12 +62,13 @@ func FormatFile(source []byte) (string, error) {
 // FormatFileWithVersion parses and formats a Dang source file written in the
 // given Dang version, emitting that version's syntax.
 func FormatFileWithVersion(source []byte, version Version) (string, error) {
-	return formatSource("format", source, version, version)
+	return formatSource("format", source, version, version, false)
 }
 
 // formatSource parses source written in version from and formats it in
-// version to's syntax. With from != to it is a migration (see MigrateSource).
-func formatSource(filename string, source []byte, from, to Version) (string, error) {
+// version to's syntax. migrating re-prints template interpolations rather
+// than echoing them; see MigrateSource.
+func formatSource(filename string, source []byte, from, to Version, migrating bool) (string, error) {
 	result, commentMap, err := ParseWithComments(filename, source, WithVersion(from))
 	if err != nil {
 		return "", err
@@ -83,7 +84,7 @@ func formatSource(filename string, source []byte, from, to Version) (string, err
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
 		version:         to,
-		migrating:       from.orCurrent() != to.orCurrent(),
+		migrating:       migrating,
 	}
 	f.formatNode(result.(*FileBlock))
 

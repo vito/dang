@@ -25,7 +25,7 @@ CommaToken <- ','
 
 // FormSep separates forms in a sequence (code) — block bodies, the file
 // top-level, and block-argument bodies. Collection and argument contexts use
-// Sep (comma) instead. Both accept a bare newline. Before Dang 2.0, a comma
+// Sep (comma) instead. Both accept a bare newline. Before Dang 2.1, a comma
 // also separates forms here.
 FormSep <- (_ SemiToken / CommaFormSep _ CommaToken / _lineSpace '\n') _
 SemiToken <- ';'
@@ -1211,9 +1211,9 @@ ElseToken <- "else" !WordChar
 OrToken <- "or" !WordChar
 AndToken <- "and" !WordChar
 
-// Dang 1.0's `for (cond) { ... }` and `for { ... }` loops, removed in 2.0,
-// where `for` is an ordinary identifier. They parse as the equivalent `loop`
-// call (see desugarForLoop).
+// The `for (cond) { ... }` and `for { ... }` loops of Dang before 2.1, which
+// removed them (`for` is an ordinary identifier there). They parse as the
+// equivalent `loop` call (see desugarForLoop).
 ForLoops <- &{ return versionFromStore(c.globalStore).forLoops(), nil }
 ForLoop <- ForLoops ForToken _ '(' _ cond:Form _ ')' _ body:Block {
   return desugarForLoop(cond.(Node), body.(*Block), c.Loc()), nil

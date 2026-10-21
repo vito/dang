@@ -48,7 +48,7 @@ authorization = "Bearer ${API_TOKEN}"
 The `endpoint`, `authorization`, and `headers` values support `${VAR}`
 environment expansion; `$(...)` command substitution is not supported.
 
-- `dang = "X.Y"` — the Dang version the project's source is written for (its release's major.minor). Newer Dang releases keep parsing older versions' syntax, so a project keeps working until you move it forward with `dang migrate` (see [#cli]). A version newer than the running Dang is an error asking you to upgrade. Left out, it means `"2.0"`; `dang init` writes it for you. Source no `dang.toml` governs is written for the running Dang's version.
+- `dang = "X.Y"` — the Dang version the project's source is written for (its release's major.minor). Newer Dang releases keep parsing older versions' syntax, so a project keeps working until you move it forward with `dang migrate` (see [#cli]). A version newer than the running Dang is an error asking you to upgrade. Left out, it means `"2.1"`; `dang init` writes it for you. Source no `dang.toml` governs is written for the running Dang's version.
 - one `[imports.<Name>]` per imported source; `<Name>` is the qualifier (`MyApi.User`)
 - must specify at least one of `dagger`, `schema`, `endpoint`, or `service` — or `path`, to import a native Dang module instead of a GraphQL source (see [#dang-imports])
 - `schema = "..."` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP
