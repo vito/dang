@@ -25,24 +25,30 @@ rewritten in the target version's syntax and formatted, and the dang.toml's
 
 By default, migrate only reports what it would change. Use -w to write.
 
-Source no dang.toml governs is already in the current version, unless
-something else decides its version (e.g. a Dagger engine version). Use
---from to say which version it is in; migrating it creates a dang.toml
-declaring the new version.
+A dang.toml without a ` + "`dang`" + ` key means ` + dang.DefaultVersion.String() + `, and source no dang.toml
+governs is in this Dang's version, unless something else decides its
+version (e.g. a Dagger engine version). For either, use --from to say which
+version the source is really written for, e.g. a project from an older Dang
+that predates the key; migrating then records the new version, creating a
+dang.toml if there is none.
 
 Migration rewrites syntax. Code that a newer version rejects for other
 reasons (e.g. a stricter type check) is left for you to fix; run the
 migrated project to find it. A file that doesn't parse in its project's
 version can't be migrated: migrate refuses to write, unless
---skip-unparseable leaves such files as they are.`,
+--skip-unparseable leaves such files as they are.
+
+The output is for this Dang: migrating to a version older than this Dang's
+can print spellings this Dang reads in that version but that Dang release
+did not (e.g. ` + "`loop`" + ` for a ` + "`for`" + ` loop).`,
 		Example: `  # See what migrating the current project to this Dang's version changes
   dang migrate
 
   # Migrate it
   dang migrate -w
 
-  # Migrate a project to a specific version
-  dang migrate -w --to 2.0 ./my-module
+  # Migrate a Dang 2.0 project whose dang.toml predates the dang key
+  dang migrate -w --from 2.0 ./my-module
 
   # Migrate a module without a dang.toml that is written for Dang 1.0
   dang migrate -w --from 1.0 ./my-module`,
@@ -64,14 +70,14 @@ version can't be migrated: migrate refuses to write, unless
 				if err != nil {
 					return err
 				}
-				opts.UngovernedFrom = v
+				opts.UndeclaredFrom = v
 			}
 			return runMigrate(cmd, args, target, opts, write, skipUnparseable)
 		},
 	}
 
 	cmd.Flags().StringVar(&to, "to", "", "Dang version to migrate to (default: this Dang's version)")
-	cmd.Flags().StringVar(&from, "from", "", "Dang version of source that no dang.toml governs")
+	cmd.Flags().StringVar(&from, "from", "", "Dang version of source whose version no dang.toml declares")
 	cmd.Flags().BoolVarP(&write, "write", "w", false, "Write the migrated files and dang.toml")
 	cmd.Flags().BoolVar(&skipUnparseable, "skip-unparseable", false, "Leave files that don't parse in their version as they are")
 

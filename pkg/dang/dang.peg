@@ -252,6 +252,13 @@ DotBlockArg <- !SingleBraceSelection b:BlockArg {
   return b, nil
 }
 
+// Inline fragment bodies (`... on User { name }`) use single braces before
+// Dang 2.1, inside either spelling of the selection, and double braces in
+// 2.1.
+SingleBraceFragment <- &{ return versionFromStore(c.globalStore).singleBraceFragments(), nil }
+FragmentOpen <- SingleBraceFragment '{' / !SingleBraceFragment "{{"
+FragmentClose <- SingleBraceFragment '}' / !SingleBraceFragment "}}"
+
 ObjectSelection <- SelectionOpen _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ SelectionClose {
   return &ObjectSelection{
     Receiver: nil,
@@ -266,7 +273,7 @@ ObjectSelection <- SelectionOpen _ first:InlineFragment rest:(Sep f:InlineFragme
   }, nil
 }
 
-InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })* typeName:Symbol _ SelectionOpen _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ SelectionClose {
+InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })* typeName:Symbol _ FragmentOpen _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ FragmentClose {
   return &InlineFragment{
     TypeName:  typeName.(*Symbol),
     Qualifier: qualifierString(qual),

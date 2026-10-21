@@ -38,7 +38,7 @@ The formatter: strips trailing commas, keeps comments attached to following/prec
 
 ## `dang init` / `dang migrate`
 - `dang init [dir]` — create a `dang.toml` declaring the running Dang's version (`dang = "X.Y"`), or stamp an existing one that lacks the key with what it already means (`"2.1"`). Refuses a dir inside another project.
-- `dang migrate [dir...]` — move every project under the dirs to a newer Dang version: rewrites each governed `.dang` file in the new syntax and updates the `dang` key. Dry run unless `-w`. `--to X.Y` (default: running version), `--from X.Y` (version of source no `dang.toml` governs; creates one), `--skip-unparseable`. Rewrites syntax only; stricter checks are left to fix by hand; refuses files whose meaning would change (e.g. old syntax in a `#nofmt` region).
+- `dang migrate [dir...]` — move every project under the dirs to a newer Dang version: rewrites each governed `.dang` file in the new syntax and updates the `dang` key. Dry run unless `-w`. `--to X.Y` (default: running version), `--from X.Y` (version of source whose version no `dang.toml` declares: ungoverned source, or an older project's `dang.toml` without the key; creates a `dang.toml` if needed), `--skip-unparseable`. Rewrites syntax only; stricter checks are left to fix by hand; refuses files whose meaning would change (e.g. old syntax in a `#nofmt` region).
 
 ## REPL
 Started by running `dang` with no path. Banner:

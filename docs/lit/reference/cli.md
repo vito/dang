@@ -57,7 +57,7 @@ dang migrate [flags] [dir...]
 - flags:
   - `-w, --write` — write the migrated files and `dang.toml`
   - `--to <X.Y>` — version to migrate to (default: the running Dang's version)
-  - `--from <X.Y>` — version of source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version); migrating it creates a `dang.toml`
+  - `--from <X.Y>` — version of source whose version no `dang.toml` declares: source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version), or a project from an older Dang whose `dang.toml` predates the `dang` key; migrating records the new version, creating a `dang.toml` if there is none
   - `--skip-unparseable` — leave files that don't parse in their version as they are (otherwise `-w` refuses to write)
 
 ## REPL
