@@ -11912,62 +11912,6 @@ func Entrypoint(ruleName string) Option {
 	}
 }
 
-// Statistics adds a user provided Stats struct to the parser to allow
-// the user to process the results after the parsing has finished.
-// Also the key for the "no match" counter is set.
-//
-// Example usage:
-//
-//	input := "input"
-//	stats := Stats{}
-//	_, err := Parse("input-file", []byte(input), Statistics(&stats, "no match"))
-//	if err != nil {
-//	    log.Panicln(err)
-//	}
-//	b, err := json.MarshalIndent(stats.ChoiceAltCnt, "", "  ")
-//	if err != nil {
-//	    log.Panicln(err)
-//	}
-//	fmt.Println(string(b))
-func Statistics(stats *Stats, choiceNoMatch string) Option {
-	return func(p *parser) Option {
-		oldStats := p.Stats
-		p.Stats = stats
-		oldChoiceNoMatch := p.choiceNoMatch
-		p.choiceNoMatch = choiceNoMatch
-		if p.Stats.ChoiceAltCnt == nil {
-			p.Stats.ChoiceAltCnt = make(map[string]map[string]int)
-		}
-		return Statistics(oldStats, oldChoiceNoMatch)
-	}
-}
-
-// Debug creates an Option to set the debug flag to b. When set to true,
-// debugging information is printed to stdout while parsing.
-//
-// The default is false.
-func Debug(b bool) Option {
-	return func(p *parser) Option {
-		old := p.debug
-		p.debug = b
-		return Debug(old)
-	}
-}
-
-// Memoize creates an Option to set the memoize flag to b. When set to true,
-// the parser will cache all results so each expression is evaluated only
-// once. This guarantees linear parsing time even for pathological cases,
-// at the expense of more memory and slower times for typical cases.
-//
-// The default is false.
-func Memoize(b bool) Option {
-	return func(p *parser) Option {
-		old := p.memoize
-		p.memoize = b
-		return Memoize(old)
-	}
-}
-
 // AllowInvalidUTF8 creates an Option to allow invalid UTF-8 bytes.
 // Every invalid UTF-8 byte is treated as a utf8.RuneError (U+FFFD)
 // by character class matchers and is matched by the any matcher.
@@ -12330,9 +12274,6 @@ type parser struct {
 
 	depth   int
 	recover bool
-	debug   bool
-
-	memoize bool
 	// memoization table for the packrat algorithm:
 	// map[offset in source] map[expression or rule] {value, match}
 	memo map[int]map[any]resultTuple
@@ -12420,31 +12361,6 @@ func (p *parser) popRecovery() {
 	p.recoveryStack = p.recoveryStack[:len(p.recoveryStack)-1]
 }
 
-func (p *parser) print(prefix, s string) string {
-	if !p.debug {
-		return s
-	}
-
-	fmt.Printf("%s %d:%d:%d: %s [%#U]\n",
-		prefix, p.pt.line, p.pt.col, p.pt.offset, s, p.pt.rn)
-	return s
-}
-
-func (p *parser) printIndent(mark string, s string) string {
-	return p.print(strings.Repeat(" ", p.depth)+mark, s)
-}
-
-func (p *parser) in(s string) string {
-	res := p.printIndent(">", s)
-	p.depth++
-	return res
-}
-
-func (p *parser) out(s string) string {
-	p.depth--
-	return p.printIndent("<", s)
-}
-
 func (p *parser) addErr(err error) {
 	p.addErrAt(err, p.pt.position, []string{})
 }
@@ -12513,9 +12429,6 @@ func (p *parser) read() {
 
 // restore parser position to the savepoint pt.
 func (p *parser) restore(pt savepoint) {
-	if p.debug {
-		defer p.out(p.in("restore"))
-	}
 	if pt.offset == p.pt.offset {
 		return
 	}
@@ -12546,9 +12459,6 @@ func (sd storeDict) Discard() {
 
 // clone and return parser current state.
 func (p *parser) cloneState() storeDict {
-	if p.debug {
-		defer p.out(p.in("cloneState"))
-	}
 
 	state := statePool.Get().(storeDict)
 	for k, v := range p.cur.state {
@@ -12564,9 +12474,6 @@ func (p *parser) cloneState() storeDict {
 // restore parser current state to the state storeDict.
 // every restoreState should applied only one time for every cloned state
 func (p *parser) restoreState(state storeDict) {
-	if p.debug {
-		defer p.out(p.in("restoreState"))
-	}
 	p.cur.state.Discard()
 	p.cur.state = state
 }
@@ -12621,9 +12528,6 @@ func (p *parser) parse(g *grammar) (val any, err error) {
 		// and return the panic as an error.
 		defer func() {
 			if e := recover(); e != nil {
-				if p.debug {
-					defer p.out(p.in("panic handler"))
-				}
 				val = nil
 				switch e := e.(type) {
 				case error:
@@ -12691,10 +12595,6 @@ func (p *parser) parseRuleRecursiveLeader(rule *rule) (any, bool) {
 		return result.v, result.b
 	}
 
-	if p.debug {
-		defer p.out(p.in("recursive " + rule.name))
-	}
-
 	var (
 		depth      = 0
 		startMark  = p.pt
@@ -12707,11 +12607,6 @@ func (p *parser) parseRuleRecursiveLeader(rule *rule) (any, bool) {
 		p.setMemoized(startMark, rule, lastResult)
 		val, ok := p.parseRule(rule)
 		endMark := p.pt
-		if p.debug {
-			p.printIndent("RECURSIVE", fmt.Sprintf(
-				"Rule %s depth %d: %t -> %s",
-				rule.name, depth, ok, string(p.sliceFrom(startMark))))
-		}
 		if (!ok) || (endMark.offset <= lastResult.end.offset && depth != 0) {
 			p.restoreState(lastState)
 			*p.errs = lastErrors
@@ -12732,35 +12627,15 @@ func (p *parser) parseRuleRecursiveNoLeader(rule *rule) (any, bool) {
 	return p.parseRule(rule)
 }
 
-func (p *parser) parseRuleMemoize(rule *rule) (any, bool) {
-	res, ok := p.getMemoized(rule)
-	if ok {
-		p.restore(res.end)
-		return res.v, res.b
-	}
-
-	startMark := p.pt
-	val, ok := p.parseRule(rule)
-	p.setMemoized(startMark, rule, resultTuple{val, ok, p.pt})
-
-	return val, ok
-}
-
 func (p *parser) parseRuleWrap(rule *rule) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseRule " + rule.name))
-	}
 	var (
-		val       any
-		ok        bool
-		startMark = p.pt
+		val any
+		ok  bool
 	)
 
-	if p.memoize || rule.leftRecursive {
+	if rule.leftRecursive {
 		if rule.leader {
 			val, ok = p.parseRuleRecursiveLeader(rule)
-		} else if p.memoize && !rule.leftRecursive {
-			val, ok = p.parseRuleMemoize(rule)
 		} else {
 			val, ok = p.parseRuleRecursiveNoLeader(rule)
 		}
@@ -12768,9 +12643,6 @@ func (p *parser) parseRuleWrap(rule *rule) (any, bool) {
 		val, ok = p.parseRule(rule)
 	}
 
-	if ok && p.debug {
-		p.printIndent("MATCH", string(p.sliceFrom(startMark)))
-	}
 	return val, ok
 }
 
@@ -12784,23 +12656,8 @@ func (p *parser) parseRule(rule *rule) (any, bool) {
 }
 
 func (p *parser) parseExprWrap(expr any) (any, bool) {
-	var pt savepoint
-
-	isLeftRecursion := p.rstack[len(p.rstack)-1].leftRecursive
-	if p.memoize && !isLeftRecursion {
-		res, ok := p.getMemoized(expr)
-		if ok {
-			p.restore(res.end)
-			return res.v, res.b
-		}
-		pt = p.pt
-	}
-
 	val, ok := p.parseExpr(expr)
 
-	if p.memoize && !isLeftRecursion {
-		p.setMemoized(pt, expr, resultTuple{val, ok, p.pt})
-	}
 	return val, ok
 }
 
@@ -12856,10 +12713,6 @@ func (p *parser) parseExpr(expr any) (any, bool) {
 }
 
 func (p *parser) parseActionExpr(act *actionExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseActionExpr"))
-	}
-
 	start := p.pt
 	val, ok := p.parseExprWrap(act.expr)
 	if ok {
@@ -12874,17 +12727,10 @@ func (p *parser) parseActionExpr(act *actionExpr) (any, bool) {
 
 		val = actVal
 	}
-	if ok && p.debug {
-		p.printIndent("MATCH", string(p.sliceFrom(start)))
-	}
 	return val, ok
 }
 
 func (p *parser) parseAndCodeExpr(and *andCodeExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseAndCodeExpr"))
-	}
-
 	state := p.cloneState()
 
 	ok, err := and.run(p)
@@ -12897,10 +12743,6 @@ func (p *parser) parseAndCodeExpr(and *andCodeExpr) (any, bool) {
 }
 
 func (p *parser) parseAndExpr(and *andExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseAndExpr"))
-	}
-
 	pt := p.pt
 	state := p.cloneState()
 	p.pushV()
@@ -12913,10 +12755,6 @@ func (p *parser) parseAndExpr(and *andExpr) (any, bool) {
 }
 
 func (p *parser) parseAnyMatcher(any *anyMatcher) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseAnyMatcher"))
-	}
-
 	if p.pt.rn == utf8.RuneError && p.pt.w == 0 {
 		// EOF - see utf8.DecodeRune
 		p.failAt(false, p.pt.position, ".")
@@ -12929,10 +12767,6 @@ func (p *parser) parseAnyMatcher(any *anyMatcher) (any, bool) {
 }
 
 func (p *parser) parseCharClassMatcher(chr *charClassMatcher) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseCharClassMatcher"))
-	}
-
 	cur := p.pt.rn
 	start := p.pt
 
@@ -12994,25 +12828,7 @@ func (p *parser) parseCharClassMatcher(chr *charClassMatcher) (any, bool) {
 	return nil, false
 }
 
-func (p *parser) incChoiceAltCnt(ch *choiceExpr, altI int) {
-	choiceIdent := fmt.Sprintf("%s %d:%d", p.rstack[len(p.rstack)-1].name, ch.pos.line, ch.pos.col)
-	m := p.ChoiceAltCnt[choiceIdent]
-	if m == nil {
-		m = make(map[string]int)
-		p.ChoiceAltCnt[choiceIdent] = m
-	}
-	// We increment altI by 1, so the keys do not start at 0
-	alt := strconv.Itoa(altI + 1)
-	if altI == choiceNoMatch {
-		alt = p.choiceNoMatch
-	}
-	m[alt]++
-}
-
 func (p *parser) parseChoiceExpr(ch *choiceExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseChoiceExpr"))
-	}
 
 	for altI, alt := range ch.alternatives {
 		// dummy assignment to prevent compile error if optimized
@@ -13024,20 +12840,14 @@ func (p *parser) parseChoiceExpr(ch *choiceExpr) (any, bool) {
 		val, ok := p.parseExprWrap(alt)
 		p.popV()
 		if ok {
-			p.incChoiceAltCnt(ch, altI)
 			return val, ok
 		}
 		p.restoreState(state)
 	}
-	p.incChoiceAltCnt(ch, choiceNoMatch)
 	return nil, false
 }
 
 func (p *parser) parseLabeledExpr(lab *labeledExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseLabeledExpr"))
-	}
-
 	p.pushV()
 	val, ok := p.parseExprWrap(lab.expr)
 	p.popV()
@@ -13049,10 +12859,6 @@ func (p *parser) parseLabeledExpr(lab *labeledExpr) (any, bool) {
 }
 
 func (p *parser) parseLitMatcher(lit *litMatcher) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseLitMatcher"))
-	}
-
 	start := p.pt
 	for _, want := range lit.val {
 		cur := p.pt.rn
@@ -13071,10 +12877,6 @@ func (p *parser) parseLitMatcher(lit *litMatcher) (any, bool) {
 }
 
 func (p *parser) parseNotCodeExpr(not *notCodeExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseNotCodeExpr"))
-	}
-
 	state := p.cloneState()
 
 	ok, err := not.run(p)
@@ -13087,10 +12889,6 @@ func (p *parser) parseNotCodeExpr(not *notCodeExpr) (any, bool) {
 }
 
 func (p *parser) parseNotExpr(not *notExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseNotExpr"))
-	}
-
 	pt := p.pt
 	state := p.cloneState()
 	p.pushV()
@@ -13105,10 +12903,6 @@ func (p *parser) parseNotExpr(not *notExpr) (any, bool) {
 }
 
 func (p *parser) parseOneOrMoreExpr(expr *oneOrMoreExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseOneOrMoreExpr"))
-	}
-
 	var vals []any
 
 	for {
@@ -13127,9 +12921,6 @@ func (p *parser) parseOneOrMoreExpr(expr *oneOrMoreExpr) (any, bool) {
 }
 
 func (p *parser) parseRecoveryExpr(recover *recoveryExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseRecoveryExpr (" + strings.Join(recover.failureLabel, ",") + ")"))
-	}
 
 	p.pushRecovery(recover.failureLabel, recover.recoverExpr)
 	val, ok := p.parseExprWrap(recover.expr)
@@ -13139,10 +12930,6 @@ func (p *parser) parseRecoveryExpr(recover *recoveryExpr) (any, bool) {
 }
 
 func (p *parser) parseRuleRefExpr(ref *ruleRefExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseRuleRefExpr " + ref.name))
-	}
-
 	if ref.name == "" {
 		panic(fmt.Sprintf("%s: invalid rule: missing name", ref.pos))
 	}
@@ -13156,10 +12943,6 @@ func (p *parser) parseRuleRefExpr(ref *ruleRefExpr) (any, bool) {
 }
 
 func (p *parser) parseSeqExpr(seq *seqExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseSeqExpr"))
-	}
-
 	vals := make([]any, 0, len(seq.exprs))
 
 	pt := p.pt
@@ -13177,10 +12960,6 @@ func (p *parser) parseSeqExpr(seq *seqExpr) (any, bool) {
 }
 
 func (p *parser) parseStateCodeExpr(state *stateCodeExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseStateCodeExpr"))
-	}
-
 	err := state.run(p)
 	if err != nil {
 		p.addErr(err)
@@ -13189,9 +12968,6 @@ func (p *parser) parseStateCodeExpr(state *stateCodeExpr) (any, bool) {
 }
 
 func (p *parser) parseThrowExpr(expr *throwExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseThrowExpr"))
-	}
 
 	for i := len(p.recoveryStack) - 1; i >= 0; i-- {
 		if recoverExpr, ok := p.recoveryStack[i][expr.label]; ok {
@@ -13205,10 +12981,6 @@ func (p *parser) parseThrowExpr(expr *throwExpr) (any, bool) {
 }
 
 func (p *parser) parseZeroOrMoreExpr(expr *zeroOrMoreExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseZeroOrMoreExpr"))
-	}
-
 	var vals []any
 
 	for {
@@ -13223,10 +12995,6 @@ func (p *parser) parseZeroOrMoreExpr(expr *zeroOrMoreExpr) (any, bool) {
 }
 
 func (p *parser) parseZeroOrOneExpr(expr *zeroOrOneExpr) (any, bool) {
-	if p.debug {
-		defer p.out(p.in("parseZeroOrOneExpr"))
-	}
-
 	p.pushV()
 	val, _ := p.parseExprWrap(expr.expr)
 	p.popV()
