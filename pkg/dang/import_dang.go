@@ -195,8 +195,9 @@ func moduleImportContext(ctx context.Context, dir string) (context.Context, erro
 	ctx = WithSchemaModuleCache(ctx, &sync.Map{})
 	ctx = WithDangModuleCache(ctx, &sync.Map{})
 	// The importer's version does not apply either: the module's version
-	// depends only on its own path (see VersionForDir).
-	ctx = withoutContextVersion(ctx)
+	// depends only on its own path (see VersionForDir), except that an
+	// embedder's pin carries over within the dang.toml it applies to.
+	ctx = importContextVersion(ctx, dir)
 
 	configPath := filepath.Join(dir, "dang.toml")
 	if _, statErr := os.Stat(configPath); statErr == nil {

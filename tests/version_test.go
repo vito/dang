@@ -202,4 +202,33 @@ assert { pair.{a}.a == 1 }
 		_, err = dang.RunDir(dang.ContextWithVersion(ctx, dang.Version1_0), root, false)
 		require.Error(t, err)
 	})
+
+	t.Run("embedder version covers path imports under the same dang.toml", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+		const v1Source = `
+type Pair {
+  a: Int! = 1
+}
+
+let pair = Pair
+pub picked: Int! = pair.{a}.a
+`
+		writeFiles(root, map[string]string{
+			// From before the `dang` key, for its imports only.
+			"dang.toml": "[imports.Lib]\npath = \"./lib\"\n",
+			"main.dang": "import Lib\n" + v1Source + "assert { Lib.picked == 1 }\n",
+			// Governed by the same dang.toml, so pinned the same.
+			"lib/lib.dang": v1Source,
+		})
+		ctx = dang.ContextWithVersion(ctx, dang.Version1_0)
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+
+		// A module with a dang.toml of its own is another project, which
+		// the pin doesn't reach.
+		writeFiles(root, map[string]string{"lib/dang.toml": ""})
+		_, err = dang.RunDir(ctx, root, false)
+		require.ErrorContains(t, err, "lib.dang")
+	})
 }

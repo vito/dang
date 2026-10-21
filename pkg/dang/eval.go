@@ -3320,6 +3320,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	if err != nil {
 		return fmt.Errorf("determining Dang version: %w", err)
 	}
+	ctx = bindContextVersion(ctx, filepath.Dir(filePath))
 
 	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithVersion(version))
 	if err != nil {
@@ -3550,6 +3551,7 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Fi
 	if err != nil {
 		return ctx, nil, fmt.Errorf("determining Dang version: %w", err)
 	}
+	ctx = bindContextVersion(ctx, dirPath)
 
 	blocks := make([]*FileBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
