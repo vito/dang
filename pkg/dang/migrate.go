@@ -249,28 +249,51 @@ type MigrateOptions struct {
 	// UndeclaredFrom, if set, is the version of the source under root whose
 	// version nothing declares: source no dang.toml governs (such as a
 	// module whose embedder pins its version with ContextWithVersion), and
-	// source governed by a dang.toml without a `dang` key, which would
-	// otherwise mean DefaultVersion (e.g. a project from before the key
-	// existed, written for an older Dang). Ungoverned source is migrated as
-	// one project, creating a dang.toml at root that declares the target
-	// version, which takes precedence over an embedder's pin from then on.
-	// Without it, ungoverned source is left alone: by its path, it is
-	// CurrentVersion.
+	// source governed by the dang.toml of root itself (in root or above it)
+	// if it has no `dang` key, which would otherwise mean DefaultVersion
+	// (e.g. a project from before the key existed, written for an older
+	// Dang). Ungoverned source is migrated as one project, creating a
+	// dang.toml at root that declares the target version, which takes
+	// precedence over an embedder's pin from then on. Without it,
+	// ungoverned source is left alone: by its path, it is CurrentVersion.
+	//
+	// It does not apply to the projects nested below root whose dang.toml
+	// declares no version: nothing says they are written in the same version
+	// as root, so they keep DefaultVersion and are listed in
+	// MigrationPlan.Undeclared, to be migrated by naming them instead.
 	UndeclaredFrom Version
 }
 
-// PlanMigrations plans migrating every project under root to Dang version to,
-// without changing anything. A project is the set of .dang files governed by
-// one dang.toml (see VersionForDir); projects already at or past to are left
-// alone. Nested repositories (directories with a .git) are not entered.
+// A MigrationPlan is the result of PlanMigrations.
+type MigrationPlan struct {
+	// Projects lists the projects to migrate.
+	Projects []*ProjectMigration
+	// Undeclared lists the dang.toml files nested below root that declare
+	// no version and that MigrateOptions.UndeclaredFrom therefore did not
+	// apply to. Empty without UndeclaredFrom.
+	Undeclared []string
+}
+
+// PlanMigrations plans migrating every project under root, a directory, to
+// Dang version to, without changing anything. A project is the set of .dang
+// files governed by one dang.toml (see VersionForDir); projects already at or
+// past to are left alone. Nested repositories (directories with a .git) are
+// not entered.
 //
 // A project whose dang.toml lives above root is an error rather than a partial
 // migration, since bumping its version would change files outside root. So is
 // a file whose migration would change its meaning (see MigrateSource).
-func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMigration, error) {
+func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPlan, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory: migrate moves whole projects, so pass a directory, e.g. %s", root, filepath.Dir(root))
 	}
 
 	type project struct {
@@ -284,6 +307,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 		configPath: filepath.Join(root, "dang.toml"),
 		from:       opts.UndeclaredFrom,
 	}
+	result := &MigrationPlan{}
 
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -317,7 +341,11 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 				if p == nil {
 					from := config.EffectiveVersion()
 					if config.Dang.IsZero() && !opts.UndeclaredFrom.IsZero() {
-						from = opts.UndeclaredFrom
+						if configDir := filepath.Dir(configPath); configDir != root && isWithin(root, configDir) {
+							result.Undeclared = append(result.Undeclared, configPath)
+						} else {
+							from = opts.UndeclaredFrom
+						}
 					}
 					p = &project{configPath: configPath, from: from}
 					projects[configPath] = p
@@ -341,14 +369,14 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 		configPaths = append(configPaths, configPath)
 	}
 	sort.Strings(configPaths)
+	sort.Strings(result.Undeclared)
 
-	var plans []*ProjectMigration
 	for _, configPath := range configPaths {
 		p := projects[configPath]
 		if !p.from.Before(to) {
 			continue
 		}
-		if rel, err := filepath.Rel(root, filepath.Dir(configPath)); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if !isWithin(root, filepath.Dir(configPath)) {
 			return nil, fmt.Errorf("%s is governed by %s, outside %s; migrate its directory instead", p.files[0], configPath, root)
 		}
 
@@ -378,9 +406,15 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) ([]*ProjectMig
 			}
 			plan.Files = append(plan.Files, FileMigration{Path: path, Source: source, Migrated: migrated})
 		}
-		plans = append(plans, plan)
+		result.Projects = append(result.Projects, plan)
 	}
-	return plans, nil
+	return result, nil
+}
+
+// isWithin reports whether path is dir or inside it. Both must be absolute.
+func isWithin(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 var (

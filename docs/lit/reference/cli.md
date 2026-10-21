@@ -50,14 +50,14 @@ dang migrate [flags] [dir...]
 
 ## `dang migrate`
 
-- move every project under the given directories (default: `.`) to a newer Dang version: each `.dang` file a `dang.toml` governs is rewritten in the new version's syntax, and the `dang.toml`'s `dang` key is updated with it
+- move every project under the given directories (default: `.`; directories only) to a newer Dang version: each `.dang` file a `dang.toml` governs is rewritten in the new version's syntax, and the `dang.toml`'s `dang` key is updated with it
 - only reports what it would change unless `-w` is given; files spelled the same in both versions are left untouched
 - it rewrites syntax only: code a newer version rejects for other reasons (e.g. a stricter type check) is left for you to fix
 - refuses a file whose meaning would change, e.g. old syntax inside a `#nofmt` region, which must be migrated by hand
 - flags:
   - `-w, --write` — write the migrated files and `dang.toml`
   - `--to <X.Y>` — version to migrate to (default: the running Dang's version)
-  - `--from <X.Y>` — version of source whose version no `dang.toml` declares: source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version), or a project from an older Dang whose `dang.toml` predates the `dang` key; migrating records the new version, creating a `dang.toml` if there is none
+  - `--from <X.Y>` — version of source whose version no `dang.toml` declares: source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version), or a project from an older Dang whose `dang.toml` predates the `dang` key; migrating records the new version, creating a `dang.toml` if there is none. It applies to the given directory's own project, not to projects nested below it: those without a `dang` key are reported, to migrate by naming their directories
   - `--skip-unparseable` — leave files that don't parse in their version as they are (otherwise `-w` refuses to write)
 
 ## REPL

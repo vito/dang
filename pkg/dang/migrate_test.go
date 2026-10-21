@@ -154,8 +154,7 @@ func TestPlanMigrations(t *testing.T) {
 	// Ungoverned, so the current version.
 	write("loose/main.dang", "let x = user.{{name}}\n")
 
-	plans, err := PlanMigrations(root, Version2_0, MigrateOptions{})
-	require.NoError(t, err)
+	plans := planProjects(t, root, Version2_0, MigrateOptions{})
 	require.Len(t, plans, 1)
 	plan := plans[0]
 	assert.Equal(t, filepath.Join(root, "old", "dang.toml"), plan.ConfigPath)
@@ -181,9 +180,7 @@ func TestPlanMigrations(t *testing.T) {
 	assert.Equal(t, "dang = \"2.0\"\n", read("old/dang.toml"))
 
 	// Now there's nothing left to do.
-	plans, err = PlanMigrations(root, Version2_0, MigrateOptions{})
-	require.NoError(t, err)
-	assert.Empty(t, plans)
+	assert.Empty(t, planProjects(t, root, Version2_0, MigrateOptions{}))
 
 	t.Run("refuses a project rooted above the path", func(t *testing.T) {
 		write("up/dang.toml", "dang = \"1.0\"\n")
@@ -192,12 +189,17 @@ func TestPlanMigrations(t *testing.T) {
 		require.ErrorContains(t, err, "migrate its directory instead")
 	})
 
+	t.Run("refuses a file", func(t *testing.T) {
+		write("script/main.dang", "let x = user.{name}\n")
+		_, err := PlanMigrations(filepath.Join(root, "script", "main.dang"), Version2_0, MigrateOptions{UndeclaredFrom: Version1_0})
+		require.ErrorContains(t, err, "is not a directory")
+	})
+
 	t.Run("reports unparseable files", func(t *testing.T) {
 		write("broken/dang.toml", "dang = \"1.0\"\n")
 		write("broken/main.dang", "let x = user.{name}\n")
 		write("broken/fixtures/bad.dang", "let = =\n")
-		plans, err := PlanMigrations(filepath.Join(root, "broken"), Version2_0, MigrateOptions{})
-		require.NoError(t, err)
+		plans := planProjects(t, filepath.Join(root, "broken"), Version2_0, MigrateOptions{})
 		require.Len(t, plans, 1)
 		require.Len(t, plans[0].Files, 1)
 		require.Len(t, plans[0].Unparseable, 1)
@@ -209,12 +211,10 @@ func TestPlanMigrations(t *testing.T) {
 		write("pinned/.git/HEAD", "") // its own repo, like a Dagger module
 		write("pinned/main.dang", "let x = user.{name}\n")
 
-		plans, err := PlanMigrations(mod, Version2_0, MigrateOptions{})
-		require.NoError(t, err)
-		assert.Empty(t, plans, "ungoverned source is the current version by default")
+		assert.Empty(t, planProjects(t, mod, Version2_0, MigrateOptions{}),
+			"ungoverned source is the current version by default")
 
-		plans, err = PlanMigrations(mod, Version2_0, MigrateOptions{UndeclaredFrom: Version1_0})
-		require.NoError(t, err)
+		plans := planProjects(t, mod, Version2_0, MigrateOptions{UndeclaredFrom: Version1_0})
 		require.Len(t, plans, 1)
 		require.NoError(t, plans[0].Write())
 		assert.Equal(t, "let x = user.{{name}}\n", read("pinned/main.dang"))
@@ -230,18 +230,65 @@ func TestPlanMigrations(t *testing.T) {
 		write("unversioned/dang.toml", "[imports.Dagger]\ndagger = true\n")
 		write("unversioned/main.dang", "for { break }\n")
 
-		plans, err := PlanMigrations(mod, Version2_1, MigrateOptions{})
-		require.NoError(t, err)
-		assert.Empty(t, plans, "an unversioned dang.toml is the default version")
+		assert.Empty(t, planProjects(t, mod, Version2_1, MigrateOptions{}),
+			"an unversioned dang.toml is the default version")
 
-		plans, err = PlanMigrations(mod, Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
-		require.NoError(t, err)
+		plans := planProjects(t, mod, Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
 		require.Len(t, plans, 1)
 		assert.Equal(t, Version2_0, plans[0].From)
 		require.NoError(t, plans[0].Write())
 		assert.Equal(t, "loop { break }\n", read("unversioned/main.dang"))
 		assert.Equal(t, "dang = \"2.1\"\n\n[imports.Dagger]\ndagger = true\n", read("unversioned/dang.toml"))
 	})
+
+	t.Run("--from applies only to root's own project", func(t *testing.T) {
+		// Nothing says a nested project without a `dang` key is written in
+		// the same version as root: it may well be 2.1, where a case
+		// without an else yields null, and migrating it as 2.0 would add
+		// a raising else.
+		const nestedSource = "let x = case (1) { 2 => 3 }\n"
+		mod := filepath.Join(root, "mono")
+		write("mono/.git/HEAD", "")
+		write("mono/dang.toml", "")
+		write("mono/main.dang", "for { break }\n")
+		write("mono/tools/dang.toml", "")
+		write("mono/tools/main.dang", nestedSource)
+		// Ungoverned source below root would get root's new dang.toml, but
+		// a nested project with a declared version keeps it.
+		write("mono/declared/dang.toml", "dang = \"2.0\"\n")
+		write("mono/declared/main.dang", "for { break }\n")
+
+		result, err := PlanMigrations(mod, Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
+		require.NoError(t, err)
+		assert.Equal(t, []string{filepath.Join(mod, "tools", "dang.toml")}, result.Undeclared)
+		var configs []string
+		for _, plan := range result.Projects {
+			assert.Equal(t, Version2_0, plan.From)
+			configs = append(configs, plan.ConfigPath)
+		}
+		assert.Equal(t, []string{
+			filepath.Join(mod, "dang.toml"),
+			filepath.Join(mod, "declared", "dang.toml"),
+		}, configs)
+
+		// Named itself, the nested project is migrated from --from.
+		plans := planProjects(t, filepath.Join(mod, "tools"), Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
+		require.Len(t, plans, 1)
+		assert.Equal(t, Version2_0, plans[0].From)
+
+		// Without --from, nothing is reported.
+		result, err = PlanMigrations(mod, Version2_1, MigrateOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, result.Undeclared)
+	})
+}
+
+// planProjects plans migrations that must succeed, returning the projects.
+func planProjects(t *testing.T, root string, to Version, opts MigrateOptions) []*ProjectMigration {
+	t.Helper()
+	result, err := PlanMigrations(root, to, opts)
+	require.NoError(t, err)
+	return result.Projects
 }
 
 func TestInitProject(t *testing.T) {
