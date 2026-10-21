@@ -36,7 +36,10 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 	if to.Before(from) {
 		return "", fmt.Errorf("cannot migrate from Dang %s back to %s", from, to)
 	}
-	migrated, err := formatSource(filename, source, from, to)
+	// Template interpolations are code, so a migration re-prints them in the
+	// target version rather than echoing them as written.
+	migrating := from.orCurrent() != to.orCurrent()
+	migrated, err := formatSource(filename, source, from, to, migrating)
 	if err != nil {
 		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, EnhanceParseError(err, filename, source))
 	}
@@ -44,11 +47,12 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 	if err != nil {
 		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, EnhanceParseError(err, filename, []byte(migrated)))
 	}
-	if from.orCurrent() != to.orCurrent() {
+	if migrating {
 		// Compare against the source formatted in its own version, so that
 		// formatting's own normalizations (e.g. dropping empty parens) don't
-		// count as differences.
-		formatted, err := formatSource(filename, source, from, from)
+		// count as differences. Its interpolations are re-printed too, so
+		// that the two texts are comparable.
+		formatted, err := formatSource(filename, source, from, from, true)
 		if err != nil {
 			return "", err
 		}
@@ -67,12 +71,12 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 		// (e.g. a minor version that changed no syntax), so leave it as it
 		// is rather than reformatting it, provided it means the same as
 		// written. The formatted texts agreeing is not enough: formatting
-		// normalizes old spellings like 1.0's comma separators.
+		// normalizes old spellings like 2.0's comma separators.
 		if formatted == migrated && sameMeaning(filename, source, from, to) {
 			return string(source), nil
 		}
 	}
-	again, err := formatSource(filename, []byte(migrated), to, to)
+	again, err := formatSource(filename, []byte(migrated), to, to, false)
 	if err != nil {
 		return "", err
 	}
@@ -395,9 +399,13 @@ func setConfigVersion(config []byte, v Version) []byte {
 		return append(out, config[loc[3]:]...)
 	}
 
-	header := "dang = " + value + "\n"
-	if len(config) > 0 && !strings.HasPrefix(string(config), "\n") {
-		header += "\n"
+	newline := "\n"
+	if strings.Contains(string(config), "\r\n") {
+		newline = "\r\n"
+	}
+	header := "dang = " + value + newline
+	if len(config) > 0 && !strings.HasPrefix(string(config), newline) {
+		header += newline
 	}
 	return append([]byte(header), config...)
 }

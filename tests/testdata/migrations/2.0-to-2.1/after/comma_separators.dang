@@ -1,5 +1,5 @@
-# Dang 1.0 also separates forms with commas: in blocks, block arguments, and
-# at the top level. Dang 2.0 only takes `;` or a newline.
+# Dang 2.0 also separates forms with commas: in blocks, block arguments, and
+# at the top level. Dang 2.1 only takes `;` or a newline.
 
 let inBlock = { let x = 10; x + 1 }
 assert { inBlock == 11 }

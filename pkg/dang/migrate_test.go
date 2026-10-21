@@ -55,9 +55,10 @@ func TestMigrateSource(t *testing.T) {
 	})
 
 	t.Run("a file spelled the same in both versions is left alone", func(t *testing.T) {
-		// 2.1 changed no syntax, so nothing is reformatted either.
-		src := "let x   = user.{{name}}\n"
-		migrated, err := migrate(src, Version2_0, Version{2, 1})
+		// It uses nothing 2.1 changed, so nothing is reformatted either,
+		// template interpolations included.
+		src := "let x   = user.{{name}}\nprint(`x ${a+b}`)\n"
+		migrated, err := migrate(src, Version2_0, Version2_1)
 		require.NoError(t, err)
 		assert.Equal(t, src, migrated)
 
@@ -69,9 +70,9 @@ func TestMigrateSource(t *testing.T) {
 	})
 
 	t.Run("a file is reformatted when its old spelling must go", func(t *testing.T) {
-		// Formatting already prints 1.0's comma separator as `;` in both
-		// versions, but the comma itself doesn't parse in 2.0.
-		migrated, err := migrate("let x = { let a   = 1, a }\n", Version1_0, Version2_0)
+		// Formatting already prints 2.0's comma separator as `;` in both
+		// versions, but the comma itself doesn't parse in 2.1.
+		migrated, err := migrate("let x = { let a   = 1, a }\n", Version2_0, Version2_1)
 		require.NoError(t, err)
 		assert.Equal(t, "let x = { let a = 1; a }\n", migrated)
 	})
@@ -100,6 +101,11 @@ func TestSetConfigVersion(t *testing.T) {
 			"keeps CRLF line endings",
 			"dang = '1.0'\r\n[imports.A]\r\n",
 			"dang = \"2.0\"\r\n[imports.A]\r\n",
+		},
+		{
+			"adds a missing key with CRLF line endings",
+			"# my project\r\n[imports.A]\r\n",
+			"dang = \"2.0\"\r\n\r\n# my project\r\n[imports.A]\r\n",
 		},
 		{
 			"adds a missing key before any table",
@@ -249,7 +255,7 @@ func TestInitProject(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, result.Created)
 		assert.Equal(t, DefaultVersion, result.Version)
-		assert.Equal(t, "dang = \"2.0\"\n\n# keep\n[imports.Dagger]\ndagger = true\n", read("legacy/dang.toml"))
+		assert.Equal(t, "dang = \""+DefaultVersion.String()+"\"\n\n# keep\n[imports.Dagger]\ndagger = true\n", read("legacy/dang.toml"))
 	})
 
 	t.Run("refuses a directory inside another project", func(t *testing.T) {
