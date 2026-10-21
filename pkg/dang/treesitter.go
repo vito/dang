@@ -68,6 +68,8 @@ var tsEdition = LatestEdition
 // or `!P x` where P is true) can never match, so it is pruned from its choice.
 var tsPredicates = map[string]bool{
 	"SingleBraceSelection": tsEdition.singleBraceSelection(),
+	"ForLoops":             tsEdition.forLoops(),
+	"CommaFormSep":         tsEdition.commaFormSep(),
 }
 
 // tsInlinedRules are PEG rules that only exist to switch syntax by edition.
@@ -77,6 +79,8 @@ var tsInlinedRules = map[string]bool{
 	"SelectionOpen":  true,
 	"SelectionClose": true,
 	"DotBlockArg":    true,
+	"ForLoop":        true,
+	"ForToken":       true,
 }
 
 func tsGrammarRule(name string) *rule {

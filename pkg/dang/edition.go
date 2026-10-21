@@ -7,13 +7,22 @@ import (
 )
 
 // Edition selects which revision of Dang's surface syntax a module is written
-// in. Every edition runs on the same interpreter: an edition only changes how
-// source is parsed (and formatted), so modules of different editions can
-// import each other freely.
+// in. Every edition runs on the same interpreter, because every edition
+// parses into the same AST: a form an edition removed or changed stays in the
+// grammar behind an edition gate, and the gated rule's action builds the AST
+// of the current equivalent (e.g. edition 1's `for (c) { ... }` parses as a
+// `loop`). Old editions therefore cost parsing rules, never interpreter
+// branches, and modules of different editions import each other freely.
 //
-// Editions are opaque strings rather than numbers so that future editions can
-// be named by date or semver. Code must never compare editions for ordering;
-// gate behavior on a feature method instead (see singleBraceSelection).
+// The same property makes migration free: `dang migrate` parses a file as its
+// edition and formats the AST as the target edition (see MigrateSource).
+// Changes that only make the language stricter have no gate; old code that
+// trips them stops compiling and has to be fixed by hand.
+//
+// Editions are opaque strings, so they can be named by version or date; their
+// order is their position in Editions. Gate syntax on a named feature method
+// (see singleBraceSelection) defined in terms of that order, never on an
+// edition's name.
 type Edition string
 
 const (
@@ -39,8 +48,25 @@ const (
 	LatestEdition = Edition2
 )
 
-// Editions lists every supported edition, oldest first.
+// Editions lists every supported edition, oldest first. Adding an edition
+// appends to it; an edition is never removed or reordered.
 var Editions = []Edition{Edition1, Edition2}
+
+// index returns e's position in Editions. An unknown edition (e.g. the zero
+// value) is treated as LatestEdition.
+func (e Edition) index() int {
+	for i, known := range Editions {
+		if known == e {
+			return i
+		}
+	}
+	return LatestEdition.index()
+}
+
+// Before reports whether e is older than other.
+func (e Edition) Before(other Edition) bool {
+	return e.index() < other.index()
+}
 
 // ParseEdition validates an edition string.
 func ParseEdition(s string) (Edition, error) {
@@ -73,9 +99,37 @@ func (e *Edition) UnmarshalTOML(v any) error {
 }
 
 // singleBraceSelection reports whether `recv.{ ... }` is object selection
-// (and dot-block application is unavailable), as in edition 1.
+// (and dot-block application is unavailable), as before edition 2.
 func (e Edition) singleBraceSelection() bool {
-	return e == Edition1
+	return e.Before(Edition2)
+}
+
+// forLoops reports whether `for (cond) { ... }` and `for { ... }` are loops,
+// as before edition 2 removed them (where `for` is an ordinary identifier).
+// They parse as the equivalent `loop` call; see desugarForLoop.
+func (e Edition) forLoops() bool {
+	return e.Before(Edition2)
+}
+
+// unmatchedCaseRaises reports whether a case that matches no clause raises,
+// as before edition 2 (where it yields null, making the case's type nullable
+// unless its clauses are exhaustive). See editionCaseClauses.
+func (e Edition) unmatchedCaseRaises() bool {
+	return e.Before(Edition2)
+}
+
+// deadClausesAfterElse reports whether case clauses may follow the else
+// clause, as before edition 2 (where they are an unreachable-clause error).
+// Clauses match in order, so they never ran; see editionCaseClauses.
+func (e Edition) deadClausesAfterElse() bool {
+	return e.Before(Edition2)
+}
+
+// commaFormSep reports whether a comma separates forms in blocks, block
+// arguments and the file top level, as before edition 2 (where only `;` or a
+// newline does).
+func (e Edition) commaFormSep() bool {
+	return e.Before(Edition2)
 }
 
 // selectionBraces returns the delimiters for object selections and inline
@@ -156,4 +210,81 @@ func EditionForConfig(ctx context.Context, cfg *ProjectConfig) Edition {
 		return EditionFromContext(ctx)
 	}
 	return cfg.EffectiveEdition()
+}
+
+// unmatchedCaseError is the message edition 1 raised when no case clause
+// matched. Edition 1 went on to print the operand's value, which the desugared
+// clause can't refer to without evaluating the operand a second time.
+const unmatchedCaseError = "no case clause matched"
+
+// editionCaseClauses builds the current equivalent of a case's clauses as
+// written in edition e. Where clauses may follow the else clause (see
+// deadClausesAfterElse), they are dropped, since they could never match.
+// Where an unmatched case raises (see unmatchedCaseRaises), a case without an
+// else clause gets
+//
+//	else => raise "no case clause matched"
+//
+// so that it raises the same way and its type stays non-null. It takes the
+// last clause's location, so the formatter places comments around it exactly
+// as around the last clause.
+func editionCaseClauses(e Edition, clauses []*CaseClause, loc *SourceLocation) []*CaseClause {
+	for i, clause := range clauses {
+		if clause.IsElse {
+			if e.deadClausesAfterElse() {
+				return clauses[:i+1]
+			}
+			return clauses
+		}
+	}
+	if !e.unmatchedCaseRaises() || len(clauses) == 0 {
+		return clauses
+	}
+	return append(clauses, &CaseClause{
+		Expr: &Raise{
+			Value: &String{Value: unmatchedCaseError, Loc: loc},
+			Loc:   loc,
+		},
+		IsElse: true,
+		Loc:    clauses[len(clauses)-1].Loc,
+	})
+}
+
+// desugarForLoop builds the current equivalent of edition 1's `for` loops:
+// `for { body }` is `loop { body }`, and `for (cond) { body }` is
+//
+//	loop { if (cond) { body } else { break } }
+//
+// Keeping the body in the then-branch keeps the condition narrowing it, as
+// it did in edition 1.
+//
+// Two differences remain: a `for` yielded its last body value when it ended
+// (by its condition going false, or a bare `break`), where `loop` yields
+// null. Only `break value` gives both the same result. And the desugared
+// call names the `loop` builtin, so a module that binds its own `loop`
+// (legal in edition 1, which had no such builtin) shadows it.
+func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
+	loopBody := body
+	if cond != nil {
+		loopBody = &Block{
+			Forms: []Node{&Conditional{
+				Condition: cond,
+				Then:      body,
+				Else: &Block{
+					Forms: []Node{&Break{Loc: loc}},
+					Loc:   loc,
+				},
+				Loc: loc,
+			}},
+			Loc: loc,
+		}
+	}
+	return &FunCall{
+		Fun: &Symbol{Name: "loop", Loc: loc},
+		BlockArg: &BlockArg{
+			BodyNode: loopBody,
+			Loc:      loc,
+		},
+		Loc: loc,
+	}
 }

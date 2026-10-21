@@ -85,6 +85,145 @@ func TestEditionFormatting(t *testing.T) {
 	assert.Equal(t, "let x = user.{{name}}\n", formatted2)
 }
 
+// assertMigratesTo checks that edition 1 source migrates to want, which
+// proves the edition 1 form parses into the same AST as the edition 2 one.
+func assertMigratesTo(t *testing.T, src, want string) {
+	t.Helper()
+	migrated, err := MigrateSource("edition_test.dang", []byte(src), Edition1, Edition2)
+	require.NoError(t, err)
+	assert.Equal(t, want, migrated)
+}
+
+func TestEditionForLoops(t *testing.T) {
+	t.Run("edition 1 condition loop is a guarded loop", func(t *testing.T) {
+		assertMigratesTo(t,
+			"for (i < 3) {\n  i += 1\n}\n",
+			"loop {\n  if (i < 3) {\n    i += 1\n  } else {\n    break\n  }\n}\n",
+		)
+	})
+
+	t.Run("edition 1 infinite loop is a loop", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = for {\n  break 42\n}\n",
+			"let x = loop {\n  break 42\n}\n",
+		)
+	})
+
+	t.Run("edition 1 loop comments stay in place", func(t *testing.T) {
+		assertMigratesTo(t,
+			"# before\nfor (i < 3) {\n  # body\n  i += 1 # step\n}\nlet y = 2\n",
+			"# before\nloop {\n  if (i < 3) {\n    # body\n    i += 1 # step\n  } else {\n    break\n  }\n}\nlet y = 2\n",
+		)
+	})
+
+	t.Run("edition 2 for is an identifier", func(t *testing.T) {
+		node := parseSingleForm(t, `for { 1 }`, Edition2)
+		call, ok := node.(*FunCall)
+		require.True(t, ok, "expected *FunCall, got %T", node)
+		assert.Equal(t, "for", call.Fun.(*Symbol).Name)
+
+		_, err := Parse("edition_test.dang", []byte(`for (true) { 1 }`), WithEdition(Edition2))
+		require.Error(t, err)
+	})
+
+	t.Run("edition 1 for remains an identifier elsewhere", func(t *testing.T) {
+		node := parseSingleForm(t, `for + 1`, Edition1)
+		_, ok := node.(*Addition)
+		require.True(t, ok, "expected *Addition, got %T", node)
+	})
+}
+
+func TestEditionCommaFormSep(t *testing.T) {
+	t.Run("edition 1 commas separate block forms", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = { let a = 1, a }\n",
+			"let x = { let a = 1; a }\n",
+		)
+	})
+
+	t.Run("edition 1 commas separate block argument forms", func(t *testing.T) {
+		assertMigratesTo(t,
+			"[1].map { x => let y = x, y }\n",
+			"[1].map { x =>\n  let y = x\n  y\n}\n",
+		)
+	})
+
+	t.Run("edition 1 commas separate top-level forms", func(t *testing.T) {
+		assertMigratesTo(t, "let a = 1, let b = 2\n", "let a = 1\nlet b = 2\n")
+	})
+
+	t.Run("edition 2 rejects commas between forms", func(t *testing.T) {
+		for _, src := range []string{
+			"let x = { let a = 1, a }\n",
+			"[1].map { x => let y = x, y }\n",
+			"let a = 1, let b = 2\n",
+		} {
+			_, err := Parse("edition_test.dang", []byte(src), WithEdition(Edition2))
+			assert.Error(t, err, "%q", src)
+		}
+	})
+}
+
+func TestEditionUnmatchedCase(t *testing.T) {
+	t.Run("edition 1 case without else raises when nothing matches", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = case (n) {\n  1 => \"one\"\n  2 => \"two\"\n}\n",
+			"let x = case (n) {\n  1 => \"one\"\n  2 => \"two\"\n  else => raise \"no case clause matched\"\n}\n",
+		)
+	})
+
+	t.Run("edition 1 case with else is unchanged", func(t *testing.T) {
+		src := "let x = case (n) {\n  1 => \"one\"\n  else => \"many\"\n}\n"
+		assertMigratesTo(t, src, src)
+	})
+
+	t.Run("edition 1 synthetic else keeps comments in place", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = case (n) {\n  # first\n  1 => \"one\" # one\n  2 => \"two\" # two\n  # end\n}\nlet y = 2\n",
+			"let x = case (n) {\n  # first\n  1 => \"one\" # one\n  2 => \"two\" # two\n  else => raise \"no case clause matched\"\n  # end\n}\nlet y = 2\n",
+		)
+	})
+
+	t.Run("edition 1 unmatched case is non-null and raises", func(t *testing.T) {
+		dir := t.TempDir()
+		src := "let f(n: Int!): String! { case (n) { 1 => \"one\" } }\nassert { f(1) == \"one\" }\nf(2)\n"
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
+		_, err := RunDir(ContextWithEdition(context.Background(), Edition1), dir, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no case clause matched")
+	})
+
+	t.Run("edition 2 case without else is unchanged", func(t *testing.T) {
+		node := parseSingleForm(t, "case (n) { 1 => \"one\" }", Edition2)
+		c, ok := node.(*Case)
+		require.True(t, ok, "expected *Case, got %T", node)
+		require.Len(t, c.Clauses, 1)
+	})
+}
+
+func TestEditionClausesAfterElse(t *testing.T) {
+	t.Run("edition 1 drops clauses after else", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = case (n) {\n  1 => \"one\"\n  else => \"many\"\n  5 => \"five\"\n}\n",
+			"let x = case (n) {\n  1 => \"one\"\n  else => \"many\"\n}\n",
+		)
+	})
+
+	t.Run("edition 1 keeps standalone comments of dropped clauses", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = case (n) {\n  1 => \"one\" # one\n  else => \"many\" # many\n  # five is special\n  5 => \"five\"\n}\nlet y = 2\n",
+			"let x = case (n) {\n  1 => \"one\" # one\n  else => \"many\" # many\n  # five is special\n}\nlet y = 2\n",
+		)
+	})
+
+	t.Run("edition 2 keeps clauses after else", func(t *testing.T) {
+		node := parseSingleForm(t, "case (n) { else => \"many\", 5 => \"five\" }", Edition2)
+		c, ok := node.(*Case)
+		require.True(t, ok, "expected *Case, got %T", node)
+		require.Len(t, c.Clauses, 2)
+	})
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "dang.toml")
