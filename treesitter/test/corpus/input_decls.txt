@@ -1,0 +1,336 @@
+================================================================================
+Input declaration
+================================================================================
+
+input Page {
+  limit: Int! = 10
+  after: String
+}
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (input_decl
+      (input_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (field_decl
+            (type_and_value_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (equal_token)
+              (literal
+                (int
+                  (non_zero_decimal_digit)
+                  (decimal_digit))))))
+        (form_sep)
+        (decl
+          (field_decl
+            (type_only_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (named_type
+                  (upper_id
+                    (upper_token)))))))))))
+
+================================================================================
+Input declarations in a function body
+================================================================================
+
+f: Int! {
+  input Local @deprecated {
+    a: Int!
+  }
+  # a comment
+  input Other
+  {
+    b: Int!
+  }
+  Local(1).a
+}
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (field_decl
+      (type_and_block_field
+        (symbol
+          (id
+            (word_token)))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (bang_token)))
+        (block
+          (decl
+            (input_decl
+              (input_token)
+              (symbol
+                (id
+                  (word_token)))
+              (directive_application
+                (id
+                  (word_token)))
+              (block
+                (decl
+                  (field_decl
+                    (type_only_field
+                      (symbol
+                        (id
+                          (word_token)))
+                      (colon_token)
+                      (type
+                        (non_null
+                          (type
+                            (named_type
+                              (upper_id
+                                (upper_token))))
+                          (bang_token)))))))))
+          (form_sep)
+          (comment_token)
+          (decl
+            (input_decl
+              (input_token)
+              (symbol
+                (id
+                  (word_token)))
+              (block
+                (decl
+                  (field_decl
+                    (type_only_field
+                      (symbol
+                        (id
+                          (word_token)))
+                      (colon_token)
+                      (type
+                        (non_null
+                          (type
+                            (named_type
+                              (upper_id
+                                (upper_token))))
+                          (bang_token)))))))))
+          (form_sep)
+          (select_or_call
+            (symbol_or_call
+              (call
+                (symbol
+                  (id
+                    (word_token)))
+                (arg_values
+                  (immediate_paren)
+                  (argument
+                    (positional_value
+                      (literal
+                        (int
+                          (non_zero_decimal_digit))))))))
+            (dot_token)
+            (field_id)))))))
+
+================================================================================
+Input as an identifier at the start of a statement
+================================================================================
+
+f(input: [String!]!): Int! {
+  input.length
+}
+
+echo(input: String!): String! {
+  input
+}
+
+let input = 1
+input
+input.foo
+assert { input == 1 }
+input or 2
+input or { 2 }
+input rescue { else => 3 }
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (field_decl
+      (type_and_args_and_block_field
+        (symbol
+          (id
+            (word_token)))
+        (arg_types
+          (immediate_paren)
+          (arg_type
+            (arg_with_type
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (list_type
+                      (type
+                        (non_null
+                          (type
+                            (named_type
+                              (upper_id
+                                (upper_token))))
+                          (bang_token)))))
+                  (bang_token))))))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (bang_token)))
+        (block
+          (select_or_call
+            (symbol_or_call
+              (auto_call_symbol
+                (id
+                  (word_token))))
+            (dot_token)
+            (field_id))))))
+  (form_sep)
+  (decl
+    (field_decl
+      (type_and_args_and_block_field
+        (symbol
+          (id
+            (word_token)))
+        (arg_types
+          (immediate_paren)
+          (arg_type
+            (arg_with_type
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token))))))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (bang_token)))
+        (block
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token))))))))
+  (form_sep)
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (literal
+          (int
+            (non_zero_decimal_digit))))))
+  (form_sep)
+  (symbol_or_call
+    (auto_call_symbol
+      (id
+        (word_token))))
+  (form_sep)
+  (select_or_call
+    (symbol_or_call
+      (auto_call_symbol
+        (id
+          (word_token))))
+    (dot_token)
+    (field_id))
+  (form_sep)
+  (symbol_or_call
+    (symbol_block
+      (symbol
+        (id
+          (word_token)))
+      (block_arg
+        (default_expr
+          (rescue_expr
+            (logical_or_expr
+              (logical_and_expr
+                (equality_expr
+                  (symbol_or_call
+                    (auto_call_symbol
+                      (id
+                        (word_token))))
+                  (equality_op)
+                  (literal
+                    (int
+                      (non_zero_decimal_digit)))))))))))
+  (form_sep)
+  (default_expr
+    (rescue_expr
+      (logical_or_expr
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token))))
+        (or_token)
+        (literal
+          (int
+            (non_zero_decimal_digit))))))
+  (form_sep)
+  (default_expr
+    (rescue_expr
+      (logical_or_expr
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token))))
+        (or_token)
+        (block
+          (literal
+            (int
+              (non_zero_decimal_digit)))))))
+  (form_sep)
+  (default_expr
+    (rescue_expr
+      (symbol_or_call
+        (auto_call_symbol
+          (id
+            (word_token))))
+      (rescue_token)
+      (rescue_handler
+        (rescue_clauses
+          (rescue_clause
+            (else_token)
+            (arrow_token)
+            (literal
+              (int
+                (non_zero_decimal_digit)))))))))

@@ -371,10 +371,20 @@ against an empty registry. Prelude-raised errors render embedded source via
 Checklist:
 
 1. AST node in `pkg/dang/slots.go` (or sibling), with `InferredTypeHolder`.
-2. Grammar in `pkg/dang/dang.peg`; run `go generate ./pkg/dang/`.
+   A variant of an existing declaration can reuse its node instead (`input`
+   is an `ObjectDecl` with `Kind: InputKind`).
+2. Grammar in `pkg/dang/dang.peg`; run `go generate ./pkg/dang/`. Take the
+   name as `name:TypeDeclName` and return `checkTypeDeclName(name)` from the
+   action, so lowercase names are rejected like every other type
+   declaration. (Don't raise errors from a shared sub-rule's action: pigeon
+   keeps them even when the parser backtracks past it.)
 3. `classifyForms()` case in `pkg/dang/block.go` → `Types`.
-4. `Hoist` with the pass 0 / pass 1 split.
+4. `Hoist` with the pass 0 / pass 1 split. Hoist can run more than once per
+   declaration, so put validation that reports errors in `Infer`, and on
+   failure still return the constructor type so uses don't cascade.
 5. `ModuleKind` constant in `pkg/dang/env.go` if it's a distinct kind.
-6. Formatter case in `pkg/dang/format.go`.
+6. Formatter case in `pkg/dang/format.go`, plus the LSP's fallback hover
+   signature (`formatDeclSignature` in
+   `pkg/lsp/handle_text_document_hover.go`).
 7. Editor syntaxes — see the `editor-syntaxes` skill for the three files
-   that need keyword updates.
+   that need keyword updates (and its notes on contextual keywords).

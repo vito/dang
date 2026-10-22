@@ -31,7 +31,7 @@ SemiToken <- ';'
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / NewConstructorDecl / SelfBlockDecl / FieldDecl / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / InputDecl / NewConstructorDecl / SelfBlockDecl / FieldDecl / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
     if docstring != nil {
@@ -298,28 +298,28 @@ FieldSelection <- alias:(a:Id ColonToken _ { return a, nil })? name:Id args:ArgV
   }, nil
 }
 
-InterfaceDecl <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
+InterfaceDecl <- InterfaceToken _ name:TypeDeclName implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
   return &InterfaceDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
     Implements: sliceOf[*Symbol](implements),
     Visibility: PublicVisibility,
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 InterfaceToken <- "interface" !WordChar
 
-UnionDecl <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
+UnionDecl <- UnionToken _ name:TypeDeclName _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
   return &UnionDecl{
     Name:       name.(*Symbol),
     Members:    sliceOfPrepend[*Symbol](first, rest),
     Visibility: PublicVisibility,
     Loc:        c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 UnionToken <- "union" !WordChar
 
-ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:Symbol implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
+ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:TypeDeclName implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
   return &ObjectDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
@@ -327,9 +327,26 @@ ObjectDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil }
     Visibility: PublicVisibility, // TODO
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 TypeToken <- "type" !WordChar
+
+// An input object: a named bundle of data fields, the Dang counterpart of a
+// GraphQL input type. It shares ObjectDecl's representation (fields, defaults,
+// derived constructor) and is told apart by Kind. `input` is a common
+// identifier, so the (capitalized) name must follow on the same line; a bare
+// `input` on its own line stays an expression.
+InputDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* InputToken _inlineSpace ![a-z_] name:TypeDeclName suffixDirectives:DirectiveApplication* _ block:Block {
+  return &ObjectDecl{
+    Kind: InputKind,
+    Name: name.(*Symbol),
+    Value: block.(*Block),
+    Visibility: PublicVisibility,
+    Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
+    Loc: c.Loc(),
+  }, nil
+}
+InputToken <- "input" !WordChar
 Implements <-  ImplementsToken _ first:Symbol rest:(_ AmpersandToken _ i:Symbol { return i, nil })* {
   return sliceOfPrepend[*Symbol](first, rest), nil
 }
@@ -337,17 +354,17 @@ ImplementsToken <- "implements" !WordChar
 
 AmpersandToken <- '&'
 
-EnumDecl <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
+EnumDecl <- EnumToken _ name:TypeDeclName _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
   return &EnumDecl{
     Name: name.(*Symbol),
     Values: values.([]*Symbol),
     Visibility: PublicVisibility,
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 EnumToken <- "enum" !WordChar
 
-ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* ScalarToken _ name:Symbol suffixDirectives:DirectiveApplication* body:(_ b:Block { return b, nil })? {
+ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* ScalarToken _ name:TypeDeclName suffixDirectives:DirectiveApplication* body:(_ b:Block { return b, nil })? {
   var block *Block
   if body != nil {
     block = body.(*Block)
@@ -358,7 +375,7 @@ ScalarDecl <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil }
     Visibility: PublicVisibility,
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
-  }, nil
+  }, checkTypeDeclName(name)
 }
 ScalarToken <- "scalar" !WordChar
 
@@ -549,6 +566,20 @@ Symbol <- name:Id {
   }, nil
 }
 Id <- WordToken
+
+// The name a type declaration introduces, shared by `type`, `input`,
+// `interface`, `union`, `enum` and `scalar`. Type annotations can only name
+// capitalized types (NamedType <- UpperId), so a lowercase type could never be
+// referenced; each declaration's action rejects one via checkTypeDeclName. The
+// check can't live here: pigeon keeps an action's error even when the parser
+// backtracks past it, so `type and true` (with `type` a variable) would fail.
+// The contextual `input` instead requires the capital up front (`![a-z_]`,
+// which tree-sitter ignores), so that `input or { ... }` backtracks into an
+// expression. The tree-sitter grammar reads this as a plain `symbol`.
+TypeDeclName <- name:Symbol {
+  return name, nil
+}
+
 FieldId <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
   return &Symbol{
     Name: string(c.text),

@@ -168,6 +168,28 @@ func (r *queryResolver) NodeLabel(ctx context.Context, node string) (string, err
 	}
 }
 
+// AssignmentLabel is the resolver for the assignmentLabel field.
+func (r *queryResolver) AssignmentLabel(ctx context.Context, assignment Assignment) (string, error) {
+	owner, err := findUserByID(assignment.Owner)
+	if err != nil {
+		return "", err
+	}
+	label := owner.Name
+	for i, subject := range assignment.Subjects {
+		subjectLabel, err := r.NodeLabel(ctx, subject)
+		if err != nil {
+			return "", err
+		}
+		if i == 0 {
+			label += ": "
+		} else {
+			label += ", "
+		}
+		label += subjectLabel
+	}
+	return label, nil
+}
+
 // FavoriteUserID is the resolver for the favoriteUserID field.
 func (r *queryResolver) FavoriteUserID(ctx context.Context) (string, error) {
 	if len(users) == 0 {

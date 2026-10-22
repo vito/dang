@@ -148,7 +148,7 @@ import MyApi
 - Circular *types* (interface-implementing-interface, mutually-referencing types) are fine.
 
 ### What a module exports
-- Every public (typed) field, type, interface, union, enum, scalar, directive. Nothing `let`.
+- Every public (typed) field, type, input, interface, union, enum, scalar, directive. Nothing `let`.
 
 ---
 

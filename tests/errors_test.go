@@ -234,6 +234,212 @@ print(x)
 	}
 }
 
+// TestInputDeclarationDiagnostics checks that `input` declarations reject
+// anything beyond public data fields of input types.
+func (DangSuite) TestInputDeclarationDiagnostics(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name   string
+		source string
+		wants  []string
+	}{
+		{
+			name: "method",
+			source: `input Filter {
+  name: String!
+  shout: String! { name.toUpper }
+}
+`,
+			wants: []string{`input Filter cannot declare methods; "shout" must be a data field`},
+		},
+		{
+			name: "private field",
+			source: `input Filter {
+  let secret: String! = "x"
+}
+`,
+			wants: []string{"input Filter cannot declare private fields; drop `let` from \"secret\""},
+		},
+		{
+			name: "constructor",
+			source: `input Filter {
+  name: String!
+  new(n: String!) { self.name = n; self }
+}
+`,
+			wants: []string{"input Filter cannot declare a new() constructor"},
+		},
+		{
+			name: "statics",
+			source: `input Filter {
+  name: String!
+  self { all: [String!]! = [] }
+}
+`,
+			wants: []string{"input Filter cannot declare static members"},
+		},
+		{
+			// Objects and interfaces are passed by ID, but a union has no ID
+			// form.
+			name: "union field",
+			source: `type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+input Filter {
+  pet: Pet!
+}
+`,
+			wants: []string{`input Filter: field "pet" has type Pet!, which is not an input type`},
+		},
+		{
+			name: "list of unions field",
+			source: `type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+input Filter {
+  pets: [Pet!]! = []
+}
+`,
+			wants: []string{`input Filter: field "pets" has type [Pet!]!, which is not an input type`},
+		},
+		{
+			// A rejected input still binds its constructor, so using it
+			// doesn't pile on unrelated errors.
+			name: "method, then used",
+			source: `input Filter {
+  name: String!
+  shout: String! { name.toUpper }
+}
+
+print(Filter("x").name)
+`,
+			wants: []string{`input Filter cannot declare methods; "shout" must be a data field`},
+		},
+		{
+			name: "union field, then used",
+			source: `type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+input Filter {
+  pet: Pet!
+}
+
+let filter = Filter(Cat(name: "x"))
+print(filter == filter)
+`,
+			wants: []string{`input Filter: field "pet" has type Pet!, which is not an input type`},
+		},
+		{
+			name: "local input with method, then used",
+			source: `f: String! {
+  input Q {
+    n: String!
+    m: String! { n }
+  }
+  Q("x").n
+}
+
+print(f)
+`,
+			wants: []string{`input Q cannot declare methods; "m" must be a data field`},
+		},
+		{
+			name: "not assignable to object",
+			source: `type User {
+  name: String!
+}
+
+input Filter {
+  name: String!
+}
+
+greet(user: User!): String! { user.name }
+
+print(greet(Filter("x")))
+`,
+			wants: []string{"Filter!", "User!"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			dir, err := os.MkdirTemp("", "dang-input-decl")
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+			path := filepath.Join(dir, "main.dang")
+			require.NoError(t, os.WriteFile(path, []byte(tt.source), 0644))
+
+			err = dang.RunFile(ctx, path, false)
+			require.Error(t, err)
+			for _, want := range tt.wants {
+				require.Contains(t, err.Error(), want)
+			}
+			// Each case has exactly one problem, reported once.
+			require.NotContains(t, err.Error(), "inference errors:")
+		})
+	}
+}
+
+// TestLowercaseTypeDeclNames checks that every type-introducing declaration
+// requires a capitalized name: type annotations can only refer to capitalized
+// names, so a lowercase type could never be referenced.
+func (DangSuite) TestLowercaseTypeDeclNames(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"type", "type user {\n  name: String!\n}\n", `type name "user" must start with an uppercase letter`},
+		{"interface", "interface named {\n  name: String!\n}\n", `type name "named" must start with an uppercase letter`},
+		{"union", "type A {\n  a: Int!\n}\n\ntype B {\n  b: Int!\n}\n\nunion ab = A | B\n", `type name "ab" must start with an uppercase letter`},
+		{"enum", "enum status {\n  ACTIVE\n}\n", `type name "status" must start with an uppercase letter`},
+		{"scalar", "scalar email\n", `type name "email" must start with an uppercase letter`},
+		// `input` is contextual, so a lowercase name doesn't start a
+		// declaration at all; what's left isn't a valid expression either.
+		{"input", "input filter {\n  name: String!\n}\n", "no match found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			_, err := dang.Parse("main.dang", []byte(tt.source))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.want)
+		})
+	}
+
+	// The check runs only once a whole declaration has matched, so a
+	// declaration keyword used as a variable can still precede a lowercase
+	// word. (Pigeon keeps an action's error even after backtracking.)
+	for _, keyword := range []string{"type", "interface", "union", "enum"} {
+		t.Run(keyword+" as a variable", func(ctx context.Context, t *testctx.T) {
+			source := "f(" + keyword + ": Boolean!): Boolean! { " + keyword + " and true }\n"
+			_, err := dang.Parse("main.dang", []byte(source))
+			require.NoError(t, err)
+		})
+	}
+}
+
 // TestDangModuleImportCycle checks that native Dang import cycles are reported
 // as a clean error rather than looping forever. A directory that must ERROR fits
 // neither the golden harness (the cycle message embeds absolute module dirs) nor

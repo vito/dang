@@ -539,13 +539,75 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			if mod.Named == "" {
 				return materializeAnonymousObject(ctx, scope, raw, mod, path, codec)
 			}
+			if id, ok := raw.(string); ok {
+				return materializeDecodedID(ctx, scope, id, mod, path)
+			}
 			return materializeNamedObject(ctx, scope, raw, mod, path, codec)
+		case InterfaceKind:
+			if id, ok := raw.(string); ok {
+				return materializeDecodedID(ctx, scope, id, mod, path)
+			}
 		case InputKind:
 			return materializeNamedObject(ctx, scope, raw, mod, path, codec)
 		}
 	}
 
 	return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", target.Name())
+}
+
+// materializeDecodedID loads a decoded string as the ID of an API object or
+// interface. Encoding such a value writes its ID (GraphQLValue.MarshalJSON), so
+// this is the way back: the ID is loaded into a lazy handle through the API's
+// `node(id:)` field, as for an `ID @expectedType` result. Only types imported
+// from an API with a `node(id:)` field have IDs to load; a Dang-declared object
+// decodes field by field from a JSON object instead.
+func materializeDecodedID(ctx context.Context, scope ValueScope, id string, mod *Type, path string) (Value, error) {
+	if mod.SourceSchema == nil || nodeLoaderField(mod.SourceSchema) == nil {
+		if mod.Kind == InterfaceKind {
+			return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", mod.Name())
+		}
+		return nil, materializeDeferredError(path, "expected object for %s, got string", mod.Name())
+	}
+	node, err := nodeLoaderFor(ctx, scope, mod)
+	if err != nil {
+		return nil, materializeDeferredError(path, "loading %s from ID: %s", mod.Name(), err.Error())
+	}
+	val, err := loadObjectFromID(id, mod.Named, node.Schema, node.TypeScope, node.Client)
+	if err != nil {
+		return nil, materializeDeferredError(path, "%s", err.Error())
+	}
+	if val == nil {
+		return nil, materializeDeferredError(path, "loading %s from ID: no connection to the API it was imported from", mod.Name())
+	}
+	return val, nil
+}
+
+// nodeLoaderFor finds the `node` field of the API that mod was imported from,
+// which carries the client and schema needed to load an ID of that type. It's
+// looked up through the import's own namespace first, since an unqualified
+// `node` may belong to a different import.
+func nodeLoaderFor(ctx context.Context, scope ValueScope, mod *Type) (GraphQLFunction, error) {
+	matches := func(val Value) (GraphQLFunction, bool) {
+		fn, ok := val.(GraphQLFunction)
+		return fn, ok && fn.Schema == mod.SourceSchema
+	}
+	if mod.Qualifier != "" {
+		if imported, found, err := scope.Lookup(ctx, mod.Qualifier); err == nil && found {
+			if ns, ok := imported.(ValueScope); ok {
+				if node, found, err := ns.Lookup(ctx, "node"); err == nil && found {
+					if fn, ok := matches(node); ok {
+						return fn, nil
+					}
+				}
+			}
+		}
+	}
+	if node, found, err := scope.Lookup(ctx, "node"); err == nil && found {
+		if fn, ok := matches(node); ok {
+			return fn, nil
+		}
+	}
+	return GraphQLFunction{}, fmt.Errorf("no connection to the API it was imported from")
 }
 
 func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, union *hm.UnionType, path string, codec Codec) (Value, error) {
@@ -592,7 +654,7 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {
 	args := map[string]Value{}
 
-	if constructor, ok := callable.(*ConstructorFunction); ok {
+	if constructor, ok := asConstructorFunction(callable); ok {
 		paramTypes := parameterTypes(callable)
 		for _, param := range constructor.Parameters {
 			name := param.Name.Name

@@ -5,7 +5,7 @@
 - `[T]` and `[T]!` — lists
 - `{{ ... }}` — records (always non-null)
 - custom GraphQL scalars: `URL`, `Timestamp`, `JSON`, ...
-- user-defined: `type`, `interface`, `union`, `enum`, `scalar`
+- user-defined: `type`, `input`, `interface`, `union`, `enum`, `scalar` (declared names must be capitalized)
 
 ## The `!` sigil (nullability)
 - `T!` — non-null `T`; `T` (no bang) — nullable `T`.
@@ -116,6 +116,23 @@ case (c) {
 
 "RED" :: Color!      # runtime-validated coercion; "NOPE" :: Status! → invalid enum value "NOPE" for Status
 ```
+
+## Input objects
+
+```dang
+input UserFilter {
+  name: String!
+  minAge: Int! = 18
+  status: Status
+}
+
+UserFilter(name: "jo")            # implicit constructor; defaults/null fill the rest
+```
+- Like a `type` restricted to **public data fields**: no methods/computed fields, `let`, `new`, or `self { }`.
+- Field types must be input types: scalars, enums, other `input`s, objects, interfaces, lists of them. A union field → `... is not an input type`.
+- Object/interface fields are passed by ID across an API (like object args): `JSON.encode` writes an API object as its ID, and decoding an ID string into an API object type loads it lazily via `node(id:)` (not validated until a field is selected). Dang-declared objects encode/decode field by field; a Dang-declared interface can't be decoded (JSON doesn't say which implementation).
+- `input` is a keyword only when a capitalized name follows on the same line; `input` stays usable as an identifier.
+- Not yet exposed through Dagger module APIs.
 
 ## Custom scalars
 

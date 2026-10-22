@@ -3,6 +3,9 @@ package danglang
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../treesitter/src
+// Go's build cache doesn't track these includes (they live outside the
+// package), so a regenerated grammar can be masked by a stale cached build:
+// run `go clean -cache` after regenerating, or touch this preamble.
 #include "parser.c"
 #include "scanner.c"
 */

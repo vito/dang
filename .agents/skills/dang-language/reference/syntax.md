@@ -33,6 +33,8 @@ self
 ```
 
 - `try` and `catch` are **ordinary identifiers** — the old `try { } catch { }` block syntax was replaced by the postfix `rescue` operator (see control-flow.md).
+- `input` is contextual: a keyword only before a capitalized name on the same line (`input Foo {`); otherwise an ordinary identifier, and commonly used as one.
+- Only `null` and `rescue` are rejected as identifiers outright. The others parse as plain names where their construct doesn't match (`type and true` with a `type` parameter), but don't write code like that: editors highlight them as keywords, and `true`/`false`/`self` always read as literals.
 
 ## Docstrings
 
@@ -141,7 +143,7 @@ Expr         := Import | Decl | Reassignment | Form
 Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
 Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
-                           | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
+                           | ObjectDecl | InputDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
 Form         := Return | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | IndexOrCall | SelectOrCall | Literal | List

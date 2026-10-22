@@ -44,6 +44,24 @@ blocks. To add or remove a keyword, add or remove the corresponding
 Keywords live in the `keyword-control` repository entry as a single
 regex. To add or remove a keyword, edit the `\b(...)\b` alternation.
 
+## Contextual keywords (`input`)
+
+A contextual keyword is one that's also an ordinary identifier, like
+`input` (a common argument name). It can't be a plain keyword token: the
+tree-sitter lexer would take it as the keyword wherever its declaration
+could start, so `input.foo` at the start of a statement would parse as an
+ERROR, breaking highlighting and completion.
+
+- **Tree-sitter:** lex it in the external scanner. `InputToken` is in
+  `tsSkippedRules`/`tsRuleRefAliases` in `pkg/dang/treesitter.go` and
+  `tsExternalRuleNames` (whose order must match the scanner's enum), and
+  `scan_input_token` in `treesitter/src/scanner.c` emits it only when the
+  PEG would start a declaration (`input` + inline space + a capital).
+- **TextMate:** give the alternative a lookahead,
+  `input(?=[ \t]+[A-Z])`.
+- **Corpus:** cover the identifier uses at statement start (`input.foo`,
+  a bare `input`, `input or { ... }`), not just the declaration.
+
 ## Committing
 
 Since Zed and Neovim are submodules:
@@ -72,9 +90,10 @@ in `pkg/dang/highlight_common.go` (kept in lockstep with
 ## Stale-parser gotcha (cgo build cache)
 
 `pkg/dang/danglang` binds the generated parser by `#include`-ing
-`treesitter/src/parser.c` across package directories, and Go's build cache
-does **not** track that file. After `./hack/generate` regenerates the
-grammar, cached builds keep linking the *old* parser; the first symptom is
+`treesitter/src/parser.c` and `scanner.c` across package directories, and
+Go's build cache does **not** track those files. After `./hack/generate`
+regenerates the grammar (or the scanner changes), cached builds keep linking
+the *old* parser; the first symptom is
 the embedded highlight query failing to compile ("Invalid node type
 <new_token>") and the REPL silently rendering plain text
 (`TestHighlightCodeStylesAndPreservesText` fails). Force one rebuild:

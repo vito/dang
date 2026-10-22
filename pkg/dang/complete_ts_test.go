@@ -121,6 +121,44 @@ func TestComplete_DotMember(t *testing.T) {
 	}
 }
 
+func TestComplete_InputIdent(t *testing.T) {
+	// `input` is a contextual keyword: it only starts an input declaration
+	// when a name and body follow, so elsewhere it completes as an identifier
+	// (a common argument name), even at the start of a statement.
+	env := testCompletionTypeScope()
+	containerScheme, ok := env.SchemeOf("container")
+	if !ok {
+		t.Fatal("container not bound")
+	}
+	env.Add("input", containerScheme)
+	env.SetVisibility("input", PublicVisibility)
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		text      string
+		line, col int
+	}{
+		{name: "statement start", text: "input.fr", line: 0, col: 8},
+		{name: "after a statement", text: "print(1)\ninput.fr", line: 1, col: 8},
+		{name: "in a block", text: "f: Int! {\n  input.fr\n}", line: 1, col: 10},
+		{name: "after an input declaration", text: "input Foo {\n  a: Int!\n}\ninput.fr", line: 3, col: 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Complete(ctx, env, tt.text, tt.line, tt.col)
+			labels := make([]string, len(result.Items))
+			for i, c := range result.Items {
+				labels[i] = c.Label
+			}
+			if len(labels) != 1 || labels[0] != "from" {
+				t.Fatalf("got %v, want [from]", labels)
+			}
+		})
+	}
+}
+
 func TestComplete_BareIdent(t *testing.T) {
 	env := testCompletionTypeScope()
 	ctx := context.Background()

@@ -1,6 +1,9 @@
 package dang
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // visOrPublic returns the parsed Visibility, defaulting to public when the
 // optional `pub`/`let` keyword was omitted (val is nil). Inlined into the
@@ -11,6 +14,17 @@ func visOrPublic(val any) Visibility {
 		return PublicVisibility
 	}
 	return val.(Visibility)
+}
+
+// checkTypeDeclName rejects a lowercase type declaration name (see
+// TypeDeclName in dang.peg). Type annotations can only refer to capitalized
+// names, so a lowercase type could never be referenced.
+func checkTypeDeclName(name any) error {
+	sym := name.(*Symbol)
+	if c := sym.Name[0]; c < 'A' || c > 'Z' {
+		return fmt.Errorf("type name %q must start with an uppercase letter", sym.Name)
+	}
+	return nil
 }
 
 func sliceOf[T any](val any) []T {

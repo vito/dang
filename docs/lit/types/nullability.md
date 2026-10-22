@@ -10,7 +10,7 @@
 - `[T]` and `[T]!` — lists
 - `{{ ... }}` — records
 - custom GraphQL scalars: `URL`, `Timestamp`, `JSON`, ...
-- user-defined: `type`, `interface`, `union`, `enum`, `scalar` (see their pages)
+- user-defined: `type`, `input`, `interface`, `union`, `enum`, `scalar` (see their pages)
 
 ## The `!` sigil
 

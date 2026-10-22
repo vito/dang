@@ -10,7 +10,8 @@ import (
 
 // tsSkippedRules lists named rules whose bodies should not appear in the
 // tree-sitter grammar because they are produced by the external scanner
-// instead. References to these rules are redirected via tsRuleRefAliases.
+// instead, or are PEG-only wrappers. References to these rules are redirected
+// via tsRuleRefAliases.
 var tsSkippedRules = map[string]bool{
 	"MultiTemplateOpenToken":    true,
 	"MultiTemplateCloseToken":   true,
@@ -18,6 +19,8 @@ var tsSkippedRules = map[string]bool{
 	"SingleTemplateContentChar": true,
 	"LangTagTerminator":         true,
 	"CommentToken":              true,
+	"InputToken":                true,
+	"TypeDeclName":              true,
 }
 
 func skipTS(name string) bool {
@@ -45,6 +48,11 @@ var tsExternalRuleNames = []treesitter.RuleName{
 	// template, where `#` is content (Markdown headers, `issue #5`, etc.)
 	// rather than a comment start.
 	"comment_token",
+	// The contextual `input` keyword. External so the scanner can require a
+	// same-line name after it, like the PEG's `InputToken _inlineSpace Symbol`.
+	// As a plain keyword token, tree-sitter would lex every statement-leading
+	// `input` as the keyword, breaking `input` used as an identifier.
+	"input_token",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
@@ -55,6 +63,11 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 	"SingleTemplateContentChar": "_template_content_char",
 	"LangTagTerminator":         "_lang_tag_terminator",
 	"CommentToken":              "comment_token",
+	"InputToken":                "input_token",
+	// A type declaration's name stays a plain `symbol` node. Tree-sitter is
+	// lenient about its case, except where the scanner needs it to tell an
+	// `input` declaration from `input` used as an identifier.
+	"TypeDeclName":              "symbol",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{

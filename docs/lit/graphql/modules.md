@@ -109,7 +109,7 @@ import MyApi
 
 ## What a module exports
 
-- every public (non-`let`) field, type, interface, union, enum, scalar, directive
+- every public (non-`let`) field, type, input, interface, union, enum, scalar, directive
 - nothing `let`
 
 > Meta: `dang.toml` discovery walks up from the file's directory to the nearest `.git` boundary; the `dang` CLI runs the resolved module (see [#cli]).

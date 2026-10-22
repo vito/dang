@@ -1,7 +1,7 @@
 directive @expectedType(
   """The name of the expected object or interface type."""
   name: String!
-) on ARGUMENT_DEFINITION | FIELD_DEFINITION
+) on ARGUMENT_DEFINITION | FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 
 enum Status {
   ACTIVE
@@ -37,6 +37,9 @@ type Query {
   userName(user: ID! @expectedType(name: "User")): String!
   userNames(users: [ID!]! @expectedType(name: "User")): [String!]!
   nodeLabel(node: ID! @expectedType(name: "Node")): String!
+  # Input fields can carry @expectedType too: object values inside an input
+  # travel as their IDs, the same contract as object arguments.
+  assignmentLabel(assignment: Assignment!): String!
   favoriteUserID: ID! @expectedType(name: "User")
   favoriteUserIDs: [ID!]! @expectedType(name: "User")
   favoriteNodeID: ID! @expectedType(name: "Node")
@@ -84,6 +87,11 @@ enum SortDirection {
 input UserSort {
   field: UserSortField!
   direction: SortDirection!
+}
+
+input Assignment {
+  owner: ID! @expectedType(name: "User")
+  subjects: [ID!]! = [] @expectedType(name: "Node")
 }
 
 type Mutation {

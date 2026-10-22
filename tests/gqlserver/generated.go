@@ -79,6 +79,7 @@ type ComplexityRoot struct {
 
 	Query struct {
 		AddBigInt         func(childComplexity int, a string, b string) int
+		AssignmentLabel   func(childComplexity int, assignment Assignment) int
 		AverageRating     func(childComplexity int) int
 		EchoFloat         func(childComplexity int, value float64) int
 		FavoriteNode      func(childComplexity int) int
@@ -172,6 +173,7 @@ type QueryResolver interface {
 	UserName(ctx context.Context, user string) (string, error)
 	UserNames(ctx context.Context, users []string) ([]string, error)
 	NodeLabel(ctx context.Context, node string) (string, error)
+	AssignmentLabel(ctx context.Context, assignment Assignment) (string, error)
 	FavoriteUserID(ctx context.Context) (string, error)
 	FavoriteUserIDs(ctx context.Context) ([]string, error)
 	FavoriteNodeID(ctx context.Context) (string, error)
@@ -362,6 +364,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.AddBigInt(childComplexity, args["a"].(string), args["b"].(string)), true
+	case "Query.assignmentLabel":
+		if e.complexity.Query.AssignmentLabel == nil {
+			break
+		}
+
+		args, err := ec.field_Query_assignmentLabel_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.AssignmentLabel(childComplexity, args["assignment"].(Assignment)), true
 	case "Query.averageRating":
 		if e.complexity.Query.AverageRating == nil {
 			break
@@ -824,6 +837,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputAssignment,
 		ec.unmarshalInputCreateUserInput,
 		ec.unmarshalInputUpdateUserInput,
 		ec.unmarshalInputUserSort,
@@ -1038,6 +1052,17 @@ func (ec *executionContext) field_Query_addBigInt_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["b"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_assignmentLabel_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "assignment", ec.unmarshalNAssignment2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐAssignment)
+	if err != nil {
+		return nil, err
+	}
+	args["assignment"] = arg0
 	return args, nil
 }
 
@@ -2371,6 +2396,47 @@ func (ec *executionContext) fieldContext_Query_nodeLabel(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_nodeLabel_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_assignmentLabel(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_assignmentLabel,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().AssignmentLabel(ctx, fc.Args["assignment"].(Assignment))
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_assignmentLabel(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_assignmentLabel_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5695,6 +5761,44 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputAssignment(ctx context.Context, obj any) (Assignment, error) {
+	var it Assignment
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	if _, present := asMap["subjects"]; !present {
+		asMap["subjects"] = []any{}
+	}
+
+	fieldsInOrder := [...]string{"owner", "subjects"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "owner":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("owner"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Owner = data
+		case "subjects":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("subjects"))
+			data, err := ec.unmarshalNID2ᚕstringᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Subjects = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputCreateUserInput(ctx context.Context, obj any) (CreateUserInput, error) {
 	var it CreateUserInput
 	asMap := map[string]any{}
@@ -6305,6 +6409,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_nodeLabel(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "assignmentLabel":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_assignmentLabel(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -7661,6 +7787,11 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 // endregion **************************** object.gotpl ****************************
 
 // region    ***************************** type.gotpl *****************************
+
+func (ec *executionContext) unmarshalNAssignment2githubᚗcomᚋvitoᚋdangᚋv2ᚋtestsᚋgqlserverᚐAssignment(ctx context.Context, v any) (Assignment, error) {
+	res, err := ec.unmarshalInputAssignment(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
 
 func (ec *executionContext) unmarshalNBigInt2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalString(v)
