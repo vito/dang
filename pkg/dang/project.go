@@ -54,9 +54,10 @@ type ImportSource struct {
 	// The service command (default: ["dagger", "session"]) outputs
 	// {"port": N, "session_token": "..."} and the client is configured
 	// with basic auth and OpenTelemetry trace propagation. A declared
-	// version is appended to it as `--version vX.Y.Z`, so a custom service
-	// must accept the flag like `dagger session` does. `dagger = true`
-	// connects without declaring a version.
+	// version is appended to it as `--version vX.Y.Z` (with any prerelease,
+	// e.g. `--version v1.0.0-beta.21`), so a custom service must accept the
+	// flag like `dagger session` does. `dagger = true` connects without
+	// declaring a version.
 	//
 	// To use a dev engine, point the service at a custom CLI binary:
 	//
@@ -66,8 +67,9 @@ type ImportSource struct {
 	//
 	// Embedders that supply their own Dagger client (ContextWithImportConfigs)
 	// skip dang.toml's imports; they can read the declared version here, with
-	// Dagger.VersionString() ("vX.Y.Z"), not Dagger.Version.String(), which
-	// formats Dang versions. A zero Dagger.Version means `dagger = true`.
+	// Dagger.VersionString() ("vX.Y.Z" or "vX.Y.Z-prerelease"), not
+	// Dagger.Version.String(), which formats Dang versions. A zero
+	// Dagger.Version means `dagger = true`.
 	Dagger DaggerSource `toml:"dagger,omitempty"`
 
 	// Path points at a native Dang module directory (relative to dang.toml).
