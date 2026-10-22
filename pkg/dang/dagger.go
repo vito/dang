@@ -114,7 +114,7 @@ func (d *DaggerSource) UnmarshalTOML(data any) error {
 }
 
 // MarshalTOML encodes the `dagger` key as UnmarshalTOML decodes it: false,
-// true, or "vX.Y.Z".
+// true, or the version as DaggerVersionString writes it.
 func (d DaggerSource) MarshalTOML() ([]byte, error) {
 	return d.MarshalJSON() // the three forms are spelled alike in TOML
 }
@@ -135,7 +135,7 @@ func (d *DaggerSource) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON encodes the `dagger` field as UnmarshalJSON decodes it: false,
-// true, or "vX.Y.Z".
+// true, or the version as DaggerVersionString writes it.
 func (d DaggerSource) MarshalJSON() ([]byte, error) {
 	switch {
 	case !d.Enabled:
