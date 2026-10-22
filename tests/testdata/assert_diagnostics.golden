@@ -1,0 +1,89 @@
+Assertion failed
+  Expression: report.contains("x")
+  Values:
+    receiver: "hello world"
+
+Assertion failed
+  Expression: count != 3
+  Values:
+    left: 3
+
+Assertion failed
+  Expression: count > 5
+  Values:
+    left: 3
+
+Assertion failed
+  Expression: items[0] <= count - 3
+  Values:
+    left: 1
+    right: 0
+
+Assertion failed
+  Expression: !report.contains("hello")
+  Values:
+    report.contains("hello"): true
+      receiver: "hello world"
+
+Assertion failed
+  Expression: report.contains("x") and count == 2
+  Values:
+    report.contains("x"): false
+      receiver: "hello world"
+    count == 2: (not evaluated)
+
+Assertion failed
+  Expression: report.contains("hello") and count == 2
+  Values:
+    report.contains("hello"): true
+    count == 2: false
+      left: 3
+
+Assertion failed
+  Expression: report.contains("x") or count == 2 or (count > 1 and items.length == 3)
+  Values:
+    report.contains("x"): false
+      receiver: "hello world"
+    count == 2: false
+      left: 3
+    (count > 1 and items.length == 3): false
+      count > 1: true
+      items.length == 3: false
+        left: 2
+
+Assertion failed
+  Expression: n == 4 or report.contains("x")
+  Values:
+    n == 4: (unavailable)
+    report.contains("x"): false
+      receiver: "hello world"
+
+Assertion failed
+  Expression: r.contains("x") and count == 3
+  Values:
+    r.contains("x"): (unavailable)
+    count == 3: (unavailable)
+
+Assertion failed
+  Expression: count == 2 and report.contains("x")
+  Values:
+    count == 2: (unavailable)
+    report.contains("x"): (unavailable)
+
+[1m[31mError:[0m Assertion failed: report should mention x
+  Expression: report.contains("x") and count == 3
+  Values:
+    report.contains("x"): false
+      receiver: "hello world"
+    count == 3: (not evaluated)
+
+  Location: errors/assert_diagnostics.dang:67:37
+  [2m[34m--> errors/assert_diagnostics.dang:67:1[0m
+ [2m    |[0m
+ [2m 65 | })[0m
+ [2m 66 | [0m
+ [2m[34m[1m 67 | [0massert("report should mention x") { report.contains("x") and count == 3 }
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 68 | [0m
+ [2m    |[0m
+

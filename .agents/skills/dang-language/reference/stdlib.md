@@ -5,7 +5,7 @@ The built-in surface of Dang itself (everything here is available without any
 `users.length`, `"a,b".split(",")` — rather than global functions.
 
 ## Top-level functions
-- `assert { Boolean! } -> Null` — runs the block; raises an `AssertionError` if not truthy. Block, not parens: `assert { x == 1 }`. The failure message includes the source expression and sub-values.
+- `assert { Boolean! } -> Null` — runs the block; raises an `AssertionError` if not truthy. Block, not parens: `assert { x == 1 }`. The failure message includes the source expression and sub-values: method receivers and arguments, comparison operands, and each operand of `and`/`or`/`!`, with the operands that decided the result broken down further (operands skipped by short-circuiting show as `(not evaluated)`). Those values come from re-evaluating the sub-expressions after the failure (an operand and then its receiver may each run again), so keep side effects out of assert blocks; anything that uses a name bound earlier in the block, or fails when re-evaluated, shows as `(unavailable)`.
 - `assert(message: String! = null) { Boolean! } -> Null` — optional named `message`.
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
