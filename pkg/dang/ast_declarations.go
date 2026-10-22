@@ -1210,8 +1210,8 @@ type ImportConfig struct {
 	// engineVersion. Zero means `dagger = true`, which declares no version:
 	// the API served follows the version of the dagger CLI that starts the
 	// session, and a module's schema follows its engineVersion. Format it
-	// with DaggerVersionString ("vX.Y.Z", or "" for zero), not String, which
-	// formats Dang versions.
+	// with DaggerVersionString ("vX.Y.Z" with any prerelease, or "" for
+	// zero), not String, which formats Dang versions.
 	DaggerVersion Version
 
 	// DangModuleDir, when non-empty, marks this as a native Dang module import
