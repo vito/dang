@@ -2,16 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/fang"
-	"github.com/creachadair/jrpc2"
-	"github.com/creachadair/jrpc2/channel"
+	jsonrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcstdio"
 	"github.com/spf13/cobra"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/ioctx"
@@ -213,36 +215,36 @@ func runLSP(ctx context.Context, cfg Config) error {
 	ctx = dang.ContextWithServices(ctx, services)
 
 	handler := lsp.NewHandler(ctx)
-	srv := jrpc2.NewServer(handler, &jrpc2.ServerOptions{
-		AllowPush: true,
-		Logger:    func(text string) { logger.Debug(text) },
+	rpc := jsonrpc.New()
+	// jrpc2 imposed no per-request deadline; the new library defaults to
+	// 30s, which the first didOpen in a project (dagger session + schema
+	// introspection) can exceed. Keep a generous bound instead of none.
+	rpc.SetDefaultTimeOut(15 * time.Minute)
+	// Handler errors are logged here (clients receive stable generic
+	// codes; detail stays server-side). Full wire tracing, which jrpc2's
+	// Logger option provided, is intentionally not reproduced.
+	rpc.Use(func(method string, next jsonrpc.RPCMethod) jsonrpc.RPCMethod {
+		return func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
+			res, code, err := next(ctx, data)
+			if err != nil {
+				logger.DebugContext(ctx, "jsonrpc handler error", "method", method, "code", code, "error", err)
+			}
+			return res, code, err
+		}
 	})
-
-	// Store server reference in handler for callbacks
-	handler.SetServer(srv)
-
-	// Start handling requests
-	srv.Start(channel.LSP(stdrwc{}, stdrwc{}))
-
-	logger.InfoContext(ctx, "LSP server closed", "error", srv.Wait())
-	return nil
-}
-
-type stdrwc struct{}
-
-func (stdrwc) Read(p []byte) (int, error) {
-	return os.Stdin.Read(p)
-}
-
-func (stdrwc) Write(p []byte) (int, error) {
-	return os.Stdout.Write(p)
-}
-
-func (stdrwc) Close() error {
-	if err := os.Stdin.Close(); err != nil {
+	if err := handler.Register(rpc); err != nil {
 		return err
 	}
-	return os.Stdout.Close()
+
+	// Start handling requests over stdio with LSP Content-Length framing.
+	// The transport's default dispatch is strictly sequential and in-order —
+	// stronger than jrpc2's notification barrier (which only ordered
+	// notifications before later calls), and what LSP's ordering rules
+	// assume.
+	err := jsonrpcstdio.Serve(ctx, rpc, jsonrpcstdio.FramingContentLength, os.Stdin, os.Stdout)
+
+	logger.InfoContext(ctx, "LSP server closed", "error", err)
+	return nil
 }
 
 func fmtCmd() *cobra.Command {
