@@ -1,0 +1,116 @@
+# SPIKE: the select expression (docs/proposals/concurrency-and-time.md)
+
+# the first guard to finish wins, and its body is the select's value
+let first = select {
+  sleep("200ms") => "slow"
+  sleep("1ms") => "fast"
+}
+assert { first == "fast" }
+
+# a binding names the winning guard's value inside the body
+let bound = select {
+  n = {
+    sleep("1ms")
+    21
+  } => n * 2
+  sleep("60s") => 0
+}
+assert { bound == 42 }
+
+# losers are cancelled and awaited rather than run to completion: this
+# finishes in milliseconds, not a minute
+let quick = select {
+  sleep("60s") => "never"
+  sleep("1ms") => "quick"
+}
+assert { quick == "quick" }
+
+# a timeout is just another guard
+slowAnswer: Int! {
+  sleep("60s")
+  42
+}
+
+let timedOut = select {
+  a = slowAnswer => a
+  sleep("10ms") => -1
+}
+assert { timedOut == -1 }
+
+# arms disabled by their condition never run; else runs when all are disabled
+let workers = [] :: [String!]!
+let picked = select {
+  w = workers.race { w => w } if (!workers.isEmpty) => w
+  sleep("1ms") => "no workers"
+}
+assert { picked == "no workers" }
+
+let idle = select {
+  w = workers.race { w => w } if (!workers.isEmpty) => w
+  else => "idle"
+}
+assert { idle == "idle" }
+
+# with every arm disabled and no else, select raises instead of hanging
+let stuck = {
+  select {
+    sleep("1ms") if (false) => "unreachable"
+  }
+} rescue "stuck"
+assert { stuck == "stuck" }
+
+# a guard that raises first makes the select raise
+let failed = {
+  select {
+    {
+      sleep("1ms")
+      raise "boom"
+    } => "no"
+    sleep("60s") => "no"
+  }
+} rescue { e: Error => e.message }
+assert { failed == "boom" }
+
+# the idiom: select in a loop; bodies reassign enclosing bindings and break
+# out of the loop
+let polls = 0
+let messages = ["hello", "world"]
+let got = [] :: [String!]!
+loop {
+  select {
+    m = messages.race { m => m } if (!messages.isEmpty) => {
+      got += [m]
+      messages = messages.filter { x => x != m }
+    }
+    sleep("1ms") => {
+      polls += 1
+      if (polls == 3) {
+        break
+      }
+    }
+  }
+}
+assert { got.length == 2 }
+assert { got.contains("hello") }
+assert { got.contains("world") }
+assert { polls == 3 }
+
+# bodies may diverge in type; the result widens to a union like case
+let either = select {
+  sleep("1ms") => 1
+  sleep("60s") => "one"
+}
+assert { either == 1 }
+
+# select is an expression usable inside a function, with return in a body
+firstOf(a: String!, b: String!): String! {
+  select {
+    sleep(a) => {
+      return "a"
+    }
+    sleep(b) => "b"
+  }
+}
+
+assert { firstOf("1ms", "60s") == "a" }
+assert { firstOf("60s", "1ms") == "b" }

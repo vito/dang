@@ -1,0 +1,11 @@
+# A guard races on its own goroutine and may be cancelled, so break cannot
+# escape it, even inside a loop.
+loop {
+  select {
+    {
+      sleep("1ms")
+      break
+    } => "never"
+    sleep("1s") => "timeout"
+  }
+}

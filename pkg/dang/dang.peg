@@ -81,7 +81,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
   }
 }
 
-Form <- Return / LegacyTryCatch / Raise / Conditional / Case / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Return / LegacyTryCatch / Raise / Conditional / Case / Select / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
 
@@ -1270,6 +1270,57 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
 }
 
 CaseToken <- "case" !WordChar
+
+// SPIKE (docs/proposals/concurrency-and-time.md): `select { ... }` races the
+// guards of its arms and runs the body of whichever finishes first.
+//
+//   select {
+//     m = inbox.next(after: cursor) => handle(m)   # bind the guard's value
+//     w = workers.race { w => w.wait } if (!workers.isEmpty) => settle(w)
+//     sleep("5m") => poll                          # a timeout is just a guard
+//     else => idle                                 # every arm disabled
+//   }
+Select <- SelectToken _ '{' _ arms:(arm:SelectArm Sep { return arm, nil })* last:SelectArm? _ '}' {
+  return &SelectExpr{
+    Arms: sliceOfAppend[*SelectArm](arms, last),
+    Loc: c.Loc(),
+  }, nil
+}
+
+SelectArm <- ElseToken _ ArrowToken _ body:Form {
+  return &SelectArm{
+    Body: body.(Node),
+    IsElse: true,
+    Loc: c.Loc(),
+  }, nil
+} / binding:Symbol _ EqualToken !'=' !'>' _ guard:Form cond:SelectCond? _ ArrowToken _ body:Form {
+  arm := &SelectArm{
+    Binding: binding.(*Symbol).Name,
+    Guard: guard.(Node),
+    Body: body.(Node),
+    Loc: c.Loc(),
+  }
+  if cond != nil {
+    arm.Cond = cond.(Node)
+  }
+  return arm, nil
+} / guard:Form cond:SelectCond? _ ArrowToken _ body:Form {
+  arm := &SelectArm{
+    Guard: guard.(Node),
+    Body: body.(Node),
+    Loc: c.Loc(),
+  }
+  if cond != nil {
+    arm.Cond = cond.(Node)
+  }
+  return arm, nil
+}
+
+SelectCond <- _ IfToken _ '(' _ cond:Form _ ')' {
+  return cond, nil
+}
+
+SelectToken <- "select" !WordChar
 
 Break <- BreakToken value:(_inlineSpace v:Form { return v, nil })? {
   var val Node

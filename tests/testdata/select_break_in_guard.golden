@@ -1,0 +1,11 @@
+[1m[31mError:[0m break outside of block-taking call
+  [2m[34m--> errors/select_break_in_guard.dang:7:7[0m
+ [2m    |[0m
+ [2m  5 |     {[0m
+ [2m  6 |       sleep("1ms")[0m
+ [2m[34m[1m  7 | [0m      break
+[2m             [31m^^^^^[0m
+ [2m  8 |     } => "never"[0m
+ [2m  9 |     sleep("1s") => "timeout"[0m
+ [2m    |[0m
+
