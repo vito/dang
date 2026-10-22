@@ -33,13 +33,16 @@ func TestDaggerSource(t *testing.T) {
 		{name: "without v", value: `"0.21.6"`, enabled: true, version: "v0.21.6"},
 		{name: "without patch", value: `"0.19"`, enabled: true, version: "v0.19.0"},
 		{name: "major.minor with v", value: `"v1.0"`, enabled: true, version: "v1.0.0"},
-		// Prerelease and build suffixes, as Dagger 1.0 betas write
-		// engineVersion, name their base release: the engine serves its view.
-		{name: "prerelease", value: `"v1.0.0-0"`, enabled: true, version: "v1.0.0"},
-		{name: "beta", value: `"v1.0.0-beta.19"`, enabled: true, version: "v1.0.0"},
+		// A prerelease, as Dagger 1.0 betas write engineVersion, is kept:
+		// Dagger serves its v1.0.0 prereleases different APIs. Build
+		// metadata is dropped.
+		{name: "prerelease", value: `"v1.0.0-0"`, enabled: true, version: "v1.0.0-0"},
+		{name: "beta", value: `"v1.0.0-beta.21"`, enabled: true, version: "v1.0.0-beta.21"},
+		{name: "beta without v or patch", value: `"1.0-beta.21"`, enabled: true, version: "v1.0.0-beta.21"},
 		{name: "build", value: `"v0.19.0+abc"`, enabled: true, version: "v0.19.0"},
-		{name: "rc with build", value: `"v1.0.0-rc.1+abcdef12"`, enabled: true, version: "v1.0.0"},
+		{name: "rc with build", value: `"v1.0.0-rc.1+abcdef12"`, enabled: true, version: "v1.0.0-rc.1"},
 		{name: "zero", value: `"0.0.0"`, err: `invalid Dagger version "0.0.0"`},
+		{name: "zero prerelease", value: `"0.0.0-beta.1"`, err: `invalid Dagger version "0.0.0-beta.1"`},
 		{name: "major only", value: `"v1"`, err: `invalid Dagger version "v1"`},
 		{name: "leading zero", value: `"v0.019.0"`, err: `invalid Dagger version "v0.019.0"`},
 		{name: "bad prerelease", value: `"v1.0.0-01"`, err: `invalid Dagger version "v1.0.0-01"`},
@@ -69,6 +72,7 @@ func TestDaggerSource(t *testing.T) {
 			want DaggerSource
 		}{
 			{`{"dagger": "v0.19"}`, DaggerSource{Enabled: true, Version: Version{Major: 0, Minor: 19}}},
+			{`{"dagger": "v1.0.0-beta.21+abc"}`, DaggerSource{Enabled: true, Version: Version{Major: 1, Prerelease: "beta.21"}}},
 			{`{"dagger": true}`, DaggerSource{Enabled: true}},
 			{`{"dagger": false}`, DaggerSource{}},
 			{`{"dagger": null}`, DaggerSource{}},
@@ -90,6 +94,7 @@ func TestDaggerSource(t *testing.T) {
 		{DaggerSource{Enabled: true}, `true`},
 		{DaggerSource{Enabled: true, Version: Version{Major: 0, Minor: 19}}, `"v0.19.0"`},
 		{DaggerSource{Enabled: true, Version: Version{Major: 1, Minor: 0, Patch: 2}}, `"v1.0.2"`},
+		{DaggerSource{Enabled: true, Version: Version{Major: 1, Prerelease: "beta.21"}}, `"v1.0.0-beta.21"`},
 	}
 
 	t.Run("JSON round trip", func(t *testing.T) {
@@ -154,13 +159,17 @@ func TestDaggerVersionImport(t *testing.T) {
 		assert.True(t, svc.dagger)
 	})
 
-	t.Run("version is passed as vX.Y.Z", func(t *testing.T) {
-		// Dagger guesses at versions without the v, and the engine drops a
-		// prerelease suffix anyway.
+	t.Run("version is passed as vX.Y.Z with its prerelease", func(t *testing.T) {
+		// Dagger guesses at versions without the v, and serves v1.0.0
+		// prereleases different APIs; build metadata doesn't matter to it.
 		_, svc := resolve(t, "[imports.Dagger]\ndagger = \"0.21\"\n")
 		assert.Equal(t, []string{"dagger", "session", "--version", "v0.21.0"}, svc.cmd)
 		_, svc = resolve(t, "[imports.Dagger]\ndagger = \"v1.0.0-0\"\n")
-		assert.Equal(t, []string{"dagger", "session", "--version", "v1.0.0"}, svc.cmd)
+		assert.Equal(t, []string{"dagger", "session", "--version", "v1.0.0-0"}, svc.cmd)
+		ic, svc := resolve(t, "[imports.Dagger]\ndagger = \"v1.0.0-beta.21+abcdef12\"\n")
+		assert.Equal(t, []string{"dagger", "session", "--version", "v1.0.0-beta.21"}, svc.cmd)
+		assert.Equal(t, Version{Major: 1, Prerelease: "beta.21"}, ic.DaggerVersion)
+		assert.Equal(t, Version{Major: 1, Prerelease: "beta.21"}, svc.daggerVersion)
 	})
 
 	t.Run("true starts the default session", func(t *testing.T) {
@@ -264,15 +273,104 @@ func TestCheckDaggerVersion(t *testing.T) {
 			err:  `the Dagger session serves the API of "v0.21.6", not of the declared v0.19.0`,
 		},
 		{
-			name:    "prerelease version is served as its base release",
+			name:    "prerelease version on an engine with release-granular views",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0-beta.21+abcdef12", "__schemaVersion": "v1.0.0"}`,
+		},
+		{
+			name:    "prerelease version served as itself",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0-beta.21"}`,
+		},
+		{
+			// Every v1.0.0 prerelease before beta.21 shares the beta.20 view.
+			name:    "prerelease version served a shared newer view",
 			version: "v1.0.0-beta.19",
-			data:    `{"version": "v1.0.0-beta.17+abcdef12", "__schemaVersion": "v1.0.0"}`,
+			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v1.0.0-beta.20"}`,
+		},
+		{
+			name:    "earliest prerelease served a shared newer view",
+			version: "v1.0.0-0",
+			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v1.0.0-beta.20"}`,
+		},
+		{
+			name:    "release served as itself",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0", "__schemaVersion": "v1.0.0"}`,
+		},
+		{
+			name:    "prerelease version served an older view",
+			version: "v1.0.0-beta.22",
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0-beta.21"}`,
+			err:     `the Dagger session serves the API of "v1.0.0-beta.21", not of the declared v1.0.0-beta.22`,
+		},
+		{
+			name:    "release served a prerelease view",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0", "__schemaVersion": "v1.0.0-beta.20"}`,
+			err:     `the Dagger session serves the API of "v1.0.0-beta.20", not of the declared v1.0.0`,
+		},
+		{
+			name:    "prerelease version served another release's view",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v0.19.0"}`,
+			err:     `the Dagger session serves the API of "v0.19.0", not of the declared v1.0.0-beta.21`,
+		},
+		{
+			name:    "unparseable view",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": ""}`,
+			err:     `the Dagger session serves the API of "", not of the declared v1.0.0-beta.21`,
+		},
+		{
+			name:    "newer prerelease engine",
+			version: "v1.0.0-beta.20",
+			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v1.0.0-beta.20"}`,
+		},
+		{
+			name:    "older prerelease engine",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0-beta.20", "__schemaVersion": "v1.0.0-beta.21"}`,
+			err:     "this project's Dagger version is v1.0.0-beta.21, but the Dagger engine is v1.0.0-beta.20; upgrade Dagger",
+		},
+		{
+			name:    "older prerelease engine with build metadata",
+			version: "v1.0.0-beta.10",
+			data:    `{"version": "v1.0.0-beta.9+abcdef12.dirty", "__schemaVersion": "v1.0.0"}`,
+			err:     "this project's Dagger version is v1.0.0-beta.10, but the Dagger engine is v1.0.0-beta.9+abcdef12.dirty; upgrade Dagger",
+		},
+		{
+			name:    "prerelease engine for a release version",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-rc.1", "__schemaVersion": "v1.0.0"}`,
+			err:     "this project's Dagger version is v1.0.0, but the Dagger engine is v1.0.0-rc.1; upgrade Dagger",
+		},
+		{
+			name:    "release engine for a prerelease version",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0", "__schemaVersion": "v1.0.0-beta.21"}`,
+		},
+		{
+			name:    "dev engine of the release",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v1.0.0-dev-123", "__schemaVersion": "v1.0.0-beta.21"}`,
+		},
+		{
+			name:    "pseudo-version dev engine of the release",
+			version: "v0.19.3",
+			data:    `{"version": "v0.19.3-250101120000-dev-0cc2b3eb7a4b", "__schemaVersion": "v0.19.3"}`,
+		},
+		{
+			name:    "dev engine of an older release",
+			version: "v1.0.0-beta.21",
+			data:    `{"version": "v0.21.7-dev-123", "__schemaVersion": "v1.0.0-beta.21"}`,
+			err:     "this project's Dagger version is v1.0.0-beta.21, but the Dagger engine is v0.21.7-dev-123; upgrade Dagger",
 		},
 		{
 			name:    "prerelease version on an older engine",
 			version: "v1.0.0-0",
 			data:    `{"version": "v0.21.6", "__schemaVersion": "v1.0.0"}`,
-			err:     "this project's Dagger version is v1.0.0, but the Dagger engine is v0.21.6; upgrade Dagger",
+			err:     "this project's Dagger version is v1.0.0-0, but the Dagger engine is v0.21.6; upgrade Dagger",
 		},
 		{
 			name:    "minor-only version",
@@ -327,6 +425,16 @@ func TestDaggerModuleSchemaVersion(t *testing.T) {
 		require.Len(t, client.requests, 1)
 		assert.Contains(t, client.requests[0].Query, "withEngineVersion(version: $version)")
 		assert.Equal(t, map[string]any{"ref": "/mod", "version": "v0.19.0"}, client.requests[0].Variables)
+	})
+
+	t.Run("with a prerelease version, at the prerelease", func(t *testing.T) {
+		client := &fakeGraphQLClient{data: map[string]string{
+			"DangModuleSchema": fmt.Sprintf(`{"moduleSource": {"withEngineVersion": %s}}`, schemaJSON),
+		}}
+		_, err := daggerModuleSchema(context.Background(), client, "/mod", Version{Major: 1, Prerelease: "beta.21"})
+		require.NoError(t, err)
+		require.Len(t, client.requests, 1)
+		assert.Equal(t, map[string]any{"ref": "/mod", "version": "v1.0.0-beta.21"}, client.requests[0].Variables)
 	})
 
 	t.Run("ResolveDaggerImport passes the import's version", func(t *testing.T) {
