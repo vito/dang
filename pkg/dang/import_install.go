@@ -1,6 +1,9 @@
 package dang
 
-import "github.com/vito/dang/v2/pkg/hm"
+import (
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/introspection"
+)
 
 const importedBindingVisibility = PrivateVisibility
 
@@ -180,5 +183,44 @@ func addValueImportProvider(env TypeScope, name, importName string) {
 func addDirectiveImportProvider(env TypeScope, name, importName string) {
 	if origin, found := env.LocalDirectiveOrigin(name); found {
 		env.SetDirectiveOrigin(name, origin.AddImportProvider(importName))
+	}
+}
+
+// Install aliases to the existing symbols, rather than copying or renaming their
+// definitions: GraphQL functions must still query the original field and type.
+func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map[string]string) {
+	for alias, target := range aliases {
+		if typ, ok := scope.LocalNamedType(target); ok {
+			if _, exists := scope.LocalNamedType(alias); !exists {
+				scope.AddObject(alias, typ)
+			}
+		}
+		scheme, ok := scope.LocalSchemeOf(target)
+		if !ok {
+			if query, found := scope.LocalNamedType(schema.QueryType.Name); found {
+				scheme, ok = query.LocalSchemeOf(target)
+			}
+		}
+		if ok {
+			_, exists := scope.LocalSchemeOf(alias)
+			if query, found := scope.LocalNamedType(schema.QueryType.Name); found {
+				_, rootExists := query.LocalSchemeOf(alias)
+				exists = exists || rootExists
+			}
+			if !exists {
+				scope.Add(alias, scheme)
+				scope.SetVisibility(alias, PublicVisibility)
+			}
+		}
+	}
+}
+
+func aliasImportValues(scope ValueScope, aliases map[string]string) {
+	for alias, target := range aliases {
+		if val, ok := scope.LookupLocal(target); ok {
+			if _, exists := scope.LookupLocal(alias); !exists {
+				scope.Bind(alias, val, PublicVisibility)
+			}
+		}
 	}
 }

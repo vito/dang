@@ -1183,6 +1183,7 @@ type ImportDecl struct {
 	client   graphql.Client
 	schema   *introspection.Schema
 	inferred TypeScope
+	aliases  map[string]string
 
 	// dangMod is set for native Dang module imports (config.DangModuleDir).
 	// It carries the compiled module reused at Eval, mirroring how client/schema
@@ -1194,6 +1195,11 @@ type ImportConfig struct {
 	Name   string
 	Client graphql.Client
 	Schema *introspection.Schema
+
+	// Aliases adds local names for schema types and root fields. Targets keep
+	// their wire names and type identity. Existing schema names take precedence;
+	// targets absent from the schema (e.g. during declaration discovery) are skipped.
+	Aliases map[string]string
 
 	// AutoImport causes this import to be injected into every file
 	// without an explicit import statement. Used by SDKs (e.g. Dagger)
@@ -1302,6 +1308,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 					}
 					i.client = config.Client
 					i.schema = config.Schema
+					i.aliases = config.Aliases
 				}
 			} else {
 				config, err := i.loadImportConfig(ctx)
@@ -1323,7 +1330,9 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				} else {
 					i.client = config.Client
 					i.schema = config.Schema
+					i.aliases = config.Aliases
 					i.inferred = TypeScopeFromSchema(i.Name.Name, config.Schema)
+					aliasImportTypes(i.inferred, config.Schema, config.Aliases)
 					cacheImportModule(ctx, i.Name.Name, i.inferred)
 				}
 			}
@@ -1355,6 +1364,7 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 	// Create evaluation environment for the imported schema
 	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
+	aliasImportValues(importValueScope, i.aliases)
 
 	installImportedValueScope(scope, i.Name.Name, importValueScope)
 
