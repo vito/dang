@@ -1,0 +1,54 @@
+# Dang 2.0's `for (cond) { ... }` loops while cond holds. Dang 2.1 removed
+# it; the equivalent is `loop { if (cond) { ... } else { break } }`.
+
+let counter = 0
+let result = ""
+loop {
+  if (counter < 3) {
+    result = result + "loop"
+    counter = counter + 1
+  } else {
+    break
+  }
+}
+assert { result == "looplooploop" }
+
+# break and continue still target the loop.
+let sum = 0
+let i = 0
+loop {
+  if (i < 10) {
+    i += 1
+    if (i == 2) {
+      continue
+    }
+    if (i > 4) {
+      break
+    }
+    sum += i
+  } else {
+    break
+  }
+}
+assert { sum == 8 } # 1 + 3 + 4
+
+# The condition narrows the body, and `break value` is the loop's result.
+optional(s: String): String { s }
+
+whileCondNarrows(s: String): String! {
+  let x = optional(s)
+  let found = loop {
+    if (x != null) {
+      let y: String! = x
+      break y
+    } else {
+      break
+    }
+  }
+  if (found == null) {
+    raise "missing"
+  }
+  found
+}
+
+assert { whileCondNarrows("present") == "present" }

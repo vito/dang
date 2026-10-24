@@ -36,6 +36,15 @@ type Formatter struct {
 	commentMap map[int]string
 	// Set of line numbers whose comments have already been emitted.
 	emittedComments map[int]bool
+
+	// Dang version whose syntax to emit (e.g. object selection braces).
+	// Zero means CurrentVersion.
+	version Version
+
+	// migrating is set when the source was parsed in an older version than
+	// version. Templates then re-print their ${...} interpolations instead
+	// of echoing them (see formatTemplate).
+	migrating bool
 }
 
 // Format formats a node and returns the formatted source code
@@ -45,9 +54,22 @@ func Format(node Node) string {
 	return f.buf.String()
 }
 
-// FormatFile parses and formats a Dang source file
+// FormatFile parses and formats a Dang source file written in CurrentVersion.
 func FormatFile(source []byte) (string, error) {
-	result, commentMap, err := ParseWithComments("format", source)
+	return FormatFileWithVersion(source, CurrentVersion)
+}
+
+// FormatFileWithVersion parses and formats a Dang source file written in the
+// given Dang version, emitting that version's syntax.
+func FormatFileWithVersion(source []byte, version Version) (string, error) {
+	return formatSource("format", source, version, version, false)
+}
+
+// formatSource parses source written in version from and formats it in
+// version to's syntax. migrating re-prints template interpolations rather
+// than echoing them; see MigrateSource.
+func formatSource(filename string, source []byte, from, to Version, migrating bool) (string, error) {
+	result, commentMap, err := ParseWithComments(filename, source, WithVersion(from))
 	if err != nil {
 		return "", err
 	}
@@ -61,6 +83,8 @@ func FormatFile(source []byte) (string, error) {
 		source:          source,
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
+		version:         to,
+		migrating:       migrating,
 	}
 	f.formatNode(result.(*FileBlock))
 
@@ -2380,6 +2404,9 @@ func (f *Formatter) formatTemplate(t *Template) {
 	// indentation from multi-line content. Preserving source also keeps
 	// any comments living inside ${...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
+		if f.migrating {
+			orig = f.migrateInterpolations(t, orig)
+		}
 		if t.Fence >= 3 {
 			f.write(f.normalizeMultilineLiteral(t, orig))
 		} else {
@@ -2437,6 +2464,72 @@ func (f *Formatter) formatTemplate(t *Template) {
 	}
 	f.writeIndent()
 	f.write(fence)
+}
+
+// migrateInterpolations returns orig, the source text of template t, with
+// each ${...} interpolation re-printed in f's version. The literal text, and
+// so the template's layout, is kept byte for byte; only the code inside the
+// interpolations changes, since that is what a version can spell
+// differently.
+func (f *Formatter) migrateInterpolations(t *Template, orig string) string {
+	if t.Loc == nil {
+		return orig
+	}
+	start := f.lineColumnToOffset(t.Loc.Line, t.Loc.Column)
+	if start < 0 {
+		return orig
+	}
+	var b strings.Builder
+	last := 0
+	for _, p := range t.Parts {
+		if p.Expr == nil {
+			continue
+		}
+		startLine, startCol, endLine, endCol, ok := nodeExtent(p.Expr)
+		if !ok {
+			continue
+		}
+		from := f.lineColumnToOffset(startLine, startCol) - start
+		to := f.lineColumnToOffset(endLine, endCol) - start
+		if from < last || to < from || to > len(orig) {
+			continue
+		}
+		sub := &Formatter{
+			comments:        f.comments,
+			source:          f.source,
+			commentMap:      f.commentMap,
+			emittedComments: f.emittedComments,
+			version:         f.version,
+			migrating:       true,
+		}
+		sub.formatNodeInline(p.Expr)
+		b.WriteString(orig[last:from])
+		b.WriteString(sub.buf.String())
+		last = to
+	}
+	b.WriteString(orig[last:])
+	return b.String()
+}
+
+// nodeExtent returns the source span covered by node and everything beneath
+// it. A node's own Loc doesn't always cover its children: an object
+// selection's starts at its braces, after its receiver.
+func nodeExtent(node Node) (startLine, startCol, endLine, endCol int, ok bool) {
+	node.Walk(func(n Node) bool {
+		loc := n.GetSourceLocation()
+		if loc == nil || loc.End == nil {
+			return true
+		}
+		if !ok || loc.Line < startLine || (loc.Line == startLine && loc.Column < startCol) {
+			startLine, startCol = loc.Line, loc.Column
+		}
+		if !ok || loc.End.Line > endLine || (loc.End.Line == endLine && loc.End.Column > endCol) {
+			endLine, endCol = loc.End.Line, loc.End.Column
+		}
+		ok = true
+		return true
+	})
+	return
 }
 
 func (f *Formatter) formatTemplatePart(p TemplatePart) {
@@ -2923,6 +3016,11 @@ func (f *Formatter) formatCase(c *Case) {
 			}
 			f.newline()
 		}
+		// Comments after the last clause stay inside the case, rather than
+		// landing after it (and then moving again when reformatted).
+		if c.Loc != nil && c.Loc.End != nil {
+			f.emitCommentsBeforeClose(c.Loc.End.Line)
+		}
 	})
 	f.writeIndent()
 	f.write("}")
@@ -3124,9 +3222,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 	// Check if the selection was originally multiline
 	multiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
 
+	openBrace, closeBrace := f.version.selectionBraces()
+
 	// Handle inline fragments
 	if len(o.InlineFragments) > 0 {
-		f.write("{{")
+		f.write(openBrace)
 		if multiline {
 			f.newline()
 			f.indented(func() {
@@ -3163,11 +3263,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 				f.formatInlineFragment(frag)
 			}
 		}
-		f.write("}}")
+		f.write(closeBrace)
 		return
 	}
 
-	f.write("{{")
+	f.write(openBrace)
 	if multiline {
 		f.newline()
 		f.indented(func() {
@@ -3211,7 +3311,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 			f.formatFieldSelection(field)
 		}
 	}
-	f.write("}}")
+	f.write(closeBrace)
 }
 
 func (f *Formatter) formatDotApply(d *DotApply) {
@@ -3235,7 +3335,8 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 		f.write("!")
 	}
 	if len(frag.Fields) > 0 {
-		f.write(" {{")
+		openBrace, closeBrace := f.version.fragmentBraces()
+		f.write(" " + openBrace)
 		for i, field := range frag.Fields {
 			if i > 0 {
 				f.write(",")
@@ -3243,7 +3344,7 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 			f.write(" ")
 			f.formatFieldSelection(field)
 		}
-		f.write(" }}")
+		f.write(" " + closeBrace)
 	}
 }
 

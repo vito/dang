@@ -25,6 +25,12 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 
 	env := h.buildCompletionTypeScope(f, params.Position)
 	if env != nil {
+		// Completion re-parses fragments of the buffer (e.g. the receiver
+		// before a `.`), which have no path of their own: parse them in the
+		// Dang version of the file they came from.
+		if path, err := fromURI(params.TextDocument.URI); err == nil {
+			ctx = dang.ContextWithVersion(ctx, versionForFile(ctx, path))
+		}
 		result := dang.Complete(ctx, env, f.Text, params.Position.Line, params.Position.Character)
 		if len(result.Items) > 0 {
 			return completionsToItems(result.Items), nil

@@ -9,7 +9,7 @@ description: Dang language reference for writing, editing, and reviewing `.dang`
 authoring `.dang` scripts and modules and calling GraphQL APIs (including
 Dagger) with it. It is not about developing the Dang compiler itself; for that,
 see the contributor skills (`builtin-dsl`, `dang-internals`, `editor-syntaxes`,
-`testing`).
+`language-versions`, `testing`).
 
 Dang is a statically typed scripting language whose types and root functions
 come from a **GraphQL schema**. Hindley-Milner inference; type annotations are

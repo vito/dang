@@ -1859,6 +1859,44 @@ func (FormatSuite) TestCommentsInBlockArgs(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestCommentsInCase(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "comment before the closing brace stays inside",
+			input: `let x = case (n) {
+  1 => "one"
+  2 => "two" # two
+  # end of clauses
+}
+let y = 1`,
+			expected: `let x = case (n) {
+  1 => "one"
+  2 => "two" # two
+  # end of clauses
+}
+let y = 1
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			// Verify idempotency
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

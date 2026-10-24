@@ -25,9 +25,11 @@ CommaToken <- ','
 
 // FormSep separates forms in a sequence (code) — block bodies, the file
 // top-level, and block-argument bodies. Collection and argument contexts use
-// Sep (comma) instead. Both accept a bare newline.
-FormSep <- (_ SemiToken / _lineSpace '\n') _
+// Sep (comma) instead. Both accept a bare newline. Before Dang 2.1, a comma
+// also separates forms here.
+FormSep <- (_ SemiToken / CommaFormSep _ CommaToken / _lineSpace '\n') _
 SemiToken <- ';'
+CommaFormSep <- &{ return versionFromStore(c.globalStore).commaFormSep(), nil }
 
 Expr <- Import / Decl / Reassignment / Form
 
@@ -81,7 +83,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
   }
 }
 
-Form <- Return / LegacyTryCatch / Raise / Conditional / Case / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Return / LegacyTryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
 
@@ -155,7 +157,7 @@ AutoCallSymbol <- name:Id {
 }
 
 // Handle Select followed by optional (), or ObjectSelection
-SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / BlockArg / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / DotBlockArg / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
   switch sel := selection.(type) {
   case *ObjectSelection:
     // Object selection: obj.{{field1, field2}}
@@ -235,13 +237,35 @@ IndexOrCall <- left:Term ImmediateBracket _ index:Form _ ']' args:ArgValues? {
 }
 ImmediateBracket <- '['
 
-ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ "}}" {
+// Version-dependent selection syntax. Before Dang 2.0, object selection is
+// spelled with single braces (`recv.{ a, b }`) and there is no dot-block
+// application; 2.0 uses double braces (`recv.{{ a, b }}`), freeing
+// `recv.{ ... }` for DotBlockArg. Both spellings produce the same
+// ObjectSelection node.
+SingleBraceSelection <- &{ return versionFromStore(c.globalStore).singleBraceSelection(), nil }
+SelectionOpen <- SingleBraceSelection '{' / !SingleBraceSelection "{{"
+SelectionClose <- SingleBraceSelection '}' / !SingleBraceSelection "}}"
+
+// Dot-block application: `recv.{ x => ... }`. Unavailable before Dang 2.0,
+// where that syntax is object selection.
+DotBlockArg <- !SingleBraceSelection b:BlockArg {
+  return b, nil
+}
+
+// Inline fragment bodies (`... on User { name }`) use single braces before
+// Dang 2.1, inside either spelling of the selection, and double braces in
+// 2.1.
+SingleBraceFragment <- &{ return versionFromStore(c.globalStore).singleBraceFragments(), nil }
+FragmentOpen <- SingleBraceFragment '{' / !SingleBraceFragment "{{"
+FragmentClose <- SingleBraceFragment '}' / !SingleBraceFragment "}}"
+
+ObjectSelection <- SelectionOpen _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ SelectionClose {
   return &ObjectSelection{
     Receiver: nil,
     InlineFragments: sliceOfPrepend[*InlineFragment](first, rest),
     Loc: c.Loc(),
   }, nil
-} / "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
+} / SelectionOpen _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ SelectionClose {
   return &ObjectSelection{
     Receiver: nil, // Will be set by parent SelectOrCall
     Fields: sliceOfAppend[*FieldSelection](fields, last),
@@ -249,7 +273,7 @@ ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { retu
   }, nil
 }
 
-InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })* typeName:Symbol _ "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
+InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })* typeName:Symbol _ FragmentOpen _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ FragmentClose {
   return &InlineFragment{
     TypeName:  typeName.(*Symbol),
     Qualifier: qualifierString(qual),
@@ -1194,6 +1218,17 @@ ElseToken <- "else" !WordChar
 OrToken <- "or" !WordChar
 AndToken <- "and" !WordChar
 
+// The `for (cond) { ... }` and `for { ... }` loops of Dang before 2.1, which
+// removed them (`for` is an ordinary identifier there). They parse as the
+// equivalent `loop` call (see desugarForLoop).
+ForLoops <- &{ return versionFromStore(c.globalStore).forLoops(), nil }
+ForLoop <- ForLoops ForToken _ '(' _ cond:Form _ ')' _ body:Block {
+  return desugarForLoop(cond.(Node), body.(*Block), c.Loc()), nil
+} / ForLoops ForToken _ body:Block {
+  return desugarForLoop(nil, body.(*Block), c.Loc()), nil
+}
+ForToken <- "for" !WordChar
+
 ArrowToken <- "=>"
 
 BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(FormSep e:Expr { return e, nil })* _ '}' {
@@ -1238,7 +1273,7 @@ Case <- CaseToken _ operand:('(' _ expr:Form _ ')' { return expr, nil })? _ '{' 
   return &Case{
     Expr: expr,
     NoOperand: operand == nil,
-    Clauses: sliceOfAppend[*CaseClause](cs, last),
+    Clauses: versionCaseClauses(versionFromStore(c.globalStore), sliceOfAppend[*CaseClause](cs, last), c.Loc()),
     Loc: c.Loc(),
   }, nil
 }

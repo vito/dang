@@ -80,11 +80,12 @@ type langHandler struct {
 // the disk read entirely. For open buffers (no mtime), text is the
 // fingerprint.
 type parsedFile struct {
-	block *dang.FileBlock
-	text  string // populated only when sourced from an open buffer
-	mtime time.Time
-	size  int64
-	open  bool // true if sourced from an open buffer
+	block   *dang.FileBlock
+	text    string // populated only when sourced from an open buffer
+	mtime   time.Time
+	size    int64
+	open    bool         // true if sourced from an open buffer
+	version dang.Version // Dang version the block was parsed as
 }
 
 // File is
@@ -257,10 +258,18 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	var blocks []*dang.FileBlock
 	var currentBlock *dang.FileBlock
 
+	// Look up the directory's dang.toml once per analysis: it decides both the
+	// Dang version every file in the directory is parsed as and the imports.
+	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
+	if configErr != nil {
+		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
+	}
+	version := dang.VersionForConfig(ctx, projectConfig)
+
 	for _, path := range files {
 		fileURI := toURI(path)
 
-		block, err := h.parseFileCached(path)
+		block, err := h.parseFileCached(path, version)
 		if err != nil {
 			// IO errors (missing file, permission denied, broken symlink)
 			// are fatal — bail out so the caller can surface them. Parse
@@ -300,7 +309,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 
 	// Resolve import configs once for the directory, using a cache to avoid
 	// spawning new dagger sessions on every keystroke.
-	importConfigs, ctx := h.resolveImports(ctx, fileDir)
+	importConfigs, ctx := h.resolveImports(ctx, fileDir, configPath, projectConfig)
 	// Attach a long-lived schema-module cache for this directory BEFORE
 	// installing the import configs, so the configs' helpers find an existing
 	// cache and reuse it. Without this, each analyzeDirectory call gets a
@@ -422,23 +431,27 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 	return cache
 }
 
-// parseFileCached returns the parsed *FileBlock for path. When the file is
-// unchanged from the cached entry, the cached block is returned without
-// re-parsing. For files on disk, the fingerprint is mtime+size — a stat call
-// is enough to know if the cache is still good, avoiding even the file read.
-// For open buffers, the fingerprint is the buffer's text.
+// parseFileCached returns the parsed *FileBlock for path, parsed as Dang
+// version. When the file is unchanged from the cached entry, the cached block
+// is returned without re-parsing. For files on disk, the fingerprint is
+// mtime+size+version — a stat call is enough to know if the cache is still
+// good, avoiding even the file read. For open buffers, the fingerprint is the
+// buffer's text and the version. The version is part of the fingerprint
+// because editing dang.toml's version changes how an otherwise unchanged file
+// parses; callers resolve it once per directory (see analyzeDirectory).
 //
 // Auto-imports prepended into block.Forms by InferDirectoryFiles persist
 // across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
 // blocks keep their inferred schema modules, so the imports phase doesn't
 // re-introspect on cache hit.
-func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
+func (h *langHandler) parseFileCached(path string, version dang.Version) (*dang.FileBlock, error) {
 	uri := toURI(path)
 
 	h.mu.Lock()
 	openFile := h.files[uri]
 	cached, hit := h.parseCache[path]
 	h.mu.Unlock()
+	hit = hit && cached.version == version
 
 	if openFile != nil {
 		openFile.mu.Lock()
@@ -447,7 +460,7 @@ func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 		if hit && cached.open && cached.text == text {
 			return cached.block, nil
 		}
-		return h.parseAndStore(path, text, parsedFile{open: true, text: text})
+		return h.parseAndStore(path, text, parsedFile{open: true, text: text, version: version})
 	}
 
 	info, err := os.Stat(path)
@@ -462,11 +475,23 @@ func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size()})
+	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size(), version: version})
+}
+
+// versionForFile returns the Dang version of the file at path (see
+// dang.VersionForDir). A broken dang.toml is reported elsewhere (import
+// resolution), so here it just falls back to the version of ungoverned
+// source.
+func versionForFile(ctx context.Context, path string) dang.Version {
+	version, err := dang.VersionForDir(ctx, filepath.Dir(path))
+	if err != nil {
+		slog.WarnContext(ctx, "failed to determine Dang version", "path", path, "error", err)
+	}
+	return version
 }
 
 func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.FileBlock, error) {
-	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path))
+	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path), dang.WithVersion(entry.version))
 	if err != nil {
 		return nil, err
 	}
@@ -553,14 +578,10 @@ func (f *File) waitForSnapshot() *File {
 }
 
 // resolveImports returns cached import configs for the given file directory,
-// resolving them on first access. The returned context has the project config
-// attached if a dang.toml was found.
-func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dang.ImportConfig, context.Context) {
-	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
-	if configErr != nil {
-		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
-	}
-
+// resolving them on first access. configPath and projectConfig are the result
+// of dang.FindProjectConfig for fileDir (empty and nil if none was found). The
+// returned context has the project config attached if a dang.toml was found.
+func (h *langHandler) resolveImports(ctx context.Context, fileDir, configPath string, projectConfig *dang.ProjectConfig) ([]dang.ImportConfig, context.Context) {
 	// Cache key: config path, or a synthetic key for auto-detected Dagger.
 	cacheKey := configPath
 	if cacheKey == "" {

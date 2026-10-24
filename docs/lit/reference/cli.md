@@ -2,7 +2,7 @@
 
 # CLI reference {#cli}
 
-> Meta: enumerated from `cmd/dang/` (root `main.go`, `repl_commands.go`). The binary is a single Cobra command (`dang`) with one subcommand (`fmt`); running scripts, directory modules, the REPL, and LSP are all modes of the root command — there is no `run`/`check` subcommand.
+> Meta: enumerated from `cmd/dang/` (root `main.go`, `repl_commands.go`). The binary is a single Cobra command (`dang`) with three subcommands (`fmt`, `init`, `migrate`); running scripts, directory modules, the REPL, and LSP are all modes of the root command — there is no `run`/`check` subcommand.
 
 ## Synopsis
 
@@ -12,6 +12,8 @@ dang <file.dang>     # run a single script
 dang <directory>     # run a directory as a module
 dang                 # no path -> interactive REPL
 dang fmt [flags] [path...]
+dang init [dir]
+dang migrate [flags] [dir...]
 ```
 
 ## Root command
@@ -39,6 +41,24 @@ dang fmt [flags] [path...]
 - flags:
   - `-w, --write` — write the result back to the source file (default: print to stdout)
   - `-l, --list` — list files that would be formatted (or, with `-w`, that were changed)
+
+## `dang init`
+
+- make a directory (default: `.`) a project whose `dang.toml` declares its Dang version (`dang = "X.Y"`; see [#dang.toml])
+- with no `dang.toml`, creates one declaring the running Dang's version; a `dang.toml` without the key gets the version it already means (`"2.1"`), so nothing changes meaning
+- refuses a directory that is already part of a project further up
+
+## `dang migrate`
+
+- move every project under the given directories (default: `.`; directories only) to a newer Dang version: each `.dang` file a `dang.toml` governs is rewritten in the new version's syntax, and the `dang.toml`'s `dang` key is updated with it
+- only reports what it would change unless `-w` is given; files spelled the same in both versions are left untouched
+- it rewrites syntax only: code a newer version rejects for other reasons (e.g. a stricter type check) is left for you to fix
+- refuses a file whose meaning would change, e.g. old syntax inside a `#nofmt` region, which must be migrated by hand
+- flags:
+  - `-w, --write` — write the migrated files and `dang.toml`
+  - `--to <X.Y>` — version to migrate to (default: the running Dang's version)
+  - `--from <X.Y>` — version of source whose version no `dang.toml` declares: source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version), or a project from an older Dang whose `dang.toml` predates the `dang` key; migrating records the new version, creating a `dang.toml` if there is none. It applies to the given directory's own project, not to projects nested below it: those without a `dang` key are reported, to migrate by naming their directories
+  - `--skip-unparseable` — leave files that don't parse in their version as they are (otherwise `-w` refuses to write)
 
 ## REPL
 
@@ -71,6 +91,7 @@ Input keys: Tab completion, Up/Down history, Alt+Enter (or Shift+Enter under a K
 
 ## Configuration
 
+- `dang.toml`'s top-level `dang = "X.Y"` key declares the Dang version the project is written for; see [#dang.toml].
 - GraphQL connections are configured per-import in `dang.toml` under `[imports.<Name>]`. Keys: `dagger`, `schema` (local `.graphqls` SDL path), `endpoint`, `service` (command that prints its endpoint/session JSON), `authorization`, `headers`. A `path` key instead imports a native Dang module (a local directory of `.dang` files); see [#dang-imports].
 - `endpoint`, `authorization`, and `headers` values support `${VAR}` environment expansion. `$(...)` command substitution is **not** supported (use an env var instead). See [#getting-started] and [#interop].
 - config is discovered by walking up from the working directory, stopping at a `.git` boundary.

@@ -220,7 +220,7 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 		return
 	}
 	expr := strings.Join(args, " ")
-	result, err := dang.ParseWithRecovery("type-check", []byte(expr))
+	result, err := dang.ParseWithRecovery("type-check", []byte(expr), dang.WithVersion(dang.VersionFromContext(r.ctx)))
 	if err != nil {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		return

@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -3315,7 +3316,13 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+	version, err := VersionForDir(ctx, filepath.Dir(filePath))
+	if err != nil {
+		return fmt.Errorf("determining Dang version: %w", err)
+	}
+	ctx = bindContextVersion(ctx, filepath.Dir(filePath))
+
+	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithVersion(version))
 	if err != nil {
 		return err
 	}
@@ -3453,8 +3460,14 @@ func ensureProjectImports(ctx context.Context, dir string) (context.Context, err
 		return ctx, err
 	}
 
-	// Resolve Dagger import (from dang.toml or auto-detected from Dagger module config)
-	resolved = ResolveDaggerImport(ctx, resolved, dir)
+	// Resolve a Dagger import dang.toml declares, making it auto-imported and
+	// module-aware. Don't auto-detect one from a Dagger module config, as the
+	// REPL and LSP do: a script runs without a dang.toml, so whether it talks
+	// to Dagger must not depend on whether one exists (e.g. after `dang init`
+	// writes one just to declare the Dang version).
+	if slices.ContainsFunc(resolved, func(ic ImportConfig) bool { return ic.Dagger }) {
+		resolved = ResolveDaggerImport(ctx, resolved, dir)
+	}
 
 	// Merge: project configs go first, then any existing context configs
 	// (existing configs take priority by name in loadImportConfig)
@@ -3532,9 +3545,17 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Fi
 
 	sort.Strings(dangFiles)
 
+	// The version depends only on where the source lives, not on the project
+	// or import configs already attached to ctx (e.g. by an embedder).
+	version, err := VersionForDir(ctx, dirPath)
+	if err != nil {
+		return ctx, nil, fmt.Errorf("determining Dang version: %w", err)
+	}
+	ctx = bindContextVersion(ctx, dirPath)
+
 	blocks := make([]*FileBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
-		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath), WithVersion(version))
 		if err != nil {
 			return ctx, nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
