@@ -1276,7 +1276,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			return nil, err
 		}
 		if config.DangModuleDir != "" {
-			mod, err := loadDangModule(ctx, config.DangModuleDir)
+			mod, err := loadDangModule(ctx, config.DangModuleDir, i.dangMod)
 			if err != nil {
 				return nil, err
 			}
