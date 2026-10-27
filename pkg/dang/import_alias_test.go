@@ -164,6 +164,12 @@ let message = case (node) {
   value: Original => value.message
   else => null
 }`},
+		{"mixed union interface case with shadowed alias", `type Original { message: String! }
+let result = if (true) { node } else { "fallback" }
+let message = case (result) {
+  value: Original => value.message
+  else => null
+}`},
 		{"union fragment", `let result = original.{{... on Original {{message}}}}
 let message = case (result) { value: Original => value.message
   else => null }`},

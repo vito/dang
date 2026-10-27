@@ -326,8 +326,8 @@ func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternNa
 			}
 		}
 		if optionMod.Kind == InterfaceKind {
-			if _, err := resolveInterfaceTypePattern(env, optionMod, patternName); err == nil {
-				return patternMod, nil
+			if member, err := resolveInterfaceTypePattern(env, optionMod, patternName); err == nil {
+				return member, nil
 			}
 		}
 	}
