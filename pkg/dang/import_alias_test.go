@@ -1,12 +1,14 @@
 package dang
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/stretchr/testify/require"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 type aliasTestClient struct {
@@ -61,4 +63,29 @@ func TestImportAliasesPreserveExistingNames(t *testing.T) {
 	value, ok := values.LookupLocal("first")
 	require.True(t, ok)
 	require.Equal(t, "first", value.(GraphQLFunction).Name)
+}
+
+func TestImportAliasesPreserveBuiltins(t *testing.T) {
+	schema, err := SchemaFromSDL(`type Query { renamed: String! }`, "builtin-alias.graphql")
+	require.NoError(t, err)
+	config := ImportConfig{
+		Name: "Dagger", Schema: schema, AutoImport: true,
+		Aliases: map[string]string{"print": "renamed"},
+	}
+	types, values := BuildScopesFromImports("test", []ImportConfig{config})
+	imported, ok := types.NamedType("Dagger")
+	require.True(t, ok)
+	scheme, ok := imported.SchemeOf("print")
+	require.True(t, ok)
+	builtin, ok := Prelude.SchemeOf("print")
+	require.True(t, ok)
+	require.Same(t, builtin, scheme)
+	value, ok := values.LookupLocal("print")
+	require.True(t, ok)
+	require.IsType(t, BuiltinFunction{}, value)
+
+	var stdout bytes.Buffer
+	ctx := ioctx.StdoutToContext(ContextWithImportConfigs(t.Context(), config), &stdout)
+	runDangSnippetContext(t, ctx, `Dagger.print(value: "hello")`)
+	require.Equal(t, "hello\n", stdout.String())
 }

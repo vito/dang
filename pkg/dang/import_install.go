@@ -202,11 +202,9 @@ func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map
 			}
 		}
 		if ok {
-			_, exists := scope.LocalSchemeOf(alias)
-			if query, found := scope.LocalNamedType(schema.QueryType.Name); found {
-				_, rootExists := query.LocalSchemeOf(alias)
-				exists = exists || rootExists
-			}
+			// Runtime schema scopes also contain the builtins. Include the
+			// lexical fallback here so both phases preserve those bindings.
+			_, exists := scope.SchemeOf(alias)
 			if !exists {
 				scope.Add(alias, scheme)
 				scope.SetVisibility(alias, PublicVisibility)
