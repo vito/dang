@@ -296,3 +296,52 @@ let bad = Dagger.original.{{... on Another.Original {{message}}}}`, "not a membe
 		})
 	}
 }
+
+const nestedQualifiedFragmentTypes = `
+type Outer {
+  type Inner {
+    type Cat { name: String! }
+    type Dog { name: String! }
+    union Pet = Cat | Dog
+    pet: Pet! { Cat(name: "nested") }
+  }
+  inner: Inner! { Inner }
+}
+`
+
+func TestNestedQualifiedInlineFragments(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source string
+	}{
+		{"lazy", `let name = Outer.inner.pet.{{... on Outer.Inner.Cat!}}.name`},
+		{"eager", `let selected = Outer.inner.pet.{{... on Outer.Inner.Cat {{name}}}}
+let name = case (selected) {
+  cat: Cat => cat.name
+  else => null
+}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := runDangSnippet(t, nestedQualifiedFragmentTypes+tc.source)
+			name, found, err := env.Lookup(t.Context(), "name")
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, StringValue{Val: "nested"}, name)
+		})
+	}
+}
+
+func TestNestedQualifiedInlineFragmentsCheckMembership(t *testing.T) {
+	source := nestedQualifiedFragmentTypes + `
+type Another {
+  type Inner {
+    type Cat { name: String! }
+  }
+}
+let bad = Outer.inner.pet.{{... on Another.Inner.Cat!}}
+`
+	parsed, err := ParseWithRecovery("nested-fragment.dang", []byte(source))
+	require.NoError(t, err)
+	_, err = Infer(t.Context(), NewPreludeTypeScope(""), parsed.(*FileBlock), true)
+	require.ErrorContains(t, err, "not a member of union")
+}

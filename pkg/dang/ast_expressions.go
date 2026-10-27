@@ -1737,7 +1737,15 @@ func resolveInlineFragmentMemberType(receiver *Type, env TypeScope, qualifier, t
 
 	var target TypeScope
 	if qualifier != "" {
-		if module, found := env.NamedType(qualifier); found {
+		parts := strings.Split(qualifier, ".")
+		module, found := env.NamedType(parts[0])
+		for _, part := range parts[1:] {
+			if !found {
+				break
+			}
+			module, found = module.LocalNamedType(part)
+		}
+		if found {
 			target, _ = module.LocalNamedType(typeName)
 		}
 	} else {
