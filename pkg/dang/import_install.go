@@ -192,6 +192,10 @@ func addDirectiveImportProvider(env TypeScope, name, importName string) {
 // Install aliases to the existing symbols, rather than copying or renaming their
 // definitions: GraphQL functions must still query the original field and type.
 func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map[string]string) {
+	if len(aliases) == 0 {
+		return
+	}
+	builtins := importBuiltinValueNames()
 	// Resolve every target before installing any aliases. An alias must name
 	// an original schema symbol, never an alias installed earlier in this pass.
 	var types []Keyed[TypeScope]
@@ -210,9 +214,12 @@ func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map
 			}
 		}
 		if ok {
-			// Runtime schema scopes also contain the builtins. Include the
-			// lexical fallback here so both phases preserve those bindings.
-			_, exists := scope.SchemeOf(alias)
+			_, exists := scope.LocalSchemeOf(alias)
+			if query, found := scope.LocalNamedType(schema.QueryType.Name); found {
+				_, rootExists := query.LocalSchemeOf(alias)
+				exists = exists || rootExists
+			}
+			exists = exists || builtins[alias]
 			if !exists {
 				values = append(values, Keyed[*hm.Scheme]{Key: alias, Value: scheme})
 			}
@@ -231,6 +238,7 @@ func aliasImportValues(scope ValueScope, schema *introspection.Schema, aliases m
 	if len(aliases) == 0 {
 		return
 	}
+	builtins := importBuiltinValueNames()
 	// Runtime scopes also contain builtins, which aren't schema targets.
 	targets := make(map[string]bool)
 	for _, typ := range schema.Types {
@@ -244,7 +252,7 @@ func aliasImportValues(scope ValueScope, schema *introspection.Schema, aliases m
 	var values []Keyed[Value]
 	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
 		target := aliases[alias]
-		if !targets[target] {
+		if !targets[target] || builtins[alias] {
 			continue
 		}
 		if val, ok := scope.LookupLocal(target); ok {
@@ -256,4 +264,25 @@ func aliasImportValues(scope ValueScope, schema *introspection.Schema, aliases m
 	for _, alias := range values {
 		scope.Bind(alias.Key, alias.Value, PublicVisibility)
 	}
+}
+
+// Both alias installers preserve the values installed by addBuiltinFunctions
+// and the public source prelude. Private source helpers aren't imported values
+// and must not prevent an alias from being installed.
+func importBuiltinValueNames() map[string]bool {
+	names := map[string]bool{"Regexp": true}
+	ForEachFunction(func(def BuiltinDef) { names[def.Name] = true })
+	for _, receiver := range MethodReceivers() {
+		ForEachMethod(receiver, func(def BuiltinDef) {
+			names[GetMethodKey(receiver, def.Name)] = true
+		})
+	}
+	for _, module := range StaticModules() {
+		names[module.Named] = true
+	}
+	loadPrelude()
+	for _, binding := range preludeBindings {
+		names[binding.Key] = true
+	}
+	return names
 }

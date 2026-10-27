@@ -503,6 +503,15 @@ func ValueScopeFromSchema(typeScope TypeScope, client graphql.Client, schema *in
 	// Add builtin functions
 	addBuiltinFunctions(env)
 
+	// Match the type scope's public source prelude without replacing values
+	// owned by the schema, such as an input constructor also named Path.
+	loadPrelude()
+	for _, binding := range preludeBindings {
+		if _, exists := env.LookupLocal(binding.Key); !exists {
+			env.Bind(binding.Key, binding.Value, PublicVisibility)
+		}
+	}
+
 	return env
 }
 

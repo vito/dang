@@ -90,6 +90,61 @@ func TestImportAliasesPreserveBuiltins(t *testing.T) {
 	require.Equal(t, "hello\n", stdout.String())
 }
 
+func TestImportAliasesPreserveSourcePrelude(t *testing.T) {
+	schema, err := SchemaFromSDL(`type Query { renamed(raw: String!): String! }`, "prelude-alias.graphql")
+	require.NoError(t, err)
+	client := &aliasTestClient{t: t}
+	config := ImportConfig{
+		Name: "Dagger", Schema: schema, Client: client, AutoImport: true,
+		Aliases: map[string]string{"Path": "renamed"},
+	}
+	types, values := BuildScopesFromImports("test", []ImportConfig{config})
+	imported, ok := types.NamedType("Dagger")
+	require.True(t, ok)
+	scheme, ok := imported.SchemeOf("Path")
+	require.True(t, ok)
+	preludeScheme, ok := PreludeModule().SchemeOf("Path")
+	require.True(t, ok)
+	require.Same(t, preludeScheme, scheme)
+	module, ok := values.LookupLocal("Dagger")
+	require.True(t, ok)
+	constructor, ok := module.(ValueScope).LookupLocal("Path")
+	require.True(t, ok)
+	require.IsType(t, ScalarConstructor{}, constructor)
+
+	ctx := ContextWithImportConfigs(t.Context(), config)
+	env := runDangSnippetContext(t, ctx, `let path: Path! = Dagger.Path(raw: "a//b/../c")
+let name: String! = path.name`)
+	name, found, err := env.Lookup(ctx, "name")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, StringValue{Val: "c"}, name)
+	require.Empty(t, client.queries)
+}
+
+func TestImportAliasesPreserveSchemaValuesOverSourcePrelude(t *testing.T) {
+	schema, err := SchemaFromSDL(`type Query { renamed: String! } input Path { raw: String! }`, "schema-path.graphql")
+	require.NoError(t, err)
+	config := ImportConfig{
+		Name: "Dagger", Schema: schema, AutoImport: true,
+		Aliases: map[string]string{"Path": "renamed"},
+	}
+	_, values := BuildScopesFromImports("test", []ImportConfig{config})
+	module, ok := values.LookupLocal("Dagger")
+	require.True(t, ok)
+	constructor, ok := module.(ValueScope).LookupLocal("Path")
+	require.True(t, ok)
+	require.IsType(t, InputObjectConstructor{}, constructor)
+
+	ctx := ContextWithImportConfigs(t.Context(), config)
+	env := runDangSnippetContext(t, ctx, `let path: Dagger.Path! = Dagger.Path(raw: "schema")
+let raw: String! = path.raw`)
+	raw, found, err := env.Lookup(ctx, "raw")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, StringValue{Val: "schema"}, raw)
+}
+
 func TestImportAliasesOnlyResolveSchemaTargets(t *testing.T) {
 	schema, err := SchemaFromSDL(`type Query { renamed: Renamed! } enum Renamed { HELLO }`, "alias-chain.graphql")
 	require.NoError(t, err)

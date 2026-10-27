@@ -1197,8 +1197,9 @@ type ImportConfig struct {
 	Schema *introspection.Schema
 
 	// Aliases adds local names for schema types and root fields. Targets keep
-	// their wire names and type identity. Existing schema names take precedence;
-	// targets absent from the schema (e.g. during declaration discovery) are skipped.
+	// their wire names and type identity. Existing schema names and builtin value
+	// names take precedence; targets absent from the schema (e.g. during
+	// declaration discovery) are skipped.
 	Aliases map[string]string
 
 	// AutoImport causes this import to be injected into every file
