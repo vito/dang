@@ -208,9 +208,11 @@ func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map
 	var values []Keyed[*hm.Scheme]
 	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
 		target := aliases[alias]
-		if typ, ok := scope.LocalNamedType(target); ok {
-			if _, exists := scope.LocalNamedType(alias); !exists && !schemaTypeNames[alias] {
-				types = append(types, Keyed[TypeScope]{Key: alias, Value: typ})
+		if schemaTypeNames[target] {
+			if typ, ok := scope.NamedType(target); ok {
+				if _, exists := scope.LocalNamedType(alias); !exists && !schemaTypeNames[alias] {
+					types = append(types, Keyed[TypeScope]{Key: alias, Value: typ})
+				}
 			}
 		}
 		scheme, ok := scope.LocalSchemeOf(target)

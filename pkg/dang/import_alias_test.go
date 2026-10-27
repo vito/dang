@@ -114,6 +114,52 @@ type Renamed { message: String! }
 	}
 }
 
+func TestImportAliasesResolveBuiltinSchemaScalarTargets(t *testing.T) {
+	schema, err := SchemaFromSDL(`
+type Query { text: String! number: Int! ratio: Float! truth: Boolean! identifier: ID! }
+`, "scalar-target.graphql")
+	require.NoError(t, err)
+	config := ImportConfig{
+		Name: "Dagger", Schema: schema, AutoImport: true,
+		Aliases: map[string]string{
+			"LocalString": "String", "LocalInt": "Int", "LocalFloat": "Float",
+			"LocalBoolean": "Boolean", "LocalID": "ID",
+			"Chained": "LocalString", "Absent": "Path",
+		},
+	}
+	types, _ := BuildScopesFromImports("test", []ImportConfig{config})
+	imported, ok := types.NamedType("Dagger")
+	require.True(t, ok)
+	for _, tc := range []struct {
+		alias string
+		typ   *Type
+	}{
+		{"LocalString", StringType},
+		{"LocalInt", IntType},
+		{"LocalFloat", FloatType},
+		{"LocalBoolean", BooleanType},
+		{"LocalID", IDType},
+	} {
+		qualified, found := imported.NamedType(tc.alias)
+		require.True(t, found, tc.alias)
+		require.Same(t, tc.typ, qualified)
+		unqualified, found := types.NamedType(tc.alias)
+		require.True(t, found, tc.alias)
+		require.Same(t, tc.typ, unqualified)
+	}
+	for _, name := range []string{"Chained", "Absent"} {
+		_, found := imported.NamedType(name)
+		require.False(t, found, name)
+	}
+
+	ctx := ContextWithImportConfigs(t.Context(), config)
+	env := runDangSnippetContext(t, ctx, `let text: Dagger.LocalString! = "hello"`)
+	value, found, err := env.Lookup(ctx, "text")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, StringValue{Val: "hello"}, value)
+}
+
 func TestImportAliasesPreserveBuiltins(t *testing.T) {
 	schema, err := SchemaFromSDL(`type Query { renamed: String! }`, "builtin-alias.graphql")
 	require.NoError(t, err)
