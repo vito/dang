@@ -1,0 +1,41 @@
+# In Dang 2.0, a case that matches no clause raises, so a case without
+# `else` is non-null. In Dang 2.1 it yields null instead; the migration
+# keeps 2.0's behaviour with an explicit raising `else`.
+
+classify(x: Int!): String! {
+  case (x) {
+    0 => "zero"
+    1 => "one"
+    else => raise "no case clause matched"
+  }
+}
+
+assert { classify(1) == "one" }
+
+let unmatched = classify(9) rescue {
+  e: Error => e.message
+}
+assert { unmatched == "no case clause matched" }
+
+# The raising `else` follows a last clause spanning several lines.
+describe(x: Int!): String! {
+  case (x) {
+    0 => "zero"
+    1 => {
+      let s = "one"
+      s
+    }
+    else => raise "no case clause matched"
+  }
+}
+
+assert { describe(1) == "one" }
+
+# A case in a one-line block breaks the block onto several lines.
+let zeroes = [0, 0].map { x =>
+  case (x) {
+    0 => "zero"
+    else => raise "no case clause matched"
+  }
+}
+assert { zeroes == ["zero", "zero"] }

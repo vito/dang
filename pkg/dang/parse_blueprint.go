@@ -39,8 +39,11 @@ type syntaxRegion struct{ start, end uintptr }
 
 var syntaxFilenameField, _ = reflect.TypeFor[SourceLocation]().FieldByName("Filename")
 
+// The Dang version is part of the key: the same source parses differently in
+// different versions.
 type parseBlueprintKey struct {
-	digest [32]byte
+	digest  [32]byte
+	version Version
 }
 
 type blueprintEntry struct {
@@ -98,27 +101,27 @@ func WithSyntaxCache(ctx context.Context, cache *SyntaxCache) context.Context {
 	return context.WithValue(ctx, syntaxCacheKey{}, cache)
 }
 
-func parseFileWithSyntaxCache(ctx context.Context, filename string) (any, error) {
+func parseFileWithSyntaxCache(ctx context.Context, filename string, version Version) (any, error) {
 	cache, _ := ctx.Value(syntaxCacheKey{}).(*SyntaxCache)
 	if cache == nil {
-		return ParseFileWithRecovery(filename, GlobalStore("filePath", filename))
+		return ParseFileWithRecovery(filename, GlobalStore("filePath", filename), WithVersion(version))
 	}
-	return parseFileBlueprintWithCache(filename, cache)
+	return parseFileBlueprintWithCache(filename, version, cache)
 }
 
-func parseFileBlueprintWithCache(filename string, cache *SyntaxCache) (any, error) {
+func parseFileBlueprintWithCache(filename string, version Version, cache *SyntaxCache) (any, error) {
 	source, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	key := parseBlueprintKey{digest: sha256.Sum256(source)}
+	key := parseBlueprintKey{digest: sha256.Sum256(source), version: version.orCurrent()}
 	if blueprint, ok := cache.get(key); ok {
 		copied, err := blueprint.copy(reflect.ValueOf(filename))
 		if err == nil {
 			return copied.Interface().(*FileBlock), nil
 		}
 	}
-	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename))
+	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename), WithVersion(version))
 	if err != nil {
 		return nil, err
 	}

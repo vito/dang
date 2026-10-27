@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/dagger/otel-go/oteltestctx"
 	"github.com/dagger/testctx"
@@ -1855,6 +1856,141 @@ func (FormatSuite) TestCommentsInBlockArgs(ctx context.Context, t *testctx.T) {
 			result2, err := FormatFile([]byte(result))
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
+func (FormatSuite) TestCommentsInCase(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "comment before the closing brace stays inside",
+			input: `let x = case (n) {
+  1 => "one"
+  2 => "two" # two
+  # end of clauses
+}
+let y = 1`,
+			expected: `let x = case (n) {
+  1 => "one"
+  2 => "two" # two
+  # end of clauses
+}
+let y = 1
+`,
+		},
+		{
+			name: "no blank line after a multi-line clause",
+			input: `let x = case (n) {
+  0 => 1
+  1 => {
+    2
+  }
+  else => 3
+}`,
+			expected: `let x = case (n) {
+  0 => 1
+  1 => {
+    2
+  }
+  else => 3
+}
+`,
+		},
+		{
+			name: "a blank line after a multi-line clause is kept",
+			input: `let x = case (n) {
+  1 => {
+    2
+  }
+
+  else => 3
+}`,
+			expected: `let x = case (n) {
+  1 => {
+    2
+  }
+
+  else => 3
+}
+`,
+		},
+		{
+			name: "a trailing comment after a multi-line clause is kept",
+			input: `let x = case (n) {
+  1 => {
+    2
+  } # done
+  else => 3
+}`,
+			expected: `let x = case (n) {
+  1 => {
+    2
+  } # done
+  else => 3
+}
+`,
+		},
+		{
+			name:  "a one-line block arg holding a case breaks",
+			input: `let x = [1].map { x => case (x) { 1 => "a" } }`,
+			expected: `let x = [1].map { x =>
+  case (x) {
+    1 => "a"
+  }
+}
+`,
+		},
+		{
+			name:  "a one-line argless block arg holding a case breaks",
+			input: `loop { case (n) { 1 => break } }`,
+			expected: `loop {
+  case (n) {
+    1 => break
+  }
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			// Verify idempotency
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
+func (FormatSuite) TestNestedOneLineBlocksFormatQuickly(ctx context.Context, t *testctx.T) {
+	// Each one-line block arg and paren group trial-renders its body to see
+	// whether it stays on one line; trials within trials would double the
+	// time at every level, making this take minutes.
+	for name, wrap := range map[string]func(string) string{
+		"block args in parens": func(e string) string { return "a.m { x => (" + e + ") }" },
+		"block args in call args": func(e string) string {
+			return "f(a: 1, b: xs.map { x => " + e + " })"
+		},
+		"parens in call args": func(e string) string { return "f(a: 1, b: (" + e + "))" },
+	} {
+		t.Run(name, func(ctx context.Context, t *testctx.T) {
+			expr := "x"
+			for range 20 {
+				expr = wrap(expr)
+			}
+			src := "let r = " + expr + "\n"
+			start := time.Now()
+			_, err := FormatFile([]byte(src))
+			require.NoError(t, err)
+			require.Less(t, time.Since(start), 5*time.Second)
 		})
 	}
 }

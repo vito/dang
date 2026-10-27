@@ -1,3 +1,5 @@
+dang = "2.1"
+
 [imports.GitHub]
 endpoint = "https://api.github.com/graphql"
 authorization = "Bearer ${GITHUB_TOKEN}"

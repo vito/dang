@@ -36,6 +36,18 @@ type Formatter struct {
 	commentMap map[int]string
 	// Set of line numbers whose comments have already been emitted.
 	emittedComments map[int]bool
+
+	// Dang version whose syntax to emit (e.g. object selection braces).
+	// Zero means CurrentVersion.
+	version Version
+
+	// migrating is set when the source was parsed in an older version than
+	// version. Templates then re-print their ${...} interpolations instead
+	// of echoing them (see formatTemplate).
+	migrating bool
+
+	// inTrial is set on formatters that only trial-render (see renderInline).
+	inTrial bool
 }
 
 // Format formats a node and returns the formatted source code
@@ -45,9 +57,22 @@ func Format(node Node) string {
 	return f.buf.String()
 }
 
-// FormatFile parses and formats a Dang source file
+// FormatFile parses and formats a Dang source file written in CurrentVersion.
 func FormatFile(source []byte) (string, error) {
-	result, commentMap, err := ParseWithComments("format", source)
+	return FormatFileWithVersion(source, CurrentVersion)
+}
+
+// FormatFileWithVersion parses and formats a Dang source file written in the
+// given Dang version, emitting that version's syntax.
+func FormatFileWithVersion(source []byte, version Version) (string, error) {
+	return formatSource("format", source, version, version, false)
+}
+
+// formatSource parses source written in version from and formats it in
+// version to's syntax. migrating re-prints template interpolations rather
+// than echoing them; see MigrateSource.
+func formatSource(filename string, source []byte, from, to Version, migrating bool) (string, error) {
+	result, commentMap, err := ParseWithComments(filename, source, WithVersion(from))
 	if err != nil {
 		return "", err
 	}
@@ -61,6 +86,8 @@ func FormatFile(source []byte) (string, error) {
 		source:          source,
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
+		version:         to,
+		migrating:       migrating,
 	}
 	f.formatNode(result.(*FileBlock))
 
@@ -604,7 +631,9 @@ func (f *Formatter) formatDeclForms(forms []Node) {
 
 // estimateLength estimates how long a node would be if rendered on one line
 func (f *Formatter) estimateLength(node Node) int {
-	temp := &Formatter{}
+	// Measuring is a trial too, so nothing within it trial-renders again
+	// (see renderInline).
+	temp := &Formatter{inTrial: true}
 	temp.formatNodeInline(node)
 	return len(temp.buf.String())
 }
@@ -1740,15 +1769,20 @@ func (f *Formatter) formatBlockContents(b *Block) {
 
 	// Check if block can be single line (only if no comments and wasn't originally multiline)
 	if !wasMultiline(b) && f.canFormatBlockInline(b) {
-		// Trial-render all forms to check none produce multiline output
+		// Trial-render all forms, where they would go, to check none
+		// produce multiline output
 		allInline := true
-		for _, form := range b.Forms {
-			trial := &Formatter{comments: f.comments, source: f.source}
-			trial.formatNode(form)
-			if strings.Contains(trial.buf.String(), "\n") {
+		col := f.col + len(" ")
+		for i, form := range b.Forms {
+			if i > 0 {
+				col += len("; ")
+			}
+			width, ok := f.renderInline(form, col)
+			if !ok {
 				allInline = false
 				break
 			}
+			col += width
 		}
 		if allInline {
 			f.write(" ")
@@ -1789,6 +1823,59 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		}
 	})
 	f.writeIndent()
+}
+
+// renderInline trial-renders node starting at column col of the current line,
+// reporting whether it renders without breaking onto another line and, if
+// so, how wide it is.
+//
+// Within a trial it renders nothing and reports true: the trial's own output
+// shows any line break, and nesting trials would double the work at every
+// level.
+func (f *Formatter) renderInline(node Node, col int) (int, bool) {
+	if f.inTrial {
+		return 0, true
+	}
+	trial := f.trial(node, col)
+	trial.formatNode(node)
+	out := trial.buf.String()
+	if strings.Contains(out, "\n") {
+		return 0, false
+	}
+	return len(out), true
+}
+
+// trial returns a formatter for trial renders of node starting at column
+// col, which prints like f (same version, re-printing interpolations when
+// migrating) but works on copies of the pending comments, so it consumes
+// none. Only the comments up to node's last line are copied: rendering node
+// can't reach those after it.
+func (f *Formatter) trial(node Node, col int) *Formatter {
+	pending := f.comments
+	if end := nodeEndLine(node); end > 0 {
+		n := 0
+		for n < len(pending) && pending[n].Line <= end {
+			n++
+		}
+		pending = pending[:n]
+	}
+	emitted := map[int]bool{}
+	for _, c := range pending {
+		if f.emittedComments[c.Line] {
+			emitted[c.Line] = true
+		}
+	}
+	return &Formatter{
+		comments:        slices.Clone(pending),
+		source:          f.source,
+		commentMap:      f.commentMap,
+		emittedComments: emitted,
+		version:         f.version,
+		migrating:       f.migrating,
+		indent:          f.indent,
+		col:             col,
+		inTrial:         true,
+	}
 }
 
 // canFormatBlockInline checks if a block's forms can all be rendered inline
@@ -2380,6 +2467,9 @@ func (f *Formatter) formatTemplate(t *Template) {
 	// indentation from multi-line content. Preserving source also keeps
 	// any comments living inside ${...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
+		if f.migrating {
+			orig = f.migrateInterpolations(t, orig)
+		}
 		if t.Fence >= 3 {
 			f.write(f.normalizeMultilineLiteral(t, orig))
 		} else {
@@ -2437,6 +2527,73 @@ func (f *Formatter) formatTemplate(t *Template) {
 	}
 	f.writeIndent()
 	f.write(fence)
+}
+
+// migrateInterpolations returns orig, the source text of template t, with
+// each ${...} interpolation re-printed in f's version. The literal text, and
+// so the template's layout, is kept byte for byte; only the code inside the
+// interpolations changes, since that is what a version can spell
+// differently.
+func (f *Formatter) migrateInterpolations(t *Template, orig string) string {
+	if t.Loc == nil {
+		return orig
+	}
+	start := f.lineColumnToOffset(t.Loc.Line, t.Loc.Column)
+	if start < 0 {
+		return orig
+	}
+	var b strings.Builder
+	last := 0
+	for _, p := range t.Parts {
+		if p.Expr == nil {
+			continue
+		}
+		startLine, startCol, endLine, endCol, ok := nodeExtent(p.Expr)
+		if !ok {
+			continue
+		}
+		from := f.lineColumnToOffset(startLine, startCol) - start
+		to := f.lineColumnToOffset(endLine, endCol) - start
+		if from < last || to < from || to > len(orig) {
+			continue
+		}
+		sub := &Formatter{
+			comments:        f.comments,
+			source:          f.source,
+			commentMap:      f.commentMap,
+			emittedComments: f.emittedComments,
+			version:         f.version,
+			migrating:       true,
+			inTrial:         f.inTrial,
+		}
+		sub.formatNodeInline(p.Expr)
+		b.WriteString(orig[last:from])
+		b.WriteString(sub.buf.String())
+		last = to
+	}
+	b.WriteString(orig[last:])
+	return b.String()
+}
+
+// nodeExtent returns the source span covered by node and everything beneath
+// it. A node's own Loc doesn't always cover its children: an object
+// selection's starts at its braces, after its receiver.
+func nodeExtent(node Node) (startLine, startCol, endLine, endCol int, ok bool) {
+	node.Walk(func(n Node) bool {
+		loc := n.GetSourceLocation()
+		if loc == nil || loc.End == nil {
+			return true
+		}
+		if !ok || loc.Line < startLine || (loc.Line == startLine && loc.Column < startCol) {
+			startLine, startCol = loc.Line, loc.Column
+		}
+		if !ok || loc.End.Line > endLine || (loc.End.Line == endLine && loc.End.Column > endCol) {
+			endLine, endCol = loc.End.Line, loc.End.Column
+		}
+		ok = true
+		return true
+	})
+	return
 }
 
 func (f *Formatter) formatTemplatePart(p TemplatePart) {
@@ -2776,6 +2933,7 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 
 	// Estimate inline length
 	length := 4 // {{}}
+	spansLines := false
 	for i, field := range o.Fields {
 		if i > 0 {
 			length += 2
@@ -2783,11 +2941,17 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 		if objectFieldShorthand(field) {
 			length += len(field.Name.Name)
 		} else {
-			length += len(field.Name.Name) + 2 + f.estimateLength(field.Value)
+			temp := f.trial(field.Value, 0)
+			temp.formatNodeInline(field.Value)
+			value := temp.buf.String()
+			// A value printing across lines (e.g. a case) spreads the
+			// object over them too, so it is multiline when formatted again.
+			spansLines = spansLines || strings.Contains(value, "\n")
+			length += len(field.Name.Name) + 2 + len(value)
 		}
 	}
 
-	if !wasMultiline && f.col+length <= maxLineLength {
+	if !wasMultiline && !spansLines && f.col+length <= maxLineLength {
 		f.formatObjectInline(o)
 	} else {
 		f.formatObjectMultiline(o)
@@ -2903,7 +3067,9 @@ func (f *Formatter) formatCase(c *Case) {
 			// Emit standalone comments before this clause
 			if clause.Loc != nil {
 				f.emitCommentsBeforeNode(clause.Loc.Line, false)
-				f.lastLine = clause.Loc.Line
+				// Never backwards: the else a pre-2.1 case gets is located
+				// at the last clause, which may span lines.
+				f.lastLine = max(f.lastLine, clause.Loc.Line)
 			}
 			f.writeIndent()
 			if clause.IsElse {
@@ -2921,7 +3087,26 @@ func (f *Formatter) formatCase(c *Case) {
 			if clause.Loc != nil {
 				f.emitTrailingComment(clause.Loc.Line)
 			}
+			end := nodeEndLine(clause.Expr)
+			// The else a pre-2.1 case gets is located at the whole case, so
+			// it ends on the case's own last line; no real clause does.
+			synthetic := c.Loc != nil && c.Loc.End != nil && end >= c.Loc.End.Line
+			// ...and on its last line, when it spans several (`} # done`).
+			// One on the case's own last line is outside the clauses.
+			if clause.Loc != nil && end > clause.Loc.Line && !synthetic {
+				f.emitTrailingComment(end)
+			}
+			// A clause can span lines (a block, a nested case), so measure
+			// the gap before the next clause from where this one ends.
+			if end > f.lastLine && !synthetic {
+				f.lastLine = end
+			}
 			f.newline()
+		}
+		// Comments after the last clause stay inside the case, rather than
+		// landing after it (and then moving again when reformatted).
+		if c.Loc != nil && c.Loc.End != nil {
+			f.emitCommentsBeforeClose(c.Loc.End.Line)
 		}
 	})
 	f.writeIndent()
@@ -3124,9 +3309,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 	// Check if the selection was originally multiline
 	multiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
 
+	openBrace, closeBrace := f.version.selectionBraces()
+
 	// Handle inline fragments
 	if len(o.InlineFragments) > 0 {
-		f.write("{{")
+		f.write(openBrace)
 		if multiline {
 			f.newline()
 			f.indented(func() {
@@ -3163,11 +3350,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 				f.formatInlineFragment(frag)
 			}
 		}
-		f.write("}}")
+		f.write(closeBrace)
 		return
 	}
 
-	f.write("{{")
+	f.write(openBrace)
 	if multiline {
 		f.newline()
 		f.indented(func() {
@@ -3211,7 +3398,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 			f.formatFieldSelection(field)
 		}
 	}
-	f.write("}}")
+	f.write(closeBrace)
 }
 
 func (f *Formatter) formatDotApply(d *DotApply) {
@@ -3235,7 +3422,8 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 		f.write("!")
 	}
 	if len(frag.Fields) > 0 {
-		f.write(" {{")
+		openBrace, closeBrace := f.version.fragmentBraces()
+		f.write(" " + openBrace)
 		for i, field := range frag.Fields {
 			if i > 0 {
 				f.write(",")
@@ -3243,7 +3431,7 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 			f.write(" ")
 			f.formatFieldSelection(field)
 		}
-		f.write(" }}")
+		f.write(" " + closeBrace)
 	}
 }
 
@@ -3270,7 +3458,23 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 	f.write("{")
 
 	block, isBlock := b.BodyNode.(*Block)
-	singleLineBody := isBlock && len(block.Forms) == 1 && !wasMultiline(block)
+	// A body written on one line stays there, unless it no longer renders on
+	// one where it goes (e.g. a case, which always spans lines): then the
+	// block breaks, as it will when formatted again.
+	singleLineBody := false
+	if isBlock && len(block.Forms) == 1 && !wasMultiline(block) {
+		col := f.col + len(" ")
+		if len(b.Args) > 0 {
+			for i, arg := range b.Args {
+				if i > 0 {
+					col += len(", ")
+				}
+				col += len(arg.Name.Name)
+			}
+			col += len(" => ")
+		}
+		_, singleLineBody = f.renderInline(block.Forms[0], col)
+	}
 
 	if len(b.Args) > 0 {
 		f.write(" ")
@@ -3345,8 +3549,13 @@ func (f *Formatter) formatNonNullAssert(n *NonNullAssert) {
 }
 
 func (f *Formatter) formatGrouped(g *Grouped) {
-	// Check if this grouped expression spans multiple lines
+	// Check if this grouped expression spans multiple lines, or will once
+	// formatted (e.g. a case, which always spans lines)
 	multiline := g.Loc != nil && g.Loc.End != nil && g.Loc.End.Line > g.Loc.Line
+	if !multiline {
+		_, inline := f.renderInline(g.Expr, f.col+len("("))
+		multiline = !inline
+	}
 
 	f.write("(")
 	if multiline {

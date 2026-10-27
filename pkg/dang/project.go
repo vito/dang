@@ -25,8 +25,22 @@ import (
 
 // ProjectConfig represents a dang.toml project configuration file.
 type ProjectConfig struct {
+	// Dang is the Dang version the project's source is written in, e.g.
+	// `dang = "2.1"`. Zero means DefaultVersion, unless an embedder's
+	// ContextWithVersion says otherwise; use VersionForConfig.
+	Dang Version `toml:"dang"`
+
 	// Imports maps import names to their source configurations.
 	Imports map[string]*ImportSource `toml:"imports"`
+}
+
+// EffectiveVersion returns the declared version, or DefaultVersion if none
+// is declared. Safe to call on a nil config.
+func (c *ProjectConfig) EffectiveVersion() Version {
+	if c == nil || c.Dang.IsZero() {
+		return DefaultVersion
+	}
+	return c.Dang
 }
 
 // ImportSource describes where an import's GraphQL schema comes from.

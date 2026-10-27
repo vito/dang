@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strings"
 
@@ -105,6 +106,8 @@ It provides type-safe, composable abstractions for container operations.`,
 
 	// Add subcommands
 	rootCmd.AddCommand(fmtCmd())
+	rootCmd.AddCommand(initCmd())
+	rootCmd.AddCommand(migrateCmd())
 
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
@@ -322,7 +325,12 @@ func formatFile(path string, write, list bool) error {
 		return err
 	}
 
-	formatted, err := dang.FormatFile(source)
+	version, err := dang.VersionForDir(context.Background(), filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+
+	formatted, err := dang.FormatFileWithVersion(source, version)
 	if err != nil {
 		return err
 	}

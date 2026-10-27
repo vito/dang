@@ -1,0 +1,11 @@
+# Dang 2.0 also separates forms with commas: in blocks, block arguments, and
+# at the top level. Dang 2.1 only takes `;` or a newline.
+
+let inBlock = { let x = 10, x + 1 }
+assert { inBlock == 11 }
+
+let doubled = [1, 2].map { x => let y = x * 2, y }
+assert { doubled == [2, 4] }
+
+let a = 1, let b = 2
+assert { a + b == 3 }

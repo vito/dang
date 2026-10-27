@@ -1,6 +1,6 @@
 # CLI and REPL
 
-The `dang` binary is a single command with one subcommand (`fmt`). Running scripts, directory modules, the REPL, and the LSP are all modes of the root command — there is **no** `run`/`check` subcommand.
+The `dang` binary is a single command with three subcommands (`fmt`, `init`, `migrate`). Running scripts, directory modules, the REPL, and the LSP are all modes of the root command — there is **no** `run`/`check` subcommand.
 
 ## Synopsis
 ```
@@ -9,6 +9,8 @@ dang <file.dang>     # run a single script
 dang <directory>     # run all .dang files in the dir as one module
 dang                 # no path -> interactive REPL (TUI)
 dang fmt [flags] [path...]
+dang init [dir]
+dang migrate [flags] [path...]
 ```
 Accepts at most one positional path argument.
 
@@ -33,6 +35,11 @@ go install github.com/vito/dang/v2/cmd/dang@latest    # or: go install ./cmd/dan
 - `-l, --list` — list files that would be formatted (or, with `-w`, that were changed)
 
 The formatter: strips trailing commas, keeps comments attached to following/preceding code.
+
+## `dang init` / `dang migrate`
+- `dang init [dir]` — create a `dang.toml` declaring the running Dang's version (`dang = "X.Y"`), or stamp an existing one that lacks the key with what it already means (`"2.1"`). Refuses a dir inside another project.
+- `dang migrate [dir...]` — move every project under the dirs to a newer Dang version: rewrites each governed `.dang` file in the new syntax and updates the `dang` key. Dry run unless `-w`. `--to X.Y` (default: running version), `--from X.Y` (version of source whose version no `dang.toml` declares: ungoverned source, or an older project's `dang.toml` without the key; creates a `dang.toml` if needed; applies to the dir's own project, not keyless projects nested below, which are reported), `--skip-unparseable`. Rewrites syntax only; stricter checks are left to fix by hand; refuses files whose meaning would change (e.g. old syntax in a `#nofmt` region).
+- `dang migrate [flags] <file.dang>` — print the file's migration (version from its project, or `--from` if undeclared) without writing; `-w` refuses files, since a version is per project.
 
 ## REPL
 Started by running `dang` with no path. Banner:

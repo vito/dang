@@ -194,6 +194,10 @@ func moduleImportContext(ctx context.Context, dir string) (context.Context, erro
 	ctx = context.WithValue(ctx, importConfigsKey{}, []ImportConfig(nil))
 	ctx = WithSchemaModuleCache(ctx, &sync.Map{})
 	ctx = WithDangModuleCache(ctx, &sync.Map{})
+	// The importer's version does not apply either: the module's version
+	// depends only on its own path (see VersionForDir), except that an
+	// embedder's pin carries over within the dang.toml it applies to.
+	ctx = importContextVersion(ctx, dir)
 
 	configPath := filepath.Join(dir, "dang.toml")
 	if _, statErr := os.Stat(configPath); statErr == nil {
@@ -214,7 +218,8 @@ func moduleImportContext(ctx context.Context, dir string) (context.Context, erro
 
 	// No module-level dang.toml: install an empty project config so
 	// parseDirBlocks' ensureProjectImports treats the module as fully resolved
-	// and does not walk UP into the importer's directory tree.
+	// and does not walk UP into the importer's directory tree. (The module's
+	// version does not come from this config either.)
 	ctx = ContextWithProjectConfig(ctx, configPath, &ProjectConfig{})
 	return ctx, nil
 }
