@@ -3534,7 +3534,7 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Fi
 
 	blocks := make([]*FileBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
-		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+		parsed, err := parseFileWithSyntaxCache(ctx, filePath)
 		if err != nil {
 			return ctx, nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
