@@ -1224,8 +1224,8 @@ type schemaModuleCacheKey struct{}
 // WithSchemaModuleCache attaches a name-keyed schema-module cache to ctx. The
 // cache is consulted by ImportDecl.Infer so every ImportDecl with the same
 // name — whether at file top level, in a sibling file, or nested inside a
-// block — gets the same *Type identity. Without a shared cache, each
-// TypeScopeFromSchema call produces a distinct module and types fail to unify.
+// block — gets the same canonical *Type identities. Immutable module views
+// add aliases without modifying the canonical schema or other configurations.
 //
 // Callers that want the cache to persist across multiple inference passes
 // (the LSP, for instance, where each keystroke is a fresh pass over the same
@@ -1243,33 +1243,12 @@ func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) cont
 	if _, ok := ctx.Value(dangModuleCacheKey{}).(*sync.Map); !ok {
 		ctx = WithDangModuleCache(ctx, &sync.Map{})
 	}
-	return context.WithValue(ctx, importConfigsKey{}, configs)
+	return context.WithValue(ctx, importConfigsKey{}, snapshotImportConfigs(configs))
 }
 
 func importConfigsFromContext(ctx context.Context) []ImportConfig {
 	configs, _ := ctx.Value(importConfigsKey{}).([]ImportConfig)
 	return configs
-}
-
-// sharedImportModule looks up the cached schema module for name in ctx. The
-// cache is populated lazily by ImportDecl.Infer the first time a given import
-// name is resolved, so subsequent inferences reuse the same module.
-func sharedImportModule(ctx context.Context, name string) TypeScope {
-	cache, _ := ctx.Value(schemaModuleCacheKey{}).(*sync.Map)
-	if cache == nil {
-		return nil
-	}
-	v, ok := cache.Load(name)
-	if !ok {
-		return nil
-	}
-	return v.(TypeScope)
-}
-
-func cacheImportModule(ctx context.Context, name string, mod TypeScope) {
-	if cache, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); ok {
-		cache.Store(name, mod)
-	}
 }
 
 var _ Node = &ImportDecl{}
@@ -1290,53 +1269,34 @@ var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		// Resolve i.inferred to the shared schema module for this import name
-		// in ctx. The context-scoped cache ensures every ImportDecl referring to
-		// the same name — whether at file top level, in a sibling file, or
-		// nested inside a block — gets the same *Type identity. Without it,
-		// each TypeScopeFromSchema produces a distinct module and types fail to unify.
-		//
-		// Subsequent calls (e.g. LSP reusing cached blocks) reuse the
-		// per-node i.inferred but still install into the current env, since
-		// the env changes per file or per nested scope.
-		if i.inferred == nil {
-			if mod := sharedImportModule(ctx, i.Name.Name); mod != nil {
-				i.inferred = mod
-				if i.client == nil {
-					config, err := i.loadImportConfig(ctx)
-					if err != nil {
-						return nil, err
-					}
-					i.client = config.Client
-					i.schema = config.Schema
-					i.aliases = config.Aliases
-				}
-			} else {
-				config, err := i.loadImportConfig(ctx)
-				if err != nil {
-					return nil, err
-				}
-				if config.DangModuleDir != "" {
-					// Native Dang module: compile the module directory under its
-					// own moduleScope and install its public type scope. Keyed by
-					// resolved dir in the ctx-scoped Dang-module cache, so every
-					// importer of the same dir gets one *Type identity and its
-					// types unify — the schema cache's guarantee, by directory.
-					mod, err := loadDangModule(ctx, config.DangModuleDir)
-					if err != nil {
-						return nil, err
-					}
-					i.dangMod = mod
-					i.inferred = mod.typeScope
-				} else {
-					i.client = config.Client
-					i.schema = config.Schema
-					i.aliases = config.Aliases
-					i.inferred = TypeScopeFromSchema(i.Name.Name, config.Schema)
-					aliasImportTypes(i.inferred, config.Schema, config.Aliases)
-					cacheImportModule(ctx, i.Name.Name, i.inferred)
-				}
+		// Re-select the current configuration even for a reused AST node. Only
+		// the alias view changes; every view shares the canonical schema types.
+		config, err := i.loadImportConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if config.DangModuleDir != "" {
+			mod, err := loadDangModule(ctx, config.DangModuleDir)
+			if err != nil {
+				return nil, err
 			}
+			i.dangMod = mod
+			i.inferred = mod.typeScope
+			i.client, i.schema, i.aliases = nil, nil, nil
+		} else {
+			mod := sharedImportModule(ctx, i.Name.Name)
+			if mod == nil {
+				mod = cacheImportModule(ctx, i.Name.Name, &importSchemaModule{
+					canonical: TypeScopeFromSchema(i.Name.Name, config.Schema).(*OverlayTypeScope),
+					schema:    config.Schema,
+				})
+			}
+			view := mod.aliasView(config.Aliases)
+			i.client = config.Client
+			i.schema = config.Schema
+			i.inferred = view.scope
+			i.aliases = view.aliases
+			i.dangMod = nil
 		}
 
 		if typeScope, ok := env.(TypeScope); ok {
@@ -1383,6 +1343,12 @@ func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error)
 				return config, nil
 			}
 			if config.Schema == nil {
+				// Reused nodes already have the resolved schema. Alias changes
+				// alone must not trigger another engine introspection request.
+				if i.schema != nil {
+					config.Schema = i.schema
+					return config, nil
+				}
 				var err error
 				config.Schema, err = introspectSchema(ctx, config.Client, config.Dagger)
 				if err != nil {
