@@ -16,3 +16,26 @@ let unmatched = classify(9) rescue {
   e: Error => e.message
 }
 assert { unmatched == "no case clause matched" }
+
+# The raising `else` follows a last clause spanning several lines.
+describe(x: Int!): String! {
+  case (x) {
+    0 => "zero"
+    1 => {
+      let s = "one"
+      s
+    }
+    else => raise "no case clause matched"
+  }
+}
+
+assert { describe(1) == "one" }
+
+# A case in a one-line block breaks the block onto several lines.
+let zeroes = [0, 0].map { x =>
+  case (x) {
+    0 => "zero"
+    else => raise "no case clause matched"
+  }
+}
+assert { zeroes == ["zero", "zero"] }

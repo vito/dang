@@ -1767,9 +1767,7 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		// Trial-render all forms to check none produce multiline output
 		allInline := true
 		for _, form := range b.Forms {
-			trial := &Formatter{comments: f.comments, source: f.source}
-			trial.formatNode(form)
-			if strings.Contains(trial.buf.String(), "\n") {
+			if !f.rendersInline(form) {
 				allInline = false
 				break
 			}
@@ -1813,6 +1811,18 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		}
 	})
 	f.writeIndent()
+}
+
+// rendersInline trial-renders node and reports whether it fits on one line.
+// The trial works on copies of the pending comments, so it consumes none.
+func (f *Formatter) rendersInline(node Node) bool {
+	trial := &Formatter{
+		comments:        slices.Clone(f.comments),
+		source:          f.source,
+		emittedComments: map[int]bool{},
+	}
+	trial.formatNode(node)
+	return !strings.Contains(trial.buf.String(), "\n")
 }
 
 // canFormatBlockInline checks if a block's forms can all be rendered inline
@@ -3014,6 +3024,11 @@ func (f *Formatter) formatCase(c *Case) {
 			if clause.Loc != nil {
 				f.emitTrailingComment(clause.Loc.Line)
 			}
+			// A clause can span lines (a block, a nested case), so measure
+			// the gap before the next clause from where this one ends.
+			if end := nodeEndLine(clause.Expr); end > f.lastLine {
+				f.lastLine = end
+			}
 			f.newline()
 		}
 		// Comments after the last clause stay inside the case, rather than
@@ -3371,7 +3386,11 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 	f.write("{")
 
 	block, isBlock := b.BodyNode.(*Block)
-	singleLineBody := isBlock && len(block.Forms) == 1 && !wasMultiline(block)
+	// A body written on one line stays there, unless it no longer fits on
+	// one (e.g. a case, which always spans lines): then the block breaks,
+	// as it will when formatted again.
+	singleLineBody := isBlock && len(block.Forms) == 1 && !wasMultiline(block) &&
+		f.rendersInline(block.Forms[0])
 
 	if len(b.Args) > 0 {
 		f.write(" ")

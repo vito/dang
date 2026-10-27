@@ -1881,6 +1881,62 @@ let y = 1`,
 let y = 1
 `,
 		},
+		{
+			name: "no blank line after a multi-line clause",
+			input: `let x = case (n) {
+  0 => 1
+  1 => {
+    2
+  }
+  else => 3
+}`,
+			expected: `let x = case (n) {
+  0 => 1
+  1 => {
+    2
+  }
+  else => 3
+}
+`,
+		},
+		{
+			name: "a blank line after a multi-line clause is kept",
+			input: `let x = case (n) {
+  1 => {
+    2
+  }
+
+  else => 3
+}`,
+			expected: `let x = case (n) {
+  1 => {
+    2
+  }
+
+  else => 3
+}
+`,
+		},
+		{
+			name:  "a one-line block arg holding a case breaks",
+			input: `let x = [1].map { x => case (x) { 1 => "a" } }`,
+			expected: `let x = [1].map { x =>
+  case (x) {
+    1 => "a"
+  }
+}
+`,
+		},
+		{
+			name:  "a one-line argless block arg holding a case breaks",
+			input: `loop { case (n) { 1 => break } }`,
+			expected: `loop {
+  case (n) {
+    1 => break
+  }
+}
+`,
+		},
 	}
 
 	for _, tt := range tests {

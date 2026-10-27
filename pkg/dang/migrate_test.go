@@ -77,6 +77,32 @@ func TestMigrateSource(t *testing.T) {
 		assert.Equal(t, "let x = { let a = 1; a }\n", migrated)
 	})
 
+	// The raising else added to a 2.0 case must come out stable, wherever
+	// the case sits.
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"after a multi-line clause",
+			"let y = case (x) {\n  0 => 1\n  1 => {\n    2\n  }\n}\n",
+			"let y = case (x) {\n  0 => 1\n  1 => {\n    2\n  }\n  else => raise \"no case clause matched\"\n}\n",
+		},
+		{
+			"in a one-line block arg",
+			"let y = [1].map { x => case (x) { 1 => \"a\" } }\n",
+			"let y = [1].map { x =>\n  case (x) {\n    1 => \"a\"\n    else => raise \"no case clause matched\"\n  }\n}\n",
+		},
+		{
+			"in a one-line for loop",
+			"for { case (n) { 1 => break } }\n",
+			"loop {\n  case (n) {\n    1 => break\n    else => raise \"no case clause matched\"\n  }\n}\n",
+		},
+	} {
+		t.Run("Dang 2.0 case without else "+tc.name, func(t *testing.T) {
+			migrated, err := migrate(tc.src, Version2_0, Version2_1)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, migrated)
+		})
+	}
+
 	t.Run("source must parse as its version", func(t *testing.T) {
 		_, err := migrate("let x = user.{{name}}\n", Version1_0, Version2_0)
 		require.ErrorContains(t, err, `does not parse as Dang 1.0`)
