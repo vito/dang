@@ -196,6 +196,12 @@ func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map
 		return
 	}
 	builtins := importBuiltinValueNames()
+	// Builtin scalars are schema types too, even though their type bindings
+	// live in the lexical prelude rather than this scope's local type table.
+	schemaTypeNames := make(map[string]bool, len(schema.Types))
+	for _, typ := range schema.Types {
+		schemaTypeNames[typ.Name] = true
+	}
 	// Resolve every target before installing any aliases. An alias must name
 	// an original schema symbol, never an alias installed earlier in this pass.
 	var types []Keyed[TypeScope]
@@ -203,7 +209,7 @@ func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map
 	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
 		target := aliases[alias]
 		if typ, ok := scope.LocalNamedType(target); ok {
-			if _, exists := scope.LocalNamedType(alias); !exists {
+			if _, exists := scope.LocalNamedType(alias); !exists && !schemaTypeNames[alias] {
 				types = append(types, Keyed[TypeScope]{Key: alias, Value: typ})
 			}
 		}

@@ -65,6 +65,55 @@ func TestImportAliasesPreserveExistingNames(t *testing.T) {
 	require.Equal(t, "first", value.(GraphQLFunction).Name)
 }
 
+func TestImportAliasesPreserveBuiltinSchemaScalars(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		typ   *Type
+	}{
+		{"String", "text", StringType},
+		{"Int", "number", IntType},
+		{"Float", "ratio", FloatType},
+		{"Boolean", "truth", BooleanType},
+		{"ID", "identifier", IDType},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema, err := SchemaFromSDL(`
+type Query {
+  text: String! number: Int! ratio: Float! truth: Boolean! identifier: ID!
+  renamed: Renamed!
+}
+type Renamed { message: String! }
+`, "scalar-collision.graphql")
+			require.NoError(t, err)
+			config := ImportConfig{
+				Name: "Dagger", Schema: schema,
+				Aliases: map[string]string{tc.name: "Renamed", "Original": "Renamed"},
+			}
+			types, values := BuildScopesFromImports("test", []ImportConfig{config})
+			imported, ok := types.NamedType("Dagger")
+			require.True(t, ok)
+			scalar, ok := imported.NamedType(tc.name)
+			require.True(t, ok)
+			require.Same(t, tc.typ, scalar)
+			scheme, ok := imported.SchemeOf(tc.field)
+			require.True(t, ok)
+			require.Same(t, tc.typ, functionReturnType(t, scheme))
+			value, ok := values.LookupLocal(tc.field)
+			require.True(t, ok)
+			runtimeType, ok := moduleType(value.(GraphQLFunction).FnType.Ret(false))
+			require.True(t, ok)
+			require.Same(t, tc.typ, runtimeType)
+
+			original, ok := imported.NamedType("Original")
+			require.True(t, ok)
+			renamed, ok := imported.NamedType("Renamed")
+			require.True(t, ok)
+			require.Same(t, renamed, original)
+		})
+	}
+}
+
 func TestImportAliasesPreserveBuiltins(t *testing.T) {
 	schema, err := SchemaFromSDL(`type Query { renamed: String! }`, "builtin-alias.graphql")
 	require.NoError(t, err)
