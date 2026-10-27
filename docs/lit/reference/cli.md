@@ -13,7 +13,7 @@ dang <directory>     # run a directory as a module
 dang                 # no path -> interactive REPL
 dang fmt [flags] [path...]
 dang init [dir]
-dang migrate [flags] [dir...]
+dang migrate [flags] [path...]
 ```
 
 ## Root command
@@ -50,7 +50,8 @@ dang migrate [flags] [dir...]
 
 ## `dang migrate`
 
-- move every project under the given directories (default: `.`; directories only) to a newer Dang version: each `.dang` file a `dang.toml` governs is rewritten in the new version's syntax, and the `dang.toml`'s `dang` key is updated with it
+- move every project under the given directories (default: `.`) to a newer Dang version: each `.dang` file a `dang.toml` governs is rewritten in the new version's syntax, and the `dang.toml`'s `dang` key is updated with it
+- given a file, prints what migrating it makes of it, writing nothing; `-w` refuses a file, since migrating it alone would leave the rest of its project read in the new version without having been rewritten for it
 - only reports what it would change unless `-w` is given; files spelled the same in both versions are left untouched
 - it rewrites syntax only: code a newer version rejects for other reasons (e.g. a stricter type check) is left for you to fix
 - refuses a file whose meaning would change, e.g. old syntax inside a `#nofmt` region, which must be migrated by hand

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -19,7 +21,7 @@ func migrateCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "migrate [flags] [dir...]",
+		Use:   "migrate [flags] [path...]",
 		Short: "Migrate Dang source to a newer Dang version",
 		Long: `Migrate every project under the given directories (default: the current
 directory) to a newer Dang version: each .dang file a dang.toml governs is
@@ -27,6 +29,11 @@ rewritten in the target version's syntax and formatted, and the dang.toml's
 ` + "`dang`" + ` version is updated to match.
 
 By default, migrate only reports what it would change. Use -w to write.
+
+Given a file, migrate prints what migrating it makes of it instead, writing
+nothing. A file can't be migrated with -w: its version is its project's, so
+migrating it alone would leave the rest of the project read in the new
+version without having been rewritten for it.
 
 A dang.toml without a ` + "`dang`" + ` key means ` + dang.DefaultVersion.String() + `, and source no dang.toml
 governs is in this Dang's version, unless something else decides its
@@ -57,7 +64,10 @@ did not (e.g. ` + "`loop`" + ` for a ` + "`for`" + ` loop).`,
   dang migrate -w --from 2.0 ./my-module
 
   # Migrate a module without a dang.toml that is written for Dang 1.0
-  dang migrate -w --from 1.0 ./my-module`,
+  dang migrate -w --from 1.0 ./my-module
+
+  # Print what migrating one file from Dang 2.0 makes of it
+  dang migrate --from 2.0 ./my-module/main.dang`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				args = []string{"."}
@@ -78,7 +88,30 @@ did not (e.g. ` + "`loop`" + ` for a ` + "`for`" + ` loop).`,
 				}
 				opts.UndeclaredFrom = v
 			}
-			return runMigrate(cmd, args, target, opts, write, skipUnparseable)
+			var files, dirs []string
+			for _, arg := range args {
+				info, err := os.Stat(arg)
+				if err != nil {
+					return err
+				}
+				if info.IsDir() {
+					dirs = append(dirs, arg)
+				} else {
+					files = append(files, arg)
+				}
+			}
+			for _, file := range files {
+				if write {
+					return fmt.Errorf("%s is a file: migrate -w moves whole projects, so pass its project's directory, %s (without -w, migrate prints a file's migration)", file, projectDir(file))
+				}
+				if err := previewMigration(cmd, file, target, opts); err != nil {
+					return err
+				}
+			}
+			if len(dirs) == 0 {
+				return nil
+			}
+			return runMigrate(cmd, dirs, target, opts, write, skipUnparseable)
 		},
 	}
 
@@ -165,6 +198,55 @@ func runMigrate(cmd *cobra.Command, dirs []string, to dang.Version, opts dang.Mi
 		}
 	}
 	return nil
+}
+
+// previewMigration prints what migrating file to Dang version to makes of it,
+// writing nothing. A file's version belongs to its project, so a file is only
+// previewed: migrating it alone would leave its project half-migrated, its
+// other files read in the new version without having been rewritten for it.
+func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dang.MigrateOptions) error {
+	source, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	_, config, err := dang.FindProjectConfig(filepath.Dir(file))
+	if err != nil {
+		return err
+	}
+	from := dang.VersionForConfig(context.Background(), config)
+	if (config == nil || config.Dang.IsZero()) && !opts.UndeclaredFrom.IsZero() {
+		from = opts.UndeclaredFrom
+	}
+	if !from.Before(to) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: nothing to migrate: it is Dang %s, not older than %s\n", file, from, to)
+		_, err = cmd.OutOrStdout().Write(source)
+		return err
+	}
+	migrated, err := dang.MigrateSource(file, source, from, to)
+	if err != nil {
+		return fmt.Errorf("%s: %w", file, err)
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: Dang %s -> %s (preview; migrate its project's directory, %s, to write)\n", file, from, to, projectDir(file))
+	_, err = fmt.Fprint(cmd.OutOrStdout(), migrated)
+	return err
+}
+
+// projectDir returns the directory of the project file belongs to: that of
+// the dang.toml governing it, or its own directory if none does.
+func projectDir(file string) string {
+	dir, err := filepath.Abs(filepath.Dir(file))
+	if err != nil {
+		return filepath.Dir(file)
+	}
+	if configPath, _, err := dang.FindProjectConfig(dir); err == nil && configPath != "" {
+		dir = filepath.Dir(configPath)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, dir); err == nil && isWithin(cwd, dir) {
+			return rel
+		}
+	}
+	return dir
 }
 
 // isWithin reports whether path is dir or inside it.
