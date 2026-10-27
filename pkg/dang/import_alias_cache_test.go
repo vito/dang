@@ -70,83 +70,57 @@ func TestImportAliasViewsPreserveSnapshotsAndTypeIdentity(t *testing.T) {
 	base := ContextWithImportConfigs(t.Context(), config)
 	config.Aliases = map[string]string{"selected": "first", "Named": "Thing"}
 	first := ContextWithImportConfigs(base, config)
-	decl := &ImportDecl{Name: &Symbol{Name: "Dagger"}}
-	infer := func(ctx context.Context) (TypeScope, ValueScope) {
-		t.Helper()
-		env := NewPreludeTypeScope("test")
-		_, err := decl.Infer(ctx, env, hm.NewSimpleFresher())
-		require.NoError(t, err)
-		value, err := decl.Eval(ctx, NewValueScope(env))
-		require.NoError(t, err)
-		return decl.inferred, value.(ValueScope)
-	}
-	firstView, firstValues := infer(first)
-	firstScheme, ok := firstView.LocalSchemeOf("selected")
-	require.True(t, ok)
-	require.Same(t, StringType, functionReturnType(t, firstScheme))
-	thing, ok := firstView.NamedType("Thing")
-	require.True(t, ok)
-	firstNamed, ok := firstView.NamedType("Named")
-	require.True(t, ok)
-	require.Same(t, thing, firstNamed)
-
-	// Neither a caller's map mutation nor a new context may alter this view.
-	config.Aliases["selected"] = "second"
-	config.Aliases["Named"] = "Other"
-	second := ContextWithImportConfigs(first, config)
-	secondView, secondValues := infer(second) // reuse the same ImportDecl node
-	require.NotSame(t, firstView, secondView)
-	secondScheme, ok := secondView.LocalSchemeOf("selected")
-	require.True(t, ok)
-	require.Same(t, IntType, functionReturnType(t, secondScheme))
-	secondThing, ok := secondView.NamedType("Thing")
-	require.True(t, ok)
-	require.Same(t, thing, secondThing)
-	other, ok := secondView.NamedType("Other")
-	require.True(t, ok)
-	secondNamed, ok := secondView.NamedType("Named")
-	require.True(t, ok)
-	require.Same(t, other, secondNamed)
-	firstFunction, ok := firstValues.LookupLocal("selected")
-	require.True(t, ok)
-	require.Equal(t, "first", firstFunction.(GraphQLFunction).Name)
-	secondFunction, ok := secondValues.LookupLocal("selected")
-	require.True(t, ok)
-	require.Equal(t, "second", secondFunction.(GraphQLFunction).Name)
-
-	removedView, removedValues := infer(base)
-	_, ok = removedView.LocalNamedType("Named")
-	require.False(t, ok)
-	_, ok = removedView.LocalSchemeOf("selected")
-	require.False(t, ok)
-	_, ok = removedValues.LookupLocal("selected")
-	require.False(t, ok)
-	canonicalThing, ok := removedView.NamedType("Thing")
-	require.True(t, ok)
-	require.Same(t, thing, canonicalThing)
-
-	reusedView, _ := infer(first)
-	require.Same(t, firstView, reusedView)
-	// The key depends on the bindings, not map insertion order or identity.
+	config.Aliases["selected"], config.Aliases["Named"] = "second", "Other"
+	second := ContextWithImportConfigs(base, config)
 	config.Aliases = map[string]string{"Named": "Thing", "selected": "first"}
 	equivalent := ContextWithImportConfigs(base, config)
-	equivalentView, _ := infer(equivalent)
-	require.Same(t, firstView, equivalentView)
-}
-
-func TestImportAliasEvaluationUsesInferredSnapshot(t *testing.T) {
-	schema, err := SchemaFromSDL(aliasCacheSchema, "alias-snapshot.graphql")
-	require.NoError(t, err)
-	config := ImportConfig{Name: "Dagger", Schema: schema, Aliases: map[string]string{"selected": "first"}}
-	ctx := ContextWithImportConfigs(t.Context(), config)
 	decl := &ImportDecl{Name: &Symbol{Name: "Dagger"}}
-	env := NewPreludeTypeScope("test")
-	_, err = decl.Infer(ctx, env, hm.NewSimpleFresher())
-	require.NoError(t, err)
-	config.Aliases["selected"] = "second"
-	value, err := decl.Eval(ctx, NewValueScope(env))
-	require.NoError(t, err)
-	function, ok := value.(ValueScope).LookupLocal("selected")
+	var firstView TypeScope
+	var thing TypeScope
+	for _, tc := range []struct {
+		ctx           context.Context
+		target, named string
+		ret           *Type
+	}{
+		{first, "first", "Thing", StringType},
+		{second, "second", "Other", IntType},
+		{base, "", "", nil},
+		{first, "first", "Thing", StringType},
+		{equivalent, "first", "Thing", StringType},
+	} {
+		env := NewPreludeTypeScope("test")
+		_, err := decl.Infer(tc.ctx, env, hm.NewSimpleFresher())
+		require.NoError(t, err)
+		// Mutations after inference must not affect evaluation either.
+		config.Aliases["selected"] = "second"
+		value, err := decl.Eval(tc.ctx, NewValueScope(env))
+		require.NoError(t, err)
+		view := decl.inferred
+		canonicalThing, ok := view.NamedType("Thing")
+		require.True(t, ok)
+		if thing == nil {
+			thing, firstView = canonicalThing, view
+		}
+		require.Same(t, thing, canonicalThing)
+		scheme, hasScheme := view.LocalSchemeOf("selected")
+		function, hasValue := value.(ValueScope).LookupLocal("selected")
+		named, hasNamed := view.LocalNamedType("Named")
+		if tc.target == "" {
+			require.False(t, hasScheme || hasValue || hasNamed)
+			continue
+		}
+		require.True(t, hasScheme && hasValue && hasNamed)
+		require.Same(t, tc.ret, functionReturnType(t, scheme))
+		require.Equal(t, tc.target, function.(GraphQLFunction).Name)
+		targetType, ok := view.NamedType(tc.named)
+		require.True(t, ok)
+		require.Same(t, targetType, named)
+		if tc.target == "first" {
+			require.Same(t, firstView, view)
+		}
+	}
+	// Remapping in another context never mutates an already published view.
+	scheme, ok := firstView.LocalSchemeOf("selected")
 	require.True(t, ok)
-	require.Equal(t, "first", function.(GraphQLFunction).Name)
+	require.Same(t, StringType, functionReturnType(t, scheme))
 }

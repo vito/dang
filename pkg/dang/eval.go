@@ -520,19 +520,18 @@ func ValueScopeFromSchema(typeScope TypeScope, client graphql.Client, schema *in
 // environments, with the first import taking precedence on name collisions.
 func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, ValueScope) {
 	typeScope := NewPreludeTypeScope(name)
-
-	for _, config := range configs {
+	valueAliases := make([]map[string]string, len(configs))
+	for i, config := range configs {
 		if config.Schema == nil {
 			continue
 		}
 		schemaModule := TypeScopeFromSchema(config.Name, config.Schema)
-		aliasImportTypes(schemaModule, config.Schema, config.Aliases)
+		valueAliases[i] = aliasImportTypes(schemaModule, config.Schema, config.Aliases)
 		installImportedTypeScope(typeScope, config.Name, schemaModule)
 	}
 
 	valueScope := NewValueScope(typeScope)
-
-	for _, config := range configs {
+	for i, config := range configs {
 		if config.Schema == nil {
 			continue
 		}
@@ -541,7 +540,7 @@ func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, Val
 			continue
 		}
 		importValueScope := ValueScopeFromSchema(schemaModule, config.Client, config.Schema)
-		aliasImportValues(importValueScope, config.Schema, config.Aliases)
+		aliasImportValues(importValueScope, valueAliases[i])
 		installImportedValueScope(valueScope, config.Name, importValueScope)
 	}
 

@@ -1180,10 +1180,10 @@ type ImportDecl struct {
 	Name *Symbol // The import name (e.g., "Dagger", "Test")
 	Loc  *SourceLocation
 
-	client   graphql.Client
-	schema   *introspection.Schema
-	inferred TypeScope
-	aliases  map[string]string
+	client       graphql.Client
+	schema       *introspection.Schema
+	inferred     TypeScope
+	valueAliases map[string]string
 
 	// dangMod is set for native Dang module imports (config.DangModuleDir).
 	// It carries the compiled module reused at Eval, mirroring how client/schema
@@ -1269,34 +1269,24 @@ var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		// Re-select the current configuration even for a reused AST node. Only
-		// the alias view changes; every view shares the canonical schema types.
-		config, err := i.loadImportConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if config.DangModuleDir != "" {
-			mod, err := loadDangModule(ctx, config.DangModuleDir, i.dangMod)
+		// Native modules retain their existing once-only compilation behavior.
+		// Schema imports refresh their alias view when a cached AST is re-inferred.
+		if i.dangMod == nil {
+			config, err := i.loadImportConfig(ctx)
 			if err != nil {
 				return nil, err
 			}
-			i.dangMod = mod
-			i.inferred = mod.typeScope
-			i.client, i.schema, i.aliases = nil, nil, nil
-		} else {
-			mod := sharedImportModule(ctx, i.Name.Name)
-			if mod == nil {
-				mod = cacheImportModule(ctx, i.Name.Name, &importSchemaModule{
-					canonical: TypeScopeFromSchema(i.Name.Name, config.Schema).(*OverlayTypeScope),
-					schema:    config.Schema,
-				})
+			if config.DangModuleDir != "" {
+				mod, err := loadDangModule(ctx, config.DangModuleDir)
+				if err != nil {
+					return nil, err
+				}
+				i.dangMod, i.inferred = mod, mod.typeScope
+			} else {
+				view := cachedImportModule(ctx, i.Name.Name, config.Schema).aliasView(config.Aliases)
+				i.client, i.schema = config.Client, config.Schema
+				i.inferred, i.valueAliases = view.scope, view.valueAliases
 			}
-			view := mod.aliasView(config.Aliases)
-			i.client = config.Client
-			i.schema = config.Schema
-			i.inferred = view.scope
-			i.aliases = view.aliases
-			i.dangMod = nil
 		}
 
 		if typeScope, ok := env.(TypeScope); ok {
@@ -1325,7 +1315,7 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 	// Create evaluation environment for the imported schema
 	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
-	aliasImportValues(importValueScope, i.schema, i.aliases)
+	aliasImportValues(importValueScope, i.valueAliases)
 
 	installImportedValueScope(scope, i.Name.Name, importValueScope)
 

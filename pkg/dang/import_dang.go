@@ -79,10 +79,8 @@ func pushCompileStack(ctx context.Context, dir string) context.Context {
 // importing module's cache, so its files' repeated imports of that directory
 // unify. Import cycles are reported via the ctx compile-stack rather than a
 // cache marker, because each module compiles its deps with a fresh cache and a
-// marker would not survive the boundary. An unchanged cached AST can supply
-// its previous frozen module to seed a new analysis's cache. An existing cache
-// entry takes precedence so fresh and cached imports keep the same identity.
-func loadDangModule(ctx context.Context, dir string, previous *dangModule) (*dangModule, error) {
+// marker would not survive the boundary.
+func loadDangModule(ctx context.Context, dir string) (*dangModule, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -104,19 +102,17 @@ func loadDangModule(ctx context.Context, dir string, previous *dangModule) (*dan
 		}
 	}
 
-	mod := previous
-	if mod == nil || mod.dir != dir {
-		mod = &dangModule{dir: dir}
-		if err := mod.compile(pushCompileStack(ctx, dir)); err != nil {
-			return nil, err
-		}
+	mod := &dangModule{dir: dir}
+	if err := mod.compile(pushCompileStack(ctx, dir)); err != nil {
+		return nil, err
 	}
 
-	// Publish only a successfully compiled module. Honor the winner if another
-	// importer populated this cache while a fresh module was being compiled.
+	// Store only after a successful compile: a failed load leaves no marker, so a
+	// later pass (e.g. the LSP re-inferring after an edit) retries from scratch.
+	// Imports infer sequentially per directory, so no LoadOrStore race here — the
+	// same discipline the schema-module cache relies on.
 	if cache != nil {
-		actual, _ := cache.LoadOrStore(dir, mod)
-		mod = actual.(*dangModule)
+		cache.Store(dir, mod)
 	}
 	return mod, nil
 }

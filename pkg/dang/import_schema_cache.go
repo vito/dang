@@ -2,10 +2,8 @@ package dang
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/vito/dang/v2/pkg/introspection"
@@ -16,12 +14,14 @@ import (
 type importSchemaModule struct {
 	canonical *OverlayTypeScope
 	schema    *introspection.Schema
-	views     sync.Map // alias-map key -> *importAliasView
+	mu        sync.Mutex
+	views     []*importAliasView
 }
 
 type importAliasView struct {
-	scope   TypeScope
-	aliases map[string]string // immutable snapshot, also used by evaluation
+	scope        TypeScope
+	aliases      map[string]string // configuration snapshot
+	valueAliases map[string]string // validated aliases for evaluation
 }
 
 func snapshotImportConfigs(configs []ImportConfig) []ImportConfig {
@@ -32,21 +32,15 @@ func snapshotImportConfigs(configs []ImportConfig) []ImportConfig {
 	return configs
 }
 
-func sharedImportModule(ctx context.Context, name string) *importSchemaModule {
+func cachedImportModule(ctx context.Context, name string, schema *introspection.Schema) *importSchemaModule {
 	cache, _ := ctx.Value(schemaModuleCacheKey{}).(*sync.Map)
-	if cache == nil {
-		return nil
+	if cache != nil {
+		if mod, ok := cache.Load(name); ok {
+			return mod.(*importSchemaModule)
+		}
 	}
-	v, ok := cache.Load(name)
-	if !ok {
-		return nil
-	}
-	return v.(*importSchemaModule)
-}
-
-func cacheImportModule(ctx context.Context, name string, mod *importSchemaModule) *importSchemaModule {
-	if cache, _ := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); cache != nil {
-		// Concurrent importers must publish views over the same canonical types.
+	mod := &importSchemaModule{canonical: TypeScopeFromSchema(name, schema).(*OverlayTypeScope), schema: schema}
+	if cache != nil {
 		actual, _ := cache.LoadOrStore(name, mod)
 		return actual.(*importSchemaModule)
 	}
@@ -54,16 +48,14 @@ func cacheImportModule(ctx context.Context, name string, mod *importSchemaModule
 }
 
 func (m *importSchemaModule) aliasView(aliases map[string]string) *importAliasView {
-	aliases = maps.Clone(aliases)
-	var key strings.Builder
-	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
-		target := aliases[alias]
-		// Length prefixes avoid collisions even for arbitrary configuration strings.
-		fmt.Fprintf(&key, "%d:%s%d:%s", len(alias), alias, len(target), target)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, view := range m.views {
+		if maps.Equal(view.aliases, aliases) {
+			return view
+		}
 	}
-	if view, ok := m.views.Load(key.String()); ok {
-		return view.(*importAliasView)
-	}
+	view := &importAliasView{aliases: maps.Clone(aliases)}
 
 	var scope TypeScope = m.canonical
 	if len(aliases) > 0 {
@@ -77,9 +69,9 @@ func (m *importSchemaModule) aliasView(aliases map[string]string) *importAliasVi
 		primary.valueOrigins = maps.Clone(primary.valueOrigins)
 		primary.visibility = maps.Clone(primary.visibility)
 		scope = &OverlayTypeScope{primary: &primary, lexical: m.canonical.lexical}
-		aliasImportTypes(scope, m.schema, aliases)
+		view.valueAliases = aliasImportTypes(scope, m.schema, aliases)
 	}
-	view := &importAliasView{scope: scope, aliases: aliases}
-	actual, _ := m.views.LoadOrStore(key.String(), view)
-	return actual.(*importAliasView)
+	view.scope = scope
+	m.views = append(m.views, view)
+	return view
 }

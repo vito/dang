@@ -189,93 +189,55 @@ func addDirectiveImportProvider(env TypeScope, name, importName string) {
 	}
 }
 
-// Install aliases to the existing symbols, rather than copying or renaming their
-// definitions: GraphQL functions must still query the original field and type.
-func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map[string]string) {
+// Alias original schema bindings without changing their identity or wire names.
+// Return the accepted value aliases so evaluation uses the same decisions.
+func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map[string]string) map[string]string {
 	if len(aliases) == 0 {
-		return
+		return nil
+	}
+	// Snapshot the original bindings: aliases cannot target other aliases, and
+	// collisions must not depend on map iteration order. Include builtin scalars.
+	types := make(map[string]TypeScope, len(schema.Types))
+	values := make(map[string]*hm.Scheme)
+	if query, ok := scope.LocalNamedType(schema.QueryType.Name); ok {
+		for name, scheme := range query.Bindings(PublicVisibility) {
+			values[name] = scheme
+		}
+	}
+	for _, typ := range schema.Types {
+		types[typ.Name], _ = scope.NamedType(typ.Name)
+		if scheme, ok := scope.LocalSchemeOf(typ.Name); ok {
+			values[typ.Name] = scheme
+		}
 	}
 	builtins := importBuiltinValueNames()
-	// Builtin scalars are schema types too, even though their type bindings
-	// live in the lexical prelude rather than this scope's local type table.
-	schemaTypeNames := make(map[string]bool, len(schema.Types))
-	for _, typ := range schema.Types {
-		schemaTypeNames[typ.Name] = true
-	}
-	// Resolve every target before installing any aliases. An alias must name
-	// an original schema symbol, never an alias installed earlier in this pass.
-	var types []Keyed[TypeScope]
-	var values []Keyed[*hm.Scheme]
+	accepted := make(map[string]string)
 	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
 		target := aliases[alias]
-		if schemaTypeNames[target] {
-			if typ, ok := scope.NamedType(target); ok {
-				if _, exists := scope.LocalNamedType(alias); !exists && !schemaTypeNames[alias] {
-					types = append(types, Keyed[TypeScope]{Key: alias, Value: typ})
-				}
+		if typ := types[target]; typ != nil {
+			if _, exists := types[alias]; !exists {
+				scope.AddObject(alias, typ)
 			}
 		}
-		scheme, ok := scope.LocalSchemeOf(target)
-		if !ok {
-			if query, found := scope.LocalNamedType(schema.QueryType.Name); found {
-				scheme, ok = query.LocalSchemeOf(target)
-			}
-		}
-		if ok {
-			_, exists := scope.LocalSchemeOf(alias)
-			if query, found := scope.LocalNamedType(schema.QueryType.Name); found {
-				_, rootExists := query.LocalSchemeOf(alias)
-				exists = exists || rootExists
-			}
-			exists = exists || builtins[alias]
-			if !exists {
-				values = append(values, Keyed[*hm.Scheme]{Key: alias, Value: scheme})
-			}
+		if scheme := values[target]; scheme != nil && values[alias] == nil && !builtins[alias] {
+			scope.Add(alias, scheme)
+			scope.SetVisibility(alias, PublicVisibility)
+			accepted[alias] = target
 		}
 	}
-	for _, alias := range types {
-		scope.AddObject(alias.Key, alias.Value)
-	}
-	for _, alias := range values {
-		scope.Add(alias.Key, alias.Value)
-		scope.SetVisibility(alias.Key, PublicVisibility)
+	return accepted
+}
+
+func aliasImportValues(scope ValueScope, aliases map[string]string) {
+	// These aliases were validated against the original schema during inference.
+	for alias, target := range aliases {
+		if value, ok := scope.LookupLocal(target); ok {
+			scope.Bind(alias, value, PublicVisibility)
+		}
 	}
 }
 
-func aliasImportValues(scope ValueScope, schema *introspection.Schema, aliases map[string]string) {
-	if len(aliases) == 0 {
-		return
-	}
-	builtins := importBuiltinValueNames()
-	// Runtime scopes also contain builtins, which aren't schema targets.
-	targets := make(map[string]bool)
-	for _, typ := range schema.Types {
-		targets[typ.Name] = true
-		if typ.Name == schema.QueryType.Name {
-			for _, field := range typ.Fields {
-				targets[field.Name] = true
-			}
-		}
-	}
-	var values []Keyed[Value]
-	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
-		target := aliases[alias]
-		if !targets[target] || builtins[alias] {
-			continue
-		}
-		if val, ok := scope.LookupLocal(target); ok {
-			if _, exists := scope.LookupLocal(alias); !exists {
-				values = append(values, Keyed[Value]{Key: alias, Value: val})
-			}
-		}
-	}
-	for _, alias := range values {
-		scope.Bind(alias.Key, alias.Value, PublicVisibility)
-	}
-}
-
-// Both alias installers preserve the values installed by addBuiltinFunctions
-// and the public source prelude. Private source helpers aren't imported values
+// Preserve the values installed by addBuiltinFunctions and the public prelude. Private source helpers aren't imported values
 // and must not prevent an alias from being installed.
 func importBuiltinValueNames() map[string]bool {
 	names := map[string]bool{"Regexp": true}

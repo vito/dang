@@ -65,93 +65,51 @@ func TestImportAliasesPreserveExistingNames(t *testing.T) {
 	require.Equal(t, "first", value.(GraphQLFunction).Name)
 }
 
-func TestImportAliasesPreserveBuiltinSchemaScalars(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		field string
-		typ   *Type
-	}{
-		{"String", "text", StringType},
-		{"Int", "number", IntType},
-		{"Float", "ratio", FloatType},
-		{"Boolean", "truth", BooleanType},
-		{"ID", "identifier", IDType},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			schema, err := SchemaFromSDL(`
-type Query {
-  text: String! number: Int! ratio: Float! truth: Boolean! identifier: ID!
-  renamed: Renamed!
-}
-type Renamed { message: String! }
-`, "scalar-collision.graphql")
-			require.NoError(t, err)
-			config := ImportConfig{
-				Name: "Dagger", Schema: schema,
-				Aliases: map[string]string{tc.name: "Renamed", "Original": "Renamed"},
-			}
-			types, values := BuildScopesFromImports("test", []ImportConfig{config})
-			imported, ok := types.NamedType("Dagger")
-			require.True(t, ok)
-			scalar, ok := imported.NamedType(tc.name)
-			require.True(t, ok)
-			require.Same(t, tc.typ, scalar)
-			scheme, ok := imported.SchemeOf(tc.field)
-			require.True(t, ok)
-			require.Same(t, tc.typ, functionReturnType(t, scheme))
-			value, ok := values.LookupLocal(tc.field)
-			require.True(t, ok)
-			runtimeType, ok := moduleType(value.(GraphQLFunction).FnType.Ret(false))
-			require.True(t, ok)
-			require.Same(t, tc.typ, runtimeType)
-
-			original, ok := imported.NamedType("Original")
-			require.True(t, ok)
-			renamed, ok := imported.NamedType("Renamed")
-			require.True(t, ok)
-			require.Same(t, renamed, original)
-		})
-	}
-}
-
-func TestImportAliasesResolveBuiltinSchemaScalarTargets(t *testing.T) {
+func TestImportAliasesPreserveAndAliasBuiltinScalars(t *testing.T) {
 	schema, err := SchemaFromSDL(`
 type Query { text: String! number: Int! ratio: Float! truth: Boolean! identifier: ID! }
-`, "scalar-target.graphql")
+type Renamed { message: String! }
+`, "scalar-alias.graphql")
 	require.NoError(t, err)
-	config := ImportConfig{
-		Name: "Dagger", Schema: schema, AutoImport: true,
-		Aliases: map[string]string{
-			"LocalString": "String", "LocalInt": "Int", "LocalFloat": "Float",
-			"LocalBoolean": "Boolean", "LocalID": "ID",
-			"Chained": "LocalString", "Absent": "Path",
-		},
+	aliases := map[string]string{"Chained": "LocalString", "Absent": "Path"}
+	scalars := []struct {
+		name, field string
+		typ         *Type
+	}{
+		{"String", "text", StringType}, {"Int", "number", IntType},
+		{"Float", "ratio", FloatType}, {"Boolean", "truth", BooleanType},
+		{"ID", "identifier", IDType},
 	}
-	types, _ := BuildScopesFromImports("test", []ImportConfig{config})
+	for _, scalar := range scalars {
+		aliases[scalar.name] = "Renamed" // must preserve the schema's builtin type
+		aliases["Local"+scalar.name] = scalar.name
+	}
+	config := ImportConfig{Name: "Dagger", Schema: schema, AutoImport: true, Aliases: aliases}
+	types, values := BuildScopesFromImports("test", []ImportConfig{config})
 	imported, ok := types.NamedType("Dagger")
 	require.True(t, ok)
-	for _, tc := range []struct {
-		alias string
-		typ   *Type
-	}{
-		{"LocalString", StringType},
-		{"LocalInt", IntType},
-		{"LocalFloat", FloatType},
-		{"LocalBoolean", BooleanType},
-		{"LocalID", IDType},
-	} {
-		qualified, found := imported.NamedType(tc.alias)
-		require.True(t, found, tc.alias)
-		require.Same(t, tc.typ, qualified)
-		unqualified, found := types.NamedType(tc.alias)
-		require.True(t, found, tc.alias)
-		require.Same(t, tc.typ, unqualified)
+	for _, scalar := range scalars {
+		for _, lookup := range []struct {
+			scope TypeScope
+			name  string
+		}{{imported, scalar.name}, {imported, "Local" + scalar.name}, {types, "Local" + scalar.name}} {
+			typ, found := lookup.scope.NamedType(lookup.name)
+			require.True(t, found, lookup.name)
+			require.Same(t, scalar.typ, typ)
+		}
+		scheme, found := imported.SchemeOf(scalar.field)
+		require.True(t, found)
+		require.Same(t, scalar.typ, functionReturnType(t, scheme))
+		value, found := values.LookupLocal(scalar.field)
+		require.True(t, found)
+		runtimeType, found := moduleType(value.(GraphQLFunction).FnType.Ret(false))
+		require.True(t, found)
+		require.Same(t, scalar.typ, runtimeType)
 	}
 	for _, name := range []string{"Chained", "Absent"} {
 		_, found := imported.NamedType(name)
 		require.False(t, found, name)
 	}
-
 	ctx := ContextWithImportConfigs(t.Context(), config)
 	env := runDangSnippetContext(t, ctx, `let text: Dagger.LocalString! = "hello"`)
 	value, found, err := env.Lookup(ctx, "text")
@@ -185,59 +143,36 @@ func TestImportAliasesPreserveBuiltins(t *testing.T) {
 	require.Equal(t, "hello\n", stdout.String())
 }
 
-func TestImportAliasesPreserveSourcePrelude(t *testing.T) {
-	schema, err := SchemaFromSDL(`type Query { renamed(raw: String!): String! }`, "prelude-alias.graphql")
-	require.NoError(t, err)
-	client := &aliasTestClient{t: t}
-	config := ImportConfig{
-		Name: "Dagger", Schema: schema, Client: client, AutoImport: true,
-		Aliases: map[string]string{"Path": "renamed"},
+func TestImportAliasesPreservePathConstructors(t *testing.T) {
+	for _, tc := range []struct {
+		name, schema, source, want string
+		constructor                Value
+	}{
+		{"prelude", "", `let path: Path! = Dagger.Path(raw: "a//b/../c")
+let result: String! = path.name`, "c", ScalarConstructor{}},
+		{"schema", "input Path { raw: String! }", `let path: Dagger.Path! = Dagger.Path(raw: "schema")
+let result: String! = path.raw`, "schema", InputObjectConstructor{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema, err := SchemaFromSDL(`type Query { renamed(raw: String!): String! } `+tc.schema, "path-alias.graphql")
+			require.NoError(t, err)
+			client := &aliasTestClient{t: t}
+			config := ImportConfig{Name: "Dagger", Schema: schema, Client: client, AutoImport: true, Aliases: map[string]string{"Path": "renamed"}}
+			_, values := BuildScopesFromImports("test", []ImportConfig{config})
+			module, ok := values.LookupLocal("Dagger")
+			require.True(t, ok)
+			constructor, ok := module.(ValueScope).LookupLocal("Path")
+			require.True(t, ok)
+			require.IsType(t, tc.constructor, constructor)
+			ctx := ContextWithImportConfigs(t.Context(), config)
+			env := runDangSnippetContext(t, ctx, tc.source)
+			result, found, err := env.Lookup(ctx, "result")
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, StringValue{Val: tc.want}, result)
+			require.Empty(t, client.queries)
+		})
 	}
-	types, values := BuildScopesFromImports("test", []ImportConfig{config})
-	imported, ok := types.NamedType("Dagger")
-	require.True(t, ok)
-	scheme, ok := imported.SchemeOf("Path")
-	require.True(t, ok)
-	preludeScheme, ok := PreludeModule().SchemeOf("Path")
-	require.True(t, ok)
-	require.Same(t, preludeScheme, scheme)
-	module, ok := values.LookupLocal("Dagger")
-	require.True(t, ok)
-	constructor, ok := module.(ValueScope).LookupLocal("Path")
-	require.True(t, ok)
-	require.IsType(t, ScalarConstructor{}, constructor)
-
-	ctx := ContextWithImportConfigs(t.Context(), config)
-	env := runDangSnippetContext(t, ctx, `let path: Path! = Dagger.Path(raw: "a//b/../c")
-let name: String! = path.name`)
-	name, found, err := env.Lookup(ctx, "name")
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, StringValue{Val: "c"}, name)
-	require.Empty(t, client.queries)
-}
-
-func TestImportAliasesPreserveSchemaValuesOverSourcePrelude(t *testing.T) {
-	schema, err := SchemaFromSDL(`type Query { renamed: String! } input Path { raw: String! }`, "schema-path.graphql")
-	require.NoError(t, err)
-	config := ImportConfig{
-		Name: "Dagger", Schema: schema, AutoImport: true,
-		Aliases: map[string]string{"Path": "renamed"},
-	}
-	_, values := BuildScopesFromImports("test", []ImportConfig{config})
-	module, ok := values.LookupLocal("Dagger")
-	require.True(t, ok)
-	constructor, ok := module.(ValueScope).LookupLocal("Path")
-	require.True(t, ok)
-	require.IsType(t, InputObjectConstructor{}, constructor)
-
-	ctx := ContextWithImportConfigs(t.Context(), config)
-	env := runDangSnippetContext(t, ctx, `let path: Dagger.Path! = Dagger.Path(raw: "schema")
-let raw: String! = path.raw`)
-	raw, found, err := env.Lookup(ctx, "raw")
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, StringValue{Val: "schema"}, raw)
 }
 
 func TestImportAliasesOnlyResolveSchemaTargets(t *testing.T) {
@@ -480,37 +415,29 @@ type Outer {
 
 func TestNestedQualifiedInlineFragments(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		source string
+		name, source string
 	}{
 		{"lazy", `let name = Outer.inner.pet.{{... on Outer.Inner.Cat!}}.name`},
 		{"eager", `let selected = Outer.inner.pet.{{... on Outer.Inner.Cat {{name}}}}
-let name = case (selected) {
-  cat: Cat => cat.name
-  else => null
-}`},
+let name = case (selected) { cat: Cat => cat.name
+  else => null }`},
+		{"wrong module", `type Another { type Inner { type Cat { name: String! } } }
+let bad = Outer.inner.pet.{{... on Another.Inner.Cat!}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			env := runDangSnippet(t, nestedQualifiedFragmentTypes+tc.source)
+			source := nestedQualifiedFragmentTypes + tc.source
+			if tc.name == "wrong module" {
+				parsed, err := ParseWithRecovery("nested-fragment.dang", []byte(source))
+				require.NoError(t, err)
+				_, err = Infer(t.Context(), NewPreludeTypeScope(""), parsed.(*FileBlock), true)
+				require.ErrorContains(t, err, "not a member of union")
+				return
+			}
+			env := runDangSnippet(t, source)
 			name, found, err := env.Lookup(t.Context(), "name")
 			require.NoError(t, err)
 			require.True(t, found)
 			require.Equal(t, StringValue{Val: "nested"}, name)
 		})
 	}
-}
-
-func TestNestedQualifiedInlineFragmentsCheckMembership(t *testing.T) {
-	source := nestedQualifiedFragmentTypes + `
-type Another {
-  type Inner {
-    type Cat { name: String! }
-  }
-}
-let bad = Outer.inner.pet.{{... on Another.Inner.Cat!}}
-`
-	parsed, err := ParseWithRecovery("nested-fragment.dang", []byte(source))
-	require.NoError(t, err)
-	_, err = Infer(t.Context(), NewPreludeTypeScope(""), parsed.(*FileBlock), true)
-	require.ErrorContains(t, err, "not a member of union")
 }
