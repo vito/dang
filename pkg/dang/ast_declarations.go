@@ -1364,7 +1364,7 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 	// Create evaluation environment for the imported schema
 	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
-	aliasImportValues(importValueScope, i.aliases)
+	aliasImportValues(importValueScope, i.schema, i.aliases)
 
 	installImportedValueScope(scope, i.Name.Name, importValueScope)
 

@@ -1,6 +1,9 @@
 package dang
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/introspection"
 )
@@ -189,10 +192,15 @@ func addDirectiveImportProvider(env TypeScope, name, importName string) {
 // Install aliases to the existing symbols, rather than copying or renaming their
 // definitions: GraphQL functions must still query the original field and type.
 func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map[string]string) {
-	for alias, target := range aliases {
+	// Resolve every target before installing any aliases. An alias must name
+	// an original schema symbol, never an alias installed earlier in this pass.
+	var types []Keyed[TypeScope]
+	var values []Keyed[*hm.Scheme]
+	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
+		target := aliases[alias]
 		if typ, ok := scope.LocalNamedType(target); ok {
 			if _, exists := scope.LocalNamedType(alias); !exists {
-				scope.AddObject(alias, typ)
+				types = append(types, Keyed[TypeScope]{Key: alias, Value: typ})
 			}
 		}
 		scheme, ok := scope.LocalSchemeOf(target)
@@ -206,19 +214,46 @@ func aliasImportTypes(scope TypeScope, schema *introspection.Schema, aliases map
 			// lexical fallback here so both phases preserve those bindings.
 			_, exists := scope.SchemeOf(alias)
 			if !exists {
-				scope.Add(alias, scheme)
-				scope.SetVisibility(alias, PublicVisibility)
+				values = append(values, Keyed[*hm.Scheme]{Key: alias, Value: scheme})
 			}
 		}
 	}
+	for _, alias := range types {
+		scope.AddObject(alias.Key, alias.Value)
+	}
+	for _, alias := range values {
+		scope.Add(alias.Key, alias.Value)
+		scope.SetVisibility(alias.Key, PublicVisibility)
+	}
 }
 
-func aliasImportValues(scope ValueScope, aliases map[string]string) {
-	for alias, target := range aliases {
-		if val, ok := scope.LookupLocal(target); ok {
-			if _, exists := scope.LookupLocal(alias); !exists {
-				scope.Bind(alias, val, PublicVisibility)
+func aliasImportValues(scope ValueScope, schema *introspection.Schema, aliases map[string]string) {
+	if len(aliases) == 0 {
+		return
+	}
+	// Runtime scopes also contain builtins, which aren't schema targets.
+	targets := make(map[string]bool)
+	for _, typ := range schema.Types {
+		targets[typ.Name] = true
+		if typ.Name == schema.QueryType.Name {
+			for _, field := range typ.Fields {
+				targets[field.Name] = true
 			}
 		}
+	}
+	var values []Keyed[Value]
+	for _, alias := range slices.Sorted(maps.Keys(aliases)) {
+		target := aliases[alias]
+		if !targets[target] {
+			continue
+		}
+		if val, ok := scope.LookupLocal(target); ok {
+			if _, exists := scope.LookupLocal(alias); !exists {
+				values = append(values, Keyed[Value]{Key: alias, Value: val})
+			}
+		}
+	}
+	for _, alias := range values {
+		scope.Bind(alias.Key, alias.Value, PublicVisibility)
 	}
 }

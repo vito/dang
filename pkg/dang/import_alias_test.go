@@ -89,3 +89,38 @@ func TestImportAliasesPreserveBuiltins(t *testing.T) {
 	runDangSnippetContext(t, ctx, `Dagger.print(value: "hello")`)
 	require.Equal(t, "hello\n", stdout.String())
 }
+
+func TestImportAliasesOnlyResolveSchemaTargets(t *testing.T) {
+	schema, err := SchemaFromSDL(`type Query { renamed: Renamed! } enum Renamed { HELLO }`, "alias-chain.graphql")
+	require.NoError(t, err)
+	config := ImportConfig{
+		Name: "Dagger", Schema: schema,
+		Aliases: map[string]string{
+			"first": "second", "second": "renamed",
+			"First": "Second", "Second": "Renamed",
+			"missing": "absent", "builtin": "print",
+		},
+	}
+	types, values := BuildScopesFromImports("test", []ImportConfig{config})
+	imported, ok := types.NamedType("Dagger")
+	require.True(t, ok)
+	for _, name := range []string{"first", "First", "missing", "builtin"} {
+		_, found := imported.NamedType(name)
+		require.False(t, found, name)
+		_, found = imported.SchemeOf(name)
+		require.False(t, found, name)
+		_, found = values.LookupLocal(name)
+		require.False(t, found, name)
+	}
+	second, ok := imported.NamedType("Second")
+	require.True(t, ok)
+	renamed, ok := imported.NamedType("Renamed")
+	require.True(t, ok)
+	require.Same(t, renamed, second)
+	value, ok := values.LookupLocal("second")
+	require.True(t, ok)
+	require.Equal(t, "renamed", value.(GraphQLFunction).Name)
+	value, ok = values.LookupLocal("Second")
+	require.True(t, ok)
+	require.Same(t, renamed, value.(*Object).Mod)
+}
