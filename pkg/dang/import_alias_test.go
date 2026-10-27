@@ -265,6 +265,45 @@ let message = case (result) { value: Original => value.message
 	}
 }
 
+func TestInterfacePatternsPreferNativeImplementations(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		typeName string
+		operand  string
+	}{
+		{"schema name", "Renamed", "value"},
+		{"schema name in mixed union", "Renamed", "if (true) { value } else { 42 }"},
+		{"alias", "Original", "value"},
+		{"alias in mixed union", "Original", "if (true) { value } else { 42 }"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema, err := SchemaFromSDL(aliasNarrowingSchema, "native-pattern.graphql")
+			require.NoError(t, err)
+			config := ImportConfig{Name: "Dagger", Schema: schema, AutoImport: true}
+			if tc.typeName == "Original" {
+				config.Aliases = map[string]string{"Original": "Renamed"}
+			}
+			ctx := ContextWithImportConfigs(t.Context(), config)
+			source := `type ` + tc.typeName + ` implements Node {
+  message: String! { "local" }
+}
+describe(value: Node!): String! {
+  case (` + tc.operand + `) {
+    native: ` + tc.typeName + ` => native.message
+    else => "wrong type"
+  }
+}
+let message = describe(` + tc.typeName + `)
+`
+			env := runDangSnippetContext(t, ctx, source)
+			value, found, err := env.Lookup(ctx, "message")
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, StringValue{Val: "local"}, value)
+		})
+	}
+}
+
 func TestImportAliasesPreserveNarrowingRestrictions(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

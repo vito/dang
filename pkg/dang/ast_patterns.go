@@ -275,29 +275,29 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 }
 
 func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string) (*Type, error) {
+	memberType, found := env.NamedType(patternName)
+	memberMod, isModule := memberType.(*Type)
+	if isModule {
+		// A local implementation may shadow a schema type with the same
+		// name. Keep its identity when it is a valid pattern for the operand.
+		if memberMod == iface {
+			return memberMod, nil
+		}
+		for _, super := range memberMod.Supertypes() {
+			if super == iface {
+				return memberMod, nil
+			}
+		}
+	}
+
 	if member, err := resolveInlineFragmentMemberType(iface, env, "", patternName); err == nil {
 		return member, nil
 	}
-	memberType, found := env.NamedType(patternName)
 	if !found {
 		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
 	}
-	memberMod, ok := memberType.(*Type)
-	if !ok {
+	if !isModule {
 		return nil, fmt.Errorf("type pattern %s is not an object type", patternName)
-	}
-
-	// Allow the interface itself as a type pattern (matches any implementer,
-	// like a typed catch-all).
-	if memberMod == iface {
-		return memberMod, nil
-	}
-
-	// Otherwise the type must implement the interface.
-	for _, super := range memberMod.Supertypes() {
-		if super == iface {
-			return memberMod, nil
-		}
 	}
 	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
