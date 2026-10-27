@@ -124,3 +124,114 @@ func TestImportAliasesOnlyResolveSchemaTargets(t *testing.T) {
 	require.True(t, ok)
 	require.Same(t, renamed, value.(*Object).Mod)
 }
+
+const aliasNarrowingSchema = `
+type Query { renamed: Result! node: Node! box: Box! }
+interface Node { message: String! }
+type Renamed implements Node { message: String! hidden: String! }
+type Other implements Node { message: String! }
+union Result = Renamed | Other
+type Box { result: Result! }
+`
+
+type aliasNarrowingClient struct {
+	t       *testing.T
+	queries []string
+}
+
+func (c *aliasNarrowingClient) MakeRequest(_ context.Context, req *graphql.Request, resp *graphql.Response) error {
+	c.queries = append(c.queries, req.Query)
+	require.NotContains(c.t, req.Query, "Original")
+	require.NotContains(c.t, req.Query, "original")
+	return json.Unmarshal([]byte(`{
+		"renamed": {"__typename": "Renamed", "message": "hello"},
+		"node": {"__typename": "Renamed", "message": "hello"},
+		"box": {"result": {"__typename": "Renamed", "message": "hello"}}
+	}`), resp.Data)
+}
+
+func TestImportAliasesNarrowWithCanonicalTypes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source string
+	}{
+		{"union case", `let message = case (original) {
+  value: Original => value.message
+  else => null
+}`},
+		{"interface case with shadowed alias", `type Original { local: String! }
+let message = case (node) {
+  value: Original => value.message
+  else => null
+}`},
+		{"union fragment", `let result = original.{{... on Original {{message}}}}
+let message = case (result) { value: Original => value.message
+  else => null }`},
+		{"interface fragment", `let result = node.{{... on Original {{message}}}}
+let message = case (result) { value: Original => value.message
+  else => null }`},
+		{"lazy union fragment", `let message = original.{{... on Original!}}.message`},
+		{"qualified lazy interface fragment", `let message = node.{{... on Dagger.Original!}}.message`},
+		{"nested fragment", `let result = box.{{result.{{... on Original {{message}}}}}}
+let message = case (result.result) { value: Original => value.message
+  else => null }`},
+		{"native projection", `let result = original.{{... on Original {{message}}}}
+let again = result.{{... on Original {{message}}}}
+let message = case (again) { value: Original => value.message
+  else => null }`},
+		{"shadowed alias", `type Original { local: String! }
+type Renamed { local: String! }
+let result = original.{{... on Original {{message}}}}
+let message = case (result) { value: Original => value.message
+  else => null }`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema, err := SchemaFromSDL(aliasNarrowingSchema, "alias-narrowing.graphql")
+			require.NoError(t, err)
+			client := &aliasNarrowingClient{t: t}
+			config := ImportConfig{
+				Name: "Dagger", Schema: schema, Client: client, AutoImport: true,
+				Aliases: map[string]string{"Original": "Renamed", "original": "renamed"},
+			}
+			ctx := ContextWithImportConfigs(t.Context(), config)
+			env := runDangSnippetContext(t, ctx, tc.source)
+			value, found, err := env.Lookup(ctx, "message")
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, StringValue{Val: "hello"}, value)
+			require.NotEmpty(t, client.queries)
+		})
+	}
+}
+
+func TestImportAliasesPreserveNarrowingRestrictions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"unselected field", `import Dagger
+let result = original.{{... on Original {{message}}}}
+let bad = case (result) { value: Original => value.hidden
+  else => null }`, "hidden"},
+		{"unselected field in another fragment", `import Dagger
+let result = original.{{... on Original {{message}}}}
+let bad = result.{{... on Original {{hidden}}}}`, "hidden"},
+		{"different import identity", `import Dagger
+import Another
+let bad = Dagger.original.{{... on Another.Original {{message}}}}`, "not a member of union"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema, err := SchemaFromSDL(aliasNarrowingSchema, "alias-narrowing.graphql")
+			require.NoError(t, err)
+			ctx := ContextWithImportConfigs(t.Context(),
+				ImportConfig{Name: "Dagger", Schema: schema, Aliases: map[string]string{"Original": "Renamed", "original": "renamed"}},
+				ImportConfig{Name: "Another", Schema: schema, Aliases: map[string]string{"Original": "Renamed"}},
+			)
+			parsed, err := ParseWithRecovery("alias-narrowing.dang", []byte(tc.source))
+			require.NoError(t, err)
+			_, err = Infer(ctx, NewPreludeTypeScope(""), parsed.(*FileBlock), true)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}

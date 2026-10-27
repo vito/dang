@@ -247,14 +247,10 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 		}
 
 		if operandMod.Kind == UnionKind {
-			for _, m := range operandMod.GetMembers() {
-				if mod, ok := m.(*Type); ok && mod.Name() == clause.TypePattern.Name {
-					memberMod = mod
-					break
-				}
-			}
-			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod), clause.TypePattern)
+			var err error
+			memberMod, err = resolveInlineFragmentMemberType(operandMod, typeScope, "", clause.TypePattern.Name)
+			if err != nil {
+				return NewInferError(err, clause.TypePattern)
 			}
 		} else if operandMod.Kind == InterfaceKind {
 			var err error
@@ -279,6 +275,9 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 }
 
 func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string) (*Type, error) {
+	if member, err := resolveInlineFragmentMemberType(iface, env, "", patternName); err == nil {
+		return member, nil
+	}
 	memberType, found := env.NamedType(patternName)
 	if !found {
 		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
@@ -318,11 +317,13 @@ func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternNa
 		if !ok {
 			continue
 		}
-		if optionMod == patternMod || optionMod.Name() == patternName {
-			return patternMod, nil
+		if canonicalModule(optionMod) == canonicalModule(patternMod) || optionMod.Name() == patternName {
+			return optionMod, nil
 		}
-		if optionMod.Kind == UnionKind && optionMod.HasMember(patternMod) {
-			return patternMod, nil
+		if optionMod.Kind == UnionKind {
+			if member, err := resolveInlineFragmentMemberType(optionMod, env, "", patternName); err == nil {
+				return member, nil
+			}
 		}
 		if optionMod.Kind == InterfaceKind {
 			if _, err := resolveInterfaceTypePattern(env, optionMod, patternName); err == nil {

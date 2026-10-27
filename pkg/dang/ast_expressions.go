@@ -1483,6 +1483,15 @@ type InlineFragment struct {
 	Inferred *Type // The concrete type module for this fragment
 }
 
+// resolvedTypeName is the canonical name used on the wire and in __typename
+// matching. TypeName retains the spelling used in source for diagnostics.
+func (f *InlineFragment) resolvedTypeName() string {
+	if f.Inferred != nil {
+		return canonicalModule(f.Inferred).Name()
+	}
+	return f.TypeName.Name
+}
+
 func (f *InlineFragment) GetSourceLocation() *SourceLocation { return f.Loc }
 
 // ObjectSelection represents multi-field selection like obj.{field1, field2}
@@ -1639,7 +1648,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 
 	// Validate each fragment
 	for _, frag := range o.InlineFragments {
-		memberMod, err := resolveInlineFragmentMemberType(unionOrIface, frag.TypeName.Name)
+		memberMod, err := resolveInlineFragmentMemberType(unionOrIface, env.(TypeScope), frag.Qualifier, frag.TypeName.Name)
 		if err != nil {
 			return nil, NewInferError(err, frag.TypeName)
 		}
@@ -1655,7 +1664,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			narrowedMember := NewType(memberMod.Name(), ObjectKind)
 			narrowedMember.Qualifier = memberMod.Qualifier
 			narrowedMember.SourceSchema = memberMod.SourceSchema
-			narrowedMember.Canonical = memberMod
+			narrowedMember.Canonical = canonicalModule(memberMod)
 
 			// Validate each field in the fragment exists on the concrete type
 			// and add it to the narrowed module (including nested selections)
@@ -1715,21 +1724,47 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	return resultType, nil
 }
 
-func resolveInlineFragmentMemberType(receiver *Type, typeName string) (*Type, error) {
+func resolveInlineFragmentMemberType(receiver *Type, env TypeScope, qualifier, typeName string) (*Type, error) {
+	var members []TypeScope
 	switch receiver.Kind {
 	case UnionKind:
-		if member, found := findMemberModuleByName(receiver.GetMembers(), typeName); found {
-			return member, nil
-		}
-		return nil, fmt.Errorf("type %s is not a member of union %s", typeName, receiver)
+		members = receiver.GetMembers()
 	case InterfaceKind:
-		if implementer, found := findMemberModuleByName(receiver.GetImplementers(), typeName); found {
-			return implementer, nil
-		}
-		return nil, fmt.Errorf("type %s does not implement interface %s", typeName, receiver)
+		members = receiver.GetImplementers()
 	default:
 		return nil, fmt.Errorf("inline fragments require a union or interface type, got %s type %s", receiver.Kind, receiver)
 	}
+
+	var target TypeScope
+	if qualifier != "" {
+		if module, found := env.NamedType(qualifier); found {
+			target, _ = module.LocalNamedType(typeName)
+		}
+	} else {
+		// Receiver-owned names still take precedence over local declarations
+		// that shadow schema types. Resolve aliases in that same module next.
+		if member, found := findMemberModuleByName(members, typeName); found {
+			return member, nil
+		}
+		if module, found := env.NamedType(receiver.Qualifier); found {
+			target, _ = module.LocalNamedType(typeName)
+		}
+		if target == nil {
+			target, _ = env.NamedType(typeName)
+		}
+	}
+	if targetMod, ok := target.(*Type); ok {
+		for _, member := range members {
+			if memberMod, ok := member.(*Type); ok && canonicalModule(memberMod) == canonicalModule(targetMod) {
+				// Keep the receiver's projection, including its selected fields.
+				return memberMod, nil
+			}
+		}
+	}
+	if receiver.Kind == UnionKind {
+		return nil, fmt.Errorf("type %s is not a member of union %s", typeName, receiver)
+	}
+	return nil, fmt.Errorf("type %s does not implement interface %s", typeName, receiver)
 }
 
 func findMemberModuleByName(members []TypeScope, typeName string) (*Type, bool) {
@@ -1978,7 +2013,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 	}
 
 	for _, frag := range o.InlineFragments {
-		if frag.TypeName.Name == mod.Name() {
+		if canonicalModule(frag.Inferred) == canonicalModule(mod) {
 			if len(frag.Fields) == 0 {
 				// Lazy inline fragment: return the value as-is (type assertion only)
 				return val, nil
@@ -2063,7 +2098,7 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 				fieldParts = append(fieldParts, field.Name)
 			}
 		}
-		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
+		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.resolvedTypeName(), strings.Join(fieldParts, " ")))
 	}
 
 	// Use SelectMultiple to inject the raw fragment selection
@@ -2165,7 +2200,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue
 // added to it.
 func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName string, query *querybuilder.Selection) (Value, error) {
 	for _, frag := range o.InlineFragments {
-		if frag.TypeName.Name == typeName {
+		if frag.resolvedTypeName() == typeName {
 			// Look up the concrete type in the schema
 			concreteSchemaType := gqlVal.Schema.Types.Get(typeName)
 			if concreteSchemaType == nil {
@@ -2214,7 +2249,7 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 // resolveInlineFragmentMemberType), so a concrete type matches by name.
 func (o *ObjectSelection) fragmentFor(typeName string) *InlineFragment {
 	for _, frag := range o.InlineFragments {
-		if frag.TypeName.Name == typeName {
+		if frag.resolvedTypeName() == typeName {
 			return frag
 		}
 	}
@@ -2261,7 +2296,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 
 	// Find the matching fragment
 	for _, frag := range o.InlineFragments {
-		if frag.TypeName.Name == typeName {
+		if frag.resolvedTypeName() == typeName {
 			// Look up the concrete type module
 			concreteType, found := typeScope.NamedType(typeName)
 			if !found {
@@ -2634,7 +2669,7 @@ func (o *ObjectSelection) buildInlineFragmentQuery(baseQuery *querybuilder.Selec
 				fieldParts = append(fieldParts, graphQLFieldToken(field))
 			}
 		}
-		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
+		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.resolvedTypeName(), strings.Join(fieldParts, " ")))
 	}
 	return baseQuery.SelectMultiple(fragParts...), nil
 }
@@ -2659,7 +2694,7 @@ func buildSelectionString(sel *ObjectSelection) string {
 				fieldParts = append(fieldParts, graphQLFieldToken(field))
 			}
 		}
-		parts = append(parts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
+		parts = append(parts, fmt.Sprintf("... on %s { %s }", frag.resolvedTypeName(), strings.Join(fieldParts, " ")))
 	}
 	return "{ " + strings.Join(parts, " ") + " }"
 }
