@@ -42,7 +42,6 @@ source = "github.com/vito/agents/committer@main"
 
 [modules.contributor]
 source = "github.com/vito/agents/contributor@main"
-settings.githubToken = "cmd://gh auth token"
 
 [modules.staff]
 source = "github.com/vito/agents/staff@main"
