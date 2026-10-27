@@ -290,6 +290,18 @@ func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string)
 		}
 	}
 
+	// The receiver interface itself is a valid catch-all. Fragment resolution
+	// only considers implementers, so resolve aliases to the interface here.
+	if iface.Qualifier != "" {
+		if module, found := env.NamedType(iface.Qualifier); found {
+			if target, found := module.LocalNamedType(patternName); found {
+				if targetMod, ok := target.(*Type); ok && canonicalModule(targetMod) == canonicalModule(iface) {
+					return iface, nil
+				}
+			}
+		}
+	}
+
 	if member, err := resolveInlineFragmentMemberType(iface, env, "", patternName); err == nil {
 		return member, nil
 	}

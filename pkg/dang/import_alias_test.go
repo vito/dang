@@ -399,6 +399,41 @@ let message = describe(` + tc.typeName + `)
 	}
 }
 
+func TestImportInterfaceAliasesAsCatchAllPatterns(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		operand string
+	}{
+		{"direct", "node"},
+		{"mixed union", "if (true) { node } else { 42 }"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema, err := SchemaFromSDL(aliasNarrowingSchema, "interface-alias.graphql")
+			require.NoError(t, err)
+			client := &aliasNarrowingClient{t: t}
+			config := ImportConfig{
+				Name: "Dagger", Schema: schema, Client: client, AutoImport: true,
+				Aliases: map[string]string{"OriginalNode": "Node"},
+			}
+			ctx := ContextWithImportConfigs(t.Context(), config)
+			source := `interface OriginalNode { message: String! }
+let message = case (` + tc.operand + `) {
+  value: OriginalNode => value.message
+  else => "wrong type"
+}
+`
+			env := runDangSnippetContext(t, ctx, source)
+			value, found, err := env.Lookup(ctx, "message")
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, StringValue{Val: "hello"}, value)
+			// A catch-all on the declared interface needs no concrete-type probe.
+			require.Len(t, client.queries, 1)
+			require.NotContains(t, client.queries[0], "__typename")
+		})
+	}
+}
+
 func TestImportAliasesPreserveNarrowingRestrictions(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
