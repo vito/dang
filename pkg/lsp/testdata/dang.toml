@@ -1,2 +1,4 @@
+dang = "2.1"
+
 [imports.Test]
 schema = "../../../tests/gqlserver/schema.graphqls"

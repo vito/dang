@@ -1,3 +1,5 @@
+dang = "2.1"
+
 [imports.Test]
 schema = "./gqlserver/schema.graphqls"
 service = ["go", "run", "./gqlserver/service"]
