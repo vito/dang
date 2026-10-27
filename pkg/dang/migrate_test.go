@@ -95,6 +95,36 @@ func TestMigrateSource(t *testing.T) {
 			"for { case (n) { 1 => break } }\n",
 			"loop {\n  case (n) {\n    1 => break\n    else => raise \"no case clause matched\"\n  }\n}\n",
 		},
+		{
+			"keeps a comment after a multi-line clause",
+			"let y = case (x) {\n  1 => {\n    2\n  } # done\n}\n",
+			"let y = case (x) {\n  1 => {\n    2\n  } # done\n  else => raise \"no case clause matched\"\n}\n",
+		},
+		{
+			"in a one-line object",
+			"let y = {{a: case (x) { 1 => 2 }}}\n",
+			"let y = {{\n  a: case (x) {\n    1 => 2\n    else => raise \"no case clause matched\"\n  }\n}}\n",
+		},
+		{
+			"in one-line parentheses",
+			"let y = (case (x) { 1 => 2 })\n",
+			"let y = (\n  case (x) {\n    1 => 2\n    else => raise \"no case clause matched\"\n  }\n)\n",
+		},
+		{
+			"in an interpolation in a one-line block arg",
+			"let y = xs.map { x => `v=${case (x) { 1 => 2 }}` }\n",
+			"let y = xs.map { x =>\n  `v=${case (x) {\n  1 => 2\n  else => raise \"no case clause matched\"\n}}`\n}\n",
+		},
+		{
+			"keeps the blank line before a closing comment",
+			"let y = case (x) {\n  1 => {\n    2\n  }\n\n  # end\n}\n",
+			"let y = case (x) {\n  1 => {\n    2\n  }\n  else => raise \"no case clause matched\"\n\n  # end\n}\n",
+		},
+		{
+			"adds no blank line before a closing comment",
+			"let y = case (x) {\n  1 => {\n    2\n  }\n  # end\n}\n",
+			"let y = case (x) {\n  1 => {\n    2\n  }\n  else => raise \"no case clause matched\"\n  # end\n}\n",
+		},
 	} {
 		t.Run("Dang 2.0 case without else "+tc.name, func(t *testing.T) {
 			migrated, err := migrate(tc.src, Version2_0, Version2_1)
@@ -102,6 +132,14 @@ func TestMigrateSource(t *testing.T) {
 			assert.Equal(t, tc.want, migrated)
 		})
 	}
+
+	t.Run("a one-line block arg too long to stay on one line", func(t *testing.T) {
+		// The case only makes the file migrate rather than stay as it is.
+		src := "let y = case (x) {\n  0 => 1\n}\n" +
+			"let resultOfTheComputation = someList.map { x => doSomething(alpha: x.alpha, beta: x.beta, gamma: x.gamma) }\n"
+		_, err := migrate(src, Version2_0, Version2_1)
+		require.NoError(t, err)
+	})
 
 	t.Run("source must parse as its version", func(t *testing.T) {
 		_, err := migrate("let x = user.{{name}}\n", Version1_0, Version2_0)
