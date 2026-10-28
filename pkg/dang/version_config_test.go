@@ -18,7 +18,8 @@ func TestParseVersion(t *testing.T) {
 		{in: "2.0", want: "2.0"},
 		{in: CurrentVersion.String(), want: CurrentVersion.String()},
 		// A leading v, a patch and prerelease or build suffixes are
-		// accepted; a Dang version is major.minor, so the patch is dropped.
+		// accepted; a Dang version is major.minor, so the patch and the
+		// prerelease are dropped.
 		{in: "v2.0", want: "2.0"},
 		{in: "2.0.1", want: "2.0"},
 		{in: "v2.1.4", want: "2.1"},
@@ -56,6 +57,32 @@ func TestVersionOrder(t *testing.T) {
 	// The zero value is the current version, like an unset parser option.
 	assert.False(t, Version{}.Before(CurrentVersion))
 	assert.Equal(t, CurrentVersion.String(), Version{}.String())
+}
+
+func TestVersionPrereleaseOrder(t *testing.T) {
+	parse := func(s string) Version {
+		t.Helper()
+		v, err := parseVersion("test", s)
+		require.NoError(t, err)
+		return v
+	}
+	// Semver precedence, oldest first (the spec's own example, then betas
+	// whose numbers need comparing numerically).
+	ordered := []string{
+		"1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta",
+		"1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-beta.20", "1.0.0-beta.21",
+		"1.0.0-beta.100", "1.0.0-rc.1", "1.0.0", "1.0.1-0", "1.0.1",
+	}
+	for i, a := range ordered {
+		for j, b := range ordered {
+			assert.Equal(t, i < j, parse(a).Before(parse(b)), "%s before %s", a, b)
+		}
+	}
+	// Build metadata is dropped.
+	assert.Equal(t, parse("v1.0.0-beta.21"), parse("v1.0.0-beta.21+abcdef12.dirty"))
+	assert.Equal(t, parse("v1.0.0"), parse("v1.0.0+abc"))
+	assert.Equal(t, "1.0.0-beta.21", parse("v1.0-beta.21").String())
+	assert.Equal(t, Version{Major: 1, Prerelease: "beta.21"}, parse("1.0.0-beta.21"))
 }
 
 func TestProjectConfigVersion(t *testing.T) {

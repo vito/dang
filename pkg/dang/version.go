@@ -1,10 +1,12 @@
 package dang
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // Version is a Dang language version: the major.minor of the Dang release
@@ -35,12 +37,19 @@ import (
 // used as a name is such a case: it has no gate).
 //
 // The same type holds the other versions dang.toml declares, which are
-// written by the same rules (see parseVersion) and may need the patch.
+// written by the same rules (see parseVersion) and may need the patch and
+// the prerelease.
 //
 // As a Dang version, the zero Version means CurrentVersion (String and Before
 // treat it so); other versions check IsZero themselves.
 type Version struct {
 	Major, Minor, Patch int
+
+	// Prerelease is the semver prerelease, without its leading "-", e.g.
+	// "beta.19" for v1.0.0-beta.19. Only Dagger versions keep it: Dagger
+	// serves its v1.0.0 prereleases different APIs. A Dang version never has
+	// one (ParseVersion drops it).
+	Prerelease string
 }
 
 var (
@@ -77,13 +86,18 @@ var (
 )
 
 // String returns the version as written in dang.toml: major.minor, e.g.
-// "2.1", and the patch too if it has one, e.g. "0.19.1".
+// "2.1", and the patch too if it has one, e.g. "0.19.1", or a prerelease,
+// e.g. "1.0.0-beta.19".
 func (v Version) String() string {
 	v = v.orCurrent()
-	if v.Patch != 0 {
+	switch {
+	case v.Prerelease != "":
+		return fmt.Sprintf("%d.%d.%d-%s", v.Major, v.Minor, v.Patch, v.Prerelease)
+	case v.Patch != 0:
 		return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+	default:
+		return fmt.Sprintf("%d.%d", v.Major, v.Minor)
 	}
-	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
 }
 
 // IsZero reports whether v is unset.
@@ -98,7 +112,9 @@ func (v Version) orCurrent() Version {
 	return v
 }
 
-// Before reports whether v is older than other.
+// Before reports whether v is older than other, by semver precedence: a
+// prerelease is older than its release, and prereleases of the same release
+// compare identifier by identifier (beta.9 is older than beta.10).
 func (v Version) Before(other Version) bool {
 	v, other = v.orCurrent(), other.orCurrent()
 	if v.Major != other.Major {
@@ -107,20 +123,82 @@ func (v Version) Before(other Version) bool {
 	if v.Minor != other.Minor {
 		return v.Minor < other.Minor
 	}
-	return v.Patch < other.Patch
+	if v.Patch != other.Patch {
+		return v.Patch < other.Patch
+	}
+	return comparePrerelease(v.Prerelease, other.Prerelease) < 0
+}
+
+// base returns v without its prerelease: the release it is a prerelease of.
+func (v Version) base() Version {
+	v.Prerelease = ""
+	return v
+}
+
+// comparePrerelease compares semver prereleases (without the leading "-")
+// by precedence, returning -1, 0 or +1. No prerelease ("") is a release,
+// which follows all of its prereleases. Identifiers compare in order:
+// numeric ones numerically and before alphanumeric ones, alphanumeric ones
+// in ASCII order, and a prefix before a longer prerelease.
+func comparePrerelease(a, b string) int {
+	switch {
+	case a == b:
+		return 0
+	case a == "":
+		return 1
+	case b == "":
+		return -1
+	}
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		if c := compareIdentifier(as[i], bs[i]); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(len(as), len(bs))
+}
+
+func compareIdentifier(a, b string) int {
+	aNum, bNum := isNumericIdentifier(a), isNumericIdentifier(b)
+	switch {
+	case aNum && bNum:
+		// Without leading zeros (see versionPattern), a longer number is
+		// larger; this also avoids overflowing an int.
+		if c := cmp.Compare(len(a), len(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	case aNum:
+		return -1
+	case bNum:
+		return 1
+	default:
+		return strings.Compare(a, b)
+	}
+}
+
+func isNumericIdentifier(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // versionPattern matches a version as written in dang.toml: an optional "v",
 // major.minor with an optional patch, and optional semver prerelease and
 // build suffixes, e.g. "2.1", "v0.19.0" or "v1.0.0-beta.19".
 var versionPattern = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?` +
-	`(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?` +
+	`(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?` +
 	`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
 // parseVersion parses a version by the rules every version in dang.toml is
-// written by (see versionPattern). A missing patch is 0, and prerelease and
-// build suffixes are dropped: a version names its base release, the way
-// Dagger picks an API view. what names the version in errors, e.g. "Dang".
+// written by (see versionPattern). A missing patch is 0. The prerelease is
+// kept, e.g. "beta.19" of v1.0.0-beta.19, for callers that need it to drop.
+// Build metadata is dropped: it has no precedence in semver, and Dagger
+// ignores it when picking an API view. what names the version in errors,
+// e.g. "Dang".
 func parseVersion(what, s string) (Version, error) {
 	m := versionPattern.FindStringSubmatch(s)
 	if m == nil {
@@ -137,19 +215,22 @@ func parseVersion(what, s string) (Version, error) {
 		}
 		*field = n
 	}
+	v.Prerelease = m[4]
 	return v, nil
 }
 
 // ParseVersion parses and validates a Dang version as written in dang.toml
-// (see parseVersion), e.g. "2.1", "v2.1" or "2.1.4". Its patch is dropped,
-// since patch releases don't change the language. It must be between
-// Version1_0 and CurrentVersion: a newer one needs a newer Dang.
+// (see parseVersion), e.g. "2.1", "v2.1" or "2.1.4". Its patch and any
+// prerelease are dropped, since patch releases don't change the language.
+// It must be between Version1_0 and CurrentVersion: a newer one needs a
+// newer Dang.
 func ParseVersion(s string) (Version, error) {
 	v, err := parseVersion("Dang", s)
 	if err != nil {
 		return Version{}, err
 	}
 	v.Patch = 0
+	v.Prerelease = ""
 	// Compare fields directly: Before treats the zero Version ("0.0") as
 	// CurrentVersion.
 	if v.Major < Version1_0.Major {
