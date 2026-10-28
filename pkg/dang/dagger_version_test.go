@@ -279,19 +279,19 @@ func TestCheckDaggerVersion(t *testing.T) {
 		},
 		{
 			name:    "prerelease version served as itself",
-			version: "v1.0.0-beta.21",
-			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0-beta.21"}`,
+			version: "v1.0.0-beta.22",
+			data:    `{"version": "v1.0.0-beta.23", "__schemaVersion": "v1.0.0-beta.22"}`,
 		},
 		{
-			// Every v1.0.0 prerelease before beta.21 shares the beta.20 view.
+			// Every v1.0.0 prerelease before beta.22 shares the beta.21 view.
 			name:    "prerelease version served a shared newer view",
 			version: "v1.0.0-beta.19",
-			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v1.0.0-beta.20"}`,
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0-beta.21"}`,
 		},
 		{
 			name:    "earliest prerelease served a shared newer view",
 			version: "v1.0.0-0",
-			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v1.0.0-beta.20"}`,
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0-beta.21"}`,
 		},
 		{
 			name:    "release served as itself",
@@ -307,8 +307,54 @@ func TestCheckDaggerVersion(t *testing.T) {
 		{
 			name:    "release served a prerelease view",
 			version: "v1.0.0",
-			data:    `{"version": "v1.0.0", "__schemaVersion": "v1.0.0-beta.20"}`,
-			err:     `the Dagger session serves the API of "v1.0.0-beta.20", not of the declared v1.0.0`,
+			data:    `{"version": "v1.0.0", "__schemaVersion": "v1.0.0-beta.21"}`,
+			err:     `the Dagger session serves the API of "v1.0.0-beta.21", not of the declared v1.0.0`,
+		},
+		{
+			// The engine caps a view past its own at its own
+			// (engine.ModuleAPIViewVersion).
+			name:    "release capped at a prerelease engine's view",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0-beta.22"}`,
+		},
+		{
+			name:    "later prerelease capped at a prerelease engine's view",
+			version: "v1.0.0-rc.1",
+			data:    `{"version": "v1.0.0-beta.22+abcdef12.dirty", "__schemaVersion": "v1.0.0-beta.22"}`,
+		},
+		{
+			name:    "release echoed by a prerelease engine",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0"}`,
+		},
+		{
+			// Before beta.22, the engine's own view is the shared beta.21 one.
+			name:    "release capped at a shared view",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-beta.19", "__schemaVersion": "v1.0.0-beta.21"}`,
+		},
+		{
+			name:    "release served a view older than the engine's",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-beta.23", "__schemaVersion": "v1.0.0-beta.22"}`,
+			err:     `the Dagger session serves the API of "v1.0.0-beta.22", not of the declared v1.0.0`,
+		},
+		{
+			name:    "release served a prerelease view by a dev engine",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-dev-123", "__schemaVersion": "v1.0.0-beta.22"}`,
+			err:     `the Dagger session serves the API of "v1.0.0-beta.22", not of the declared v1.0.0`,
+		},
+		{
+			name:    "capped view on an unparseable engine version",
+			version: "v1.0.0",
+			data:    `{"version": "devel", "__schemaVersion": "v1.0.0-beta.22"}`,
+		},
+		{
+			name:    "capped view of another release",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v0.21.6"}`,
+			err:     `the Dagger session serves the API of "v0.21.6", not of the declared v1.0.0`,
 		},
 		{
 			name:    "prerelease version served another release's view",
@@ -328,22 +374,44 @@ func TestCheckDaggerVersion(t *testing.T) {
 			data:    `{"version": "v1.0.0-beta.21", "__schemaVersion": "v1.0.0-beta.20"}`,
 		},
 		{
+			// Like Dagger, only a later base version is refused: a later
+			// prerelease of the engine's release gets the engine's view.
 			name:    "older prerelease engine",
 			version: "v1.0.0-beta.21",
-			data:    `{"version": "v1.0.0-beta.20", "__schemaVersion": "v1.0.0-beta.21"}`,
-			err:     "this project's Dagger version is v1.0.0-beta.21, but the Dagger engine is v1.0.0-beta.20; upgrade Dagger",
+			data:    `{"version": "v1.0.0-beta.20", "__schemaVersion": "v1.0.0"}`,
 		},
 		{
 			name:    "older prerelease engine with build metadata",
 			version: "v1.0.0-beta.10",
 			data:    `{"version": "v1.0.0-beta.9+abcdef12.dirty", "__schemaVersion": "v1.0.0"}`,
-			err:     "this project's Dagger version is v1.0.0-beta.10, but the Dagger engine is v1.0.0-beta.9+abcdef12.dirty; upgrade Dagger",
 		},
 		{
 			name:    "prerelease engine for a release version",
 			version: "v1.0.0",
 			data:    `{"version": "v1.0.0-rc.1", "__schemaVersion": "v1.0.0"}`,
-			err:     "this project's Dagger version is v1.0.0, but the Dagger engine is v1.0.0-rc.1; upgrade Dagger",
+		},
+		{
+			name:    "prerelease engine capping a release version",
+			version: "v1.0.0",
+			data:    `{"version": "v1.0.0-rc.1", "__schemaVersion": "v1.0.0-rc.1"}`,
+		},
+		{
+			name:    "engine of an older patch release",
+			version: "v1.0.1",
+			data:    `{"version": "v1.0.0", "__schemaVersion": "v1.0.0"}`,
+			err:     "this project's Dagger version is v1.0.1, but the Dagger engine is v1.0.0; upgrade Dagger",
+		},
+		{
+			name:    "engine of an older minor release",
+			version: "v0.20.0",
+			data:    `{"version": "v0.19.3", "__schemaVersion": "v0.20.0"}`,
+			err:     "this project's Dagger version is v0.20.0, but the Dagger engine is v0.19.3; upgrade Dagger",
+		},
+		{
+			name:    "prerelease engine of an older release",
+			version: "v1.0.1-rc.1",
+			data:    `{"version": "v1.0.0-rc.1", "__schemaVersion": "v1.0.1-rc.1"}`,
+			err:     "this project's Dagger version is v1.0.1-rc.1, but the Dagger engine is v1.0.0-rc.1; upgrade Dagger",
 		},
 		{
 			name:    "release engine for a prerelease version",

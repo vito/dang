@@ -225,32 +225,35 @@ func checkDaggerVersion(ctx context.Context, client graphql.Client, version Vers
 		return fmt.Errorf("checking Dagger version %s: %w", want, err)
 	}
 	// An unparseable engine version (e.g. "devel") is not compared.
-	if engine, err := parseVersion("Dagger engine", resp.Version); err == nil && !engine.base().IsZero() && daggerEngineOlder(engine, version) {
+	engine, err := parseVersion("Dagger engine", resp.Version)
+	if err != nil {
+		engine = Version{}
+	}
+	if !engine.base().IsZero() && daggerEngineOlder(engine, version) {
 		return fmt.Errorf("this project's Dagger version is %s, but the Dagger engine is %s; upgrade Dagger", want, resp.Version)
 	}
-	if !daggerServesVersion(resp.SchemaVersion, version) {
+	if !daggerServesVersion(resp.SchemaVersion, version, engine) {
 		return fmt.Errorf("the Dagger session serves the API of %q, not of the declared %s", resp.SchemaVersion, want)
 	}
 	return nil
 }
 
 // daggerEngineOlder reports whether an engine of version engine is older than
-// the declared version, by semver precedence (build metadata is already
-// dropped): a v1.0.0-beta.20 engine is older than v1.0.0-beta.21, and older
-// than v1.0.0 itself.
+// the declared version, comparing base versions (major.minor.patch, without
+// the prerelease; build metadata is already dropped), as Dagger does
+// (engine.CheckMaxVersionCompatibility): a v1.0.0 engine is older than
+// v1.0.1, but a v1.0.0-beta.20 engine is not older than v1.0.0-beta.21 or
+// v1.0.0. Dagger doesn't refuse a later prerelease of the engine's own
+// release, or the release itself: it serves it the engine's own view, the
+// newest API it has (engine.ModuleAPIViewVersion caps the view), which
+// daggerServesVersion accepts.
 //
-// A dev build counts as its base release, satisfying it and every prerelease
-// of it, since it may hold any of their changes. Dagger dev builds report the
-// VERSION file of their source tree plus the commit as build metadata (e.g.
-// v1.0.0-beta.21+42424242.dirty), which compares like the prerelease it will
-// become; older ones use a prerelease mentioning "dev" (e.g.
-// v0.19.3-250101120000-dev-0cc2b3eb7a4b or v1.0.0-dev-123), recognized by
-// isDevPrerelease, which the engine gives its release's API view too.
+// So a dev build counts as its base release too, whether it reports the
+// VERSION file of its source tree plus the commit as build metadata (e.g.
+// v1.0.0-beta.21+42424242.dirty) or, in older ones, a prerelease mentioning
+// "dev" (e.g. v0.19.3-250101120000-dev-0cc2b3eb7a4b or v1.0.0-dev-123).
 func daggerEngineOlder(engine, version Version) bool {
-	if isDevPrerelease(engine.Prerelease) {
-		return engine.base().Before(version.base())
-	}
-	return engine.Before(version)
+	return engine.base().Before(version.base())
 }
 
 // isDevPrerelease reports whether a prerelease marks a dev build: it
@@ -260,21 +263,40 @@ func isDevPrerelease(prerelease string) bool {
 }
 
 // daggerServesVersion reports whether a session's __schemaVersion is an API
-// view the declared version may be served. The engine maps a version to its
-// view (engine.APIViewVersion): below v1 the view is the release, and from
-// v1.0.0-beta.21 on it is the version itself, but the v1.0.0 prereleases
-// before that share the v1.0.0-beta.20 view, and engines older than
-// v1.0.0-beta.21 serve every v1.0.0 prerelease the v1.0.0 view. So the view
-// may be newer than the version, but only within the same release, and never
-// older. A view of another release means the session ignored the version
-// (e.g. a custom service that doesn't run `dagger session`), serving its
-// CLI's own.
-func daggerServesVersion(schemaVersion string, version Version) bool {
+// view the declared version may be served by an engine of version engine
+// (zero if unparseable). The engine maps a version to its view
+// (engine.APIViewVersion): below v1 the view is the release, and from
+// v1.0.0-beta.22 on it is the version itself, but the v1.0.0 prereleases
+// before that share the v1.0.0-beta.21 view, and engines without prerelease
+// views (v1.0.0-beta.21 and older) serve every v1.0.0 prerelease the v1.0.0
+// view. So the view may be newer than the version, but only within the same
+// release.
+//
+// It may be older only when the engine caps it: a version past the engine's
+// own, but of the same release (daggerEngineOlder refuses a later release),
+// may be served the engine's view (engine.ModuleAPIViewVersion), e.g.
+// v1.0.0-beta.22 for a declared v1.0.0 on a v1.0.0-beta.22 engine. A view
+// older than both the version and the engine's is refused, unless the
+// engine's version is unknown, which can't rule out a cap. A view of another
+// release means the session ignored the version (e.g. a custom service that
+// doesn't run `dagger session`), serving its CLI's own.
+func daggerServesVersion(schemaVersion string, version, engine Version) bool {
 	served, err := parseVersion("Dagger API", schemaVersion)
 	if err != nil || served.base() != version.base() {
 		return false
 	}
-	return !served.Before(version)
+	if !served.Before(version) {
+		return true
+	}
+	if engine.base().IsZero() {
+		return true
+	}
+	// A dev build's view is its release's (engine.APIViewVersion).
+	engineView := engine
+	if isDevPrerelease(engine.Prerelease) {
+		engineView = engine.base()
+	}
+	return !served.Before(engineView)
 }
 
 // otelPropagator propagates trace context and baggage via headers.
