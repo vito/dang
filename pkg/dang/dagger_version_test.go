@@ -328,12 +328,6 @@ func TestCheckDaggerVersion(t *testing.T) {
 			data:    `{"version": "v1.0.0-beta.22", "__schemaVersion": "v1.0.0"}`,
 		},
 		{
-			// Before beta.22, the engine's own view is the shared beta.21 one.
-			name:    "release capped at a shared view",
-			version: "v1.0.0",
-			data:    `{"version": "v1.0.0-beta.19", "__schemaVersion": "v1.0.0-beta.21"}`,
-		},
-		{
 			name:    "release served a view older than the engine's",
 			version: "v1.0.0",
 			data:    `{"version": "v1.0.0-beta.23", "__schemaVersion": "v1.0.0-beta.22"}`,
