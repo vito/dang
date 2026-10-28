@@ -245,7 +245,8 @@ dagger = true
 		config, err := LoadProjectConfig(configPath)
 		require.NoError(t, err)
 		require.NotNil(t, config.Imports["Dagger"])
-		assert.True(t, config.Imports["Dagger"].Dagger)
+		assert.True(t, config.Imports["Dagger"].Dagger.Enabled)
+		assert.True(t, config.Imports["Dagger"].Dagger.Version.IsZero())
 		assert.Empty(t, config.Imports["Dagger"].Service)
 	})
 
@@ -261,7 +262,7 @@ service = ["~/src/dagger/bin/dagger", "session"]
 		config, err := LoadProjectConfig(configPath)
 		require.NoError(t, err)
 		require.NotNil(t, config.Imports["DaggerDev"])
-		assert.True(t, config.Imports["DaggerDev"].Dagger)
+		assert.True(t, config.Imports["DaggerDev"].Dagger.Enabled)
 		assert.Equal(t, []string{"~/src/dagger/bin/dagger", "session"}, config.Imports["DaggerDev"].Service)
 	})
 
