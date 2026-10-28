@@ -204,13 +204,15 @@ func daggerServiceCommand(service []string, version Version) []string {
 }
 
 // checkDaggerVersion verifies that a freshly started session serves the
-// declared version's API. An engine older than the version can't serve it: it
-// would silently serve its own, older API and echo the requested view in
-// __schemaVersion, so the engine's version is compared instead (see
-// daggerEngineOlder). (An engine refuses a view older than its minimum
-// client version itself, failing `dagger session` on startup.) Then
-// __schemaVersion must be the declared version's view (see
-// daggerServesVersion), which catches a session that never got the version.
+// declared version's API. An engine of an older release than the version
+// can't serve it: it would silently serve its own, older API and echo the
+// requested view in __schemaVersion, so the engine's base version is compared
+// instead (see daggerEngineOlder). A later prerelease of the engine's own
+// release passes, as in Dagger, and gets the engine's newest API. (An engine
+// refuses a view older than its minimum client version itself, failing
+// `dagger session` on startup.) Then __schemaVersion must be the declared
+// version's view (see daggerServesVersion), which catches a session that
+// never got the version.
 func checkDaggerVersion(ctx context.Context, client graphql.Client, version Version) error {
 	want := DaggerVersionString(version)
 	var resp struct {
@@ -280,6 +282,11 @@ func isDevPrerelease(prerelease string) bool {
 // engine's version is unknown, which can't rule out a cap. A view of another
 // release means the session ignored the version (e.g. a custom service that
 // doesn't run `dagger session`), serving its CLI's own.
+//
+// Dagger caps only a client in a module (e.g. a `dang` run by a module's
+// function); a top-level session echoes the version. So a top-level custom
+// service that ignores the version passes when its CLI is the engine's
+// version, but it then serves the same API a cap would.
 func daggerServesVersion(schemaVersion string, version, engine Version) bool {
 	served, err := parseVersion("Dagger API", schemaVersion)
 	if err != nil || served.base() != version.base() {
