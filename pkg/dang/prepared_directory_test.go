@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -231,4 +232,45 @@ func TestPreparedDirectoryNativeImportsFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, "native", result.(StringValue).Val)
+}
+
+func TestPreparedDirectoryPureLanguageCorpus(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("..", "..", "tests", "test_*.dang"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	checked := 0
+	for _, file := range files {
+		t.Run(filepath.Base(file), func(t *testing.T) {
+			source, err := os.ReadFile(file)
+			require.NoError(t, err)
+			if strings.Contains(string(source), "import ") {
+				t.Skip("imported GraphQL/native modules need their integration fixture")
+			}
+			dir := preparedSource(t, string(source))
+			if _, err := RunDir(context.Background(), dir, false); err != nil {
+				t.Skip("ordinary evaluation requires the integration fixture")
+			}
+			program, err := PrepareDir(context.Background(), dir)
+			if errors.Is(err, ErrUnpreparableDirectory) {
+				t.Skip("runtime type state uses the ordinary evaluation path")
+			}
+			// A preparation failure is a regression when ordinary evaluation
+			// succeeds with the same source and context.
+			require.NoError(t, err)
+			checked++
+			var group sync.WaitGroup
+			for range 3 {
+				group.Add(1)
+				go func() {
+					defer group.Done()
+					_, err := program.Evaluate(context.Background())
+					if err != nil {
+						t.Error(err)
+					}
+				}()
+			}
+			group.Wait()
+		})
+	}
+	t.Logf("concurrently checked %d pure language programs", checked)
 }
