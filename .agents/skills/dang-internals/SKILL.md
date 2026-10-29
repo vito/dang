@@ -134,6 +134,25 @@ Both fork `self` and produce the same result:
 
 Use `self.` when a parameter shadows a field name (`new(x: Int!) { self.x = x }`).
 
+### Builtins live in a parent frame
+
+`NewValueScope` binds builtin functions, static modules and the prelude's
+bindings in a `builtins` frame and returns a derive of it, so a module's own
+declarations go in a frame *of their own* and shadow builtins (`let loop =
+1`, `pub toString(...)`), in every file of the module. Never bind builtins
+into the module frame itself: `FieldDecl.Eval` skips names its frame already
+binds, so a same-named declaration would be silently dropped at eval while
+inference still used it. Copy-on-write treats the builtins frame as a root.
+
+Two rules ride on this:
+
+- **Unqualified imports never shadow builtins** (`isBuiltinValueName` in
+  `import_install.go`, for inference *and* eval — they must agree); the
+  qualified name still reaches the import.
+- **Code the parser synthesizes never names a builtin directly**, since a
+  user binding may shadow it: it uses a `$`-alias from `builtinAliases`
+  (see the `language-versions` skill, gate checklist step 3).
+
 ## `{{ }}` is always parallel
 
 Every `{{ }}` evaluates its fields concurrently, whether it is a standalone
@@ -371,13 +390,16 @@ against an empty registry. Prelude-raised errors render embedded source via
 Checklist:
 
 1. AST node in `pkg/dang/slots.go` (or sibling), with `InferredTypeHolder`.
-2. Grammar in `pkg/dang/dang.peg`; run `go generate ./pkg/dang/`.
+2. Grammar in `pkg/dang/dang.peg`; run `go generate ./pkg/dang/`. Names go
+   through `Id` / `ReservedName` (see "Names" in the `testing` skill).
 3. `classifyForms()` case in `pkg/dang/block.go` → `Types`.
 4. `Hoist` with the pass 0 / pass 1 split.
 5. `ModuleKind` constant in `pkg/dang/env.go` if it's a distinct kind.
-6. Formatter case in `pkg/dang/format.go`.
+6. Formatter case in `pkg/dang/format.go`, writing names with `f.ident` /
+   `f.fieldName`, never raw.
 7. Editor syntaxes — see the `editor-syntaxes` skill for the three files
-   that need keyword updates.
+   that need keyword updates, and the `language-versions` skill's "adding a
+   keyword" checklist for the grammar side.
 
 If a grammar change removes, respells or changes the meaning of existing
 syntax, old code must keep parsing behind a version gate — see the

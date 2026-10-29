@@ -652,11 +652,8 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 			st.Definitions[fieldDecl.Name.Name] = &SymbolInfo{
 				Name: fieldDecl.Name.Name,
 				Location: &Location{
-					URI: uri,
-					Range: Range{
-						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(fieldDecl.Name.Name)},
-					},
+					URI:   uri,
+					Range: nameRange(loc, fieldDecl.Name.Name),
 				},
 				Kind: h.symbolKind(node),
 				Node: node,
@@ -667,11 +664,8 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 			st.Definitions[objectDecl.Name.Name] = &SymbolInfo{
 				Name: objectDecl.Name.Name,
 				Location: &Location{
-					URI: uri,
-					Range: Range{
-						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(objectDecl.Name.Name)},
-					},
+					URI:   uri,
+					Range: nameRange(loc, objectDecl.Name.Name),
 				},
 				Kind: h.symbolKind(node),
 				Node: node,

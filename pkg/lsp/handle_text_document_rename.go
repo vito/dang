@@ -109,10 +109,7 @@ func (h *langHandler) findDeclarations(node dang.Node, symbolName string) []Rang
 				}
 
 				if loc != nil {
-					declarations = append(declarations, Range{
-						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(symbolName)},
-					})
+					declarations = append(declarations, nameRange(loc, symbolName))
 				}
 			}
 		}
@@ -164,10 +161,7 @@ func (h *langHandler) findPreciseReferences(f *File, symbolName string) []Range 
 	for _, sym := range symbols {
 		loc := sym.GetSourceLocation()
 		if loc != nil {
-			references = append(references, Range{
-				Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-				End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(symbolName)},
-			})
+			references = append(references, nameRange(loc, symbolName))
 		}
 	}
 

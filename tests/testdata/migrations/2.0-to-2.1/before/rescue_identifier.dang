@@ -1,0 +1,36 @@
+# Dang 2.1 reserves `rescue`. The migration escapes the identifiers spelled
+# like it as `$rescue`, which are still named `rescue`; where only a name can
+# go (a field, a named argument, an object key), it needs no escape.
+
+let rescue = 1
+assert { rescue == 1 }
+
+pub inc(rescue: Int!): Int! {
+  rescue + 1
+}
+assert { inc(rescue: 1) == 2 }
+assert { inc(2) == 3 }
+
+type Thing {
+  pub rescue: Int! = 3
+}
+
+let thing = Thing
+assert { thing.rescue == 3 }
+assert { thing.{{rescue}}.rescue == 3 }
+
+let obj = {{rescue: 4}}
+assert { obj.rescue == 4 }
+
+let short = {{rescue}}
+assert { short.rescue == 1 }
+
+let bumped = [1].map { rescue => rescue + 1 }
+assert { bumped == [2] }
+
+let caught = try {
+  raise "boom"
+} catch {
+  rescue => rescue.message
+}
+assert { caught == "boom" }

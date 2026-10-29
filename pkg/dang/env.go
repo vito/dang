@@ -1018,7 +1018,9 @@ func registerBuiltinTypes() {
 	// Register all builtin function types
 	ForEachFunction(func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
-		Prelude.Add(def.Name, hm.NewScheme(nil, fnType))
+		for _, name := range builtinNames(def) {
+			Prelude.Add(name, hm.NewScheme(nil, fnType))
+		}
 	})
 
 	// Register all builtin method types

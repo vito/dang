@@ -31,10 +31,10 @@ import (
 // Dang versions are major.minor: from now on, patch releases must not change
 // the language, so a patch in `dang = "..."` is accepted and ignored. Before
 // versions were declared, some did: 2.1.x patches switched inline fragment
-// bodies to double braces and reserved `rescue`. So a version means the
-// syntax of that minor's latest release, e.g. 2.1 is 2.1.4's, and code
-// relying on an earlier patch's spelling may need fixing by hand (`rescue`
-// used as a name is such a case: it has no gate).
+// bodies to double braces and replaced try/catch with postfix `rescue`. So a
+// version means the syntax of that minor's latest release, e.g. 2.1 is
+// 2.1.4's, and code relying on an earlier patch's spelling may need fixing by
+// hand.
 //
 // The same type holds the other versions dang.toml declares, which are
 // written by the same rules (see parseVersion) and may need the patch and
@@ -63,8 +63,9 @@ var (
 	Version2_0 = Version{Major: 2, Minor: 0}
 
 	// Version2_1 removed `for` loops and commas between forms, made a case
-	// that matches nothing yield null instead of raising, and spelled inline
-	// fragment bodies with double braces.
+	// that matches nothing yield null instead of raising, spelled inline
+	// fragment bodies with double braces, and replaced try/catch with
+	// postfix `rescue`, reserving the word.
 	Version2_1 = Version{Major: 2, Minor: 1}
 
 	// CurrentVersion is the language version this build of Dang implements:
@@ -299,6 +300,40 @@ func (v Version) commaFormSep() bool {
 	return v.Before(Version2_1)
 }
 
+// reservedWords maps each reserved word, a word that is not an identifier
+// (see WordToken), to the version that reserved it. Before that version it is
+// an ordinary identifier; from then on, an identifier spelled like it is
+// escaped as `$word` (see RawWordToken), which is how `dang migrate` keeps
+// such names, public ones included, when moving past that version. Where only
+// a name can go, e.g. a named argument, it needs no escape (see ReservedName).
+//
+// To reserve a new keyword: add it here with the version that reserves it,
+// match its token only where it is reserved (`FooToken <- "foo" !WordChar
+// FooKeyword`, with FooKeyword a version predicate listed in tsPredicates, as
+// for RescueToken), exclude it from WordToken, and list its token in
+// ReservedName. A keyword that is not reserved needs none of this: ordered
+// choice tries its syntax first, and it stays an identifier everywhere else,
+// like `if` or `case`.
+var reservedWords = map[string]Version{
+	"null":   Version1_0,
+	"rescue": Version2_1,
+}
+
+// reserves reports whether word is a reserved word in this version, i.e. not
+// an identifier (see reservedWords).
+func (v Version) reserves(word string) bool {
+	since, ok := reservedWords[word]
+	return ok && !v.Before(since)
+}
+
+// postfixRescue reports whether `rescue` is a keyword, giving postfix
+// `expr rescue ...`, as since 2.1, which replaced `try { } catch { }` with it.
+// Before 2.1, `rescue` is an ordinary identifier and try/catch is the error
+// handling syntax; both spellings parse into a RescueExpr.
+func (v Version) postfixRescue() bool {
+	return v.reserves("rescue")
+}
+
 // selectionBraces returns the delimiters for object selections in this
 // version.
 func (v Version) selectionBraces() (openBrace, closeBrace string) {
@@ -496,14 +531,18 @@ func versionCaseClauses(v Version, clauses []*CaseClause, loc *SourceLocation) [
 // Keeping the body in the then-branch keeps the condition narrowing it, as
 // it did before.
 //
-// Two differences remain: a `for` yielded its last body value when it ended
+// One difference remains: a `for` yielded its last body value when it ended
 // (by its condition going false, or a bare `break`), where `loop` yields
-// null. Only `break value` gives both the same result. And the desugared
-// call names the `loop` builtin, so a module that binds its own `loop`
-// (legal before 2.1, which added the builtin) shadows it.
+// null. Only `break value` gives both the same result.
+//
+// The desugared call names the builtin by an alias rather than `loop` (see
+// forLoopBuiltin), so that a program binding its own `loop` (legal before
+// 2.1, which added the builtin) keeps its `for` loops looping.
 func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 	loopBody := body
+	alias := forLoopBuiltin
 	if cond != nil {
+		alias = forCondLoopBuiltin
 		loopBody = &Block{
 			Forms: []Node{&Conditional{
 				Condition: cond,
@@ -518,11 +557,30 @@ func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 		}
 	}
 	return &FunCall{
-		Fun: &Symbol{Name: "loop", Loc: loc},
+		Fun: &Symbol{Name: alias, Loc: loc},
 		BlockArg: &BlockArg{
 			BodyNode: loopBody,
 			Loc:      loc,
 		},
 		Loc: loc,
 	}
+}
+
+// forLoopBuiltin and forCondLoopBuiltin are the names that desugared `for {
+// ... }` and `for (cond) { ... }` loops call the `loop` builtin by (see
+// desugarForLoop and builtinAliases). No identifier spells them (`$loop` is
+// the identifier `loop`), so no binding of a program's own can shadow them.
+// The formatter prints them as the `for` loops they were where those exist,
+// and as `loop` calls, the current spelling, where they don't: a program's
+// own `loop` does shadow that, so migrating such a program refuses to (see
+// forLoopCollision).
+const (
+	forLoopBuiltin     = "$for"
+	forCondLoopBuiltin = "$for(cond)"
+)
+
+// isForLoopBuiltin reports whether name is one desugared `for` loops call
+// the loop builtin by.
+func isForLoopBuiltin(name string) bool {
+	return name == forLoopBuiltin || name == forCondLoopBuiltin
 }

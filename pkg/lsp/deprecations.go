@@ -85,12 +85,22 @@ func symbolRange(sym *dang.Symbol) (Range, bool) {
 	if loc == nil {
 		return Range{}, false
 	}
-	startLine := loc.Line - 1
+	return nameRange(loc, sym.Name), true
+}
+
+// nameRange returns the LSP range covering name, spelled at loc. An escaped
+// name (`$rescue`, see dang's RawWordToken) spans its `$` too, which the
+// range leaves out: it covers the name itself, so that renaming it keeps
+// the escape. Dang source locations are 1-based; LSP positions are 0-based.
+func nameRange(loc *dang.SourceLocation, name string) Range {
 	startCol := loc.Column - 1
+	if loc.Length == len(name)+1 {
+		startCol++
+	}
 	return Range{
-		Start: Position{Line: startLine, Character: startCol},
-		End:   Position{Line: startLine, Character: startCol + len(sym.Name)},
-	}, true
+		Start: Position{Line: loc.Line - 1, Character: startCol},
+		End:   Position{Line: loc.Line - 1, Character: startCol + len(name)},
+	}
 }
 
 // deprecationMessage is the warning shown for a deprecated call; it matches the

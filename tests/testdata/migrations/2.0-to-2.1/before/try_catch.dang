@@ -1,0 +1,66 @@
+# Dang 2.1 replaced try/catch with postfix `rescue`; the migration rewrites
+# each try/catch to the postfix form.
+
+boom(): String! {
+  raise "boom"
+}
+
+# A typed clause, with a single-form body that unwraps.
+let typed = try {
+  boom()
+} catch {
+  e: Error => e.message
+}
+assert { typed == "boom" }
+
+# A bare catch-all binding becomes a typed catch-all on Error.
+let bare = try {
+  boom()
+} catch {
+  err => err.message
+}
+assert { bare == "boom" }
+
+# A catch-all that never reads its binding is the fallback form.
+let fallback = try {
+  boom()
+} catch {
+  err => "fallback"
+}
+assert { fallback == "fallback" }
+
+# A body of several forms stays a block.
+let multi = try {
+  let x = 1
+  boom()
+} catch {
+  e: Error => "multi"
+}
+assert { multi == "multi" }
+
+# A catch without clauses re-raises every error, so it drops.
+let plain = try {
+  "plain"
+} catch {
+}
+assert { plain == "plain" }
+
+# Clauses after a catch-all never match, and rescue rejects them, so this
+# stays a try/catch, which still runs in 2.1, with a warning.
+let first = try {
+  boom()
+} catch {
+  err => "first"
+  e: Error => "second"
+}
+assert { first == "first" }
+
+# Comments stay where they were, keeping the try body a block and the
+# catch-all a clause.
+let commented = try {
+  boom() # may fail
+} catch {
+  # never mind
+  err => "commented"
+}
+assert { commented == "commented" }

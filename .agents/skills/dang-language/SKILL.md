@@ -81,7 +81,7 @@ Load the reference file that matches the question:
 
 | File | Covers |
 |---|---|
-| `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
+| `reference/syntax.md` | file layout, comments, identifiers, keywords (and `$name` to use one as a name), docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
 | `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
 | `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write** and its compile-time rules (immutable top-level bindings and statics, closures that write their scope can't escape, `{{ }}` fields can't write outside themselves, defaults see only values), **interfaces** & **unions** + variance |
 | `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`raise`, the postfix `rescue` operator, the `Error` interface, when to raise vs. return null) |

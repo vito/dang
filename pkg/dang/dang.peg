@@ -292,7 +292,7 @@ InlineFragment <- SpreadToken _ OnToken _ qual:(p:Id DotToken { return p, nil })
 
 SpreadToken <- "..."
 
-FieldSelection <- alias:(a:Id ColonToken _ { return a, nil })? name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
+FieldSelection <- alias:(a:(Id / ReservedName) ColonToken _ { return a, nil })? name:(Id / ReservedName) args:ArgValues? selection:('.' sel:ObjectSelection)? {
   var aliasStr string
   if alias != nil {
     aliasStr = alias.(string)
@@ -572,14 +572,36 @@ Symbol <- name:Id {
     Loc: c.Loc(),
   }, nil
 }
-Id <- WordToken
-FieldId <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
+Id <- RawWordToken / WordToken
+// A field after a dot (`x.rescue`) is always a name, so a reserved word is a
+// name there too, except null; see also ReservedName.
+FieldId <- name:RawWordToken {
+  return &Symbol{
+    Name: name.(string),
+    Loc: c.Loc(),
+  }, nil
+} / !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
   return &Symbol{
     Name: string(c.text),
     Loc: c.Loc(),
   }, nil
 }
 WordToken <- !NullToken !RescueToken [a-zA-Z_][a-zA-Z0-9_]* {
+  return string(c.text), nil
+}
+// `$name` is the identifier `name`, in every version: the escape for a name
+// spelled like a reserved word (see reservedWords), e.g. `let $rescue = 1`,
+// which `dang migrate` writes for a name that the version it migrates to
+// reserves. Only the spelling differs: the name is `rescue` wherever it ends
+// up, e.g. as a field or an API name, and `x.rescue` selects it.
+RawWordToken <- '$' [a-zA-Z_][a-zA-Z0-9_]* {
+  return string(c.text[1:]), nil
+}
+// A reserved word where only a name can go: a named argument, an object or
+// object type key, or a field in a selection (`f(rescue: 1)`, `{{rescue:
+// 1}}`, `x.{{rescue}}`). Every reserved keyword token is listed here; null,
+// a value, is not.
+ReservedName <- RescueToken {
   return string(c.text), nil
 }
 WordChar <- [a-zA-Z0-9_]
@@ -659,7 +681,7 @@ BlockParamDecl <- AmpersandToken name:Symbol _ args:ArgTypes? _ ColonToken _ ret
 
 Argument <- KeyValue / PositionalValue
 
-KeyValue <- key:WordToken ColonToken _ value:Form {
+KeyValue <- key:(RawWordToken / WordToken / ReservedName) ColonToken _ value:Form {
   return Keyed[Node]{Key: key.(string), Value: value.(Node), Positional: false}, nil
 }
 
@@ -695,7 +717,7 @@ ObjectType <- "{{" _ fields:(f:ObjectTypeField Sep { return f, nil })* last:Obje
     Fields: sliceOfAppend[ObjectTypeField](fields, last),
   }, nil
 }
-ObjectTypeField <- key:Id _ ColonToken _ type_:Type {
+ObjectTypeField <- key:(Id / ReservedName) _ ColonToken _ type_:Type {
   return ObjectTypeField{
     Key: key.(string),
     Type: type_.(TypeNode),
@@ -1140,16 +1162,19 @@ CommentToken <- '#' [^\n]* {
 
 // Additional language constructs
 
-// Vestigial recognition of the removed `try { } catch { }` block syntax.
-// It parses into a RescueExpr marked Legacy so `dang fmt` can rewrite it to
-// the postfix form, while inference warns with a migration hint
+// The `try { } catch { }` block syntax of Dang before 2.1, which replaced it
+// with postfix `rescue`. It parses into a RescueExpr marked TryCatch, which
+// the formatter prints as try/catch where postfix rescue is unavailable and
+// rewrites to the postfix form where it is. From 2.1 on it is still
+// recognized, marked Legacy, so that inference warns with a migration hint
 // instead of a generic parse error. `try` is otherwise an ordinary
 // identifier.
 LegacyTryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:LegacyCatchClause Sep { return clause, nil })* last:LegacyCatchClause? _ '}' {
   return &RescueExpr{
     Operand: body.(*Block),
     Clauses: sliceOfAppend[*CaseClause](cs, last),
-    Legacy: true,
+    TryCatch: true,
+    Legacy: versionFromStore(c.globalStore).postfixRescue(),
     Loc: c.Loc(),
   }, nil
 }
@@ -1176,7 +1201,12 @@ LegacyCatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken 
 
 TryToken <- "try" !WordChar
 CatchToken <- "catch" !WordChar
-RescueToken <- "rescue" !WordChar
+// A keyword reserved in some versions only (see reservedWords) is matched by
+// its token only where it is reserved, which gates both the syntax built on
+// it and its exclusion from WordToken: before Dang 2.1, `rescue` is an
+// ordinary identifier and there is no postfix rescue.
+RescueToken <- "rescue" !WordChar RescueKeyword
+RescueKeyword <- &{ return versionFromStore(c.globalStore).postfixRescue(), nil }
 
 Raise <- RaiseToken _inlineSpace value:Form {
   return &Raise{

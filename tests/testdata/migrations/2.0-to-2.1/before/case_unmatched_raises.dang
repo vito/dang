@@ -11,7 +11,9 @@ classify(x: Int!): String! {
 
 assert { classify(1) == "one" }
 
-let unmatched = classify(9) rescue {
+let unmatched = try {
+  classify(9)
+} catch {
   e: Error => e.message
 }
 assert { unmatched == "no case clause matched" }

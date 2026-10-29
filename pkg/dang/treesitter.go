@@ -71,6 +71,7 @@ var tsPredicates = map[string]bool{
 	"SingleBraceFragment":  tsVersion.singleBraceFragments(),
 	"ForLoops":             tsVersion.forLoops(),
 	"CommaFormSep":         tsVersion.commaFormSep(),
+	"RescueKeyword":        tsVersion.postfixRescue(),
 }
 
 // tsInlinedRules are PEG rules that only exist to switch syntax by version.

@@ -151,7 +151,7 @@ func TestVersionForLoops(t *testing.T) {
 		node := parseSingleForm(t, `for { 1 }`, Version1_0)
 		call, ok := node.(*FunCall)
 		require.True(t, ok, "expected *FunCall, got %T", node)
-		assert.Equal(t, "loop", call.Fun.(*Symbol).Name)
+		assert.Equal(t, forLoopBuiltin, call.Fun.(*Symbol).Name)
 	})
 
 	t.Run("Dang 2.1 for is an identifier", func(t *testing.T) {
@@ -168,6 +168,59 @@ func TestVersionForLoops(t *testing.T) {
 		node := parseSingleForm(t, `for + 1`, Version2_0)
 		_, ok := node.(*Addition)
 		require.True(t, ok, "expected *Addition, got %T", node)
+	})
+
+	t.Run("Dang 2.0 for loops migrate unless they would call a loop of the program's own", func(t *testing.T) {
+		loopy := "count(): Int! {\n  for {\n    break 1\n  }\n}\n"
+		for _, tc := range []struct {
+			name, src string
+			collides  bool
+		}{
+			{"no loop", loopy, false},
+			{"a top-level loop", "pub loop(n: Int!): Int! {\n  n\n}\n" + loopy, true},
+			{"a top-level loop declared after", loopy + "pub loop: Int! = 1\n", true},
+			{"a local loop around it", "count(): Int! {\n  let loop = 1\n  for {\n    break loop\n  }\n}\n", true},
+			{"a loop parameter", "count(loop: Int!): Int! {\n  for {\n    break loop\n  }\n}\n", true},
+			{"a block parameter", "let xs = [1].map { loop =>\n  for {\n    break loop\n  }\n}\n", true},
+			{"a constructor parameter", "type Foo {\n  pub x: Int!\n  new(loop: Int!) {\n    for {\n      break\n    }\n    self.x = loop\n    self\n  }\n}\n", true},
+			{"an object literal field", "let o = {{loop: 1, x: for {\n  break 2\n}}}\n", true},
+			{"a loop parameter of another function", loopy + "other(loop: Int!): Int! {\n  loop\n}\n", false},
+			{"a local loop elsewhere", loopy + "other(): Int! {\n  let loop = 1\n  loop\n}\n", false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := MigrateSource("version_test.dang", []byte(tc.src), Version2_0, Version2_1)
+				if tc.collides {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "`for` loop becomes a call to `loop`")
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
+	})
+
+	t.Run("Dang 2.0 for loops loop where the program binds loop", func(t *testing.T) {
+		src := "pub loop(n: Int!): Int! { n }\n" +
+			"count(): Int! {\n  let i = 0\n  # count to 3\n  for (i < 3) {\n    i += 1 # step\n  }\n  for {\n    break\n  }\n  i\n}\n" +
+			"assert { count() == 3 }\nassert { loop(2) == 2 }\n"
+		run := func(src string) {
+			t.Helper()
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
+			_, err := RunDir(ContextWithVersion(context.Background(), Version2_0), dir, false)
+			require.NoError(t, err)
+		}
+		run(src)
+
+		// Formatting keeps them `for` loops, which the program's own
+		// `loop` can't capture, as a `loop` call would be.
+		formatted, err := FormatFileWithVersion([]byte(src), Version2_0)
+		require.NoError(t, err)
+		assert.Contains(t, formatted, "  # count to 3\n  for (i < 3) {\n    i += 1 # step\n  }\n  for {\n    break\n  }\n")
+		run(formatted)
+		again, err := FormatFileWithVersion([]byte(formatted), Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, formatted, again)
 	})
 }
 
@@ -260,6 +313,212 @@ func TestVersionClausesAfterElse(t *testing.T) {
 		require.True(t, ok, "expected *Case, got %T", node)
 		require.Len(t, c.Clauses, 2)
 	})
+}
+
+func TestVersionRescue(t *testing.T) {
+	for _, version := range []Version{Version1_0, Version2_0} {
+		t.Run("Dang "+version.String()+" rescue is an identifier", func(t *testing.T) {
+			for _, src := range []string{
+				"let rescue = 1\n",
+				"pub rescue: Int! = 1\n",
+				"f(rescue: Int!): Int! { rescue }\n",
+				"let x = f(rescue: 1)\n",
+				"let x = { rescue }\n",
+			} {
+				_, err := Parse("version_test.dang", []byte(src), WithVersion(version))
+				assert.NoError(t, err, "%q", src)
+			}
+		})
+
+		t.Run("Dang "+version.String()+" has no postfix rescue", func(t *testing.T) {
+			_, err := Parse("version_test.dang", []byte("let x = boom rescue 1\n"), WithVersion(version))
+			require.Error(t, err)
+
+			// `rescue` on the next line starts a form of its own, rather
+			// than rescuing the line before.
+			parsed, err := Parse("version_test.dang", []byte("let x = boom\nrescue(1)\n"), WithVersion(version))
+			require.NoError(t, err)
+			require.Len(t, parsed.(*FileBlock).Forms, 2)
+		})
+
+		t.Run("Dang "+version.String()+" try/catch is current", func(t *testing.T) {
+			node := parseSingleForm(t, "try { boom } catch { err => 1 }", version)
+			r, ok := node.(*RescueExpr)
+			require.True(t, ok, "expected *RescueExpr, got %T", node)
+			assert.True(t, r.TryCatch)
+			assert.False(t, r.Legacy)
+
+			src := "let x = try {\n  boom\n} catch {\n  err => 1\n  e: Error => 2\n}\n"
+			formatted, err := FormatFileWithVersion([]byte(src), version)
+			require.NoError(t, err)
+			assert.Equal(t, src, formatted)
+		})
+	}
+
+	t.Run("Dang 2.1 try/catch is legacy", func(t *testing.T) {
+		node := parseSingleForm(t, "try { boom } catch { err => 1 }", Version2_1)
+		r, ok := node.(*RescueExpr)
+		require.True(t, ok, "expected *RescueExpr, got %T", node)
+		assert.True(t, r.TryCatch)
+		assert.True(t, r.Legacy)
+	})
+
+	t.Run("Dang 2.0 try/catch migrates to rescue", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = try {\n  boom\n} catch {\n  e: Error => 1\n}\n",
+			"let x = boom rescue {\n  e: Error => 1\n}\n",
+		)
+		assertMigratesTo(t,
+			"let x = try {\n  boom\n} catch {\n  err => 1\n}\n",
+			"let x = boom rescue 1\n",
+		)
+	})
+
+	t.Run("Dang 2.0 try/catch stays where rescue would lose something", func(t *testing.T) {
+		for _, src := range []string{
+			// Dead clauses, which rescue rejects.
+			"let x = try {\n  boom\n} catch {\n  e: Error => 1\n  err => 2\n}\n",
+			"let x = try {\n  boom\n} catch {\n  e: Foo => 1\n  f: Foo => 2\n}\n",
+			"let x = try {\n  boom\n} catch {\n  err => 1\n  e: Foo => 2\n}\n",
+			// A comment in a catch without clauses.
+			"let x = try {\n  boom\n} catch {\n  # nothing to do\n}\n",
+		} {
+			assertMigratesTo(t, src, src)
+		}
+	})
+
+	t.Run("Dang 2.0 try/catch comments survive migrating", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = try {\n  boom # inner\n} catch {\n  # ignore\n  err => \"\" # really\n}\n",
+			"let x = {\n  boom # inner\n} rescue {\n  # ignore\n  err: Error => \"\" # really\n}\n",
+		)
+	})
+
+	t.Run("Dang 2.1 reserves rescue", func(t *testing.T) {
+		_, err := Parse("version_test.dang", []byte("let rescue = 1\n"), WithVersion(Version2_1))
+		require.Error(t, err)
+	})
+
+	t.Run("Dang 2.1 rescue is a name where only a name can go", func(t *testing.T) {
+		for _, src := range []string{
+			"let x = f(rescue: 1)\n",
+			"let x = x.rescue\n",
+			"let x = x.rescue(1)\n",
+			"let x = x.{{rescue}}\n",
+			"let x = x.{{rescue: name, other: rescue}}\n",
+			"let x = {{rescue: 1}}\n",
+			"let x: {{rescue: Int!}} = y\n",
+		} {
+			_, err := Parse("version_test.dang", []byte(src), WithVersion(Version2_1))
+			assert.NoError(t, err, "%q", src)
+		}
+	})
+}
+
+// versions lists every Dang version.
+var versions = []Version{Version1_0, Version2_0, Version2_1}
+
+// TestReservedWords checks every reserved word in every version: it is an
+// identifier exactly where it isn't reserved, `$word` is the identifier in
+// every version, it is a name wherever only a name can go (but for null,
+// which is a value), and the formatter escapes it exactly where needed.
+func TestReservedWords(t *testing.T) {
+	require.Contains(t, versions, CurrentVersion, "list the new version in versions")
+	for word := range reservedWords {
+		for _, v := range versions {
+			t.Run(word+" in "+v.String(), func(t *testing.T) {
+				parses := func(src string) bool {
+					_, err := Parse("version_test.dang", []byte(src), WithVersion(v))
+					return err == nil
+				}
+				reserved := v.reserves(word)
+
+				for _, src := range []string{
+					"let " + word + " = 1\n",
+					"pub " + word + ": Int! = 1\n",
+					"f(" + word + ": Int!): Int! { " + word + " }\n",
+					"let x = [1].map { " + word + " => " + word + " }\n",
+				} {
+					assert.Equal(t, !reserved, parses(src), "%q", src)
+				}
+
+				escaped := parseSingleForm(t, "let $"+word+" = $"+word+"\n", v)
+				decl, ok := escaped.(*FieldDecl)
+				require.True(t, ok, "expected *FieldDecl, got %T", escaped)
+				assert.Equal(t, word, decl.Name.Name)
+				assert.Equal(t, word, decl.Value.(*Symbol).Name)
+
+				isName := word != "null"
+				openBrace, closeBrace := v.selectionBraces()
+				for _, src := range []string{
+					"let x = f(" + word + ": 1)\n",
+					"let x = x." + word + "\n",
+					"let x = x." + openBrace + word + ": a" + closeBrace + "\n",
+					"let x = {{" + word + ": 1}}\n",
+				} {
+					assert.Equal(t, isName || !reserved, parses(src), "%q", src)
+				}
+
+				formatted, err := FormatFileWithVersion([]byte("let $"+word+" = f($"+word+": x.$"+word+")\n"), v)
+				require.NoError(t, err)
+				spelled, field := word, word
+				if reserved {
+					spelled = "$" + word
+				}
+				if !isName {
+					field = "$" + word
+				}
+				assert.Equal(t, "let "+spelled+" = f("+field+": x."+field+")\n", formatted)
+			})
+		}
+	}
+}
+
+// TestKeywordNamesRoundTrip checks that formatting keeps a name spelled like
+// a keyword a name, declared and referred to, in every version.
+func TestKeywordNamesRoundTrip(t *testing.T) {
+	// Every keyword token's word (see the *Token rules of dang.peg).
+	words := []string{
+		"and", "break", "case", "catch", "continue", "directive", "else",
+		"enum", "false", "for", "if", "implements", "import", "interface",
+		"let", "new", "null", "on", "or", "pub", "raise", "rescue", "return",
+		"scalar", "self", "true", "try", "type", "union",
+	}
+	for _, v := range versions {
+		for _, word := range words {
+			src := "pub $" + word + "($" + word + ": Int!): Int! {\n  $" + word + "\n}\n" +
+				"let y = $" + word + "(1)\nlet z = [1].map { $" + word + " => $" + word + " }\n" +
+				"let w = $" + word + " - 1\nlet c = case (1) {\n  $" + word + " => 2\n}\n"
+			want, err := Parse("version_test.dang", []byte(src), WithVersion(v))
+			require.NoError(t, err, "%s in %s", word, v)
+			formatted, err := FormatFileWithVersion([]byte(src), v)
+			require.NoError(t, err, "%s in %s", word, v)
+			got, err := Parse("version_test.dang", []byte(formatted), WithVersion(v))
+			if !assert.NoError(t, err, "%s in %s:\n%s", word, v, formatted) {
+				continue
+			}
+			_, differs := firstASTDifference(want.(Node), got.(Node))
+			assert.False(t, differs, "%s in %s:\n%s", word, v, formatted)
+		}
+	}
+}
+
+// TestReservedWordMigration checks that migrating to a version that reserves
+// a word escapes the identifiers spelled like it.
+func TestReservedWordMigration(t *testing.T) {
+	for word, since := range reservedWords {
+		for _, from := range versions {
+			if !from.Before(since) {
+				continue
+			}
+			t.Run(word+" from "+from.String(), func(t *testing.T) {
+				src := "pub " + word + "(" + word + ": Int!): Int! {\n  " + word + "\n}\n"
+				migrated, err := MigrateSource("version_test.dang", []byte(src), from, since)
+				require.NoError(t, err)
+				assert.Equal(t, "$"+word+"($"+word+": Int!): Int! {\n  $"+word+"\n}\n", migrated)
+			})
+		}
+	}
 }
 
 func writeConfig(t *testing.T, contents string) string {

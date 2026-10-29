@@ -1049,7 +1049,7 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 	}
 
 	f.write("type ")
-	f.write(c.Name.Name)
+	f.write(f.ident(c.Name.Name))
 
 	// Implements clause
 	if len(c.Implements) > 0 {
@@ -1058,7 +1058,7 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 			if i > 0 {
 				f.write(" & ")
 			}
-			f.write(impl.Name)
+			f.write(f.ident(impl.Name))
 		}
 	}
 
@@ -1123,7 +1123,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	}
 
 	f.write("interface ")
-	f.write(i.Name.Name)
+	f.write(f.ident(i.Name.Name))
 
 	if len(i.Implements) > 0 {
 		f.write(" implements ")
@@ -1131,7 +1131,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 			if idx > 0 {
 				f.write(" & ")
 			}
-			f.write(impl.Name)
+			f.write(f.ident(impl.Name))
 		}
 	}
 
@@ -1160,13 +1160,13 @@ func (f *Formatter) formatUnionDecl(u *UnionDecl) {
 	}
 
 	f.write("union ")
-	f.write(u.Name.Name)
+	f.write(f.ident(u.Name.Name))
 	f.write(" = ")
 	for i, member := range u.Members {
 		if i > 0 {
 			f.write(" | ")
 		}
-		f.write(member.Name)
+		f.write(f.ident(member.Name))
 	}
 }
 
@@ -1176,7 +1176,7 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 	}
 
 	f.write("enum ")
-	f.write(e.Name.Name)
+	f.write(f.ident(e.Name.Name))
 
 	// Check if enum was originally on a single line
 	singleLine := e.Loc != nil && (e.Loc.End == nil || e.Loc.End.Line == e.Loc.Line)
@@ -1236,7 +1236,7 @@ func (f *Formatter) formatScalarDecl(s *ScalarDecl) {
 	}
 
 	f.write("scalar ")
-	f.write(s.Name.Name)
+	f.write(f.ident(s.Name.Name))
 
 	// Suffix directives (on same line)
 	for _, d := range s.Directives {
@@ -1362,7 +1362,7 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 		f.write("let ")
 	}
 
-	f.write(s.Name.Name)
+	f.write(f.ident(s.Name.Name))
 
 	// Determine the source line of the name for directive multiline detection
 	nameLine := 0
@@ -1386,7 +1386,7 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 				if i > 0 {
 					f.write(", ")
 				}
-				f.write(arg.Name.Name)
+				f.write(f.ident(arg.Name.Name))
 				f.write(": ")
 				f.formatTypeNode(arg.Type_)
 			}
@@ -1630,7 +1630,7 @@ func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl,
 }
 
 func (f *Formatter) estimateArgLength(arg *FieldDecl) int {
-	length := len(arg.Name.Name)
+	length := len(f.ident(arg.Name.Name))
 	if arg.Type_ != nil {
 		length += 2 + f.estimateTypeLength(arg.Type_)
 	}
@@ -1655,7 +1655,7 @@ func (f *Formatter) formatArgDecl(arg *FieldDecl) {
 		}
 	}
 
-	f.write(arg.Name.Name)
+	f.write(f.ident(arg.Name.Name))
 
 	if arg.Type_ != nil {
 		// Block params have special syntax: &block(args): ret instead of &block: (args): ret
@@ -1694,7 +1694,7 @@ func (f *Formatter) formatBlockParamType(funType FunTypeNode) {
 			if i > 0 {
 				f.write(", ")
 			}
-			f.write(arg.Name.Name)
+			f.write(f.ident(arg.Name.Name))
 			f.write(": ")
 			f.formatTypeNode(arg.Type_)
 		}
@@ -1710,7 +1710,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 	}
 
 	f.write("directive @")
-	f.write(d.Name)
+	f.write(f.ident(d.Name))
 
 	if len(d.Args) > 0 {
 		f.write("(")
@@ -1729,7 +1729,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 func (f *Formatter) formatImportDecl(i *ImportDecl) {
 	f.write("import ")
-	f.write(i.Name.Name)
+	f.write(f.ident(i.Name.Name))
 }
 
 func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
@@ -1738,7 +1738,7 @@ func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
 		f.write(d.Scope.Name)
 		f.write(".")
 	}
-	f.write(d.Name)
+	f.write(f.ident(d.Name))
 
 	if len(d.Args) > 0 {
 		f.write("(")
@@ -2017,6 +2017,10 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 		return
 	}
 
+	if f.formatForLoop(c) {
+		return
+	}
+
 	f.formatNode(c.Fun)
 
 	// Format arguments
@@ -2050,6 +2054,9 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 }
 
 func (f *Formatter) formatFunCallInline(c *FunCall) {
+	if f.formatForLoop(c) {
+		return
+	}
 	f.formatNodeInline(c.Fun)
 	if len(c.Args) > 0 {
 		f.write("(")
@@ -2184,7 +2191,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 			case *FunCall:
 				var fieldLoc *SourceLocation
 				if sel, ok := e.Fun.(*Select); ok {
-					f.write(sel.Field.Name)
+					f.write(f.fieldName(sel.Field.Name))
 					fieldLoc = sel.Field.Loc
 				}
 				if len(e.Args) > 0 {
@@ -2225,7 +2232,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 					f.emitTrailingComment(e.Loc.End.Line)
 				}
 			case *Select:
-				f.write(e.Field.Name)
+				f.write(f.fieldName(e.Field.Name))
 				// Use the Select's Loc directly to get the actual span
 				if e.Loc != nil && e.Loc.End != nil {
 					f.emitTrailingComment(e.Loc.End.Line)
@@ -2343,7 +2350,7 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 			}
 			// Skip past this arg's rendered length
 			if !arg.Positional && arg.Key != "" {
-				col += len(arg.Key) + 2 // "key: "
+				col += len(f.fieldName(arg.Key)) + 2 // "key: "
 			}
 			col += f.estimateLength(arg.Value)
 		}
@@ -2366,7 +2373,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLi
 				f.emitCommentsForNode(arg.Value)
 				f.writeIndent()
 				if !arg.Positional && arg.Key != "" {
-					f.write(arg.Key)
+					f.write(f.fieldName(arg.Key))
 					f.write(": ")
 				}
 				f.formatNode(arg.Value)
@@ -2388,7 +2395,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLi
 				f.write(", ")
 			}
 			if !arg.Positional && arg.Key != "" {
-				f.write(arg.Key)
+				f.write(f.fieldName(arg.Key))
 				f.write(": ")
 			}
 			f.formatNode(arg.Value)
@@ -2404,7 +2411,7 @@ func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 	}
 	f.formatNode(s.Receiver)
 	f.write(".")
-	f.write(s.Field.Name)
+	f.write(f.fieldName(s.Field.Name))
 }
 
 // formatSelectChain formats a select chain with leading dots on new lines
@@ -2442,7 +2449,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 			f.newline()
 			f.writeIndent()
 			f.write(".")
-			f.write(sel.Field.Name)
+			f.write(f.fieldName(sel.Field.Name))
 			// Emit trailing comment for this select
 			if sel.Loc != nil && sel.Loc.End != nil {
 				f.emitTrailingComment(sel.Loc.End.Line)
@@ -2454,11 +2461,99 @@ func (f *Formatter) formatSelectChain(s *Select) {
 func (f *Formatter) formatSelectInline(s *Select) {
 	f.formatNodeInline(s.Receiver)
 	f.write(".")
-	f.write(s.Field.Name)
+	f.write(f.fieldName(s.Field.Name))
 }
 
 func (f *Formatter) formatSymbol(s *Symbol) {
-	f.write(s.Name)
+	if isForLoopBuiltin(s.Name) {
+		// A desugared `for` loop, in the current spelling (see
+		// formatForLoop).
+		f.write("loop")
+		return
+	}
+	f.write(f.ident(s.Name))
+}
+
+// formatForLoop prints a desugared `for` loop as the `for` loop it was, where
+// the version has those (see desugarForLoop), and reports whether it did.
+// Elsewhere it prints as a `loop` call, its current spelling.
+func (f *Formatter) formatForLoop(c *FunCall) bool {
+	sym, ok := c.Fun.(*Symbol)
+	if !ok || !isForLoopBuiltin(sym.Name) || !f.version.forLoops() || c.BlockArg == nil {
+		return false
+	}
+	body, ok := c.BlockArg.BodyNode.(*Block)
+	if !ok {
+		return false
+	}
+	var cond Node
+	if sym.Name == forCondLoopBuiltin {
+		if len(body.Forms) != 1 {
+			return false
+		}
+		guard, ok := body.Forms[0].(*Conditional)
+		if !ok {
+			return false
+		}
+		then, ok := guard.Then.(*Block)
+		if !ok {
+			return false
+		}
+		cond, body = guard.Condition, then
+	}
+	f.write("for ")
+	if cond != nil {
+		f.write("(")
+		f.formatNode(cond)
+		f.write(") ")
+	}
+	f.formatBlock(body)
+	return true
+}
+
+// ident spells name where an identifier is expected: as `$name` if it is a
+// reserved word in the version being formatted, or a keyword whose bare
+// spelling may parse as something else where a name can go (see
+// nameKeywords), which the escape makes an identifier (see RawWordToken),
+// and as is otherwise.
+func (f *Formatter) ident(name string) string {
+	if f.version.reserves(name) || nameKeywords[name] || (name == "for" && f.version.forLoops()) {
+		return "$" + name
+	}
+	return name
+}
+
+// nameKeywords are the keywords that are not reserved, so they may be
+// names, but whose bare spelling where a name can go may parse as
+// something else: as a value (`true`, `self`), as a statement (`break`,
+// `if(x) ...`, `return - 1`), as a case's catch-all (`else =>`), or as the
+// visibility of a declaration (`pub(...)`, which the formatter writes for a
+// public `pub` taking arguments). Other keywords stay as they are: their
+// syntax needs more than the word, so a name spelled like them parses as a
+// name (see TestKeywordNamesRoundTrip).
+var nameKeywords = map[string]bool{
+	"true":     true,
+	"false":    true,
+	"null":     true,
+	"self":     true,
+	"break":    true,
+	"continue": true,
+	"return":   true,
+	"raise":    true,
+	"if":       true,
+	"else":     true,
+	"pub":      true,
+	"let":      true,
+}
+
+// fieldName spells name where it can only be a name: a field after a dot or
+// in a selection, a named argument, or an object or object type key. There a
+// reserved word is a name too, except null (see FieldId and ReservedName).
+func (f *Formatter) fieldName(name string) string {
+	if name == "null" {
+		return "$" + name
+	}
+	return name
 }
 
 func (f *Formatter) formatTemplate(t *Template) {
@@ -2939,7 +3034,7 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 			length += 2
 		}
 		if objectFieldShorthand(field) {
-			length += len(field.Name.Name)
+			length += len(f.ident(field.Name.Name))
 		} else {
 			temp := f.trial(field.Value, 0)
 			temp.formatNodeInline(field.Value)
@@ -2947,7 +3042,7 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 			// A value printing across lines (e.g. a case) spreads the
 			// object over them too, so it is multiline when formatted again.
 			spansLines = spansLines || strings.Contains(value, "\n")
-			length += len(field.Name.Name) + 2 + len(value)
+			length += len(f.fieldName(field.Name.Name)) + 2 + len(value)
 		}
 	}
 
@@ -2964,13 +3059,23 @@ func (f *Formatter) formatObjectInline(o *ObjectLiteral) {
 		if i > 0 {
 			f.write(", ")
 		}
-		f.write(field.Name.Name)
+		f.formatObjectFieldKey(field)
 		if !objectFieldShorthand(field) {
 			f.write(": ")
 			f.formatNodeInline(field.Value)
 		}
 	}
 	f.write("}}")
+}
+
+// formatObjectFieldKey prints an object literal field's key, which for a
+// shorthand field is also a reference to the binding of that name.
+func (f *Formatter) formatObjectFieldKey(field *FieldDecl) {
+	if objectFieldShorthand(field) {
+		f.write(f.ident(field.Name.Name))
+	} else {
+		f.write(f.fieldName(field.Name.Name))
+	}
 }
 
 func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
@@ -2990,7 +3095,7 @@ func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 		for i, field := range o.Fields {
 			f.emitCommentsForNode(field)
 			f.writeIndent()
-			f.write(field.Name.Name)
+			f.formatObjectFieldKey(field)
 			if !objectFieldShorthand(field) {
 				f.write(": ")
 				f.formatNode(field.Value)
@@ -3075,9 +3180,9 @@ func (f *Formatter) formatCase(c *Case) {
 			if clause.IsElse {
 				f.write("else")
 			} else if clause.IsTypePattern() {
-				f.write(clause.Binding)
+				f.write(f.ident(clause.Binding))
 				f.write(": ")
-				f.write(clause.TypePattern.Name)
+				f.write(f.ident(clause.TypePattern.Name))
 			} else {
 				f.formatNode(clause.Value)
 			}
@@ -3114,32 +3219,21 @@ func (f *Formatter) formatCase(c *Case) {
 }
 
 func (f *Formatter) formatRescueExpr(t *RescueExpr) {
-	f.formatRescueOperand(t)
-
-	if t.Legacy && len(t.Clauses) == 0 {
-		// A zero-clause `try { } catch { }` silently re-raised, so the
-		// handler did nothing; the rewrite drops it.
+	if t.TryCatch {
+		if !f.version.postfixRescue() || !f.tryCatchModernizes(t) {
+			f.formatTryCatch(t)
+			return
+		}
+		f.formatNode(modernizeTryCatch(t, f.tryBodyUnwraps(t), !f.catchHasComments(t)))
 		return
 	}
 
+	f.formatNode(t.Operand)
 	f.write(" rescue ")
 
 	if t.Fallback != nil {
 		f.formatNode(t.Fallback)
 		return
-	}
-
-	// A legacy catch with a single bare-binding clause that never reads
-	// the binding (`catch { err => "" }`) is the fallback form in
-	// disguise; rewrite it as `rescue ""`.
-	if t.Legacy && len(t.Clauses) == 1 {
-		clause := t.Clauses[0]
-		if clause.IsElse && clause.Binding != "" &&
-			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
-			fallbackFormSafe(clause.Expr) {
-			f.formatNode(clause.Expr)
-			return
-		}
 	}
 
 	f.write("{")
@@ -3148,28 +3242,61 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 	} else {
 		f.newline()
 	}
-	f.indented(func() {
-		if len(t.Clauses) > 0 && t.Clauses[0].Loc != nil {
-			f.lastLine = t.Clauses[0].Loc.Line - 1
+	f.formatRescueClauses(t.Clauses, func(clause *CaseClause) {
+		if clause.IsTypePattern() {
+			f.write(f.ident(clause.Binding))
+			f.write(": ")
+			f.write(f.ident(clause.TypePattern.Name))
+		} else {
+			f.write("else")
 		}
-		for _, clause := range t.Clauses {
+	})
+	f.writeIndent()
+	f.write("}")
+}
+
+// formatTryCatch prints a try/catch as written: for versions without postfix
+// rescue, and where its postfix equivalent would lose something (see
+// tryCatchModernizes).
+func (f *Formatter) formatTryCatch(t *RescueExpr) {
+	f.write("try ")
+	f.formatNode(t.Operand)
+	f.write(" catch {")
+	if t.Loc != nil {
+		f.nl(t.Loc.Line)
+	} else {
+		f.newline()
+	}
+	f.formatRescueClauses(t.Clauses, func(clause *CaseClause) {
+		f.write(f.ident(clause.Binding))
+		if clause.IsTypePattern() {
+			f.write(": ")
+			f.write(f.ident(clause.TypePattern.Name))
+		}
+	})
+	if t.Loc != nil && t.Loc.End != nil {
+		f.indented(func() {
+			f.emitCommentsBeforeClose(t.Loc.End.Line)
+		})
+	}
+	f.writeIndent()
+	f.write("}")
+}
+
+// formatRescueClauses prints the clauses of a rescue or a catch, one per
+// line, with pattern printing each clause's pattern.
+func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*CaseClause)) {
+	f.indented(func() {
+		if len(clauses) > 0 && clauses[0].Loc != nil {
+			f.lastLine = clauses[0].Loc.Line - 1
+		}
+		for _, clause := range clauses {
 			if clause.Loc != nil {
 				f.emitCommentsBeforeNode(clause.Loc.Line, false)
 				f.lastLine = clause.Loc.Line
 			}
 			f.writeIndent()
-			if clause.IsTypePattern() {
-				f.write(clause.Binding)
-				f.write(": ")
-				f.write(clause.TypePattern.Name)
-			} else if clause.Binding != "" {
-				// Legacy bare-binding catch-all rewrites to a typed
-				// catch-all on the Error interface.
-				f.write(clause.Binding)
-				f.write(": Error")
-			} else {
-				f.write("else")
-			}
+			pattern(clause)
 			f.write(" => ")
 			f.formatNode(clause.Expr)
 			if clause.Loc != nil {
@@ -3178,25 +3305,125 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 			f.newline()
 		}
 	})
-	f.writeIndent()
-	f.write("}")
 }
 
-// formatRescueOperand prints the left side of a rescue expression. A legacy
-// try body is always a block; when it holds a single form that can stand
-// on rescue's left unparenthesized, the block unwraps to the plain postfix
-// form (`try { x() } catch ...` becomes `x() rescue ...`).
-func (f *Formatter) formatRescueOperand(t *RescueExpr) {
-	if t.Legacy {
-		if block, ok := t.Operand.(*Block); ok &&
-			len(block.Forms) == 1 &&
-			rescueOperandSafe(block.Forms[0]) &&
-			!f.hasCommentsInBlock(block) {
-			f.formatNode(block.Forms[0])
-			return
+// tryCatchModernizes reports whether a try/catch prints as its postfix
+// equivalent where postfix rescue is available (see modernizeTryCatch),
+// rather than as written, which still runs there, with a warning. It does
+// unless that would lose something: a catch whose clauses can't all match
+// (postfix rescue rejects unreachable clauses), or one with no clauses but
+// with comments, which the equivalent has nowhere to put.
+func (f *Formatter) tryCatchModernizes(t *RescueExpr) bool {
+	if tryCatchHasDeadClauses(t) {
+		return false
+	}
+	return len(t.Clauses) > 0 || !f.catchHasComments(t)
+}
+
+// tryCatchHasDeadClauses reports whether a catch has a clause that can't
+// match, as far as the syntax tells: one after a catch-all (a bare binding,
+// or a pattern of the Error interface), or a pattern repeating an earlier
+// one's type.
+func tryCatchHasDeadClauses(t *RescueExpr) bool {
+	caught := false
+	seen := map[string]bool{}
+	for _, clause := range t.Clauses {
+		if caught {
+			return true
+		}
+		switch {
+		case clause.IsTypePattern():
+			name := clause.TypePattern.Name
+			if seen[name] {
+				return true
+			}
+			seen[name] = true
+			caught = name == "Error"
+		case clause.IsElse:
+			caught = true
 		}
 	}
-	f.formatNode(t.Operand)
+	return false
+}
+
+// tryBodyUnwraps reports whether a try body may unwrap to the plain postfix
+// form (see modernizeTryCatch): unless comments are on its lines, which the
+// block keeps in place.
+func (f *Formatter) tryBodyUnwraps(t *RescueExpr) bool {
+	block, ok := t.Operand.(*Block)
+	if !ok || block.Loc == nil || block.Loc.End == nil {
+		return true
+	}
+	return !f.hasCommentsOnLines(block.Loc.Line, block.Loc.End.Line)
+}
+
+// catchHasComments reports whether comments are on the lines of a
+// try/catch's catch block.
+func (f *Formatter) catchHasComments(t *RescueExpr) bool {
+	block, ok := t.Operand.(*Block)
+	if !ok || block.Loc == nil || block.Loc.End == nil || t.Loc == nil || t.Loc.End == nil {
+		return false
+	}
+	return f.hasCommentsOnLines(block.Loc.End.Line, t.Loc.End.Line)
+}
+
+// hasCommentsOnLines reports whether a comment, standalone or trailing, is
+// on a source line from first to last.
+func (f *Formatter) hasCommentsOnLines(first, last int) bool {
+	for _, c := range f.comments {
+		if c.Line >= first && c.Line <= last {
+			return true
+		}
+	}
+	return false
+}
+
+// modernizeTryCatch returns the postfix-rescue equivalent of a try/catch,
+// which the formatter prints in its place where postfix rescue is available,
+// and which migration compares it as (see compareAST). A try body holding a
+// single form that can stand on rescue's left unparenthesized unwraps to the
+// plain postfix form (`try { x() } catch ...` becomes `x() rescue ...`) if
+// unwrap allows it; a zero-clause catch, which silently re-raised, drops; a
+// single bare-binding catch-all that never reads its binding (`catch { err =>
+// "" }`) is the fallback form in disguise (`rescue ""`) if fallback allows
+// it; and the other bare bindings become typed catch-alls on the Error
+// interface (`err: Error =>`). t is not modified.
+func modernizeTryCatch(t *RescueExpr, unwrap, fallback bool) Node {
+	operand := t.Operand
+	if block, ok := operand.(*Block); ok && unwrap &&
+		len(block.Forms) == 1 && rescueOperandSafe(block.Forms[0]) {
+		operand = block.Forms[0]
+	}
+
+	if len(t.Clauses) == 0 {
+		return operand
+	}
+
+	modern := &RescueExpr{
+		Operand: operand,
+		Loc:     t.Loc,
+	}
+
+	if len(t.Clauses) == 1 && fallback {
+		clause := t.Clauses[0]
+		if clause.IsElse && clause.Binding != "" &&
+			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
+			fallbackFormSafe(clause.Expr) {
+			modern.Fallback = clause.Expr
+			return modern
+		}
+	}
+
+	for _, clause := range t.Clauses {
+		if clause.IsElse && clause.Binding != "" {
+			typed := *clause
+			typed.IsElse = false
+			typed.TypePattern = &Symbol{Name: "Error", Loc: clause.Loc}
+			clause = &typed
+		}
+		modern.Clauses = append(modern.Clauses, clause)
+	}
+	return modern
 }
 
 // fallbackFormSafe reports whether a form re-parses as the fallback
@@ -3414,10 +3641,10 @@ func (f *Formatter) formatDotApply(d *DotApply) {
 func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 	f.write("... on ")
 	if frag.Qualifier != "" {
-		f.write(frag.Qualifier)
+		f.write(f.ident(frag.Qualifier))
 		f.write(".")
 	}
-	f.write(frag.TypeName.Name)
+	f.write(f.ident(frag.TypeName.Name))
 	if frag.NonNull {
 		f.write("!")
 	}
@@ -3439,10 +3666,10 @@ func (f *Formatter) formatFieldSelection(field *FieldSelection) {
 	// `name` and `name: name` are equivalent, so only render the alias when it
 	// actually renames the field.
 	if field.Alias != "" && field.Alias != field.Name {
-		f.write(field.Alias)
+		f.write(f.fieldName(field.Alias))
 		f.write(": ")
 	}
-	f.write(field.Name)
+	f.write(f.fieldName(field.Name))
 	if len(field.Args) > 0 {
 		f.write("(")
 		f.formatCallArgs(field.Args, false, 0)
@@ -3469,7 +3696,7 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 				if i > 0 {
 					col += len(", ")
 				}
-				col += len(arg.Name.Name)
+				col += len(f.ident(arg.Name.Name))
 			}
 			col += len(" => ")
 		}
@@ -3482,7 +3709,7 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 			if i > 0 {
 				f.write(", ")
 			}
-			f.write(arg.Name.Name)
+			f.write(f.ident(arg.Name.Name))
 		}
 		if singleLineBody {
 			f.write(" => ")
@@ -3841,7 +4068,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 			if i > 0 {
 				f.write(", ")
 			}
-			f.write(field.Key)
+			f.write(f.fieldName(field.Key))
 			f.write(": ")
 			f.formatTypeNode(field.Type)
 		}
@@ -3857,7 +4084,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 				if i > 0 {
 					f.write(", ")
 				}
-				f.write(arg.Name.Name)
+				f.write(f.ident(arg.Name.Name))
 				f.write(": ")
 				f.formatTypeNode(arg.Type_)
 			}

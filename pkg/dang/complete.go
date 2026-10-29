@@ -243,7 +243,7 @@ func completeLexical(typeScope TypeScope, prefix string) []Completion {
 		if !strings.HasPrefix(strings.ToLower(name), prefixLower) {
 			continue
 		}
-		if IsTypeDefBinding(scheme) || IsIDTypeName(name) {
+		if IsTypeDefBinding(scheme) || IsIDTypeName(name) || IsInternalName(name) {
 			continue
 		}
 

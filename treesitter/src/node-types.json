@@ -1719,7 +1719,18 @@
   {
     "type": "field_id",
     "named": true,
-    "fields": {}
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "raw_word_token",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "field_selection",
@@ -1731,6 +1742,10 @@
         "types": [
           {
             "type": "id",
+            "named": true
+          },
+          {
+            "type": "reserved_name",
             "named": true
           }
         ]
@@ -1761,6 +1776,10 @@
         "types": [
           {
             "type": "id",
+            "named": true
+          },
+          {
+            "type": "reserved_name",
             "named": true
           }
         ]
@@ -1903,6 +1922,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "raw_word_token",
+          "named": true
+        },
         {
           "type": "word_token",
           "named": true
@@ -2203,6 +2226,14 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "raw_word_token",
+            "named": true
+          },
+          {
+            "type": "reserved_name",
+            "named": true
+          },
           {
             "type": "word_token",
             "named": true
@@ -3155,6 +3186,10 @@
           {
             "type": "id",
             "named": true
+          },
+          {
+            "type": "reserved_name",
+            "named": true
           }
         ]
       },
@@ -3551,6 +3586,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "reserved_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "rescue_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -4993,6 +5043,10 @@
   },
   {
     "type": "raise_token",
+    "named": true
+  },
+  {
+    "type": "raw_word_token",
     "named": true
   },
   {

@@ -476,21 +476,28 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	}, nil
 }
 
-// NewValueScope creates an evaluation environment with built-in functions
+// NewValueScope creates an evaluation environment with built-in functions.
+//
+// The builtins and the Dang-source prelude's bindings live in a parent frame
+// of the returned scope rather than in the scope itself, so that the program's
+// own declarations shadow them: a declaration whose name is already bound in
+// the frame it is published to is not published again (see FieldDecl.Eval),
+// so a builtin bound there would win over a module's own `let loop = ...`.
 func NewValueScope(typeScope TypeScope) ValueScope {
 	// Create an Object from the type environment
-	env := NewObject(typeScope)
+	builtinsFrame := NewObject(typeScope)
+	builtinsFrame.builtins = true
 
 	// Add builtin functions
-	addBuiltinFunctions(env)
+	addBuiltinFunctions(builtinsFrame)
 
 	// Bind the Dang-source prelude's public declarations, builtin-style.
 	loadPrelude()
 	for _, kv := range preludeBindings {
-		env.Bind(kv.Key, kv.Value, PublicVisibility)
+		builtinsFrame.Bind(kv.Key, kv.Value, PublicVisibility)
 	}
 
-	return env
+	return builtinsFrame.Derive(false)
 }
 
 // ValueScopeFromSchema creates an evaluation environment populated with GraphQL API values
@@ -756,7 +763,9 @@ func addBuiltinFunctions(scope ValueScope) {
 				return def.Impl(ctx, nil, Args{Values: argsWithDefaults, Block: blockArg})
 			},
 		}
-		scope.Bind(def.Name, builtinFn, PublicVisibility)
+		for _, name := range builtinNames(def) {
+			scope.Bind(name, builtinFn, PublicVisibility)
+		}
 	})
 
 	// Register all builtin methods with naming convention
@@ -2283,6 +2292,17 @@ type Object struct {
 	// `self` (including `self.x = v` writes), and bare field writes fork `self`
 	// instead of mutating a receiver frame in place. See nextFrame and Update.
 	selfParent bool
+
+	// builtins marks the frame of builtins under a program's scope (see
+	// NewValueScope). A frame whose parent it is counts as a root for
+	// copy-on-write: its parent holds no generations of it (see ownParent).
+	builtins bool
+}
+
+// ownParent reports whether m's parent is an earlier generation or an outer
+// scope of m's own, rather than nothing or the builtins frame.
+func (m *Object) ownParent() bool {
+	return m.Parent != nil && !m.Parent.builtins
 }
 
 // nextFrame returns the frame name resolution continues in after m, and
@@ -2575,7 +2595,7 @@ func (m *Object) Derive(sealed bool) ValueScope {
 func (m *Object) snapshotReceiver() *Object {
 	var frames []*Object
 	base := m
-	for base.Parent != nil && base.Mod == m.Mod {
+	for base.ownParent() && base.Mod == m.Mod {
 		frames = append(frames, base)
 		base = base.Parent
 	}
@@ -2746,7 +2766,7 @@ func (m *Object) bindOverPending(name string, value Value, vis Visibility) {
 // instead, with the new generation as m's sibling: chains stay as deep as
 // they were, and a write costs one copy of the fields written so far.
 func (m *Object) cowCopy() *Object {
-	if m.Parent == nil {
+	if !m.ownParent() {
 		return m.Derive(false).(*Object)
 	}
 	m.mu.Lock()

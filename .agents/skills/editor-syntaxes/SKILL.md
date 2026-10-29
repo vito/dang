@@ -88,7 +88,8 @@ go test -a ./pkg/dang/ -run TestHighlight
 ## Checklist
 
 When a language keyword or token changes (and if old code used the old form,
-also follow the `language-versions` skill to keep it parsing):
+also follow the `language-versions` skill to keep it parsing; a new keyword
+follows its "adding a keyword" checklist for the grammar and tests):
 
 1. [ ] Update `editors/zed/languages/dang/highlights.scm`
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`

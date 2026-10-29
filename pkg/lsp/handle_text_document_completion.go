@@ -98,7 +98,7 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 		// Get all bindings from this environment (both public and private for completion)
 		for name, scheme := range env.Bindings(dang.PrivateVisibility) {
 			// Skip if we've already seen this symbol
-			if seen[name] {
+			if seen[name] || dang.IsInternalName(name) {
 				continue
 			}
 			seen[name] = true

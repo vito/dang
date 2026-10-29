@@ -51,7 +51,7 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 - Named: `greet(name: "Alice")`. Positional: `greet("Alice")`.
 - **Mixed**: positional first, then named. `add(10, b: 20)` ✓; `add(a: 10, 20)` ✗ → `positional arguments must come before named arguments` (same rule for directive applications).
 - **Defaults**: `name: String! = "world"`. A default may reference *earlier parameters* in the same list (the param shadows any outer binding). In a free function it may reference enclosing scope; in a method it may reference fields of the same type. A nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`. Same rules for `new(...)` params, except that their defaults follow the field-default rule (see "Field defaults").
-- **Non-null with a default is nullable to the caller, non-null in the body.** A `T! = default` param is *optional* to callers — they may omit it, pass `null`, or pass a nullable `T` — and every such case falls back to the default; meanwhile the body sees a plain `T!`, so no null checks/assertions are needed. This is the idiomatic way to "excise null at the boundary": prefer `path: String! = ""` (or any sentinel default) over `path: String` + downstream null handling. (Verified: `greet(name: String! = "world")` accepts `greet`, `greet(null)`, and `greet(someNullableString)`, all yielding `"world"`.)
+- **Non-null with a default is nullable to the caller, non-null in the body.** A `T! = default` param is *optional* to callers — they may omit it, pass `null`, or pass a nullable `T` — and every such case falls back to the default; meanwhile the body sees a plain `T!`, so no null checks/assertions are needed. This is the idiomatic way to "excise null at the boundary": prefer `path: String! = ""` (or any sentinel default) over `path: String` + downstream null handling.
 
 ### Function references: `&fn`
 - `&` yields the function itself without calling it: `&greet`, `&user.greet`.
@@ -71,7 +71,6 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
   ```
 - Contrast sibling methods (`bump` declared on the type): each call forks `self` independently, so the changes surface only through a returned `self`.
 - A nested function that writes the method's state (like `bump` above) can't escape the method, and calling it inside a `{{ }}` field is a compile error.
-- LSP hover on a closure shows its effects: `// Effects: writes n; calls block` (outer bindings it writes, enclosing block params it calls). Pure functions show none.
 
 ## Blocks (the "lambda of Dang")
 

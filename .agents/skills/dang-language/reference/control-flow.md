@@ -118,16 +118,14 @@ validate(name) rescue {
 - Left-associative chaining: `x rescue { n: NotFoundError => .. } rescue { e: Error => .. }` — a miss in the first re-raises into the second.
 - A bare `{` after `rescue` always starts a **clause block**; a record fallback uses double braces and is unaffected: `x rescue {{ ok: false }}`.
 - `raise x rescue y` parses as `raise (x rescue y)`; to rescue a raise, block it: `{ raise x } rescue y`.
-- `rescue` is a reserved word (can't be an identifier or binding name); `try` and `catch` are ordinary identifiers.
 
 ### Compile errors
 - Zero clauses, `expr rescue { }` → ``rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value` ``
-- A bare catch-all clause, `err =>` → ``bare catch-all `err =>` is no longer supported; bind the error with `err: Error =>` or discard it with `else =>` ``
+- A bare catch-all `err =>` is an error: bind with `err: Error =>` or discard with `else =>`.
 - **Unreachable clauses** (rescue and `case` alike): a duplicate type pattern or one covered by an earlier interface pattern → `unreachable clause: X is already matched by the Y clause on line N`; any clause after `else` → `unreachable clause: follows the else catch-all on line N`. Rescue-only: because the operand is always `Error!`, an `else` after an `e: Error` catch-all → `unreachable clause: the Error clause on line N already matches every error` (in `case`, a trailing `else` after an interface pattern stays legal — nullable operands fall through type patterns).
-- Legacy `try { } catch { }` still parses and runs, but type-checking warns: ``try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate``. `dang fmt -w` rewrites it (a single-form try body unwraps to plain postfix, bare `err =>` bindings become `err: Error =>`, zero-clause handlers are dropped).
 
 ### Propagation
-- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` terminates the program with a full report: `uncaught <TypeName>: <message>` (plain `uncaught error:` for BasicError) + highlighted raise site + the error's public data fields + the `caused by:` chain + `also failed:` sections for completed sibling failures from a concurrent `{{ }}` — every link and sibling rendered with its own highlighted source snippet (explicit-field causes have no raise site, so they get just the summary line).
+- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` ends the program with a report: `uncaught <TypeName>: <message>`, the raise site, the error's fields, its `caused by:` chain, and `also failed:` for sibling failures in a concurrent `{{ }}`.
 - `{{ }}` stays fail-fast with one deterministic primary error; a rescue catching the primary drops the siblings (they appear only in the uncaught report).
 - `return` cannot be rescued — `{ return x } rescue fallback` still returns `x`; likewise `break`/`continue` are not errors.
 - Re-raise inside a clause with `raise err` (or a new error); it propagates to the next enclosing `rescue`.

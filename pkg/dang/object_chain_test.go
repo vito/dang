@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"fmt"
 	"runtime/debug"
 	"testing"
 
@@ -112,4 +113,22 @@ func TestUpdateRechecksAtPendingLayer(t *testing.T) {
 	require.False(t, root.Has("x"), "the write walked past the pending layer")
 	_, local := mid.LookupLocal("x")
 	require.True(t, local, "the write should stop at the pending layer")
+}
+
+// A program's scope sits on the frame of builtins (see NewValueScope), which
+// holds no generations of it: a method call on a module snapshots it as a
+// root, by deriving rather than copying it, and a write copies nothing.
+func TestBuiltinsFrameIsNoGeneration(t *testing.T) {
+	scope := NewValueScope(NewPreludeTypeScope("")).(*Object)
+	for i := range 100 {
+		scope.Bind(fmt.Sprintf("v%d", i), IntValue{Val: i}, PublicVisibility)
+	}
+
+	snap := scope.snapshotReceiver()
+	require.Same(t, scope, snap.Parent, "the module scope was copied")
+	require.Empty(t, snap.Values)
+
+	next := scope.cowCopy()
+	require.Same(t, scope, next.Parent, "the module scope was copied")
+	require.Empty(t, next.Values)
 }

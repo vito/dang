@@ -124,3 +124,19 @@ The formatter lives in `pkg/dang/format.go`. When adding a new AST node type, up
 
 - `formatNode()` — add a case to format the node
 - Any relevant classification helpers e.g. `.GetSourceLocation() for blank line insertion logic
+
+## Names
+
+A name may be spelled like a reserved word (`$rescue` is the identifier
+`rescue`), so new syntax that holds a name must pick its rule by position:
+
+| Position | Grammar | Formatter |
+|---|---|---|
+| Identifier: a declaration, a bare reference, a param, a binding (anywhere an expression could also start) | `Id` | `f.ident(name)` |
+| Only a name can go: a named argument, an object or object-type key, a field in `{{ }}` | `Id / ReservedName` | `f.fieldName(name)` |
+| After a dot | `FieldId` | `f.fieldName(name)` |
+
+Never `f.write(name)` a name raw: `dang fmt` and `dang migrate` would print
+`rescue` where it must be `$rescue`, and the output wouldn't parse.
+`TestReservedWords` and `TestKeywordNamesRoundTrip` (`pkg/dang/version_test.go`)
+exercise the common positions; extend them for a new one.
