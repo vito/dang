@@ -236,17 +236,28 @@ func migrationCanonical(n Node) Node {
 		return n
 	}
 	if r.TryCatch {
-		n = modernizeTryCatch(r, true)
+		n = modernizeTryCatch(r, true, true)
 		if r, ok = n.(*RescueExpr); !ok {
 			return n
 		}
 	}
+	canonical := *r
 	if block, ok := r.Operand.(*Block); ok && len(block.Forms) == 1 && rescueOperandSafe(block.Forms[0]) {
-		unwrapped := *r
-		unwrapped.Operand = block.Forms[0]
-		return &unwrapped
+		canonical.Operand = block.Forms[0]
 	}
-	return r
+	// A single catch-all on Error whose binding goes unused is the fallback
+	// form, which the formatter writes for it unless comments are in the
+	// way.
+	if len(r.Clauses) == 1 {
+		clause := r.Clauses[0]
+		if clause.IsTypePattern() && clause.TypePattern.Name == "Error" &&
+			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
+			fallbackFormSafe(clause.Expr) {
+			canonical.Clauses = nil
+			canonical.Fallback = clause.Expr
+		}
+	}
+	return &canonical
 }
 
 // sameMeaning reports whether source parses, unchanged, to the same AST in

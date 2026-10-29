@@ -45,7 +45,8 @@ let plain = try {
 }
 assert { plain == "plain" }
 
-# Clauses after a catch-all never match, so they drop.
+# Clauses after a catch-all never match, and rescue rejects them, so this
+# stays a try/catch, which still runs in 2.1, with a warning.
 let first = try {
   boom()
 } catch {
@@ -53,3 +54,13 @@ let first = try {
   e: Error => "second"
 }
 assert { first == "first" }
+
+# Comments stay where they were, keeping the try body a block and the
+# catch-all a clause.
+let commented = try {
+  boom() # may fail
+} catch {
+  # never mind
+  err => "commented"
+}
+assert { commented == "commented" }

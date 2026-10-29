@@ -3220,12 +3220,11 @@ func (f *Formatter) formatCase(c *Case) {
 
 func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 	if t.TryCatch {
-		if !f.version.postfixRescue() {
+		if !f.version.postfixRescue() || !f.tryCatchModernizes(t) {
 			f.formatTryCatch(t)
 			return
 		}
-		block, _ := t.Operand.(*Block)
-		f.formatNode(modernizeTryCatch(t, block == nil || !f.hasCommentsInBlock(block)))
+		f.formatNode(modernizeTryCatch(t, f.tryBodyUnwraps(t), !f.catchHasComments(t)))
 		return
 	}
 
@@ -3256,8 +3255,9 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 	f.write("}")
 }
 
-// formatTryCatch prints a try/catch as written, for versions without
-// postfix rescue.
+// formatTryCatch prints a try/catch as written: for versions without postfix
+// rescue, and where its postfix equivalent would lose something (see
+// tryCatchModernizes).
 func (f *Formatter) formatTryCatch(t *RescueExpr) {
 	f.write("try ")
 	f.formatNode(t.Operand)
@@ -3274,6 +3274,11 @@ func (f *Formatter) formatTryCatch(t *RescueExpr) {
 			f.write(f.ident(clause.TypePattern.Name))
 		}
 	})
+	if t.Loc != nil && t.Loc.End != nil {
+		f.indented(func() {
+			f.emitCommentsBeforeClose(t.Loc.End.Line)
+		})
+	}
 	f.writeIndent()
 	f.write("}")
 }
@@ -3302,6 +3307,77 @@ func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*Cas
 	})
 }
 
+// tryCatchModernizes reports whether a try/catch prints as its postfix
+// equivalent where postfix rescue is available (see modernizeTryCatch),
+// rather than as written, which still runs there, with a warning. It does
+// unless that would lose something: a catch whose clauses can't all match
+// (postfix rescue rejects unreachable clauses), or one with no clauses but
+// with comments, which the equivalent has nowhere to put.
+func (f *Formatter) tryCatchModernizes(t *RescueExpr) bool {
+	if tryCatchHasDeadClauses(t) {
+		return false
+	}
+	return len(t.Clauses) > 0 || !f.catchHasComments(t)
+}
+
+// tryCatchHasDeadClauses reports whether a catch has a clause that can't
+// match, as far as the syntax tells: one after a catch-all (a bare binding,
+// or a pattern of the Error interface), or a pattern repeating an earlier
+// one's type.
+func tryCatchHasDeadClauses(t *RescueExpr) bool {
+	caught := false
+	seen := map[string]bool{}
+	for _, clause := range t.Clauses {
+		if caught {
+			return true
+		}
+		switch {
+		case clause.IsTypePattern():
+			name := clause.TypePattern.Name
+			if seen[name] {
+				return true
+			}
+			seen[name] = true
+			caught = name == "Error"
+		case clause.IsElse:
+			caught = true
+		}
+	}
+	return false
+}
+
+// tryBodyUnwraps reports whether a try body may unwrap to the plain postfix
+// form (see modernizeTryCatch): unless comments are on its lines, which the
+// block keeps in place.
+func (f *Formatter) tryBodyUnwraps(t *RescueExpr) bool {
+	block, ok := t.Operand.(*Block)
+	if !ok || block.Loc == nil || block.Loc.End == nil {
+		return true
+	}
+	return !f.hasCommentsOnLines(block.Loc.Line, block.Loc.End.Line)
+}
+
+// catchHasComments reports whether comments are on the lines of a
+// try/catch's catch block.
+func (f *Formatter) catchHasComments(t *RescueExpr) bool {
+	block, ok := t.Operand.(*Block)
+	if !ok || block.Loc == nil || block.Loc.End == nil || t.Loc == nil || t.Loc.End == nil {
+		return false
+	}
+	return f.hasCommentsOnLines(block.Loc.End.Line, t.Loc.End.Line)
+}
+
+// hasCommentsOnLines reports whether a comment, standalone or trailing, is
+// on a source line from first to last.
+func (f *Formatter) hasCommentsOnLines(first, last int) bool {
+	for _, c := range f.comments {
+		if c.Line >= first && c.Line <= last {
+			return true
+		}
+	}
+	return false
+}
+
 // modernizeTryCatch returns the postfix-rescue equivalent of a try/catch,
 // which the formatter prints in its place where postfix rescue is available,
 // and which migration compares it as (see compareAST). A try body holding a
@@ -3309,11 +3385,10 @@ func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*Cas
 // plain postfix form (`try { x() } catch ...` becomes `x() rescue ...`) if
 // unwrap allows it; a zero-clause catch, which silently re-raised, drops; a
 // single bare-binding catch-all that never reads its binding (`catch { err =>
-// "" }`) is the fallback form in disguise (`rescue ""`); the other bare
-// bindings become typed catch-alls on the Error interface (`err: Error =>`);
-// and the clauses after a catch-all, which never matched, drop. t is not
-// modified.
-func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
+// "" }`) is the fallback form in disguise (`rescue ""`) if fallback allows
+// it; and the other bare bindings become typed catch-alls on the Error
+// interface (`err: Error =>`). t is not modified.
+func modernizeTryCatch(t *RescueExpr, unwrap, fallback bool) Node {
 	operand := t.Operand
 	if block, ok := operand.(*Block); ok && unwrap &&
 		len(block.Forms) == 1 && rescueOperandSafe(block.Forms[0]) {
@@ -3329,7 +3404,7 @@ func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
 		Loc:     t.Loc,
 	}
 
-	if len(t.Clauses) == 1 {
+	if len(t.Clauses) == 1 && fallback {
 		clause := t.Clauses[0]
 		if clause.IsElse && clause.Binding != "" &&
 			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
@@ -3340,7 +3415,6 @@ func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
 	}
 
 	for _, clause := range t.Clauses {
-		catchAll := clause.IsElse
 		if clause.IsElse && clause.Binding != "" {
 			typed := *clause
 			typed.IsElse = false
@@ -3348,11 +3422,6 @@ func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
 			clause = &typed
 		}
 		modern.Clauses = append(modern.Clauses, clause)
-		if catchAll {
-			// Clauses after a catch-all never matched; postfix rescue
-			// rejects them.
-			break
-		}
 	}
 	return modern
 }

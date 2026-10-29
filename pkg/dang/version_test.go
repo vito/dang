@@ -374,6 +374,26 @@ func TestVersionRescue(t *testing.T) {
 		)
 	})
 
+	t.Run("Dang 2.0 try/catch stays where rescue would lose something", func(t *testing.T) {
+		for _, src := range []string{
+			// Dead clauses, which rescue rejects.
+			"let x = try {\n  boom\n} catch {\n  e: Error => 1\n  err => 2\n}\n",
+			"let x = try {\n  boom\n} catch {\n  e: Foo => 1\n  f: Foo => 2\n}\n",
+			"let x = try {\n  boom\n} catch {\n  err => 1\n  e: Foo => 2\n}\n",
+			// A comment in a catch without clauses.
+			"let x = try {\n  boom\n} catch {\n  # nothing to do\n}\n",
+		} {
+			assertMigratesTo(t, src, src)
+		}
+	})
+
+	t.Run("Dang 2.0 try/catch comments survive migrating", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = try {\n  boom # inner\n} catch {\n  # ignore\n  err => \"\" # really\n}\n",
+			"let x = {\n  boom # inner\n} rescue {\n  # ignore\n  err: Error => \"\" # really\n}\n",
+		)
+	})
+
 	t.Run("Dang 2.1 reserves rescue", func(t *testing.T) {
 		_, err := Parse("version_test.dang", []byte("let rescue = 1\n"), WithVersion(Version2_1))
 		require.Error(t, err)
