@@ -21,6 +21,12 @@ autocomplete and chaining.
 Only add a global function when it doesn't naturally belong to one type
 (`print`, `assert`).
 
+A new global is not free even then. A program's own declarations shadow
+builtins, so those keep working, but an **unqualified import never shadows a
+builtin**: a module calling an imported `foo` unqualified would start calling
+your builtin `foo` instead. Check the name against schemas Dang code commonly
+imports unqualified (e.g. Dagger's root fields).
+
 ## Adding a global function
 
 ```go
