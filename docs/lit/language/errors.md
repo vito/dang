@@ -533,6 +533,12 @@ postfix `rescue`, turning bare `err =>` catch-alls into `err: Error =>`
 along the way. With the block syntax gone, `try` and `catch` are ordinary
 identifiers again; `rescue` is the reserved word (see [#syntax]).
 
+That is from Dang 2.1 on. In a project whose `dang.toml` declares an older
+`dang` version, `try`/`catch` is the error handling syntax, without a
+warning, and `rescue` is an ordinary name; `dang fmt` keeps `try`/`catch`
+there, and `dang migrate` rewrites it to `rescue` as it moves the project to
+2.1.
+
 ## Anti-patterns
 
 - using `raise` for early exit (use `return` — see [#control-flow])

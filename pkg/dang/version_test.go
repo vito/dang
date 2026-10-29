@@ -183,6 +183,7 @@ func TestVersionForLoops(t *testing.T) {
 			{"a loop parameter", "count(loop: Int!): Int! {\n  for {\n    break loop\n  }\n}\n", true},
 			{"a block parameter", "let xs = [1].map { loop =>\n  for {\n    break loop\n  }\n}\n", true},
 			{"a constructor parameter", "type Foo {\n  pub x: Int!\n  new(loop: Int!) {\n    for {\n      break\n    }\n    self.x = loop\n    self\n  }\n}\n", true},
+			{"an object literal field", "let o = {{loop: 1, x: for {\n  break 2\n}}}\n", true},
 			{"a loop parameter of another function", loopy + "other(loop: Int!): Int! {\n  loop\n}\n", false},
 			{"a local loop elsewhere", loopy + "other(): Int! {\n  let loop = 1\n  loop\n}\n", false},
 		} {
@@ -466,7 +467,8 @@ func TestKeywordNamesRoundTrip(t *testing.T) {
 	for _, v := range versions {
 		for _, word := range words {
 			src := "pub $" + word + "($" + word + ": Int!): Int! {\n  $" + word + "\n}\n" +
-				"let y = $" + word + "(1)\nlet z = [1].map { $" + word + " => $" + word + " }\n"
+				"let y = $" + word + "(1)\nlet z = [1].map { $" + word + " => $" + word + " }\n" +
+				"let w = $" + word + " - 1\nlet c = case (1) {\n  $" + word + " => 2\n}\n"
 			want, err := Parse("version_test.dang", []byte(src), WithVersion(v))
 			require.NoError(t, err, "%s in %s", word, v)
 			formatted, err := FormatFileWithVersion([]byte(src), v)

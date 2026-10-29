@@ -2526,10 +2526,11 @@ func (f *Formatter) ident(name string) string {
 // nameKeywords are the keywords that are not reserved, so they may be
 // names, but whose bare spelling where a name can go may parse as
 // something else: as a value (`true`, `self`), as a statement (`break`,
-// `if(x) ...`), or as the visibility of a declaration (`pub(...)`, which the
-// formatter writes for a public `pub` taking arguments). Other keywords stay
-// as they are: their syntax needs more than the word, so a name spelled like
-// them parses as a name (see TestKeywordNamesRoundTrip).
+// `if(x) ...`, `return - 1`), as a case's catch-all (`else =>`), or as the
+// visibility of a declaration (`pub(...)`, which the formatter writes for a
+// public `pub` taking arguments). Other keywords stay as they are: their
+// syntax needs more than the word, so a name spelled like them parses as a
+// name (see TestKeywordNamesRoundTrip).
 var nameKeywords = map[string]bool{
 	"true":     true,
 	"false":    true,
@@ -2537,7 +2538,10 @@ var nameKeywords = map[string]bool{
 	"self":     true,
 	"break":    true,
 	"continue": true,
+	"return":   true,
+	"raise":    true,
 	"if":       true,
+	"else":     true,
 	"pub":      true,
 	"let":      true,
 }
@@ -3305,9 +3309,10 @@ func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*Cas
 // plain postfix form (`try { x() } catch ...` becomes `x() rescue ...`) if
 // unwrap allows it; a zero-clause catch, which silently re-raised, drops; a
 // single bare-binding catch-all that never reads its binding (`catch { err =>
-// "" }`) is the fallback form in disguise (`rescue ""`); and the other bare
-// bindings become typed catch-alls on the Error interface (`err: Error =>`).
-// t is not modified.
+// "" }`) is the fallback form in disguise (`rescue ""`); the other bare
+// bindings become typed catch-alls on the Error interface (`err: Error =>`);
+// and the clauses after a catch-all, which never matched, drop. t is not
+// modified.
 func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
 	operand := t.Operand
 	if block, ok := operand.(*Block); ok && unwrap &&
@@ -3335,6 +3340,7 @@ func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
 	}
 
 	for _, clause := range t.Clauses {
+		catchAll := clause.IsElse
 		if clause.IsElse && clause.Binding != "" {
 			typed := *clause
 			typed.IsElse = false
@@ -3342,6 +3348,11 @@ func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
 			clause = &typed
 		}
 		modern.Clauses = append(modern.Clauses, clause)
+		if catchAll {
+			// Clauses after a catch-all never matched; postfix rescue
+			// rejects them.
+			break
+		}
 	}
 	return modern
 }

@@ -486,6 +486,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 func NewValueScope(typeScope TypeScope) ValueScope {
 	// Create an Object from the type environment
 	builtinsFrame := NewObject(typeScope)
+	builtinsFrame.builtins = true
 
 	// Add builtin functions
 	addBuiltinFunctions(builtinsFrame)
@@ -2291,6 +2292,17 @@ type Object struct {
 	// `self` (including `self.x = v` writes), and bare field writes fork `self`
 	// instead of mutating a receiver frame in place. See nextFrame and Update.
 	selfParent bool
+
+	// builtins marks the frame of builtins under a program's scope (see
+	// NewValueScope). A frame whose parent it is counts as a root for
+	// copy-on-write: its parent holds no generations of it (see ownParent).
+	builtins bool
+}
+
+// ownParent reports whether m's parent is an earlier generation or an outer
+// scope of m's own, rather than nothing or the builtins frame.
+func (m *Object) ownParent() bool {
+	return m.Parent != nil && !m.Parent.builtins
 }
 
 // nextFrame returns the frame name resolution continues in after m, and
@@ -2583,7 +2595,7 @@ func (m *Object) Derive(sealed bool) ValueScope {
 func (m *Object) snapshotReceiver() *Object {
 	var frames []*Object
 	base := m
-	for base.Parent != nil && base.Mod == m.Mod {
+	for base.ownParent() && base.Mod == m.Mod {
 		frames = append(frames, base)
 		base = base.Parent
 	}
@@ -2754,7 +2766,7 @@ func (m *Object) bindOverPending(name string, value Value, vis Visibility) {
 // instead, with the new generation as m's sibling: chains stay as deep as
 // they were, and a write costs one copy of the fields written so far.
 func (m *Object) cowCopy() *Object {
-	if m.Parent == nil {
+	if !m.ownParent() {
 		return m.Derive(false).(*Object)
 	}
 	m.mu.Lock()

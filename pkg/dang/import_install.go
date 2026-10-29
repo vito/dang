@@ -39,6 +39,12 @@ func installUnqualifiedImportValuesForInference(parentTypeScope TypeScope, schem
 			continue
 		}
 
+		// An unqualified import never shadows a builtin; it is still
+		// reachable qualified (see installUnqualifiedImportValues).
+		if isBuiltinValueName(name) {
+			continue
+		}
+
 		if _, exists := parentTypeScope.LocalSchemeOf(name); exists {
 			if localValueBindingIsUnqualifiedImport(parentTypeScope, name) {
 				addValueImportProvider(parentTypeScope, name, importName)

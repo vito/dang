@@ -107,9 +107,10 @@ var sourceLocationPtrType = reflect.TypeOf((*SourceLocation)(nil))
 // migrates to a call spelled `loop`, which a binding of the program's own
 // named `loop` shadows wherever it is in scope: in the blocks enclosing the
 // loop (declarations are visible throughout their block), as a parameter of
-// an enclosing function or block, as an enclosing case or rescue clause's
-// binding, or at the top level of the module, which moduleBindsLoop reports
-// for the module's other files. (Imports never shadow builtins.)
+// an enclosing function, constructor or block, as a field of an enclosing
+// object literal, as an enclosing case or rescue clause's binding, or at the
+// top level of the module, which moduleBindsLoop reports for the module's
+// other files. (Imports never shadow builtins.)
 func forLoopCollision(file *FileBlock, moduleBindsLoop bool) *SourceLocation {
 	var found *SourceLocation
 	// Report the first desugared `for` loop within scope.
@@ -177,6 +178,11 @@ func forLoopCollision(file *FileBlock, moduleBindsLoop bool) *SourceLocation {
 		case *BlockArg:
 			if paramsBindLoop(n.Args) {
 				within(n.BodyNode)
+			}
+		case *ObjectLiteral:
+			// A field is in scope for the fields after it.
+			if paramsBindLoop(n.Fields) {
+				within(n)
 			}
 		case *Case:
 			clausesBindLoop(n.Clauses)

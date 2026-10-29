@@ -126,6 +126,14 @@ assert { Lib.toString(1) == 7 }
 		_, err := dang.RunDir(ctx, root, false)
 		require.NoError(t, err)
 		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+
+		// Type checking agrees: the unqualified name has the builtin's type.
+		writeFiles(root, map[string]string{
+			"main.dang": "import Lib\nlet n: Int! = toString(1)\n",
+		})
+		_, err = dang.RunDir(ctx, root, false)
+		require.ErrorContains(t, err, "String!")
+		require.ErrorContains(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false), "String!")
 	})
 
 	t.Run("declared functions shadow builtins", func(ctx context.Context, t *testctx.T) {

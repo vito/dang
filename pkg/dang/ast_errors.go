@@ -97,7 +97,16 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			), nil
 		}
 
+		// A try/catch where it is the version's own error handling syntax
+		// (before 2.1) keeps its rules: a catch with no clauses re-raises
+		// every error, and clauses that can never match are dead code, not
+		// errors. (Migrating to 2.1 drops both; see modernizeTryCatch.)
+		current := t.TryCatch && !t.Legacy
+
 		if len(t.Clauses) == 0 {
+			if current {
+				return bodyType, nil
+			}
 			return nil, NewInferError(
 				fmt.Errorf("rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value`"),
 				t,
@@ -121,7 +130,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		var priorPatterns []*CaseClause
 		for _, clause := range t.Clauses {
 			// A clause after an else catch-all can never match.
-			if err := checkClauseReachable(clause, elseClause, nil); err != nil {
+			if err := checkClauseReachable(clause, elseClause, nil); err != nil && !current {
 				return nil, err
 			}
 
@@ -133,7 +142,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				if err := implicitCase.inferTypePatternClause(ctx, env, fresh, clause, errorType); err != nil {
 					return nil, err
 				}
-				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil {
+				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil && !current {
 					return nil, err
 				}
 				priorPatterns = append(priorPatterns, clause)
@@ -169,7 +178,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				// `e: Error` pattern is a complete catch-all and a later
 				// else can never fire.
 				for _, prev := range priorPatterns {
-					if canonicalModule(prev.resolvedMemberType) == ErrorType {
+					if canonicalModule(prev.resolvedMemberType) == ErrorType && !current {
 						return nil, NewInferError(
 							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.TypePattern.Name, prev.Loc.Line),
 							clause,

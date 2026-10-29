@@ -37,3 +37,19 @@ let multi = try {
   e: Error => "multi"
 }
 assert { multi == "multi" }
+
+# A catch without clauses re-raises every error, so it drops.
+let plain = try {
+  "plain"
+} catch {
+}
+assert { plain == "plain" }
+
+# Clauses after a catch-all never match, so they drop.
+let first = try {
+  boom()
+} catch {
+  err => "first"
+  e: Error => "second"
+}
+assert { first == "first" }
