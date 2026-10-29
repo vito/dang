@@ -119,7 +119,7 @@ X-Custom = "value"
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.
 - `service` — command starting a GraphQL server that prints its endpoint URL as the first stdout line; started lazily, killed on exit.
-- `dagger = "X.Y.Z"` — connect to a Dagger Engine session (via `dagger session`), written against that Dagger version's API. In a Dagger module, keep it equal to the module's `engineVersion`. An engine older than the version is an error (upgrade Dagger). Not combinable with `endpoint`. The older form `dagger = true` connects without pinning a version.
+- `dagger = "X.Y.Z"` — connect to a Dagger Engine session (via `dagger session`), written against that Dagger version's API. An engine older than the version is an error (upgrade Dagger). Not combinable with `endpoint`. The older form `dagger = true` connects without pinning a version.
 - `authorization` — value for the `Authorization` header. `[imports.<Name>.headers]` — extra HTTP headers.
 - `authorization` / `endpoint` / `headers` support `${ENV_VAR}` expansion; `$(...)` command substitution is **not** supported.
 - Discovery walks **up** from the working directory, stopping at a `.git` boundary. Commit `dang.toml` — don't include credentials inline; reference env vars.
