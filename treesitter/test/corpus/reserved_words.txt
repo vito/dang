@@ -1,0 +1,53 @@
+===
+Escaped identifier
+===
+
+let $rescue = $rescue
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (raw_word_token)))
+        (equal_token)
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (raw_word_token))))))))
+
+===
+Reserved words as names
+===
+
+node(rescue: 1).{{ rescue }}
+
+---
+
+(dang
+  (select_or_call
+    (symbol_or_call
+      (call
+        (symbol
+          (id
+            (word_token)))
+        (arg_values
+          (immediate_paren)
+          (argument
+            (key_value
+              (reserved_name
+                (rescue_token))
+              (colon_token)
+              (literal
+                (int
+                  (non_zero_decimal_digit))))))))
+    (dot_token)
+    (object_selection
+      (field_selection
+        (reserved_name
+          (rescue_token))))))

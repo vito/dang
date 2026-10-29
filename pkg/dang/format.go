@@ -1049,7 +1049,7 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 	}
 
 	f.write("type ")
-	f.write(c.Name.Name)
+	f.write(f.ident(c.Name.Name))
 
 	// Implements clause
 	if len(c.Implements) > 0 {
@@ -1058,7 +1058,7 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 			if i > 0 {
 				f.write(" & ")
 			}
-			f.write(impl.Name)
+			f.write(f.ident(impl.Name))
 		}
 	}
 
@@ -1123,7 +1123,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	}
 
 	f.write("interface ")
-	f.write(i.Name.Name)
+	f.write(f.ident(i.Name.Name))
 
 	if len(i.Implements) > 0 {
 		f.write(" implements ")
@@ -1131,7 +1131,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 			if idx > 0 {
 				f.write(" & ")
 			}
-			f.write(impl.Name)
+			f.write(f.ident(impl.Name))
 		}
 	}
 
@@ -1160,13 +1160,13 @@ func (f *Formatter) formatUnionDecl(u *UnionDecl) {
 	}
 
 	f.write("union ")
-	f.write(u.Name.Name)
+	f.write(f.ident(u.Name.Name))
 	f.write(" = ")
 	for i, member := range u.Members {
 		if i > 0 {
 			f.write(" | ")
 		}
-		f.write(member.Name)
+		f.write(f.ident(member.Name))
 	}
 }
 
@@ -1176,7 +1176,7 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 	}
 
 	f.write("enum ")
-	f.write(e.Name.Name)
+	f.write(f.ident(e.Name.Name))
 
 	// Check if enum was originally on a single line
 	singleLine := e.Loc != nil && (e.Loc.End == nil || e.Loc.End.Line == e.Loc.Line)
@@ -1236,7 +1236,7 @@ func (f *Formatter) formatScalarDecl(s *ScalarDecl) {
 	}
 
 	f.write("scalar ")
-	f.write(s.Name.Name)
+	f.write(f.ident(s.Name.Name))
 
 	// Suffix directives (on same line)
 	for _, d := range s.Directives {
@@ -1362,7 +1362,7 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 		f.write("let ")
 	}
 
-	f.write(s.Name.Name)
+	f.write(f.ident(s.Name.Name))
 
 	// Determine the source line of the name for directive multiline detection
 	nameLine := 0
@@ -1386,7 +1386,7 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 				if i > 0 {
 					f.write(", ")
 				}
-				f.write(arg.Name.Name)
+				f.write(f.ident(arg.Name.Name))
 				f.write(": ")
 				f.formatTypeNode(arg.Type_)
 			}
@@ -1630,7 +1630,7 @@ func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl,
 }
 
 func (f *Formatter) estimateArgLength(arg *FieldDecl) int {
-	length := len(arg.Name.Name)
+	length := len(f.ident(arg.Name.Name))
 	if arg.Type_ != nil {
 		length += 2 + f.estimateTypeLength(arg.Type_)
 	}
@@ -1655,7 +1655,7 @@ func (f *Formatter) formatArgDecl(arg *FieldDecl) {
 		}
 	}
 
-	f.write(arg.Name.Name)
+	f.write(f.ident(arg.Name.Name))
 
 	if arg.Type_ != nil {
 		// Block params have special syntax: &block(args): ret instead of &block: (args): ret
@@ -1694,7 +1694,7 @@ func (f *Formatter) formatBlockParamType(funType FunTypeNode) {
 			if i > 0 {
 				f.write(", ")
 			}
-			f.write(arg.Name.Name)
+			f.write(f.ident(arg.Name.Name))
 			f.write(": ")
 			f.formatTypeNode(arg.Type_)
 		}
@@ -1710,7 +1710,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 	}
 
 	f.write("directive @")
-	f.write(d.Name)
+	f.write(f.ident(d.Name))
 
 	if len(d.Args) > 0 {
 		f.write("(")
@@ -1729,7 +1729,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 func (f *Formatter) formatImportDecl(i *ImportDecl) {
 	f.write("import ")
-	f.write(i.Name.Name)
+	f.write(f.ident(i.Name.Name))
 }
 
 func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
@@ -1738,7 +1738,7 @@ func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
 		f.write(d.Scope.Name)
 		f.write(".")
 	}
-	f.write(d.Name)
+	f.write(f.ident(d.Name))
 
 	if len(d.Args) > 0 {
 		f.write("(")
@@ -2184,7 +2184,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 			case *FunCall:
 				var fieldLoc *SourceLocation
 				if sel, ok := e.Fun.(*Select); ok {
-					f.write(sel.Field.Name)
+					f.write(f.fieldName(sel.Field.Name))
 					fieldLoc = sel.Field.Loc
 				}
 				if len(e.Args) > 0 {
@@ -2225,7 +2225,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 					f.emitTrailingComment(e.Loc.End.Line)
 				}
 			case *Select:
-				f.write(e.Field.Name)
+				f.write(f.fieldName(e.Field.Name))
 				// Use the Select's Loc directly to get the actual span
 				if e.Loc != nil && e.Loc.End != nil {
 					f.emitTrailingComment(e.Loc.End.Line)
@@ -2343,7 +2343,7 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 			}
 			// Skip past this arg's rendered length
 			if !arg.Positional && arg.Key != "" {
-				col += len(arg.Key) + 2 // "key: "
+				col += len(f.fieldName(arg.Key)) + 2 // "key: "
 			}
 			col += f.estimateLength(arg.Value)
 		}
@@ -2366,7 +2366,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLi
 				f.emitCommentsForNode(arg.Value)
 				f.writeIndent()
 				if !arg.Positional && arg.Key != "" {
-					f.write(arg.Key)
+					f.write(f.fieldName(arg.Key))
 					f.write(": ")
 				}
 				f.formatNode(arg.Value)
@@ -2388,7 +2388,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLi
 				f.write(", ")
 			}
 			if !arg.Positional && arg.Key != "" {
-				f.write(arg.Key)
+				f.write(f.fieldName(arg.Key))
 				f.write(": ")
 			}
 			f.formatNode(arg.Value)
@@ -2404,7 +2404,7 @@ func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 	}
 	f.formatNode(s.Receiver)
 	f.write(".")
-	f.write(s.Field.Name)
+	f.write(f.fieldName(s.Field.Name))
 }
 
 // formatSelectChain formats a select chain with leading dots on new lines
@@ -2442,7 +2442,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 			f.newline()
 			f.writeIndent()
 			f.write(".")
-			f.write(sel.Field.Name)
+			f.write(f.fieldName(sel.Field.Name))
 			// Emit trailing comment for this select
 			if sel.Loc != nil && sel.Loc.End != nil {
 				f.emitTrailingComment(sel.Loc.End.Line)
@@ -2454,11 +2454,31 @@ func (f *Formatter) formatSelectChain(s *Select) {
 func (f *Formatter) formatSelectInline(s *Select) {
 	f.formatNodeInline(s.Receiver)
 	f.write(".")
-	f.write(s.Field.Name)
+	f.write(f.fieldName(s.Field.Name))
 }
 
 func (f *Formatter) formatSymbol(s *Symbol) {
-	f.write(s.Name)
+	f.write(f.ident(s.Name))
+}
+
+// ident spells name where an identifier is expected: as `$name` if it is a
+// reserved word in the version being formatted, which the escape makes an
+// identifier (see RawWordToken), and as is otherwise.
+func (f *Formatter) ident(name string) string {
+	if f.version.reserves(name) {
+		return "$" + name
+	}
+	return name
+}
+
+// fieldName spells name where it can only be a name: a field after a dot or
+// in a selection, a named argument, or an object or object type key. There a
+// reserved word is a name too, except null (see FieldId and ReservedName).
+func (f *Formatter) fieldName(name string) string {
+	if name == "null" {
+		return "$" + name
+	}
+	return name
 }
 
 func (f *Formatter) formatTemplate(t *Template) {
@@ -2939,7 +2959,7 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 			length += 2
 		}
 		if objectFieldShorthand(field) {
-			length += len(field.Name.Name)
+			length += len(f.ident(field.Name.Name))
 		} else {
 			temp := f.trial(field.Value, 0)
 			temp.formatNodeInline(field.Value)
@@ -2947,7 +2967,7 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 			// A value printing across lines (e.g. a case) spreads the
 			// object over them too, so it is multiline when formatted again.
 			spansLines = spansLines || strings.Contains(value, "\n")
-			length += len(field.Name.Name) + 2 + len(value)
+			length += len(f.fieldName(field.Name.Name)) + 2 + len(value)
 		}
 	}
 
@@ -2964,13 +2984,23 @@ func (f *Formatter) formatObjectInline(o *ObjectLiteral) {
 		if i > 0 {
 			f.write(", ")
 		}
-		f.write(field.Name.Name)
+		f.formatObjectFieldKey(field)
 		if !objectFieldShorthand(field) {
 			f.write(": ")
 			f.formatNodeInline(field.Value)
 		}
 	}
 	f.write("}}")
+}
+
+// formatObjectFieldKey prints an object literal field's key, which for a
+// shorthand field is also a reference to the binding of that name.
+func (f *Formatter) formatObjectFieldKey(field *FieldDecl) {
+	if objectFieldShorthand(field) {
+		f.write(f.ident(field.Name.Name))
+	} else {
+		f.write(f.fieldName(field.Name.Name))
+	}
 }
 
 func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
@@ -2990,7 +3020,7 @@ func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 		for i, field := range o.Fields {
 			f.emitCommentsForNode(field)
 			f.writeIndent()
-			f.write(field.Name.Name)
+			f.formatObjectFieldKey(field)
 			if !objectFieldShorthand(field) {
 				f.write(": ")
 				f.formatNode(field.Value)
@@ -3075,9 +3105,9 @@ func (f *Formatter) formatCase(c *Case) {
 			if clause.IsElse {
 				f.write("else")
 			} else if clause.IsTypePattern() {
-				f.write(clause.Binding)
+				f.write(f.ident(clause.Binding))
 				f.write(": ")
-				f.write(clause.TypePattern.Name)
+				f.write(f.ident(clause.TypePattern.Name))
 			} else {
 				f.formatNode(clause.Value)
 			}
@@ -3140,9 +3170,9 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 	}
 	f.formatRescueClauses(t.Clauses, func(clause *CaseClause) {
 		if clause.IsTypePattern() {
-			f.write(clause.Binding)
+			f.write(f.ident(clause.Binding))
 			f.write(": ")
-			f.write(clause.TypePattern.Name)
+			f.write(f.ident(clause.TypePattern.Name))
 		} else {
 			f.write("else")
 		}
@@ -3163,10 +3193,10 @@ func (f *Formatter) formatTryCatch(t *RescueExpr) {
 		f.newline()
 	}
 	f.formatRescueClauses(t.Clauses, func(clause *CaseClause) {
-		f.write(clause.Binding)
+		f.write(f.ident(clause.Binding))
 		if clause.IsTypePattern() {
 			f.write(": ")
-			f.write(clause.TypePattern.Name)
+			f.write(f.ident(clause.TypePattern.Name))
 		}
 	})
 	f.writeIndent()
@@ -3460,10 +3490,10 @@ func (f *Formatter) formatDotApply(d *DotApply) {
 func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 	f.write("... on ")
 	if frag.Qualifier != "" {
-		f.write(frag.Qualifier)
+		f.write(f.ident(frag.Qualifier))
 		f.write(".")
 	}
-	f.write(frag.TypeName.Name)
+	f.write(f.ident(frag.TypeName.Name))
 	if frag.NonNull {
 		f.write("!")
 	}
@@ -3485,10 +3515,10 @@ func (f *Formatter) formatFieldSelection(field *FieldSelection) {
 	// `name` and `name: name` are equivalent, so only render the alias when it
 	// actually renames the field.
 	if field.Alias != "" && field.Alias != field.Name {
-		f.write(field.Alias)
+		f.write(f.fieldName(field.Alias))
 		f.write(": ")
 	}
-	f.write(field.Name)
+	f.write(f.fieldName(field.Name))
 	if len(field.Args) > 0 {
 		f.write("(")
 		f.formatCallArgs(field.Args, false, 0)
@@ -3515,7 +3545,7 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 				if i > 0 {
 					col += len(", ")
 				}
-				col += len(arg.Name.Name)
+				col += len(f.ident(arg.Name.Name))
 			}
 			col += len(" => ")
 		}
@@ -3528,7 +3558,7 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 			if i > 0 {
 				f.write(", ")
 			}
-			f.write(arg.Name.Name)
+			f.write(f.ident(arg.Name.Name))
 		}
 		if singleLineBody {
 			f.write(" => ")
@@ -3887,7 +3917,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 			if i > 0 {
 				f.write(", ")
 			}
-			f.write(field.Key)
+			f.write(f.fieldName(field.Key))
 			f.write(": ")
 			f.formatTypeNode(field.Type)
 		}
@@ -3903,7 +3933,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 				if i > 0 {
 					f.write(", ")
 				}
-				f.write(arg.Name.Name)
+				f.write(f.ident(arg.Name.Name))
 				f.write(": ")
 				f.formatTypeNode(arg.Type_)
 			}

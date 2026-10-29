@@ -33,6 +33,7 @@ self
 ```
 
 - `try` and `catch` are **ordinary identifiers** — the old `try { } catch { }` block syntax was replaced by the postfix `rescue` operator (see control-flow.md).
+- `null` and `rescue` are never identifiers; `$rescue` is the identifier `rescue` (the escape for a name spelled like a reserved word — only the spelling differs, `x.rescue` still selects it). Where only a name can go — a field after `.` or in `{{ }}`, a named argument, an object key — `rescue` needs no escape: `f(rescue: 1)`, `x.{{rescue}}`.
 
 ## Docstrings
 

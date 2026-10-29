@@ -27,6 +27,7 @@
 - capitalized: `User`, `String` — types
 - single lowercase letters in type positions (`a`, `b`) — type variables
 - `_` is a normal identifier character, not a special "ignore"/discard pattern
+- `$name` is the identifier `name`: the escape for a name spelled like a reserved word, e.g. `let $rescue = 1`. Only the spelling changes — the name is still `rescue`, so `x.rescue` reads the field `pub $rescue` declares. `dang migrate` writes the escape for names that the Dang version it migrates to reserves.
 
 ## Reserved words
 
@@ -38,6 +39,7 @@
 - `true`, `false`, `null`
 - `and`, `or`
 - `self`
+- where only a name can go — a field after `.` or in a `{{ }}` selection, a named argument, an object key — `rescue` is a name like any other: `f(rescue: 1)`, `x.{{rescue}}`, `{{rescue: 1}}`. Elsewhere, write `$rescue`.
 
 ## Separators and trailing commas
 

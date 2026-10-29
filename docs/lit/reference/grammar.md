@@ -60,7 +60,7 @@ TypeVariable := [a-z]                           # single lowercase letter
 
 ## Lexical
 
-- identifiers: `[a-zA-Z_][a-zA-Z0-9_]*` (lowercase-leading = value, uppercase-leading = type)
+- identifiers: `[a-zA-Z_][a-zA-Z0-9_]*` (lowercase-leading = value, uppercase-leading = type), or `$` and one (`RawWordToken`): `$rescue` is the identifier `rescue`, the escape for a name spelled like a reserved word
 - comments: `#` to end of line
 - strings:
   - `"..."` (with escapes), `"""..."""` triple-quoted (docstrings reuse this)
@@ -70,7 +70,8 @@ TypeVariable := [a-z]                           # single lowercase letter
 
 ## Reserved words
 
-- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `rescue`, `return`, `scalar`, `self`, `true`, `type`, `union` (`try` and `catch` are ordinary identifiers now; legacy `try`/`catch` blocks still parse but are rejected at type-check — see [#errors])
+- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `rescue`, `return`, `scalar`, `self`, `true`, `type`, `union` (`try` and `catch` are ordinary identifiers now; legacy `try`/`catch` blocks still parse but warn at type-check — see [#errors])
+- of these, `null` and `rescue` are never identifiers (`WordToken` excludes them); write `$rescue` for a name spelled like one. Where only a name can go (`FieldId`, `KeyValue` keys, `FieldSelection`, object type keys), `rescue` is a name (`ReservedName`)
 - `pub` is optional — the visibility keyword is parsed but no longer required; declarations are public by default (see [#fields])
 - see [#syntax]
 

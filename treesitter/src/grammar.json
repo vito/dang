@@ -221,7 +221,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 178,
+      "value": 180,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -318,7 +318,7 @@
     },
     "non_null_assert": {
       "type": "PREC_LEFT",
-      "value": 177,
+      "value": 179,
       "content": {
         "type": "SEQ",
         "members": [
@@ -503,7 +503,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 170,
+      "value": 172,
       "content": {
         "type": "SEQ",
         "members": [
@@ -590,7 +590,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 169,
+      "value": 171,
       "content": {
         "type": "SEQ",
         "members": [
@@ -929,8 +929,17 @@
                     "type": "FIELD",
                     "name": "a",
                     "content": {
-                      "type": "SYMBOL",
-                      "name": "id"
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "id"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "reserved_name"
+                        }
+                      ]
                     }
                   },
                   {
@@ -949,8 +958,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "id"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "id"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "reserved_name"
+              }
+            ]
           }
         },
         {
@@ -2054,19 +2072,41 @@
       }
     },
     "id": {
-      "type": "SYMBOL",
-      "name": "word_token"
-    },
-    "field_id": {
-      "type": "SEQ",
+      "type": "CHOICE",
       "members": [
         {
-          "type": "PATTERN",
-          "value": "[a-zA-Z_]"
+          "type": "SYMBOL",
+          "name": "raw_word_token"
         },
         {
-          "type": "PATTERN",
-          "value": "[a-zA-Z0-9_]*"
+          "type": "SYMBOL",
+          "name": "word_token"
+        }
+      ]
+    },
+    "field_id": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "raw_word_token"
+          }
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "PATTERN",
+              "value": "[a-zA-Z_]"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[a-zA-Z0-9_]*"
+            }
+          ]
         }
       ]
     },
@@ -2088,6 +2128,33 @@
           ]
         }
       }
+    },
+    "raw_word_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "$"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[a-zA-Z_]"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[a-zA-Z0-9_]*"
+            }
+          ]
+        }
+      }
+    },
+    "reserved_name": {
+      "type": "SYMBOL",
+      "name": "rescue_token"
     },
     "word_char": {
       "type": "PATTERN",
@@ -2574,8 +2641,21 @@
           "type": "FIELD",
           "name": "key",
           "content": {
-            "type": "SYMBOL",
-            "name": "word_token"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "raw_word_token"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "word_token"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "reserved_name"
+              }
+            ]
           }
         },
         {
@@ -2852,8 +2932,17 @@
           "type": "FIELD",
           "name": "key",
           "content": {
-            "type": "SYMBOL",
-            "name": "id"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "id"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "reserved_name"
+              }
+            ]
           }
         },
         {

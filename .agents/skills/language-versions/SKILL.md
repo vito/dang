@@ -40,7 +40,7 @@ on the current version), `cmd/dang/{migrate,init}.go`.
 | **Removes or respells a form** (`for` loops, `.{ }` → `.{{ }}`, comma separators) | Gate it: the old spelling parses before version V and builds the new form's AST. If both spellings must print (a respelling), the formatter prints per version. |
 | **Changes meaning of existing code, expressibly** (unmatched `case` raised → now null) | Gate it: before V, the parser *desugars* to explicit current code that keeps the old meaning (adds `else => raise ...`). |
 | **Strictness only** (code that compiled now errors; nothing changes meaning) | **No gate.** Old code stops compiling after migrating and is fixed by hand. Say so in the release notes. |
-| **Reserves a keyword** (`rescue`) | Old code using it as a name can't be migrated automatically (renaming needs scope info). Either gate the keyword (and every construct using it) or accept the break and document it. Prefer not reserving words. |
+| **Reserves a keyword** (`rescue`) | Gate the keyword: list it in `reservedWords` with V, match its token only where reserved (`FooToken <- "foo" !WordChar FooKeyword`, a predicate in `tsPredicates`), which gates every construct built on it too, exclude it from `WordToken`, and list its token in `ReservedName` so it stays a name where only a name can go. Migration then escapes old names spelled like it as `$foo` (the formatter's `ident`), losslessly: `$foo` is still named `foo`. `TestReservedWords` covers the new word in every version. Prefer not reserving words: a keyword whose syntax ordered choice tries first can stay an identifier everywhere else. |
 | **Changes meaning, not expressible in current syntax** | Stop and rethink: this is the case the design can't absorb. It would need an interpreter branch — don't add one without discussing it. |
 
 If you're unsure which release changed something, check the tags rather than
@@ -130,7 +130,7 @@ and `fmt/stale` before committing.
 - **Patch releases must not change the language** — no gates on patches. A
   version means the syntax of its minor's latest release. (Before versions
   were declared, 2.1.x patches did change syntax; that's why 2.1 means
-  2.1.4's syntax and `rescue`-as-a-name has no gate.)
+  2.1.4's syntax, e.g. postfix `rescue`, first tagged in v2.1.2.)
 - **Minor/major releases**: `CurrentVersion` must equal the release's
   major.minor by the time it's tagged (it may already, if a gate bumped it).
 - Grep `version.go` for gates on the new version and list them in the

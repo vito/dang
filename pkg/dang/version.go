@@ -302,14 +302,18 @@ func (v Version) commaFormSep() bool {
 
 // reservedWords maps each reserved word, a word that is not an identifier
 // (see WordToken), to the version that reserved it. Before that version it is
-// an ordinary identifier.
+// an ordinary identifier; from then on, an identifier spelled like it is
+// escaped as `$word` (see RawWordToken), which is how `dang migrate` keeps
+// such names, public ones included, when moving past that version. Where only
+// a name can go, e.g. a named argument, it needs no escape (see ReservedName).
 //
 // To reserve a new keyword: add it here with the version that reserves it,
 // match its token only where it is reserved (`FooToken <- "foo" !WordChar
 // FooKeyword`, with FooKeyword a version predicate listed in tsPredicates, as
-// for RescueToken), and exclude it from WordToken. A keyword that is not
-// reserved needs none of this: ordered choice tries its syntax first, and it
-// stays an identifier everywhere else, like `if` or `case`.
+// for RescueToken), exclude it from WordToken, and list its token in
+// ReservedName. A keyword that is not reserved needs none of this: ordered
+// choice tries its syntax first, and it stays an identifier everywhere else,
+// like `if` or `case`.
 var reservedWords = map[string]Version{
 	"null":   Version1_0,
 	"rescue": Version2_1,

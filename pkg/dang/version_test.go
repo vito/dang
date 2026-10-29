@@ -325,6 +325,98 @@ func TestVersionRescue(t *testing.T) {
 		_, err := Parse("version_test.dang", []byte("let rescue = 1\n"), WithVersion(Version2_1))
 		require.Error(t, err)
 	})
+
+	t.Run("Dang 2.1 rescue is a name where only a name can go", func(t *testing.T) {
+		for _, src := range []string{
+			"let x = f(rescue: 1)\n",
+			"let x = x.rescue\n",
+			"let x = x.rescue(1)\n",
+			"let x = x.{{rescue}}\n",
+			"let x = x.{{rescue: name, other: rescue}}\n",
+			"let x = {{rescue: 1}}\n",
+			"let x: {{rescue: Int!}} = y\n",
+		} {
+			_, err := Parse("version_test.dang", []byte(src), WithVersion(Version2_1))
+			assert.NoError(t, err, "%q", src)
+		}
+	})
+}
+
+// versions lists every Dang version.
+var versions = []Version{Version1_0, Version2_0, Version2_1}
+
+// TestReservedWords checks every reserved word in every version: it is an
+// identifier exactly where it isn't reserved, `$word` is the identifier in
+// every version, it is a name wherever only a name can go (but for null,
+// which is a value), and the formatter escapes it exactly where needed.
+func TestReservedWords(t *testing.T) {
+	require.Contains(t, versions, CurrentVersion, "list the new version in versions")
+	for word := range reservedWords {
+		for _, v := range versions {
+			t.Run(word+" in "+v.String(), func(t *testing.T) {
+				parses := func(src string) bool {
+					_, err := Parse("version_test.dang", []byte(src), WithVersion(v))
+					return err == nil
+				}
+				reserved := v.reserves(word)
+
+				for _, src := range []string{
+					"let " + word + " = 1\n",
+					"pub " + word + ": Int! = 1\n",
+					"f(" + word + ": Int!): Int! { " + word + " }\n",
+					"let x = [1].map { " + word + " => " + word + " }\n",
+				} {
+					assert.Equal(t, !reserved, parses(src), "%q", src)
+				}
+
+				escaped := parseSingleForm(t, "let $"+word+" = $"+word+"\n", v)
+				decl, ok := escaped.(*FieldDecl)
+				require.True(t, ok, "expected *FieldDecl, got %T", escaped)
+				assert.Equal(t, word, decl.Name.Name)
+				assert.Equal(t, word, decl.Value.(*Symbol).Name)
+
+				isName := word != "null"
+				openBrace, closeBrace := v.selectionBraces()
+				for _, src := range []string{
+					"let x = f(" + word + ": 1)\n",
+					"let x = x." + word + "\n",
+					"let x = x." + openBrace + word + ": a" + closeBrace + "\n",
+					"let x = {{" + word + ": 1}}\n",
+				} {
+					assert.Equal(t, isName || !reserved, parses(src), "%q", src)
+				}
+
+				formatted, err := FormatFileWithVersion([]byte("let $"+word+" = f($"+word+": x.$"+word+")\n"), v)
+				require.NoError(t, err)
+				spelled, field := word, word
+				if reserved {
+					spelled = "$" + word
+				}
+				if !isName {
+					field = "$" + word
+				}
+				assert.Equal(t, "let "+spelled+" = f("+field+": x."+field+")\n", formatted)
+			})
+		}
+	}
+}
+
+// TestReservedWordMigration checks that migrating to a version that reserves
+// a word escapes the identifiers spelled like it.
+func TestReservedWordMigration(t *testing.T) {
+	for word, since := range reservedWords {
+		for _, from := range versions {
+			if !from.Before(since) {
+				continue
+			}
+			t.Run(word+" from "+from.String(), func(t *testing.T) {
+				src := "pub " + word + "(" + word + ": Int!): Int! {\n  " + word + "\n}\n"
+				migrated, err := MigrateSource("version_test.dang", []byte(src), from, since)
+				require.NoError(t, err)
+				assert.Equal(t, "$"+word+"($"+word+": Int!): Int! {\n  $"+word+"\n}\n", migrated)
+			})
+		}
+	}
 }
 
 func writeConfig(t *testing.T, contents string) string {
