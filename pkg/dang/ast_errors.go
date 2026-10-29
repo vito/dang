@@ -33,9 +33,14 @@ type RescueExpr struct {
 	// Fallback is the expression after `rescue` in the fallback form;
 	// mutually exclusive with Clauses.
 	Fallback Node
-	// Legacy marks a node parsed from the removed `try { } catch { }`
-	// block syntax: the formatter rewrites it to the postfix form, and
-	// inference warns with a migration hint.
+	// TryCatch marks a node parsed from the `try { } catch { }` block
+	// syntax, which Dang 2.1 replaced with the postfix form: the formatter
+	// keeps it where postfix rescue is unavailable and rewrites it to the
+	// postfix form where it is (see modernizeTryCatch).
+	TryCatch bool
+	// Legacy marks a TryCatch node parsed in a version that has postfix
+	// rescue, where try/catch is deprecated: inference warns with a
+	// migration hint.
 	Legacy bool
 	Loc    *SourceLocation
 }
@@ -144,17 +149,20 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			} else if clause.IsElse {
 				// A binding on a catch-all can only come from the removed
 				// bare-binding form (`err =>`), which parses so it can be
-				// rejected with a targeted error here. Legacy try/catch
-				// blocks predate the removal, so they warn instead and the
-				// binding behaves like `err: Error =>`.
+				// rejected with a targeted error here. Try/catch blocks
+				// predate the removal: they warn instead where try/catch
+				// itself is deprecated, and the binding behaves like
+				// `err: Error =>`.
 				if clause.Binding != "" {
-					if !t.Legacy {
+					if !t.TryCatch {
 						return nil, NewInferError(
 							fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
 							clause,
 						)
 					}
-					EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
+					if t.Legacy {
+						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
+					}
 				}
 				// Unlike case — whose nullable operands fall through every
 				// type pattern — a rescue's operand is always Error!, so an

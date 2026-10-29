@@ -262,6 +262,71 @@ func TestVersionClausesAfterElse(t *testing.T) {
 	})
 }
 
+func TestVersionRescue(t *testing.T) {
+	for _, version := range []Version{Version1_0, Version2_0} {
+		t.Run("Dang "+version.String()+" rescue is an identifier", func(t *testing.T) {
+			for _, src := range []string{
+				"let rescue = 1\n",
+				"pub rescue: Int! = 1\n",
+				"f(rescue: Int!): Int! { rescue }\n",
+				"let x = f(rescue: 1)\n",
+				"let x = { rescue }\n",
+			} {
+				_, err := Parse("version_test.dang", []byte(src), WithVersion(version))
+				assert.NoError(t, err, "%q", src)
+			}
+		})
+
+		t.Run("Dang "+version.String()+" has no postfix rescue", func(t *testing.T) {
+			_, err := Parse("version_test.dang", []byte("let x = boom rescue 1\n"), WithVersion(version))
+			require.Error(t, err)
+
+			// `rescue` on the next line starts a form of its own, rather
+			// than rescuing the line before.
+			parsed, err := Parse("version_test.dang", []byte("let x = boom\nrescue(1)\n"), WithVersion(version))
+			require.NoError(t, err)
+			require.Len(t, parsed.(*FileBlock).Forms, 2)
+		})
+
+		t.Run("Dang "+version.String()+" try/catch is current", func(t *testing.T) {
+			node := parseSingleForm(t, "try { boom } catch { err => 1 }", version)
+			r, ok := node.(*RescueExpr)
+			require.True(t, ok, "expected *RescueExpr, got %T", node)
+			assert.True(t, r.TryCatch)
+			assert.False(t, r.Legacy)
+
+			src := "let x = try {\n  boom\n} catch {\n  err => 1\n  e: Error => 2\n}\n"
+			formatted, err := FormatFileWithVersion([]byte(src), version)
+			require.NoError(t, err)
+			assert.Equal(t, src, formatted)
+		})
+	}
+
+	t.Run("Dang 2.1 try/catch is legacy", func(t *testing.T) {
+		node := parseSingleForm(t, "try { boom } catch { err => 1 }", Version2_1)
+		r, ok := node.(*RescueExpr)
+		require.True(t, ok, "expected *RescueExpr, got %T", node)
+		assert.True(t, r.TryCatch)
+		assert.True(t, r.Legacy)
+	})
+
+	t.Run("Dang 2.0 try/catch migrates to rescue", func(t *testing.T) {
+		assertMigratesTo(t,
+			"let x = try {\n  boom\n} catch {\n  e: Error => 1\n}\n",
+			"let x = boom rescue {\n  e: Error => 1\n}\n",
+		)
+		assertMigratesTo(t,
+			"let x = try {\n  boom\n} catch {\n  err => 1\n}\n",
+			"let x = boom rescue 1\n",
+		)
+	})
+
+	t.Run("Dang 2.1 reserves rescue", func(t *testing.T) {
+		_, err := Parse("version_test.dang", []byte("let rescue = 1\n"), WithVersion(Version2_1))
+		require.Error(t, err)
+	})
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "dang.toml")

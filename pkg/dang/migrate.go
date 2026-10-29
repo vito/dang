@@ -88,6 +88,31 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 
 var sourceLocationPtrType = reflect.TypeOf((*SourceLocation)(nil))
 
+// migrationCanonical returns the node that n is compared as when checking
+// that a migration keeps the source's meaning: a try/catch as its postfix
+// equivalent (see modernizeTryCatch), which is how the formatter prints it
+// once postfix rescue is available, and a rescue whose operand is a block
+// holding a single form that can stand on rescue's left as that form, since
+// the formatter unwraps such blocks unless comments keep them.
+func migrationCanonical(n Node) Node {
+	r, ok := n.(*RescueExpr)
+	if !ok {
+		return n
+	}
+	if r.TryCatch {
+		n = modernizeTryCatch(r, true)
+		if r, ok = n.(*RescueExpr); !ok {
+			return n
+		}
+	}
+	if block, ok := r.Operand.(*Block); ok && len(block.Forms) == 1 && rescueOperandSafe(block.Forms[0]) {
+		unwrapped := *r
+		unwrapped.Operand = block.Forms[0]
+		return &unwrapped
+	}
+	return r
+}
+
 // sameMeaning reports whether source parses, unchanged, to the same AST in
 // versions from and to.
 func sameMeaning(filename string, source []byte, from, to Version) bool {
@@ -128,10 +153,19 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 			}
 			return nil, false
 		}
-		if a.CanInterface() {
-			if node, ok := a.Interface().(Node); ok {
-				if nodeLoc := node.GetSourceLocation(); nodeLoc != nil {
+		if a.CanInterface() && b.CanInterface() {
+			an, aIsNode := a.Interface().(Node)
+			bn, bIsNode := b.Interface().(Node)
+			if aIsNode && bIsNode {
+				if nodeLoc := an.GetSourceLocation(); nodeLoc != nil {
 					loc = nodeLoc
+				}
+				a, b = reflect.ValueOf(migrationCanonical(an)), reflect.ValueOf(migrationCanonical(bn))
+				if a.Type() != b.Type() {
+					return loc, true
+				}
+				if a.Kind() != reflect.Pointer {
+					return compareAST(a, b, loc)
 				}
 			}
 		}

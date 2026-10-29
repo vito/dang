@@ -1,0 +1,31 @@
+# Dang 2.1 replaced try/catch with postfix `rescue`; the migration rewrites
+# each try/catch to the postfix form.
+
+boom: String! {
+  raise "boom"
+}
+
+# A typed clause, with a single-form body that unwraps.
+let typed = boom rescue {
+  e: Error => e.message
+}
+assert { typed == "boom" }
+
+# A bare catch-all binding becomes a typed catch-all on Error.
+let bare = boom rescue {
+  err: Error => err.message
+}
+assert { bare == "boom" }
+
+# A catch-all that never reads its binding is the fallback form.
+let fallback = boom rescue "fallback"
+assert { fallback == "fallback" }
+
+# A body of several forms stays a block.
+let multi = {
+  let x = 1
+  boom
+} rescue {
+  e: Error => "multi"
+}
+assert { multi == "multi" }

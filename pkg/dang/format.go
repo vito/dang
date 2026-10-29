@@ -3114,32 +3114,22 @@ func (f *Formatter) formatCase(c *Case) {
 }
 
 func (f *Formatter) formatRescueExpr(t *RescueExpr) {
-	f.formatRescueOperand(t)
-
-	if t.Legacy && len(t.Clauses) == 0 {
-		// A zero-clause `try { } catch { }` silently re-raised, so the
-		// handler did nothing; the rewrite drops it.
+	if t.TryCatch {
+		if !f.version.postfixRescue() {
+			f.formatTryCatch(t)
+			return
+		}
+		block, _ := t.Operand.(*Block)
+		f.formatNode(modernizeTryCatch(t, block == nil || !f.hasCommentsInBlock(block)))
 		return
 	}
 
+	f.formatNode(t.Operand)
 	f.write(" rescue ")
 
 	if t.Fallback != nil {
 		f.formatNode(t.Fallback)
 		return
-	}
-
-	// A legacy catch with a single bare-binding clause that never reads
-	// the binding (`catch { err => "" }`) is the fallback form in
-	// disguise; rewrite it as `rescue ""`.
-	if t.Legacy && len(t.Clauses) == 1 {
-		clause := t.Clauses[0]
-		if clause.IsElse && clause.Binding != "" &&
-			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
-			fallbackFormSafe(clause.Expr) {
-			f.formatNode(clause.Expr)
-			return
-		}
 	}
 
 	f.write("{")
@@ -3148,28 +3138,55 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 	} else {
 		f.newline()
 	}
-	f.indented(func() {
-		if len(t.Clauses) > 0 && t.Clauses[0].Loc != nil {
-			f.lastLine = t.Clauses[0].Loc.Line - 1
+	f.formatRescueClauses(t.Clauses, func(clause *CaseClause) {
+		if clause.IsTypePattern() {
+			f.write(clause.Binding)
+			f.write(": ")
+			f.write(clause.TypePattern.Name)
+		} else {
+			f.write("else")
 		}
-		for _, clause := range t.Clauses {
+	})
+	f.writeIndent()
+	f.write("}")
+}
+
+// formatTryCatch prints a try/catch as written, for versions without
+// postfix rescue.
+func (f *Formatter) formatTryCatch(t *RescueExpr) {
+	f.write("try ")
+	f.formatNode(t.Operand)
+	f.write(" catch {")
+	if t.Loc != nil {
+		f.nl(t.Loc.Line)
+	} else {
+		f.newline()
+	}
+	f.formatRescueClauses(t.Clauses, func(clause *CaseClause) {
+		f.write(clause.Binding)
+		if clause.IsTypePattern() {
+			f.write(": ")
+			f.write(clause.TypePattern.Name)
+		}
+	})
+	f.writeIndent()
+	f.write("}")
+}
+
+// formatRescueClauses prints the clauses of a rescue or a catch, one per
+// line, with pattern printing each clause's pattern.
+func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*CaseClause)) {
+	f.indented(func() {
+		if len(clauses) > 0 && clauses[0].Loc != nil {
+			f.lastLine = clauses[0].Loc.Line - 1
+		}
+		for _, clause := range clauses {
 			if clause.Loc != nil {
 				f.emitCommentsBeforeNode(clause.Loc.Line, false)
 				f.lastLine = clause.Loc.Line
 			}
 			f.writeIndent()
-			if clause.IsTypePattern() {
-				f.write(clause.Binding)
-				f.write(": ")
-				f.write(clause.TypePattern.Name)
-			} else if clause.Binding != "" {
-				// Legacy bare-binding catch-all rewrites to a typed
-				// catch-all on the Error interface.
-				f.write(clause.Binding)
-				f.write(": Error")
-			} else {
-				f.write("else")
-			}
+			pattern(clause)
 			f.write(" => ")
 			f.formatNode(clause.Expr)
 			if clause.Loc != nil {
@@ -3178,25 +3195,54 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 			f.newline()
 		}
 	})
-	f.writeIndent()
-	f.write("}")
 }
 
-// formatRescueOperand prints the left side of a rescue expression. A legacy
-// try body is always a block; when it holds a single form that can stand
-// on rescue's left unparenthesized, the block unwraps to the plain postfix
-// form (`try { x() } catch ...` becomes `x() rescue ...`).
-func (f *Formatter) formatRescueOperand(t *RescueExpr) {
-	if t.Legacy {
-		if block, ok := t.Operand.(*Block); ok &&
-			len(block.Forms) == 1 &&
-			rescueOperandSafe(block.Forms[0]) &&
-			!f.hasCommentsInBlock(block) {
-			f.formatNode(block.Forms[0])
-			return
+// modernizeTryCatch returns the postfix-rescue equivalent of a try/catch,
+// which the formatter prints in its place where postfix rescue is available,
+// and which migration compares it as (see compareAST). A try body holding a
+// single form that can stand on rescue's left unparenthesized unwraps to the
+// plain postfix form (`try { x() } catch ...` becomes `x() rescue ...`) if
+// unwrap allows it; a zero-clause catch, which silently re-raised, drops; a
+// single bare-binding catch-all that never reads its binding (`catch { err =>
+// "" }`) is the fallback form in disguise (`rescue ""`); and the other bare
+// bindings become typed catch-alls on the Error interface (`err: Error =>`).
+// t is not modified.
+func modernizeTryCatch(t *RescueExpr, unwrap bool) Node {
+	operand := t.Operand
+	if block, ok := operand.(*Block); ok && unwrap &&
+		len(block.Forms) == 1 && rescueOperandSafe(block.Forms[0]) {
+		operand = block.Forms[0]
+	}
+
+	if len(t.Clauses) == 0 {
+		return operand
+	}
+
+	modern := &RescueExpr{
+		Operand: operand,
+		Loc:     t.Loc,
+	}
+
+	if len(t.Clauses) == 1 {
+		clause := t.Clauses[0]
+		if clause.IsElse && clause.Binding != "" &&
+			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
+			fallbackFormSafe(clause.Expr) {
+			modern.Fallback = clause.Expr
+			return modern
 		}
 	}
-	f.formatNode(t.Operand)
+
+	for _, clause := range t.Clauses {
+		if clause.IsElse && clause.Binding != "" {
+			typed := *clause
+			typed.IsElse = false
+			typed.TypePattern = &Symbol{Name: "Error", Loc: clause.Loc}
+			clause = &typed
+		}
+		modern.Clauses = append(modern.Clauses, clause)
+	}
+	return modern
 }
 
 // fallbackFormSafe reports whether a form re-parses as the fallback

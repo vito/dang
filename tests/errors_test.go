@@ -151,8 +151,10 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 func (DangSuite) TestRescueMigrationDiagnostics(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
+		version  string
 		source   string
 		wants    []string
+		unwanted []string
 		wantsErr bool
 	}{
 		{
@@ -203,6 +205,24 @@ print(x)
 			},
 			wantsErr: false,
 		},
+		{
+			// Before Dang 2.1, try/catch is the error handling syntax,
+			// bare catch-alls included, so neither warns.
+			name:    "try/catch in Dang 2.0",
+			version: "2.0",
+			source: `let x = try {
+  raise "boom"
+} catch {
+  err => "caught: " + err.message
+}
+print(x)
+`,
+			unwanted: []string{
+				"try/catch was replaced",
+				"bare catch-all",
+			},
+			wantsErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -213,6 +233,9 @@ print(x)
 
 			path := filepath.Join(dir, "main.dang")
 			require.NoError(t, os.WriteFile(path, []byte(tt.source), 0644))
+			if tt.version != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "dang.toml"), []byte("dang = \""+tt.version+"\"\n"), 0644))
+			}
 
 			var stderr bytes.Buffer
 			ctx = ioctx.StderrToContext(ctx, &stderr)
@@ -228,6 +251,9 @@ print(x)
 				out := stderr.String()
 				for _, want := range tt.wants {
 					require.Contains(t, out, want)
+				}
+				for _, unwanted := range tt.unwanted {
+					require.NotContains(t, out, unwanted)
 				}
 			}
 		})
