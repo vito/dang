@@ -31,12 +31,12 @@
 - single lowercase letters (`a`, `b`), used in generic signatures, inferred at call sites.
 
 ## Type hints / casts: `::`
-- `expr :: Type!` annotates an expression's type (`TypeHint` node).
+- `expr :: Type!` annotates an expression's type.
 - Binds only a bare `Term` on the left — wrap compound exprs in parens: `(a + b) :: T!`.
 - `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here. The reverse degrade also works: `myUrl :: String!`, `p :: String!`.
 - Coercion source is limited: only **`String`** values coerce to custom scalars/enums (and custom scalars back to `String`). `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
 - Enum casts checked at **runtime**: `"NOPE" :: Status!` → `invalid enum value`.
-- Nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
+- Nullable → non-null casts are checked at **runtime**, rejecting null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
 Two uses to keep distinct:
 - type *hint* — narrowing/disambiguation, e.g. `[] :: [String!]!` binding a type variable.
@@ -57,13 +57,13 @@ Narrowing applies to **bare symbols** (locals, and bare `self`-field references 
 if (x != null) { print("got " + x) }   # x is T! in the then-branch
 if (x == null) { return "no value" }    # x is T! after the guard
 if (x == null) { ... } else { ... }     # x is T! in the else
-loop { if (x == null) { break }, x = x.next }   # x is T! after the guard
+loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
 ```
 
 ### Diverging constructs are narrowing-aware
 - `return`, `raise`, `break`, `continue` all count as diverging.
 - Code after a diverging guard sees the narrowed type for the rest of the enclosing scope.
-- `else if` chains: the parser wraps `else if` in a Block, so the outer guard's falsy facts still apply afterward.
+- `else if` chains: the outer guard's falsy facts still apply afterward.
 - Sequential guards accumulate, each narrowing independently in order.
 
 ### Compound conditions
@@ -130,7 +130,7 @@ scalar JSON
 - Scalars from GraphQL responses flow naturally; no cast needed.
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
 - Equality, comparison against plain strings, list membership, records/lists all work: a custom scalar `==` a `String` compares the underlying strings (`urlValue == "https://…"`).
-- The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below (in Dang, in the interpreter's embedded prelude).
+- The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.
 
 ### Scalar bodies: methods and the `new()` hook
 

@@ -21,7 +21,7 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 - Arguments on nested fields: `user.{{ posts(first: 5).{{ title }} }}`; positional works too: `users.{{ posts(1).{{ ... }} }}`.
 - Selection on a nullable receiver propagates null: if `user` is `null`, `user.{{ name }}` is `null` (not an error).
 - The result is a **record** (`{{ ... }}`); access fields by name.
-- `{{ }}` **always evaluates its fields concurrently**, failing fast on the first error. A selection and a record literal are one construct, so the rule is uniform: over a GraphQL receiver it's the single batched query above, over a plain object it's parallel Dang evaluation, and over a list it runs the elements in parallel. So fields produce values rather than write shared state: writing a binding declared outside a field, or calling a writing closure from outside it, is a compile error (objects.md "Compile-time rules").
+- `{{ }}` **always evaluates its fields concurrently**, failing fast on the first error: over a GraphQL receiver it's the single batched query above, over a plain object or list it's parallel Dang evaluation. So fields can't write shared state (objects.md "Compile-time rules").
 - **Aliases** rename a field in the result, GraphQL-style (alias before the colon): `user.{{ fullName: name, email }}`. A bare field is shorthand for aliasing to itself — `user.{{ name }}` ≡ `user.{{ name: name }}` — exactly as `{{ name }}` ≡ `{{ name: name }}` in a record literal.
 - Aliases become real GraphQL aliases, so the **same field** can be selected more than once with different args: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`.
 - A record literal is `{{ }}` with no receiver, so it has the same parallelism: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` issues both queries at once.
@@ -65,13 +65,12 @@ users.{{ name }}[0].name   # index to force the query
 ## Laziness / forcing
 GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.field`, `.{{...}}`, args); no request is sent until the value is **forced** — materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single request. This is what makes `user.{{ name, posts.{{ title }} }}` one round-trip.
 - **Exception — nullable object fields:** a nullable object/interface/union field (`parent: Agent`), or anything selected off one, is **checked for null when it escapes the chain** (bound with `let`, passed as an argument, returned, compared, …) with one `{ id __typename }` query, so `== null`, `??`, `!`, `null` patterns and flow narrowing work. Selecting through it (`me.parent.name`, `me.parent.{{ id }}`) sends no check: the leaf or projection reveals the null. Non-null object fields stay lazy.
-- A checked value is **loaded by its ID** (`node(id:)`, or `load<T>FromID` on older Dagger schemas): later selections start from the loader, passing it as an ID argument is free, and it has its **concrete** type, so `case` type patterns match it without another query.
+- A checked value is **loaded by its ID**: later selections start from it, passing it as an ID argument is free, and it has its **concrete** type, so `case` type patterns match it without another query.
 - **`case` on an interface/union value** that only knows its declared type (e.g. a non-null `favoriteNode: Node!`) asks for its `id`/`__typename` once, unless there are no type patterns or the first pattern is the declared type itself (`n: Node =>`).
 
 ## Equality
-- `==`/`!=` on GraphQL objects compare by **reference identity** — no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself, but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "User:1")` is `false`.
-- To ask whether two objects are the *same server entity*, compare an identifying field explicitly: `a.id == b.id`. That forces the fetch where it's visible rather than hiding I/O inside `==`.
-- A `.{{ }}` selection is different: it materializes an **anonymous record**, which compares by **value** (same fields + equal values ⇒ equal). Reference identity applies to the GraphQL object *handle*, not to a selected record. See the object-equality rules in `objects.md`.
+- `==`/`!=` on GraphQL objects compare by **reference identity** (the query that produced them), with no network call: `primaryUser == user(id: "User:1")` is `false` even if both are the same user. Compare an identifying field instead: `a.id == b.id`.
+- A `.{{ }}` selection is an anonymous record, which compares by **value** (objects.md "Equality").
 
 ## Errors from the server
 - Non-null violations and GraphQL errors **raise** — recoverable via `rescue` (e.g. `dir.file("VERSION").contents rescue null`).
@@ -115,19 +114,19 @@ authorization = "Bearer ${API_TOKEN}"
 [imports.Remote.headers]
 X-Custom = "value"
 ```
-- `dang = "X.Y"` — the Dang version (release major.minor) the source is written for; a leading `v` and a patch are accepted and the patch ignored (`"v2.1.4"` is `"2.1"`). Old versions' syntax keeps parsing; `dang migrate` moves a project forward, `dang init` writes the key. Left out it means `"2.1"`; newer than the running Dang is an error. Source no `dang.toml` governs uses the running Dang's version. The version comes only from the source's path (nearest `dang.toml`), never from the importer.
+- `dang = "X.Y"` — the Dang version the source is written in; left out, it means `"2.1"`. Write the current syntax this skill describes. A project declaring an older version is written in that version's syntax (e.g. `for` loops, `try`/`catch`): move it forward with `dang migrate` rather than mixing the two.
 - One `[imports.<Name>]` per source; `<Name>` is the qualifier (`MyApi.User`). Must specify at least one of `dagger`, `schema`, `endpoint`, `service` — or `path` (native Dang module, below).
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.
 - `service` — command starting a GraphQL server that prints its endpoint URL as the first stdout line; started lazily, killed on exit.
-- `dagger = "X.Y.Z"` — connect to a Dagger Engine session, written against that Dagger version's API (like a module's `engineVersion`, copyable verbatim; a prerelease such as `v1.0.0-beta.21` is kept and gets that prerelease's API; build metadata is dropped; `v` and patch optional, as for `dang`). `service` defaults to `["dagger", "session"]`; Dang appends `--version vX.Y.Z[-prerelease]` and introspects a Dagger module's schema at it. An engine of an older release than the version (`v1.0.0` for `v1.0.1`) is an error (upgrade Dagger); as in Dagger, a later prerelease of the engine's own release, or the release itself (`v1.0.0` on a `v1.0.0-beta.22` engine), is not, and gets the engine's newest API; a version below the engine's minimum (`v0.19.0` today) fails to start the session. Not combinable with `endpoint`. In a Dagger module, keep it equal to `engineVersion` (Dagger runs the module's functions at that). `dagger = true` (older form) connects without a version: the API follows the `dagger` CLI and a module's schema its `engineVersion`; use it with `endpoint`.
+- `dagger = "X.Y.Z"` — connect to a Dagger Engine session (via `dagger session`), written against that Dagger version's API. In a Dagger module, keep it equal to the module's `engineVersion`. An engine older than the version is an error (upgrade Dagger). Not combinable with `endpoint`. The older form `dagger = true` connects without pinning a version.
 - `authorization` — value for the `Authorization` header. `[imports.<Name>.headers]` — extra HTTP headers.
-- `authorization` / `endpoint` / `headers` support `${ENV_VAR}` expansion; `$(...)` command substitution is **not** supported. (The old `DANG_GRAPHQL_*` env config was dropped.)
+- `authorization` / `endpoint` / `headers` support `${ENV_VAR}` expansion; `$(...)` command substitution is **not** supported.
 - Discovery walks **up** from the working directory, stopping at a `.git` boundary. Commit `dang.toml` — don't include credentials inline; reference env vars.
 
 ### Native Dang module imports
 - `path = "./dir"` imports **another Dang module** (a directory of `.dang` files, relative to `dang.toml`) instead of a GraphQL source; mutually exclusive with `dagger`/`schema`/`endpoint`/`service` (`'path' cannot be combined with ...`).
-- The module's public (non-`let`) surface becomes the import's API; `let` stays private **across the boundary** (the [#fields] public/`let` rule, now enforced between modules).
+- The module's public (non-`let`) surface becomes the import's API; `let` stays private **across the boundary** (the public/`let` rule of objects.md "Fields", enforced between modules).
 - **Per-module identity:** each importing module gets its own instance — two modules importing the same directory hold distinct copies of its types, and same-named types from different instances don't unify (`the "Widget" value here is a different type from the "Widget" expected ... share behavior through an interface instead`). No MVS/version reconciliation.
 - Transitive `path` imports resolve each module's own `dang.toml`; cycles are reported (`import cycle detected: a -> b -> a`).
 
@@ -144,6 +143,7 @@ import MyApi
 ### Shadowing & ambiguity
 - A local `type User { ... }` shadows the imported `User` (qualified `MyApi.User` still works); a local declaration also resolves an otherwise-ambiguous unqualified name (local wins).
 - Without a local shadow, an unqualified name provided by two imports is an error: `ambiguous reference to "Status": provided by imports [Other Test]` — must qualify. Same for `Mutation` and directives.
+- Your own declarations shadow builtins too (`let loop = ...`, `pub toString(...)`), but an unqualified import never does: an imported root field named like a builtin is reachable only qualified (`MyApi.print`).
 
 ### Ordering & cycles
 - Forward references across files work.
