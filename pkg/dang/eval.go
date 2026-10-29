@@ -476,21 +476,27 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	}, nil
 }
 
-// NewValueScope creates an evaluation environment with built-in functions
+// NewValueScope creates an evaluation environment with built-in functions.
+//
+// The builtins and the Dang-source prelude's bindings live in a parent frame
+// of the returned scope rather than in the scope itself, so that the program's
+// own declarations shadow them: a declaration whose name is already bound in
+// the frame it is published to is not published again (see FieldDecl.Eval),
+// so a builtin bound there would win over a module's own `let loop = ...`.
 func NewValueScope(typeScope TypeScope) ValueScope {
 	// Create an Object from the type environment
-	env := NewObject(typeScope)
+	builtinsFrame := NewObject(typeScope)
 
 	// Add builtin functions
-	addBuiltinFunctions(env)
+	addBuiltinFunctions(builtinsFrame)
 
 	// Bind the Dang-source prelude's public declarations, builtin-style.
 	loadPrelude()
 	for _, kv := range preludeBindings {
-		env.Bind(kv.Key, kv.Value, PublicVisibility)
+		builtinsFrame.Bind(kv.Key, kv.Value, PublicVisibility)
 	}
 
-	return env
+	return builtinsFrame.Derive(false)
 }
 
 // ValueScopeFromSchema creates an evaluation environment populated with GraphQL API values
