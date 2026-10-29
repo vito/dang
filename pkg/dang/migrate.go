@@ -75,7 +75,7 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 			}
 			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
 		}
-		if parsed, err := Parse(filename, source, WithVersion(from)); err == nil {
+		if parsed, err := Parse(filename, source, WithVersion(from)); err == nil && !to.forLoops() {
 			if loc := forLoopCollision(parsed.(*FileBlock), moduleBindsLoop); loc != nil {
 				return "", fmt.Errorf("migrating to Dang %s would change the meaning of line %d: its `for` loop becomes a call to `loop`, which names a binding of this program's own there rather than the builtin; rename that binding first", to, loc.Line)
 			}
@@ -122,7 +122,7 @@ func forLoopCollision(file *FileBlock, moduleBindsLoop bool) *SourceLocation {
 				return false
 			}
 			if call, ok := n.(*FunCall); ok {
-				if sym, ok := call.Fun.(*Symbol); ok && sym.Name == forLoopBuiltin {
+				if sym, ok := call.Fun.(*Symbol); ok && isForLoopBuiltin(sym.Name) {
 					found = call.Loc
 					return false
 				}
@@ -167,12 +167,12 @@ func forLoopCollision(file *FileBlock, moduleBindsLoop bool) *SourceLocation {
 				within(n)
 			}
 		case *FunDecl:
-			params := n.Args
-			if n.BlockParam != nil {
-				params = append(slices.Clone(params), n.BlockParam)
-			}
-			if paramsBindLoop(params) {
+			if paramsBindLoop(withBlockParam(n.Args, n.BlockParam)) {
 				within(n.FunctionBase.Body)
+			}
+		case *NewConstructorDecl:
+			if paramsBindLoop(withBlockParam(n.Args, n.BlockParam)) {
+				within(n.BodyBlock)
 			}
 		case *BlockArg:
 			if paramsBindLoop(n.Args) {
@@ -186,6 +186,14 @@ func forLoopCollision(file *FileBlock, moduleBindsLoop bool) *SourceLocation {
 		return true
 	})
 	return found
+}
+
+// withBlockParam returns params with blockParam, if any, appended.
+func withBlockParam(params []*FieldDecl, blockParam *FieldDecl) []*FieldDecl {
+	if blockParam == nil {
+		return params
+	}
+	return append(slices.Clone(params), blockParam)
 }
 
 // declaresLoopAtTop reports whether source, parsed as version v, declares
@@ -206,10 +214,17 @@ func declaresLoopAtTop(filename string, source []byte, v Version) bool {
 // migrationCanonical returns the node that n is compared as when checking
 // that a migration keeps the source's meaning: a try/catch as its postfix
 // equivalent (see modernizeTryCatch), which is how the formatter prints it
-// once postfix rescue is available, and a rescue whose operand is a block
+// once postfix rescue is available; a rescue whose operand is a block
 // holding a single form that can stand on rescue's left as that form, since
-// the formatter unwraps such blocks unless comments keep them.
+// the formatter unwraps such blocks unless comments keep them; and the loop
+// builtin's aliases for desugared `for` loops as `loop`, how they migrate
+// (forLoopCollision checks that this keeps their meaning).
 func migrationCanonical(n Node) Node {
+	if sym, ok := n.(*Symbol); ok && isForLoopBuiltin(sym.Name) {
+		loop := *sym
+		loop.Name = "loop"
+		return &loop
+	}
 	r, ok := n.(*RescueExpr)
 	if !ok {
 		return n

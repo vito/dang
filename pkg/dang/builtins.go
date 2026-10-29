@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -600,7 +602,8 @@ func ForEachFunction(fn func(BuiltinDef)) {
 // program binds the builtin's name itself. They are not identifiers, so no
 // source can refer to them (or list them, e.g. in completions).
 var builtinAliases = map[string]string{
-	forLoopBuiltin: "loop",
+	forLoopBuiltin:     "loop",
+	forCondLoopBuiltin: "loop",
 }
 
 // builtinNames returns the names a builtin function is bound by: its own
@@ -612,7 +615,32 @@ func builtinNames(def BuiltinDef) []string {
 			names = append(names, alias)
 		}
 	}
+	sort.Strings(names[1:])
 	return names
+}
+
+var (
+	builtinValueNamesOnce sync.Once
+	builtinValueNames     map[string]bool
+)
+
+// isBuiltinValueName reports whether NewValueScope binds name in its
+// builtins frame: a builtin function, an alias of one, a static module, or a
+// binding of the Dang-source prelude.
+func isBuiltinValueName(name string) bool {
+	builtinValueNamesOnce.Do(func() {
+		frame := NewObject(Prelude)
+		addBuiltinFunctions(frame)
+		builtinValueNames = map[string]bool{}
+		for name := range frame.Values {
+			builtinValueNames[name] = true
+		}
+		loadPrelude()
+		for _, kv := range preludeBindings {
+			builtinValueNames[kv.Key] = true
+		}
+	})
+	return builtinValueNames[name]
 }
 
 // IsInternalName reports whether name is bound only for code the parser

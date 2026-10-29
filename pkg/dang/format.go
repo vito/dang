@@ -2017,6 +2017,10 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 		return
 	}
 
+	if f.formatForLoop(c) {
+		return
+	}
+
 	f.formatNode(c.Fun)
 
 	// Format arguments
@@ -2050,6 +2054,9 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 }
 
 func (f *Formatter) formatFunCallInline(c *FunCall) {
+	if f.formatForLoop(c) {
+		return
+	}
 	f.formatNodeInline(c.Fun)
 	if len(c.Args) > 0 {
 		f.write("(")
@@ -2458,22 +2465,81 @@ func (f *Formatter) formatSelectInline(s *Select) {
 }
 
 func (f *Formatter) formatSymbol(s *Symbol) {
-	if s.Name == forLoopBuiltin {
-		// A desugared `for` loop, in the current spelling.
+	if isForLoopBuiltin(s.Name) {
+		// A desugared `for` loop, in the current spelling (see
+		// formatForLoop).
 		f.write("loop")
 		return
 	}
 	f.write(f.ident(s.Name))
 }
 
+// formatForLoop prints a desugared `for` loop as the `for` loop it was, where
+// the version has those (see desugarForLoop), and reports whether it did.
+// Elsewhere it prints as a `loop` call, its current spelling.
+func (f *Formatter) formatForLoop(c *FunCall) bool {
+	sym, ok := c.Fun.(*Symbol)
+	if !ok || !isForLoopBuiltin(sym.Name) || !f.version.forLoops() || c.BlockArg == nil {
+		return false
+	}
+	body, ok := c.BlockArg.BodyNode.(*Block)
+	if !ok {
+		return false
+	}
+	var cond Node
+	if sym.Name == forCondLoopBuiltin {
+		if len(body.Forms) != 1 {
+			return false
+		}
+		guard, ok := body.Forms[0].(*Conditional)
+		if !ok {
+			return false
+		}
+		then, ok := guard.Then.(*Block)
+		if !ok {
+			return false
+		}
+		cond, body = guard.Condition, then
+	}
+	f.write("for ")
+	if cond != nil {
+		f.write("(")
+		f.formatNode(cond)
+		f.write(") ")
+	}
+	f.formatBlock(body)
+	return true
+}
+
 // ident spells name where an identifier is expected: as `$name` if it is a
-// reserved word in the version being formatted, which the escape makes an
-// identifier (see RawWordToken), and as is otherwise.
+// reserved word in the version being formatted, or a keyword whose bare
+// spelling may parse as something else where a name can go (see
+// nameKeywords), which the escape makes an identifier (see RawWordToken),
+// and as is otherwise.
 func (f *Formatter) ident(name string) string {
-	if f.version.reserves(name) {
+	if f.version.reserves(name) || nameKeywords[name] || (name == "for" && f.version.forLoops()) {
 		return "$" + name
 	}
 	return name
+}
+
+// nameKeywords are the keywords that are not reserved, so they may be
+// names, but whose bare spelling where a name can go may parse as
+// something else: as a value (`true`, `self`), as a statement (`break`,
+// `if(x) ...`), or as the visibility of a declaration (`pub(...)`, which the
+// formatter writes for a public `pub` taking arguments). Other keywords stay
+// as they are: their syntax needs more than the word, so a name spelled like
+// them parses as a name (see TestKeywordNamesRoundTrip).
+var nameKeywords = map[string]bool{
+	"true":     true,
+	"false":    true,
+	"null":     true,
+	"self":     true,
+	"break":    true,
+	"continue": true,
+	"if":       true,
+	"pub":      true,
+	"let":      true,
 }
 
 // fieldName spells name where it can only be a name: a field after a dot or

@@ -157,7 +157,7 @@ TypeVariable := [a-z]                             # single lowercase letter
 ```
 
 Notable productions:
-- `RescueExpr`: `(RescueExpr | Term) 'rescue' ('{' RescueClause* '}' | fallback)` — sits in the binary-operator chain between `??` and `or` (`DefaultExpr` bottoms out in it). Left-recursive, so chains associate left. (The removed `try {} catch {}` form still parses, solely so type-checking can reject it with a migration hint and `dang fmt -w` can rewrite it.)
+- `RescueExpr`: `(RescueExpr | Term) 'rescue' ('{' RescueClause* '}' | fallback)` — sits in the binary-operator chain between `??` and `or` (`DefaultExpr` bottoms out in it). Left-recursive, so chains associate left. (The removed `try {} catch {}` form still parses, so type-checking can warn with a migration hint and `dang fmt -w` can rewrite it; before Dang 2.1 it is the current syntax.)
 - `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — field path; zero-arg fields auto-call.
 - `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block on a call; params optional.
 - `ObjectSelection`: `'{{' ... '}}'` after a `.` — a `FieldSelection` list (`user.{{name, posts.{{title}}}}`) or a list of `InlineFragment`s for unions/interfaces. A field may carry a GraphQL-style alias (`user.{{full: name}}`); a bare field is shorthand for `name: name`.

@@ -535,12 +535,14 @@ func versionCaseClauses(v Version, clauses []*CaseClause, loc *SourceLocation) [
 // (by its condition going false, or a bare `break`), where `loop` yields
 // null. Only `break value` gives both the same result.
 //
-// The desugared call names the builtin by forLoopBuiltin rather than `loop`,
-// so that a program binding its own `loop` (legal before 2.1, which added the
-// builtin) keeps its `for` loops looping.
+// The desugared call names the builtin by an alias rather than `loop` (see
+// forLoopBuiltin), so that a program binding its own `loop` (legal before
+// 2.1, which added the builtin) keeps its `for` loops looping.
 func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 	loopBody := body
+	alias := forLoopBuiltin
 	if cond != nil {
+		alias = forCondLoopBuiltin
 		loopBody = &Block{
 			Forms: []Node{&Conditional{
 				Condition: cond,
@@ -555,7 +557,7 @@ func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 		}
 	}
 	return &FunCall{
-		Fun: &Symbol{Name: forLoopBuiltin, Loc: loc},
+		Fun: &Symbol{Name: alias, Loc: loc},
 		BlockArg: &BlockArg{
 			BodyNode: loopBody,
 			Loc:      loc,
@@ -564,10 +566,21 @@ func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 	}
 }
 
-// forLoopBuiltin is the name that desugared `for` loops call the `loop`
-// builtin by (see desugarForLoop and builtinAliases). No identifier spells it
-// (`$loop` is the identifier `loop`), so no binding of a program's own can
-// shadow it. The formatter prints it as `loop`, the current spelling, which
-// a program's own `loop` does shadow; migrating such a program refuses to
-// (see forLoopCollision).
-const forLoopBuiltin = "$loop"
+// forLoopBuiltin and forCondLoopBuiltin are the names that desugared `for {
+// ... }` and `for (cond) { ... }` loops call the `loop` builtin by (see
+// desugarForLoop and builtinAliases). No identifier spells them (`$loop` is
+// the identifier `loop`), so no binding of a program's own can shadow them.
+// The formatter prints them as the `for` loops they were where those exist,
+// and as `loop` calls, the current spelling, where they don't: a program's
+// own `loop` does shadow that, so migrating such a program refuses to (see
+// forLoopCollision).
+const (
+	forLoopBuiltin     = "$for"
+	forCondLoopBuiltin = "$for(cond)"
+)
+
+// isForLoopBuiltin reports whether name is one desugared `for` loops call
+// the loop builtin by.
+func isForLoopBuiltin(name string) bool {
+	return name == forLoopBuiltin || name == forCondLoopBuiltin
+}

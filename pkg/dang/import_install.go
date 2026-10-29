@@ -123,7 +123,9 @@ func installUnqualifiedImportValues(parentScope ValueScope, importValueScope Val
 			continue
 		}
 
-		if _, exists := parentScope.LookupLocal(name); exists {
+		// An unqualified import never shadows a builtin; it is still
+		// reachable qualified.
+		if _, exists := parentScope.LookupLocal(name); exists || isBuiltinValueName(name) {
 			continue
 		}
 

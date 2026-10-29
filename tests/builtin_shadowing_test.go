@@ -125,6 +125,7 @@ assert { Lib.toString(1) == 7 }
 		})
 		_, err := dang.RunDir(ctx, root, false)
 		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
 	})
 
 	t.Run("declared functions shadow builtins", func(ctx context.Context, t *testctx.T) {

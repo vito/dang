@@ -159,7 +159,10 @@ and `fmt/stale` before committing.
 ## Known limits (expected, not bugs)
 
 - `dang fmt` on an old-version file prints desugared forms in current
-  spelling (`loop`, the added `else`): formatting works on the shared AST.
+  spelling (the added `else`): formatting works on the shared AST. `for`
+  loops are the exception: they call the loop builtin by an alias no binding
+  shadows, and print as `for` where they exist, since a program may bind its
+  own `loop`.
 - Parse errors in old-version files are positioned by the current tree-sitter
   grammar.
 - `MigrateSource` leaves a file untouched when nothing in it is spelled

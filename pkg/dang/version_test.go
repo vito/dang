@@ -182,6 +182,7 @@ func TestVersionForLoops(t *testing.T) {
 			{"a local loop around it", "count(): Int! {\n  let loop = 1\n  for {\n    break loop\n  }\n}\n", true},
 			{"a loop parameter", "count(loop: Int!): Int! {\n  for {\n    break loop\n  }\n}\n", true},
 			{"a block parameter", "let xs = [1].map { loop =>\n  for {\n    break loop\n  }\n}\n", true},
+			{"a constructor parameter", "type Foo {\n  pub x: Int!\n  new(loop: Int!) {\n    for {\n      break\n    }\n    self.x = loop\n    self\n  }\n}\n", true},
 			{"a loop parameter of another function", loopy + "other(loop: Int!): Int! {\n  loop\n}\n", false},
 			{"a local loop elsewhere", loopy + "other(): Int! {\n  let loop = 1\n  loop\n}\n", false},
 		} {
@@ -198,18 +199,27 @@ func TestVersionForLoops(t *testing.T) {
 	})
 
 	t.Run("Dang 2.0 for loops loop where the program binds loop", func(t *testing.T) {
-		dir := t.TempDir()
 		src := "pub loop(n: Int!): Int! { n }\n" +
-			"count(): Int! {\n  let i = 0\n  for (i < 3) {\n    i += 1\n  }\n  i\n}\n" +
+			"count(): Int! {\n  let i = 0\n  # count to 3\n  for (i < 3) {\n    i += 1 # step\n  }\n  for {\n    break\n  }\n  i\n}\n" +
 			"assert { count() == 3 }\nassert { loop(2) == 2 }\n"
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
-		_, err := RunDir(ContextWithVersion(context.Background(), Version2_0), dir, false)
-		require.NoError(t, err)
+		run := func(src string) {
+			t.Helper()
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
+			_, err := RunDir(ContextWithVersion(context.Background(), Version2_0), dir, false)
+			require.NoError(t, err)
+		}
+		run(src)
 
-		// Formatted, it is the loop builtin's current spelling.
-		formatted, err := FormatFileWithVersion([]byte("let x = for {\n  break 1\n}\n"), Version2_0)
+		// Formatting keeps them `for` loops, which the program's own
+		// `loop` can't capture, as a `loop` call would be.
+		formatted, err := FormatFileWithVersion([]byte(src), Version2_0)
 		require.NoError(t, err)
-		assert.Equal(t, "let x = loop {\n  break 1\n}\n", formatted)
+		assert.Contains(t, formatted, "  # count to 3\n  for (i < 3) {\n    i += 1 # step\n  }\n  for {\n    break\n  }\n")
+		run(formatted)
+		again, err := FormatFileWithVersion([]byte(formatted), Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, formatted, again)
 	})
 }
 
@@ -439,6 +449,34 @@ func TestReservedWords(t *testing.T) {
 				}
 				assert.Equal(t, "let "+spelled+" = f("+field+": x."+field+")\n", formatted)
 			})
+		}
+	}
+}
+
+// TestKeywordNamesRoundTrip checks that formatting keeps a name spelled like
+// a keyword a name, declared and referred to, in every version.
+func TestKeywordNamesRoundTrip(t *testing.T) {
+	// Every keyword token's word (see the *Token rules of dang.peg).
+	words := []string{
+		"and", "break", "case", "catch", "continue", "directive", "else",
+		"enum", "false", "for", "if", "implements", "import", "interface",
+		"let", "new", "null", "on", "or", "pub", "raise", "rescue", "return",
+		"scalar", "self", "true", "try", "type", "union",
+	}
+	for _, v := range versions {
+		for _, word := range words {
+			src := "pub $" + word + "($" + word + ": Int!): Int! {\n  $" + word + "\n}\n" +
+				"let y = $" + word + "(1)\nlet z = [1].map { $" + word + " => $" + word + " }\n"
+			want, err := Parse("version_test.dang", []byte(src), WithVersion(v))
+			require.NoError(t, err, "%s in %s", word, v)
+			formatted, err := FormatFileWithVersion([]byte(src), v)
+			require.NoError(t, err, "%s in %s", word, v)
+			got, err := Parse("version_test.dang", []byte(formatted), WithVersion(v))
+			if !assert.NoError(t, err, "%s in %s:\n%s", word, v, formatted) {
+				continue
+			}
+			_, differs := firstASTDifference(want.(Node), got.(Node))
+			assert.False(t, differs, "%s in %s:\n%s", word, v, formatted)
 		}
 	}
 }
