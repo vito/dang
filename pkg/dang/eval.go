@@ -3589,6 +3589,28 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Fi
 	return ctx, blocks, nil
 }
 
+// ParseSourceFile parses the .dang file at filename as RunDir and DeclareDir parse
+// it: at the Dang version of its directory, and through the context's syntax
+// cache (WithSyntaxCache) when there is one. With a cache, an unchanged file
+// is copied from it rather than parsed again, and a file parsed here is
+// reused by the next RunDir or DeclareDir of the same source. Each call gets
+// its own syntax nodes. It loads no imports and checks no types.
+func ParseSourceFile(ctx context.Context, filename string) (*FileBlock, error) {
+	version, err := VersionForDir(ctx, filepath.Dir(filename))
+	if err != nil {
+		return nil, fmt.Errorf("determining Dang version: %w", err)
+	}
+	parsed, err := parseFileWithSyntaxCache(ctx, filename, version)
+	if err != nil {
+		return nil, err
+	}
+	block, ok := parsed.(*FileBlock)
+	if !ok {
+		return nil, fmt.Errorf("parsed result for %s is not a FileBlock", filename)
+	}
+	return block, nil
+}
+
 // DeclareDir declares all .dang files in a directory as a single module and
 // returns an evaluation environment containing only declared API-shape values.
 // It resolves imports and signatures, but it does not infer or evaluate
