@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -33,6 +34,13 @@ import (
 // reformatted, so moving to a version that changed no syntax this file uses
 // leaves it alone.
 func MigrateSource(filename string, source []byte, from, to Version) (string, error) {
+	return migrateSource(filename, source, from, to, false)
+}
+
+// migrateSource is MigrateSource, where moduleBindsLoop reports whether
+// another file of the source's module declares `loop` at its top level (see
+// forLoopCollision).
+func migrateSource(filename string, source []byte, from, to Version, moduleBindsLoop bool) (string, error) {
 	if to.Before(from) {
 		return "", fmt.Errorf("cannot migrate from Dang %s back to %s", from, to)
 	}
@@ -67,6 +75,11 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 			}
 			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
 		}
+		if parsed, err := Parse(filename, source, WithVersion(from)); err == nil {
+			if loc := forLoopCollision(parsed.(*FileBlock), moduleBindsLoop); loc != nil {
+				return "", fmt.Errorf("migrating to Dang %s would change the meaning of line %d: its `for` loop becomes a call to `loop`, which names a binding of this program's own there rather than the builtin; rename that binding first", to, loc.Line)
+			}
+		}
 		// Nothing in the file is spelled differently in the two versions
 		// (e.g. a minor version that changed no syntax), so leave it as it
 		// is rather than reformatting it, provided it means the same as
@@ -87,6 +100,108 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 }
 
 var sourceLocationPtrType = reflect.TypeOf((*SourceLocation)(nil))
+
+// forLoopCollision returns the location of a `for` loop in file whose
+// migration would change its meaning, if any. A desugared `for` loop calls
+// the loop builtin by a name nothing can shadow (see forLoopBuiltin), but it
+// migrates to a call spelled `loop`, which a binding of the program's own
+// named `loop` shadows wherever it is in scope: in the blocks enclosing the
+// loop (declarations are visible throughout their block), as a parameter of
+// an enclosing function or block, as an enclosing case or rescue clause's
+// binding, or at the top level of the module, which moduleBindsLoop reports
+// for the module's other files. (Imports never shadow builtins.)
+func forLoopCollision(file *FileBlock, moduleBindsLoop bool) *SourceLocation {
+	var found *SourceLocation
+	// Report the first desugared `for` loop within scope.
+	within := func(scope Node) {
+		if found != nil || scope == nil {
+			return
+		}
+		scope.Walk(func(n Node) bool {
+			if found != nil {
+				return false
+			}
+			if call, ok := n.(*FunCall); ok {
+				if sym, ok := call.Fun.(*Symbol); ok && sym.Name == forLoopBuiltin {
+					found = call.Loc
+					return false
+				}
+			}
+			return true
+		})
+	}
+	declaresLoop := func(forms []Node) bool {
+		for _, form := range forms {
+			if slices.Contains(form.DeclaredSymbols(), "loop") {
+				return true
+			}
+		}
+		return false
+	}
+	paramsBindLoop := func(params []*FieldDecl) bool {
+		for _, param := range params {
+			if param.Name != nil && param.Name.Name == "loop" {
+				return true
+			}
+		}
+		return false
+	}
+	clausesBindLoop := func(clauses []*CaseClause) {
+		for _, clause := range clauses {
+			if clause.Binding == "loop" {
+				within(clause.Expr)
+			}
+		}
+	}
+
+	if moduleBindsLoop || declaresLoop(file.Forms) {
+		within(file)
+	}
+	file.Walk(func(n Node) bool {
+		if found != nil {
+			return false
+		}
+		switch n := n.(type) {
+		case *Block:
+			if declaresLoop(n.Forms) {
+				within(n)
+			}
+		case *FunDecl:
+			params := n.Args
+			if n.BlockParam != nil {
+				params = append(slices.Clone(params), n.BlockParam)
+			}
+			if paramsBindLoop(params) {
+				within(n.FunctionBase.Body)
+			}
+		case *BlockArg:
+			if paramsBindLoop(n.Args) {
+				within(n.BodyNode)
+			}
+		case *Case:
+			clausesBindLoop(n.Clauses)
+		case *RescueExpr:
+			clausesBindLoop(n.Clauses)
+		}
+		return true
+	})
+	return found
+}
+
+// declaresLoopAtTop reports whether source, parsed as version v, declares
+// `loop` at its top level, for forLoopCollision in its module's other files.
+func declaresLoopAtTop(filename string, source []byte, v Version) bool {
+	parsed, err := Parse(filename, source, WithVersion(v))
+	if err != nil {
+		return false
+	}
+	for _, form := range parsed.(*FileBlock).Forms {
+		if slices.Contains(form.DeclaredSymbols(), "loop") {
+			return true
+		}
+	}
+	return false
+}
 
 // migrationCanonical returns the node that n is compared as when checking
 // that a migration keeps the source's meaning: a try/catch as its postfix
@@ -425,12 +540,29 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 			Config:     setConfigVersion(configSource, to),
 		}
 		sort.Strings(p.files)
-		for _, path := range p.files {
+		sources := make([][]byte, len(p.files))
+		// Which files declare `loop` at their top level, and how many do
+		// in each directory, i.e. in each module.
+		declaresLoop := make([]bool, len(p.files))
+		loopDecls := map[string]int{}
+		for i, path := range p.files {
 			source, err := os.ReadFile(path)
 			if err != nil {
 				return nil, err
 			}
-			migrated, err := MigrateSource(path, source, p.from, to)
+			sources[i] = source
+			if declaresLoopAtTop(path, source, p.from) {
+				declaresLoop[i] = true
+				loopDecls[filepath.Dir(path)]++
+			}
+		}
+		for i, path := range p.files {
+			source := sources[i]
+			others := loopDecls[filepath.Dir(path)]
+			if declaresLoop[i] {
+				others--
+			}
+			migrated, err := migrateSource(path, source, p.from, to, others > 0)
 			if errors.Is(err, errUnparseable) {
 				plan.Unparseable = append(plan.Unparseable, UnparseableFile{Path: path, Err: err})
 				continue

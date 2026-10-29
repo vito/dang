@@ -762,7 +762,9 @@ func addBuiltinFunctions(scope ValueScope) {
 				return def.Impl(ctx, nil, Args{Values: argsWithDefaults, Block: blockArg})
 			},
 		}
-		scope.Bind(def.Name, builtinFn, PublicVisibility)
+		for _, name := range builtinNames(def) {
+			scope.Bind(name, builtinFn, PublicVisibility)
+		}
 	})
 
 	// Register all builtin methods with naming convention

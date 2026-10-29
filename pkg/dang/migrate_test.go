@@ -253,6 +253,20 @@ func TestPlanMigrations(t *testing.T) {
 		require.ErrorContains(t, err, "migrate its directory instead")
 	})
 
+	t.Run("refuses a for loop that would call a sibling file's loop", func(t *testing.T) {
+		write("loopy/dang.toml", "dang = \"2.0\"\n")
+		write("loopy/a.dang", "pub loop(n: Int!): Int! {\n  n\n}\n")
+		write("loopy/b.dang", "count(): Int! {\n  for {\n    break 1\n  }\n}\n")
+		_, err := PlanMigrations(filepath.Join(root, "loopy"), Version2_1, MigrateOptions{})
+		require.ErrorContains(t, err, "`for` loop becomes a call to `loop`")
+
+		// Another directory is another module.
+		require.NoError(t, os.Remove(filepath.Join(root, "loopy", "a.dang")))
+		write("loopy/lib/a.dang", "pub loop(n: Int!): Int! {\n  n\n}\n")
+		plans := planProjects(t, filepath.Join(root, "loopy"), Version2_1, MigrateOptions{})
+		require.Len(t, plans, 1)
+	})
+
 	t.Run("refuses a file", func(t *testing.T) {
 		write("script/main.dang", "let x = user.{name}\n")
 		_, err := PlanMigrations(filepath.Join(root, "script", "main.dang"), Version2_0, MigrateOptions{UndeclaredFrom: Version1_0})

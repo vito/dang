@@ -151,7 +151,7 @@ func TestVersionForLoops(t *testing.T) {
 		node := parseSingleForm(t, `for { 1 }`, Version1_0)
 		call, ok := node.(*FunCall)
 		require.True(t, ok, "expected *FunCall, got %T", node)
-		assert.Equal(t, "loop", call.Fun.(*Symbol).Name)
+		assert.Equal(t, forLoopBuiltin, call.Fun.(*Symbol).Name)
 	})
 
 	t.Run("Dang 2.1 for is an identifier", func(t *testing.T) {
@@ -168,6 +168,48 @@ func TestVersionForLoops(t *testing.T) {
 		node := parseSingleForm(t, `for + 1`, Version2_0)
 		_, ok := node.(*Addition)
 		require.True(t, ok, "expected *Addition, got %T", node)
+	})
+
+	t.Run("Dang 2.0 for loops migrate unless they would call a loop of the program's own", func(t *testing.T) {
+		loopy := "count(): Int! {\n  for {\n    break 1\n  }\n}\n"
+		for _, tc := range []struct {
+			name, src string
+			collides  bool
+		}{
+			{"no loop", loopy, false},
+			{"a top-level loop", "pub loop(n: Int!): Int! {\n  n\n}\n" + loopy, true},
+			{"a top-level loop declared after", loopy + "pub loop: Int! = 1\n", true},
+			{"a local loop around it", "count(): Int! {\n  let loop = 1\n  for {\n    break loop\n  }\n}\n", true},
+			{"a loop parameter", "count(loop: Int!): Int! {\n  for {\n    break loop\n  }\n}\n", true},
+			{"a block parameter", "let xs = [1].map { loop =>\n  for {\n    break loop\n  }\n}\n", true},
+			{"a loop parameter of another function", loopy + "other(loop: Int!): Int! {\n  loop\n}\n", false},
+			{"a local loop elsewhere", loopy + "other(): Int! {\n  let loop = 1\n  loop\n}\n", false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := MigrateSource("version_test.dang", []byte(tc.src), Version2_0, Version2_1)
+				if tc.collides {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "`for` loop becomes a call to `loop`")
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
+	})
+
+	t.Run("Dang 2.0 for loops loop where the program binds loop", func(t *testing.T) {
+		dir := t.TempDir()
+		src := "pub loop(n: Int!): Int! { n }\n" +
+			"count(): Int! {\n  let i = 0\n  for (i < 3) {\n    i += 1\n  }\n  i\n}\n" +
+			"assert { count() == 3 }\nassert { loop(2) == 2 }\n"
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
+		_, err := RunDir(ContextWithVersion(context.Background(), Version2_0), dir, false)
+		require.NoError(t, err)
+
+		// Formatted, it is the loop builtin's current spelling.
+		formatted, err := FormatFileWithVersion([]byte("let x = for {\n  break 1\n}\n"), Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = loop {\n  break 1\n}\n", formatted)
 	})
 }
 

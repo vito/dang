@@ -531,11 +531,13 @@ func versionCaseClauses(v Version, clauses []*CaseClause, loc *SourceLocation) [
 // Keeping the body in the then-branch keeps the condition narrowing it, as
 // it did before.
 //
-// Two differences remain: a `for` yielded its last body value when it ended
+// One difference remains: a `for` yielded its last body value when it ended
 // (by its condition going false, or a bare `break`), where `loop` yields
-// null. Only `break value` gives both the same result. And the desugared
-// call names the `loop` builtin, so a module that binds its own `loop`
-// (legal before 2.1, which added the builtin) shadows it.
+// null. Only `break value` gives both the same result.
+//
+// The desugared call names the builtin by forLoopBuiltin rather than `loop`,
+// so that a program binding its own `loop` (legal before 2.1, which added the
+// builtin) keeps its `for` loops looping.
 func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 	loopBody := body
 	if cond != nil {
@@ -553,7 +555,7 @@ func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 		}
 	}
 	return &FunCall{
-		Fun: &Symbol{Name: "loop", Loc: loc},
+		Fun: &Symbol{Name: forLoopBuiltin, Loc: loc},
 		BlockArg: &BlockArg{
 			BodyNode: loopBody,
 			Loc:      loc,
@@ -561,3 +563,11 @@ func desugarForLoop(cond Node, body *Block, loc *SourceLocation) Node {
 		Loc: loc,
 	}
 }
+
+// forLoopBuiltin is the name that desugared `for` loops call the `loop`
+// builtin by (see desugarForLoop and builtinAliases). No identifier spells it
+// (`$loop` is the identifier `loop`), so no binding of a program's own can
+// shadow it. The formatter prints it as `loop`, the current spelling, which
+// a program's own `loop` does shadow; migrating such a program refuses to
+// (see forLoopCollision).
+const forLoopBuiltin = "$loop"

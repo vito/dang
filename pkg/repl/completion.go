@@ -78,7 +78,7 @@ func BuildStaticCompletions(typeScope dang.TypeScope) []string {
 	}
 
 	for name, scheme := range typeScope.Bindings(dang.PublicVisibility) {
-		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) {
+		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) || dang.IsInternalName(name) {
 			continue
 		}
 		add(name)

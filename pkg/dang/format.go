@@ -2458,6 +2458,11 @@ func (f *Formatter) formatSelectInline(s *Select) {
 }
 
 func (f *Formatter) formatSymbol(s *Symbol) {
+	if s.Name == forLoopBuiltin {
+		// A desugared `for` loop, in the current spelling.
+		f.write("loop")
+		return
+	}
 	f.write(f.ident(s.Name))
 }
 
