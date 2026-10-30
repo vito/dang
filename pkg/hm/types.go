@@ -2,7 +2,9 @@ package hm
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Type represents all possible type constructors with nullability support
@@ -34,43 +36,92 @@ type Substitutable interface {
 	FreeTypeVar() TypeVarSet
 }
 
-// TypeVariable represents a type variable
-type TypeVariable rune
+// TypeVariable represents a type variable. Its low bits are its name, as
+// written (the `a` of `id(x: a): a`) or numbered by a fresher (see FreshVar);
+// its high bits are an id that tells apart variables sharing a name. An
+// author-written variable has none, while every variable a fresher mints, and
+// every copy Freshen makes, gets a new one, unique in the process: so no two
+// fresh variables are ever the same, however many freshers minted them, and
+// none is ever an author's.
+type TypeVariable int64
 
-// rigidBase offsets rigid (skolem) type variables into the Unicode Private Use
-// Area so they never collide with the fresh flexible variables minted from
-// 'a'..'z' and the Greek letters. A rigid variable stands for an
-// author-written, universally-quantified type parameter (e.g. the `b` in
-// `do(&yield: b): b`). Unlike a flexible variable, it must NOT unify with a
-// concrete type while checking the body it was declared in — that is what makes
-// `yield * 2` a definition-time error rather than a runtime surprise.
-const rigidBase = 0xE000
+const (
+	nameBits = 24
+	nameMask = 1<<nameBits - 1
 
-// Rigid mints the rigid (skolem) counterpart of an author-written type-variable
-// letter such as 'b'.
-func Rigid(letter rune) TypeVariable { return TypeVariable(rigidBase + letter) }
+	// rigidBit marks rigid (skolem) type variables, keeping them apart from
+	// every flexible variable. A rigid variable stands for an author-written,
+	// universally-quantified type parameter (e.g. the `b` in `do(&yield: b):
+	// b`). Unlike a flexible variable, it must NOT unify with a concrete type
+	// while checking the body it was declared in — that is what makes `yield
+	// * 2` a definition-time error rather than a runtime surprise.
+	rigidBit = 1 << 62
+)
 
-// rigidSpan bounds the rigid range within the Private Use Area. It is wide
-// enough to cover every flexible variable letter (ASCII 'a'..'z' and the Greek
-// letters near U+03B1) once offset by rigidBase, while staying inside the PUA.
-const rigidSpan = 0x1000
+// lastID is the id of the last fresh variable minted.
+var lastID atomic.Int64
+
+// Freshen returns a new flexible variable named like tv.
+func Freshen(tv TypeVariable) TypeVariable {
+	return tv&nameMask | TypeVariable(lastID.Add(1)<<nameBits)
+}
+
+// Rigid returns the rigid (skolem) counterpart of a flexible type variable.
+func Rigid(tv TypeVariable) TypeVariable { return tv | rigidBit }
+
+// EqIgnoringIDs reports whether a and b are equal once their flexible type
+// variables are compared by name alone, as they were before variables had
+// ids. It is for comparing shapes that separate inferences produced, each
+// with variables of its own: two `[]`s typed by two REPL entries are both
+// `[a]!`. Rigid variables keep their ids, so that no signature's can pass
+// for another's.
+func EqIgnoringIDs(a, b Type) bool {
+	return withoutIDs(a).Eq(withoutIDs(b))
+}
+
+func withoutIDs(t Type) Type {
+	subs := NewSubs()
+	for tv := range t.FreeTypeVar() {
+		if !tv.IsRigid() {
+			subs.Add(tv, tv&nameMask)
+		}
+	}
+	return t.Apply(subs).(Type)
+}
 
 // IsRigid reports whether tv is a rigid (skolem) type variable.
 func (tv TypeVariable) IsRigid() bool {
-	return tv >= rigidBase && tv < rigidBase+rigidSpan
+	return tv&rigidBit != 0
 }
 
-// letter returns the original letter a rigid variable was minted from, or the
-// variable itself when it is already flexible.
-func (tv TypeVariable) letter() rune {
-	if tv.IsRigid() {
-		return rune(tv) - rigidBase
+// freshBase offsets the names of the fresh variables minted past 'z' beyond
+// Unicode, where they can repeat neither a letter nor each other.
+const freshBase = 0x110000
+
+// FreshVar returns a new variable named after the nth fresh one: 'a'..'z'
+// first, then a1..z1, a2..z2 and so on.
+func FreshVar(n int) TypeVariable {
+	name := TypeVariable(freshBase + n)
+	if n < len(letters) {
+		name = TypeVariable(letters[n])
 	}
-	return rune(tv)
+	return Freshen(name & nameMask)
+}
+
+const letters = "abcdefghijklmnopqrstuvwxyz"
+
+// name renders the variable as it was written or numbered (see FreshVar).
+func (tv TypeVariable) name() string {
+	n := int(tv & nameMask)
+	if n >= freshBase {
+		n -= freshBase
+		return string(letters[n%len(letters)]) + strconv.Itoa(n/len(letters))
+	}
+	return string(rune(n))
 }
 
 func (tv TypeVariable) Name() string {
-	return string(tv.letter())
+	return tv.name()
 }
 
 func (tv TypeVariable) Apply(subs Subs) Substitutable {
@@ -104,11 +155,11 @@ func (tv TypeVariable) Supertypes() []Type {
 }
 
 func (tv TypeVariable) String() string {
-	return string(tv.letter())
+	return tv.name()
 }
 
 func (tv TypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s", string(tv.letter()))
+	_, _ = fmt.Fprintf(s, "%s", tv.name())
 }
 
 // NullableTypeVariable is a type variable that carries a nullability taint.
@@ -154,11 +205,11 @@ func (ntv NullableTypeVariable) Eq(other Type) bool {
 }
 
 func (ntv NullableTypeVariable) String() string {
-	return string(ntv.TypeVariable) + "?"
+	return ntv.TypeVariable.name() + "?"
 }
 
 func (ntv NullableTypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s?", string(ntv.TypeVariable))
+	_, _ = fmt.Fprintf(s, "%s?", ntv.TypeVariable.name())
 }
 
 // Effect is an opaque annotation on a function type describing what calling

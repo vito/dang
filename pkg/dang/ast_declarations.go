@@ -254,7 +254,7 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 			if _, seen := skolem.Get(tv); seen {
 				continue
 			}
-			r := hm.Rigid(rune(tv))
+			r := hm.Rigid(tv)
 			skolem.Add(tv, r)
 			unskolem.Add(r, tv)
 		}
