@@ -101,6 +101,12 @@ assert { merged.svc.replicas == 2 }
 let quotedMerge = YAML.decode("\"<<\": 1") :: Map[Int!]!
 assert { quotedMerge == ["<<": 1] }
 
+# YAML.encode quotes a "<<" key so it round-trips instead of reading back as a
+# merge key
+assert { YAML.encode(["<<": 1, "a": 2]) == "\"<<\": 1\na: 2" }
+let roundTripped = YAML.decode(YAML.encode(["<<": ["<<": 3]])) :: Map[Map[Int!]!]!
+assert { roundTripped == ["<<": ["<<": 3]] }
+
 let badMerge = (YAML.decode("a:\n  <<: 5") :: Map[Map[Int!]!]!) rescue {
   err: Error => err.message
 }

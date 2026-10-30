@@ -215,11 +215,34 @@ func encodeYAML(val Value) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := yaml.Marshal(numbersToGo(tree))
+	var node yaml.Node
+	if err := node.Encode(numbersToGo(tree)); err != nil {
+		return "", err
+	}
+	quoteYAMLMergeLikeKeys(&node)
+	out, err := yaml.Marshal(&node)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
+}
+
+// quoteYAMLMergeLikeKeys turns every "<<" mapping key into a quoted string.
+// Map keys are runtime data, but yaml.v3 resolves a "<<" key to the !!merge
+// tag and emits it bare, which reads back as a merge key — so without this,
+// YAML.decode would not round-trip YAML.encode's output.
+func quoteYAMLMergeLikeKeys(node *yaml.Node) {
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if key := node.Content[i]; key.Kind == yaml.ScalarNode && key.Value == "<<" {
+				key.Tag = "!!str"
+				key.Style = yaml.DoubleQuotedStyle
+			}
+		}
+	}
+	for _, child := range node.Content {
+		quoteYAMLMergeLikeKeys(child)
+	}
 }
 
 // decodeYAMLRaw wraps decodeYAML (deferred_yaml.go) with the "invalid YAML:"
