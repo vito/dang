@@ -85,7 +85,7 @@ assert { reducedKeys == "abc" }
 assert { empty.reduce(42) { sum, key, value => sum + value } == 42 }
 
 # each iterates in insertion order and returns the original map
-let seen: List[String!] = []
+let seen: List[String!]! = []
 counts.each { key, value => seen = seen + [key] }
 assert { seen == ["a", "b", "c"] }
 
@@ -137,7 +137,7 @@ assert { defaulted.env.isEmpty }
 
 # map literals holding decoded values materialize at the expected value type
 let literalOfDecoded = ["a": JSON.decode("1")] :: Map[Int!]!
-assert { literalOfDecoded["a"] + 1 == 2 }
+assert { literalOfDecoded["a"]! + 1 == 2 }
 
 # literal values coerce to enums/scalars like list literals do
 enum Light { RED GREEN }

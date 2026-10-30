@@ -8,8 +8,10 @@ let repo = repository(owner: "golang", name: "go").{{
   forkCount
 }}
 
-print(repo.name + " — " + repo.description)
-print(toString(repo.stargazerCount) + " stars · " + toString(repo.forkCount) + " forks")
+if (repo != null) {
+  print(repo.name + " — " + (repo.description ?? "(no description)"))
+  print(toString(repo.stargazerCount) + " stars · " + toString(repo.forkCount) + " forks")
+}
 print("")
 
 # Fetch recently updated open issues using an input object for ordering

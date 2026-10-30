@@ -526,11 +526,27 @@ func (r *Reassignment) Body() hm.Expression { return r.Target }
 
 func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
+// compoundNullableAdvice is how to fix `x += v` on a nullable x: `!` and
+// rebinding to a local, the fixes for a nullable operand, don't apply to a
+// write target.
+const compoundNullableAdvice = "declare it non-null (with a default), or write `x = (x ?? default) + value`"
+
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
 		// A type body's own fields can't be reassigned while it's being built.
 		if err := checkDefaultWrite(ctx, env, r.Target); err != nil {
 			return nil, NewInferError(err, r)
+		}
+		// `x! = v` / `x! += v` would assign to the assertion, not to x.
+		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
+			if r.Modifier == "+" {
+				return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion: drop the !, and if the target is nullable, %s", compoundNullableAdvice), r.Target)
+			}
+			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
+		}
+		// Lists and maps are immutable values; there is no element write.
+		if _, isIndex := r.Target.(*Index); isIndex {
+			return nil, NewInferError(fmt.Errorf("cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that"), r.Target)
 		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
@@ -570,6 +586,22 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			r.Value = wrapCoerce(r.Value, targetType, materializePathForNode(r.Target))
 			return targetType, nil
 		case "+":
+			// `x += v` reads x as an operand, so a nullable target is a
+			// nullable operand; say how to fix it as a target, which `!` and
+			// rebinding to a local can't.
+			if knownNullable(targetType) {
+				advice := compoundNullableAdvice
+				// `self.b.c += 1` with a nullable `b`: c itself may be
+				// non-null, and it's the receiver that needs the check.
+				if sel, ok := r.Target.(*Select); ok {
+					if typed, ok := sel.Receiver.(interface{ GetInferredType() hm.Type }); ok {
+						if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
+							advice = "it is read through a nullable value; null-check that by its bare name first, e.g. `if (b != null) { b.c += 1 }` (a check on `self.b` doesn't narrow)"
+						}
+					}
+				}
+				return nil, NewInferError(fmt.Errorf("compound assignment needs a non-null target, got %s: %s", targetType, advice), r.Target)
+			}
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)

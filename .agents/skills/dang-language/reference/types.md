@@ -25,6 +25,7 @@
 ## Null propagation
 - `nullable.field` is nullable even if `field: T!`.
 - Chains short-circuit: `a.b.c` is null if any link is null.
+- Operators do **not** propagate null: arithmetic (`+ - * / %`, incl. string/list `+`) and ordering (`< <= > >=`) need non-null operands, so `xs[0] + 1`, `m["k"] * 2`, `"hi " + maybeName` are type errors (`operator addition is not defined for nullable type Int: …`). Use `!`, `??`, or a null check. `==`/`!=` accept nullable operands.
 - Recover via `??` or flow narrowing (below).
 
 ## Type variables
@@ -75,11 +76,12 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
   ```dang
   if (maybe != null and other != null) { maybe + other }   # both T! here
   ```
+- The right operand of `and` sees the left's truthy narrowing, and of `or` the left's falsy one, so guards work inline: `x != null and x > 0`, `x == null or x > 0`.
 
 ### Limitations (the surprising gaps)
 - Narrowing is **intra-procedural** — calling a function doesn't carry narrowed types across.
 - **`and`-guard does NOT narrow**: `if (x == null and y == null) { raise … }` tells us only that *at least one* is non-null afterward, so neither narrows.
-- **Field accesses don't narrow**: a null check on `h.val` does not narrow later `h.val` accesses (each access could differ). Workaround: bind to a local first — `let v = h.val; if (v == null) { … }`.
+- **Field accesses don't narrow**: a null check on `h.val` does not narrow later `h.val` accesses (each access could differ). Workaround: bind to a local first — `let v = h.val; if (v == null) { … }`. Same for a computed member (`text: String { … }`) used by its bare name: each read calls it again.
 - In an `else` after a `== null` guard, the variable is known *null* (not `T!`) — using it as non-null there errors.
 
 ### Type narrowing via `case`

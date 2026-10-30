@@ -14,7 +14,7 @@ Assertion failed
     left: 3
 
 Assertion failed
-  Expression: items[0] <= count - 3
+  Expression: items[0]! <= count - 3
   Values:
     left: 1
     right: 0

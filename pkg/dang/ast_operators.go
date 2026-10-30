@@ -96,14 +96,14 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 
 		switch b.OpType {
 		case ArithmeticOp:
-			return b.resolveOperands(lt, rt)
+			return b.resolveOperands(env, lt, rt)
 		case ComparisonOp:
 			// Ordering comparisons (< > <= >=) carry a domain just like
 			// arithmetic and must reject non-orderable operands (e.g.
 			// `"a" < "b"`). Equality (== !=) carries no domain — it is
 			// deliberately defined across all types — so it skips the check.
 			if b.Operands != 0 {
-				if _, err := b.resolveOperands(lt, rt); err != nil {
+				if _, err := b.resolveOperands(env, lt, rt); err != nil {
 					return nil, err
 				}
 			}
@@ -120,7 +120,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 // rejects operands outside the domain (e.g. `"a" * "b"` or `"a" < "b"`) and
 // allows Int and Float to mix, widening to Float when either side is Float —
 // something the old "assign right to left" check rejected.
-func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
+func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, error) {
 	// An operator is not defined for an unconstrained generic type variable: a
 	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work
 	// for every possible type, so we cannot assume it is numeric/string/etc.
@@ -133,10 +133,20 @@ func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
 		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
 	}
 
+	// A null operand raises at runtime (operators don't propagate null the way
+	// field access does), so a nullable operand is a type error.
+
 	// If either side is still an open inference variable, we cannot domain-check
 	// yet; fall back to plain unification and let later constraints decide.
-	// (Rigid signature variables were already rejected above.)
+	// (Rigid signature variables were already rejected above.) A side already
+	// known to be nullable is still an error (`ys + []` with ys: [Int!]).
 	if hasFreeVar(lt) || hasFreeVar(rt) {
+		if knownNullable(lt) {
+			return nil, b.nullableOperandError(env, b.Left, lt)
+		}
+		if knownNullable(rt) {
+			return nil, b.nullableOperandError(env, b.Right, rt)
+		}
 		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
 			return nil, err
@@ -146,18 +156,32 @@ func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
 
 	lb, lNonNull := stripNonNull(lt)
 	rb, rNonNull := stripNonNull(rt)
-	nonNull := lNonNull && rNonNull
+
+	numeric := b.Operands.has(numericOperand) && isNumeric(lb) && isNumeric(rb)
+	str := b.Operands.has(stringOperand) && lb == StringType && rb == StringType
+	list := b.Operands.has(listOperand) && isList(lb) && isList(rb)
+
+	// Operand types outside the domain are reported as such below; only
+	// in-domain operands get the more specific nullability error.
+	if numeric || str || list {
+		if !lNonNull {
+			return nil, b.nullableOperandError(env, b.Left, lt)
+		}
+		if !rNonNull {
+			return nil, b.nullableOperandError(env, b.Right, rt)
+		}
+	}
 
 	switch {
-	case b.Operands.has(numericOperand) && isNumeric(lb) && isNumeric(rb):
+	case numeric:
 		result := IntType
 		if lb == FloatType || rb == FloatType {
 			result = FloatType
 		}
-		return withNonNull(result, nonNull), nil
-	case b.Operands.has(stringOperand) && lb == StringType && rb == StringType:
-		return withNonNull(StringType, nonNull), nil
-	case b.Operands.has(listOperand) && isList(lb) && isList(rb):
+		return hm.NonNullType{Type: result}, nil
+	case str:
+		return hm.NonNullType{Type: StringType}, nil
+	case list:
 		// Both sides are lists; unify their element types.
 		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
@@ -182,12 +206,44 @@ func stripNonNull(t hm.Type) (hm.Type, bool) {
 	return t, false
 }
 
-// withNonNull re-applies a NonNull wrapper when nonNull is true.
-func withNonNull(t hm.Type, nonNull bool) hm.Type {
-	if nonNull {
-		return hm.NonNullType{Type: t}
+// knownNullable reports whether t is certainly nullable: a nullable type
+// variable or concrete type, or a union with such a member. A NonNull type,
+// a flexible type variable (which may still resolve to one), and unions of
+// those are not known to be nullable yet; nor is a function type, which is a
+// computed member's storage, not a value that can be null.
+func knownNullable(t hm.Type) bool {
+	switch t := t.(type) {
+	case hm.NonNullType, hm.TypeVariable, *hm.FunctionType:
+		return false
+	case *hm.UnionType:
+		for _, option := range t.Options {
+			if knownNullable(option) {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
 	}
-	return t
+}
+
+// nullableOperandError reports a nullable operand, located at the operand
+// itself. A null check only narrows a bare name holding a value (not a field,
+// call, index, or auto-called member), so for anything else the advice is to
+// bind it to a local first.
+func (b *BinaryOperator) nullableOperandError(env hm.Env, operand Node, t hm.Type) error {
+	advice := "supply a default with ??, assert it with !, or bind it to a local with let and check that for null"
+	switch op := operand.(type) {
+	case *Symbol:
+		if _, narrowable := nonNullType(env, op.Name); narrowable {
+			advice = "check it for null first, supply a default with ??, or assert it with !"
+		}
+	case *Select:
+		if _, onSelf := op.Receiver.(*SelfKeyword); onSelf {
+			advice += "; if it's a field with a default, declare it non-null (T! = default)"
+		}
+	}
+	return NewInferError(fmt.Errorf("operator %s is not defined for nullable type %s: %s", b.OpName, t, advice), operand)
 }
 
 func isNumeric(t hm.Type) bool { return t == IntType || t == FloatType }
@@ -1160,7 +1216,10 @@ func (l *LogicalAnd) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		if err != nil {
 			return nil, err
 		}
-		rightType, err := l.Right.Infer(ctx, env, fresh)
+		// The right side only runs when the left is true, so it sees the
+		// left's truthy refinements: `x != null and x > 0`.
+		rightEnv := withNarrowings(env, analyzeCondition(l.Left, env).Truthy)
+		rightType, err := l.Right.Infer(ctx, rightEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1260,7 +1319,10 @@ func (l *LogicalOr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		if err != nil {
 			return nil, err
 		}
-		rightType, err := l.Right.Infer(ctx, env, fresh)
+		// The right side only runs when the left is false, so it sees the
+		// left's falsy refinements: `x == null or x > 0`.
+		rightEnv := withNarrowings(env, analyzeCondition(l.Left, env).Falsy)
+		rightType, err := l.Right.Infer(ctx, rightEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
