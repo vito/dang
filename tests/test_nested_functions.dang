@@ -5,7 +5,7 @@
 # =============================================================================
 
 type Counter {
-  val: Int = 0
+  val: Int! = 0
 
   incr: Counter! {
     # Define a helper function inside the method. It is a closure sharing the
@@ -38,7 +38,7 @@ assert { obj2.val == 2 }
 # =============================================================================
 
 type NestedLevels {
-  val: Int = 0
+  val: Int! = 0
 
   outer: NestedLevels! {
     let middle: NestedLevels! {
@@ -65,7 +65,7 @@ assert { nested1.val == 1 }
 # =============================================================================
 
 type Accumulator {
-  val: Int = 0
+  val: Int! = 0
 
   addMultiple(a: Int!, b: Int!, c: Int!): Accumulator! {
     let addFirst: Accumulator! {

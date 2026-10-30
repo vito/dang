@@ -25,6 +25,7 @@
 ## Null propagation
 - `nullable.field` is nullable even if `field: T!`.
 - Chains short-circuit: `a.b.c` is null if any link is null.
+- Operators do **not** propagate null: arithmetic (`+ - * / %`, incl. string/list `+`) and ordering (`< <= > >=`) need non-null operands, so `xs[0] + 1`, `m["k"] * 2`, `"hi " + maybeName` are type errors (`operator addition is not defined for nullable type Int: …`). Use `!`, `??`, or a null check. `==`/`!=` accept nullable operands.
 - Recover via `??` or flow narrowing (below).
 
 ## Type variables

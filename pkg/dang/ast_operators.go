@@ -146,18 +146,33 @@ func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
 
 	lb, lNonNull := stripNonNull(lt)
 	rb, rNonNull := stripNonNull(rt)
-	nonNull := lNonNull && rNonNull
+
+	numeric := b.Operands.has(numericOperand) && isNumeric(lb) && isNumeric(rb)
+	str := b.Operands.has(stringOperand) && lb == StringType && rb == StringType
+	list := b.Operands.has(listOperand) && isList(lb) && isList(rb)
+
+	if numeric || str || list {
+		// The operand types are in the operator's domain, but a null operand
+		// raises at runtime (operators don't propagate null the way field
+		// access does), so a nullable operand is a type error.
+		if !lNonNull {
+			return nil, nullableOperandError(b.OpName, lt)
+		}
+		if !rNonNull {
+			return nil, nullableOperandError(b.OpName, rt)
+		}
+	}
 
 	switch {
-	case b.Operands.has(numericOperand) && isNumeric(lb) && isNumeric(rb):
+	case numeric:
 		result := IntType
 		if lb == FloatType || rb == FloatType {
 			result = FloatType
 		}
-		return withNonNull(result, nonNull), nil
-	case b.Operands.has(stringOperand) && lb == StringType && rb == StringType:
-		return withNonNull(StringType, nonNull), nil
-	case b.Operands.has(listOperand) && isList(lb) && isList(rb):
+		return hm.NonNullType{Type: result}, nil
+	case str:
+		return hm.NonNullType{Type: StringType}, nil
+	case list:
 		// Both sides are lists; unify their element types.
 		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
@@ -182,12 +197,8 @@ func stripNonNull(t hm.Type) (hm.Type, bool) {
 	return t, false
 }
 
-// withNonNull re-applies a NonNull wrapper when nonNull is true.
-func withNonNull(t hm.Type, nonNull bool) hm.Type {
-	if nonNull {
-		return hm.NonNullType{Type: t}
-	}
-	return t
+func nullableOperandError(op string, t hm.Type) error {
+	return fmt.Errorf("operator %s is not defined for nullable type %s: check it for null first, supply a default with ??, or assert it with !", op, t)
 }
 
 func isNumeric(t hm.Type) bool { return t == IntType || t == FloatType }

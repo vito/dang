@@ -1,0 +1,2 @@
+# Ordering comparisons need non-null operands too.
+first(xs: [Int!]!): Boolean! { xs[0] < 10 }
