@@ -122,6 +122,8 @@ if (maybe != null and other != null) {
 }
 ```
 
+- the right operand of `and` sees the left's truthy narrowing, and the right operand of `or` the left's falsy narrowing, so a guard works inline: `x != null and x > 0`, `x == null or x > 0`
+
 ### Limitations
 
 - narrowing is intra-procedural — calling a function doesn't carry narrowed types across

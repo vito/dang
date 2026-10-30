@@ -1,0 +1,7 @@
+# A null check doesn't narrow a field selection, so the error suggests
+# binding it to a local instead.
+type Counter {
+  val: Int = 0
+
+  next: Int! { self.val + 1 }
+}

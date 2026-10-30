@@ -7,7 +7,7 @@ Error 1:
  [2m 10 |       # This should fail - maybeString is still nullable (String) in the else branch[0m
  [2m 11 |       # where we know it's null, so we can't use it as non-null[0m
  [2m[34m[1m 12 | [0m      maybeString + "!"
-[2m             [31m^^^^^^^^^^^^^^^^^[0m
+[2m             [31m^^^^^^^^^^^[0m
  [2m 13 |     }[0m
  [2m 14 |   }[0m
  [2m    |[0m

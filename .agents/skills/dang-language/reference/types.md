@@ -76,6 +76,7 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
   ```dang
   if (maybe != null and other != null) { maybe + other }   # both T! here
   ```
+- The right operand of `and` sees the left's truthy narrowing, and of `or` the left's falsy one, so guards work inline: `x != null and x > 0`, `x == null or x > 0`.
 
 ### Limitations (the surprising gaps)
 - Narrowing is **intra-procedural** — calling a function doesn't carry narrowed types across.
