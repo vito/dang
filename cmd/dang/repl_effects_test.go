@@ -108,7 +108,11 @@ func TestReplGenericCallsAcrossEntries(t *testing.T) {
 // with variables of its own.
 func TestReplRedefinesGenericBindings(t *testing.T) {
 	s := newTestReplSession(t)
-	for _, entry := range []string{"let xs = []", "let xs = []", "let p = null", "let p = null"} {
+	for _, entry := range []string{
+		"let xs = []", "let xs = []",
+		"let p = null", "let p = null",
+		"let u = if (true) { [] } else { 1 }", "let u = if (true) { [] } else { 1 }",
+	} {
 		_, err := s.enter(entry)
 		require.NoError(t, err, entry)
 	}
