@@ -1142,7 +1142,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 		if argFn := fnTypeOf(argType); argFn != nil && c.ctorFn != nil {
 			argFn.SetEffect(c.ctorFn.paramEffect(arg.Name.Name))
 		}
-		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramBodyType(arg, argType)))
+		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramBodyType(arg, argType, newDecl.BodyBlock)))
 	}
 	if newDecl.BlockParam != nil {
 		var blockType hm.Type

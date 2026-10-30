@@ -161,7 +161,9 @@ whenever a sensible default (including a sentinel like `""`) exists, keeping bot
 
 The same goes for a parameter declared nullable whose default is non-null
 (`name: String = "world"`): it is non-null in the body too. Only a default that can itself
-be null (`= null`, or a nullable expression) leaves the parameter nullable there.
+be null (`= null`, or a nullable expression) leaves the parameter nullable there — or a body
+that reassigns the parameter with `=`, which keeps its declared type so it can still be
+set to `null`.
 
 ```dang
 greet(name: String! = "world"): String! { "hi " + name }

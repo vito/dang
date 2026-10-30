@@ -32,6 +32,33 @@ pick(v: a, label: String! = "picked", note: String = "noted"): String! {
 assert { pick(1) == "picked/noted" }
 assert { pick("x", label: null, note: null) == "picked/noted" }
 
+# a parameter the body reassigns with `=` keeps its declared, nullable type,
+# so it can still be cleared (a narrowed binding couldn't be assigned null)
+clears(x: String = "a"): String {
+  if (x == "a") {
+    x = null
+  }
+  x
+}
+
+assert { clears == null }
+assert { clears("b") == "b" }
+
+clearsInBlock(x: String = "a"): String {
+  [1].each { _ => x = null }
+  x
+}
+
+assert { clearsInBlock == null }
+
+# a compound assignment keeps the narrowing: its result is non-null
+appends(x: String = "a"): String! {
+  x += "!"
+  x
+}
+
+assert { appends == "a!" }
+
 # constructor parameters
 type Counter {
   start: Int! = 0

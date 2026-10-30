@@ -92,14 +92,45 @@ func (f *FunctionBase) attachParamEffects(rec *RecordType, block *hm.FunctionTyp
 // constructor body. Omitting a defaulted argument or passing null yields the
 // default, so a parameter whose default is non-null is non-null in the body,
 // even though its signature type stays nullable for callers.
-func paramBodyType(arg *FieldDecl, t hm.Type) hm.Type {
+//
+// A parameter the body reassigns with `=` keeps its declared type: like any
+// narrowed binding, a narrowed parameter cannot be assigned null (later reads
+// assume it is non-null), and the body may mean to. A compound assignment
+// (`+=`) keeps the narrowing, since its result is non-null.
+func paramBodyType(arg *FieldDecl, t hm.Type, body Node) hm.Type {
 	if arg.Value == nil || !arg.defaultNonNull {
 		return t
 	}
 	if _, isNonNull := t.(hm.NonNullType); isNonNull {
 		return t
 	}
+	if reassignsSymbol(body, arg.Name.Name) {
+		return t
+	}
 	return hm.NonNullType{Type: t}
+}
+
+// reassignsSymbol reports whether body contains a plain `name = ...`
+// reassignment anywhere, including nested blocks. It is syntactic and so
+// conservative: a write to a shadowing local of the same name counts too.
+func reassignsSymbol(body Node, name string) bool {
+	if body == nil {
+		return false
+	}
+	found := false
+	body.Walk(func(n Node) bool {
+		if found {
+			return false
+		}
+		if r, ok := n.(*Reassignment); ok && r.Modifier == "=" {
+			if sym, ok := r.Target.(*Symbol); ok && sym.Name == name {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
 }
 
 // inferFunctionArguments processes FieldDecl arguments into function type arguments
@@ -141,7 +172,7 @@ func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.En
 			if nonNullType, isNonNull := finalArgType.(hm.NonNullType); isNonNull {
 				signatureType = nonNullType.Type
 			} else {
-				env.Add(arg.Name.Name, hm.NewScheme(nil, paramBodyType(arg, finalArgType)))
+				env.Add(arg.Name.Name, hm.NewScheme(nil, paramBodyType(arg, finalArgType, f.Body)))
 			}
 		}
 
