@@ -156,7 +156,7 @@ See also [#errors] (`raise`/`rescue` divergence) and [#control-flow] (guards, lo
 ## Coercion rules
 
 - assignment / arguments: pure subtyping (`hm.Assignable`), **no** scalar coercion — a non-literal `String!` won't pass where `URL!` is expected: `fetchURL(url: myUrl)` errors "cannot use String! as Test.URL!"
-- **exception**: *literal* expressions (string/template literals, list literals of them) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` is fine, and ``fetchURL(url: `https://${host}`)`` works too
+- **exception**: *literal* expressions (string/template literals, list literals of them, map literals whose values are) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` is fine, and ``fetchURL(url: `https://${host}`)`` works too
 - `::` casts: explicit `String`/enum/`ID` coercion permitted (see above)
 - list merges are pure — `String!` does not become `ID!` element-wise
 - ongoing work — see `soundness.md` for the model being moved toward

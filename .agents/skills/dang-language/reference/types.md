@@ -44,7 +44,7 @@ Two uses to keep distinct:
 
 ## Coercion rules
 - Assignment / arguments: pure subtyping, **no** scalar coercion — a non-literal `String!` won't pass where `URL!` is expected (`cannot use String! as URL!`).
-- **Exception 1 (refine)**: *literal* expressions (string/template literals, list literals of them) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` and ``fetchURL(url: `https://${host}`)`` both work.
+- **Exception 1 (refine)**: *literal* expressions (string/template literals, list literals of them, map literals whose values are) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` and ``fetchURL(url: `https://${host}`)`` both work.
 - **Exception 2 (degrade)**: a **custom scalar value** (Path, ID, URL, Regexp, schema scalars — every non-primitive scalar except the `JSON`/`YAML`/`TOML` codec namespaces) auto-degrades to `String`/`String!` at the same value-handoff boundaries (call args, typed slots, returns, reassignment, `::`, case-clause values) — custom scalars are strings underneath. So `dir.file(p)` works where `file(path: String!)`. Any expression qualifies, not just literals — the mirror image of the literal rule. No transitivity: `Path!` still can't flow into `URL!`.
 - `::` casts: explicit `String`/enum/`ID` coercion permitted, both directions for scalars.
 - List merges are pure — `String!` does not become `ID!` element-wise, and `[p, "b"]` is `no common type between Path! and String!` (degrade applies at boundaries, not merges).
@@ -123,7 +123,7 @@ case (c) {
 scalar Email
 scalar JSON
 ```
-- *Literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list literals, returns) — including backtick templates with `${...}`.
+- *Literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list and map literals, returns) — including backtick templates with `${...}`.
 - A *non-literal* String (a variable or `a + b`) does NOT auto-coerce — needs an explicit `::` cast: `fetchURL(url: myUrl :: URL!)`, `(base + domain) :: URL!`. Otherwise `cannot use String! as URL!`.
 - List merging is pure/invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!`.
 - Runtime materialization supports `String -> custom scalar` and `custom scalar -> String` only (`42 :: URL!` is a type error).

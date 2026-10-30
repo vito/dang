@@ -56,7 +56,7 @@ scalar JSON
 
 ### Coercion
 
-- *literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list literals, returns). This covers string literals, list literals, and backtick templates — even templates with `${...}` interpolations.
+- *literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list and map literals, returns). This covers string literals, list literals, map literals, and backtick templates — even templates with `${...}` interpolations.
 - a *non-literal* String (a variable or `a + b`) does NOT auto-coerce — it needs an explicit `::` cast: `fetchURL(url: myUrl :: URL!)`, `(base + domain) :: URL!`. Without it: `cannot use String! as URL!`.
 - list merging is pure / invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!` (the plain literal doesn't widen to `ID!`)
 - runtime materialization only supports `String -> custom scalar`; e.g. `42 :: URL!` is a type error (`Int!` vs `URL!`)
