@@ -73,7 +73,7 @@ missing!                           # -> non-null assertion failed: value is null
 ## Compound assignment
 
 - `+=` desugars to `+` (`AssignOp` in grammar maps `+=` to `+`); works on `Int`/`Float`, `String`, and lists
-- requires the LHS to be a mutable field, local, or arg
+- requires the LHS to be a mutable field, local, or arg — and, since `+=` reads it, a **non-null** one: `let n: Int = 0; n += 1` is an error; declare it `Int!` (with a default) or write `n = (n ?? 0) + 1`. Assigning through `!` (`n! += 1`) is rejected
 - `=` is plain reassignment, not an operator on the precedence chain
 
 ## Cast / type hint: `::`

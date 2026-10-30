@@ -122,7 +122,7 @@ greet(
 - `expr rescue fallback` and `expr rescue { clauses }` — postfix error handling; binds tighter than `??`, looser than `or`; left-associative (chains re-raise into the next `rescue`). A bare `{` after `rescue` always starts a clause block. Semantics in control-flow.md.
 
 ### Compound assignment
-- `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field or `let` local (a top-level binding only from top-level script code, not from inside a function or method).
+- `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field or `let` local (a top-level binding only from top-level script code, not from inside a function or method), and a **non-null** one (`let n: Int = 0; n += 1` is an error: use `Int!` or `n = (n ?? 0) + 1`; `n! += 1` is rejected).
 - `=` is plain reassignment, not an operator on the precedence chain.
 
 ### Unary

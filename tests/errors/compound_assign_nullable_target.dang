@@ -1,0 +1,3 @@
+# `x += v` reads x, so the target must be non-null.
+let total: Int = 0
+total += 1

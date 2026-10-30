@@ -1415,9 +1415,9 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			}
 		}
 
-		// Return nullable element type since indexing can fail (out of bounds)
-		// or if the original list was nullable. A type variable element may
-		// stand for a non-null type, so it becomes its nullable form too.
+		// Indexing can fail (out of bounds) and the receiver may be null, so
+		// the result is the nullable element type — a nullable type variable
+		// while the element type is still open, so operators can tell.
 		resultType := hm.Nullable(elementType)
 		i.SetInferredType(resultType)
 		return resultType, nil
