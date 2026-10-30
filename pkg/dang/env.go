@@ -1252,8 +1252,10 @@ func (t *Type) Eq(other hm.Type) bool {
 		// Named modules are only equal if they're the exact same instance (pointer equality)
 		return t == otherMod
 	}
-	// Unnamed modules (anonymous record-like modules) use structural equality
-	return t.AsRecord().Eq(otherMod.AsRecord())
+	// Unnamed modules (anonymous record-like modules) use structural equality,
+	// which two separately inferred `{{xs: []}}`s pass despite their own
+	// variables.
+	return hm.EqIgnoringIDs(t.AsRecord(), otherMod.AsRecord())
 }
 
 func (t *Type) Supertypes() []hm.Type {

@@ -364,7 +364,7 @@ func objectsEqual(l, r *Object) bool {
 		if lt != rt {
 			return false
 		}
-	} else if !lt.AsRecord().Eq(rt.AsRecord()) {
+	} else if !hm.EqIgnoringIDs(lt.AsRecord(), rt.AsRecord()) {
 		// Both anonymous: structural type match.
 		return false
 	}
