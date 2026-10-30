@@ -29,6 +29,7 @@ assert { annotated["x"] == "y" }
 # get / has
 assert { counts.get("a") == 1 }
 assert { counts.get("missing") == null }
+assert { (counts.get("missing") ?? 10) + 1 == 11 }
 assert { counts.has("a") }
 assert { !counts.has("missing") }
 

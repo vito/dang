@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Int as Int!
+  [2m[34m--> errors/map_get_nullable.dang:4:15[0m
+ [2m    |[0m
+ [2m  2 | # the value type is not.[0m
+ [2m  3 | let counts = ["a": 1][0m
+ [2m[34m[1m  4 | [0mlet n: Int! = counts.get("a")
+[2m                     [31m^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

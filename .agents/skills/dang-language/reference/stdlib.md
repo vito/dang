@@ -129,8 +129,7 @@ Maps are immutable, keyed by `String!` (only the value type is a parameter: `Map
 ### Construction / access
 - literal `["a": 1, "b": 2]`; keys are any `String!` expression (`[name: true]`); a repeated key keeps its first position and last value
 - empty `[:]` needs a type hint, like `[]`: `let m: Map[Int!]! = [:]`
-- `m["a"] -> T` (nullable) — **missing key yields `null`**
-- `.get(key: String!) -> T` — also `null` for a missing key, but typed as the bare value type (`Int!` on `Map[Int!]!`), so the checker won't catch a missing key; prefer `m["a"]` or check `.has` first
+- `m["a"]` / `.get(key: String!) -> T` (nullable) — **missing key yields `null`**
 - `.has(key: String!) -> Boolean!`
 - `.length -> Int!`, `.isEmpty -> Boolean!`
 - `.keys -> [String!]!`, `.values -> [T]!` — insertion order
