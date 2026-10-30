@@ -70,12 +70,6 @@ greeting(name: String): String! {
 assert { greeting("ada") == "hi ada" }
 assert { greeting(null) == "hi" }
 
-# methods on a nullable list are nullable; default them with ??
-hasAny(xs: [Int!]): Boolean! { (xs.length ?? 0) > 0 }
-
-assert { !hasAny(null) }
-assert { hasAny([1]) }
-
 # equality is defined for nullable operands
 assert { xs[9] == null }
 assert { counts["a"] != 2 }

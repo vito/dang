@@ -526,6 +526,11 @@ func (r *Reassignment) Body() hm.Expression { return r.Target }
 
 func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
+// compoundNullableAdvice is how to fix `x += v` on a nullable x: `!` and
+// rebinding to a local, the fixes for a nullable operand, don't apply to a
+// write target.
+const compoundNullableAdvice = "declare it non-null (with a default), or write `x = (x ?? default) + value`"
+
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
 		// A type body's own fields can't be reassigned while it's being built.
@@ -534,6 +539,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		}
 		// `x! = v` / `x! += v` would assign to the assertion, not to x.
 		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
+			if r.Modifier == "+" {
+				return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion: %s", compoundNullableAdvice), r.Target)
+			}
 			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
 		}
 		// Lists and maps are immutable values; there is no element write.
@@ -582,7 +590,17 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			// nullable operand; say how to fix it as a target, which `!` and
 			// rebinding to a local can't.
 			if knownNullable(targetType) {
-				return nil, NewInferError(fmt.Errorf("compound assignment needs a non-null target, got %s: declare it non-null (with a default), or write `x = (x ?? default) + value`", targetType), r.Target)
+				advice := compoundNullableAdvice
+				// `self.b.c += 1` with a nullable `b`: c itself may be
+				// non-null, and it's the receiver that needs the check.
+				if sel, ok := r.Target.(*Select); ok {
+					if typed, ok := sel.Receiver.(interface{ GetInferredType() hm.Type }); ok {
+						if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
+							advice = "it is read through a nullable value; check that for null first, or write `x = (x ?? default) + value`"
+						}
+					}
+				}
+				return nil, NewInferError(fmt.Errorf("compound assignment needs a non-null target, got %s: %s", targetType, advice), r.Target)
 			}
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility

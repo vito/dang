@@ -857,14 +857,9 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			}
 
 			// For nullable list receivers, mark as nullable so the call site
-			// propagates null and makes the return type nullable. An
-			// auto-called method (`xs.length`) has no call site, so its
-			// result is made nullable here.
+			// propagates null and makes the return type nullable.
 			if nullableList {
 				d.NullableReceiver = true
-				if d.AutoCall {
-					methodType = Nullable(methodType)
-				}
 			}
 
 			d.SetInferredType(methodType)
@@ -904,9 +899,6 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			if nullableMap {
 				d.NullableReceiver = true
-				if d.AutoCall {
-					methodType = Nullable(methodType)
-				}
 			}
 
 			d.SetInferredType(methodType)
