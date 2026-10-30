@@ -1,0 +1,39 @@
+# Selecting a list field inside a `{{ }}` selection keeps the list's element
+# nullability. A list of non-null items stays a list of non-null items, so
+# the selected values can be used wherever non-null values are required.
+# See https://github.com/vito/dang/pull/194
+
+import Test
+
+# Native types: a list field selected inside a selection over a list.
+type Row {
+  text: String!
+}
+
+type Page {
+  matches: [Row!]!
+}
+
+let pages = [
+  Page(matches: [Row(text: "first"), Row(text: "last")]),
+  Page(matches: []),
+]
+
+let pageTexts: [[String!]!]! = pages.{{matches.{{text}}}}.map { page =>
+  page.matches.map { row => row.text }
+}
+assert { pageTexts == [["first", "last"], []] }
+
+# GraphQL: PostConnection.posts is [Post!]!, selected inside a single object.
+let primary = primaryUser.{{name, posts(first: 2).{{posts.{{title}}}}}}
+let primaryTitles: [String!]! = primary.posts.posts.map { post => post.title }
+assert { primaryTitles == ["First Post", "Third Post"] }
+
+# GraphQL: the same nested list, selected inside a selection over a list.
+# Other tests create users on the shared server, so only check the first two.
+let userTitles: [[String!]!]! = users.{{posts(first: 2).{{posts.{{title}}}}}}.map { user =>
+  user.posts.posts.map { post => post.title }
+}
+assert { userTitles.takeFirst(2) == [["First Post", "Third Post"], ["Second Post", "Fifth Post"]] }
+
+print("Nested list selection tests passed!")
