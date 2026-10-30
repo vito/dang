@@ -20,10 +20,10 @@ let settings: Settings! = TOML.decode("count = 1")
 ```
 
 - parsing is type-driven: the expected type guides decoding. The type comes from a `::` cast ([#nullability]), an annotation, or the parameter/return type at the call site (`JSON.decode(...) :: Status!`, `let x: Summary! = JSON.decode(...)`, `f(d: String!): Summary! { JSON.decode(d) }`)
-- works for primitives, lists, records, custom types ([#objects]), enums ([#enums-scalars])
+- works for primitives, lists, maps (`Map[T]`, from an object; decoded maps get sorted keys), records, custom types ([#objects]), enums ([#enums-scalars])
 - unknown/extra fields in the input are ignored, not errors
 - `JSON.decode` rejects trailing data after the first value
-- TOML's top level is always a table, so `TOML.decode` materializes into a record/object type
+- TOML's top level is always a table, so `TOML.decode` materializes into a record/object or `Map[T]` type
 - empty input differs by format: `JSON.decode("")` errors (not valid JSON); `YAML.decode("")` is `null` (an empty YAML document), so it won't materialize into a non-null record; `TOML.decode("")` is an empty table, so an empty TOML config still fills declared defaults
 
 ## Serialization
