@@ -168,6 +168,40 @@ func TestPreparedDirectoryUnsupportedRuntimeTypeState(t *testing.T) {
 	}
 }
 
+func TestPreparedDirectorySelectionArguments(t *testing.T) {
+	t.Run("import", func(t *testing.T) {
+		dir := preparedSource(t, `type Echo { echo(value: String!): String! { value } }
+let answer = Echo.{{ echo(value: { import Session; Session.value }) }}
+result: String! = answer.echo
+`)
+		schema, err := SchemaFromSDL("type Query { value: String! }", "session.graphqls")
+		require.NoError(t, err)
+		ctxFor := func(client graphql.Client) context.Context {
+			return ContextWithImportConfigs(context.Background(), ImportConfig{Name: "Session", Client: client, Schema: schema})
+		}
+		program, err := PrepareDir(ctxFor(blueprintClient("prepare-only")), dir)
+		require.NoError(t, err)
+		ctx := ctxFor(blueprintClient("current"))
+		values, err := program.Evaluate(ctx)
+		require.NoError(t, err)
+		result, found, err := values.Lookup(ctx, "result")
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, "current", result.(StringValue).Val)
+	})
+
+	t.Run("unsupported declaration", func(t *testing.T) {
+		dir := preparedSource(t, `type Echo { echo(value: String!): String! { value } }
+let answer = Echo.{{ echo(value: {
+  scalar Name { label: String! { "hello" } }
+  "ok"
+}) }}
+`)
+		_, err := PrepareDir(context.Background(), dir)
+		require.ErrorIs(t, err, ErrUnpreparableDirectory)
+	})
+}
+
 func TestPreparedDirectoryReprepareChangedSource(t *testing.T) {
 	dir := preparedSource(t, "value: Int! = 1\n")
 	first, err := PrepareDir(context.Background(), dir)

@@ -3062,7 +3062,25 @@ func (o *ObjectSelection) Walk(fn func(Node) bool) {
 	if !fn(o) {
 		return
 	}
-	o.Receiver.Walk(fn)
+	// A nested selection has no receiver of its own.
+	if o.Receiver != nil {
+		o.Receiver.Walk(fn)
+	}
+	walkFieldSelections(o.Fields, fn)
+	for _, frag := range o.InlineFragments {
+		walkFieldSelections(frag.Fields, fn)
+	}
+}
+
+func walkFieldSelections(fields []*FieldSelection, fn func(Node) bool) {
+	for _, field := range fields {
+		for _, arg := range field.Args {
+			arg.Value.Walk(fn)
+		}
+		if field.Selection != nil {
+			field.Selection.Walk(fn)
+		}
+	}
 }
 
 // Conditional represents an if-then-else expression
