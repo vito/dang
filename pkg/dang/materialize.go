@@ -68,7 +68,8 @@ func (c *Coerce) Walk(fn func(Node) bool) {
 // statically known and may auto-coerce to a compatible scalar/enum at a
 // value-handoff boundary. Templates count regardless of interpolations: the
 // runtime value is always a String, so materialization works the same way.
-// Lists count when every element is itself literal; a Block counts when its
+// Lists count when every element is itself literal, and maps when every value
+// is (keys are always String!, so they never coerce); a Block counts when its
 // tail expression is literal, so a function body like `{ "abc" }` flows into
 // a declared ID! return type.
 func isLiteralExpr(n Node) bool {
@@ -78,6 +79,13 @@ func isLiteralExpr(n Node) bool {
 	case *List:
 		for _, el := range v.Elements {
 			if !isLiteralExpr(el) {
+				return false
+			}
+		}
+		return true
+	case *MapLiteral:
+		for _, entry := range v.Entries {
+			if !isLiteralExpr(entry.Value) {
 				return false
 			}
 		}
@@ -127,13 +135,15 @@ func isDegradableScalar(mod *Type) bool {
 
 // containsDegradableScalar reports whether t carries a degradable custom
 // scalar at any depth reachable by matched-wrapper unification (NonNull,
-// lists) — i.e. whether AssignableWithCoercion could apply the scalar→String
-// degrade to a value of type t.
+// lists, maps) — i.e. whether AssignableWithCoercion could apply the
+// scalar→String degrade to a value of type t.
 func containsDegradableScalar(t hm.Type) bool {
 	switch v := t.(type) {
 	case hm.NonNullType:
 		return containsDegradableScalar(v.Type)
 	case ListType:
+		return containsDegradableScalar(v.Type)
+	case MapType:
 		return containsDegradableScalar(v.Type)
 	case GraphQLListType:
 		return containsDegradableScalar(v.Type)

@@ -84,16 +84,26 @@ func yamlNodeToDeferredRaw(node *yaml.Node, seen map[*yaml.Node]bool) (any, erro
 
 	case yaml.MappingNode:
 		obj := make(map[string]any, len(node.Content)/2)
+		var merges []*yaml.Node
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			if keyNode.Kind != yaml.ScalarNode {
 				return nil, fmt.Errorf("mapping key must be a scalar")
+			}
+			if keyNode.ShortTag() == "!!merge" {
+				merges = append(merges, node.Content[i+1])
+				continue
 			}
 			val, err := yamlNodeToDeferredRaw(node.Content[i+1], seen)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", keyNode.Value, err)
 			}
 			obj[keyNode.Value] = val
+		}
+		for _, merge := range merges {
+			if err := mergeYAMLInto(obj, merge, seen); err != nil {
+				return nil, fmt.Errorf("<<: %w", err)
+			}
 		}
 		return obj, nil
 
@@ -103,6 +113,50 @@ func yamlNodeToDeferredRaw(node *yaml.Node, seen map[*yaml.Node]bool) (any, erro
 	default:
 		return nil, fmt.Errorf("unsupported YAML node kind %d", node.Kind)
 	}
+}
+
+// mergeYAMLInto applies a `<<` merge key's value to obj, following the YAML
+// merge-key spec: the value is a mapping, or a sequence of mappings (usually
+// aliases), and a merged key never overrides one already in obj — so the
+// mapping's own keys win wherever they appear, and earlier mappings in a
+// sequence win over later ones.
+func mergeYAMLInto(obj map[string]any, merge *yaml.Node, seen map[*yaml.Node]bool) error {
+	target := merge
+	if target.Kind == yaml.AliasNode {
+		target = target.Alias
+	}
+	if target != nil && target.Kind == yaml.SequenceNode {
+		for i, item := range target.Content {
+			resolved := item
+			if resolved.Kind == yaml.AliasNode {
+				resolved = resolved.Alias
+			}
+			if resolved == nil || resolved.Kind != yaml.MappingNode {
+				return fmt.Errorf("[%d]: merge sequence entries must be mappings", i)
+			}
+			if err := mergeYAMLMapping(obj, item, seen); err != nil {
+				return fmt.Errorf("[%d]: %w", i, err)
+			}
+		}
+		return nil
+	}
+	if target == nil || target.Kind != yaml.MappingNode {
+		return fmt.Errorf("merge value must be a mapping or a sequence of mappings")
+	}
+	return mergeYAMLMapping(obj, merge, seen)
+}
+
+func mergeYAMLMapping(obj map[string]any, node *yaml.Node, seen map[*yaml.Node]bool) error {
+	raw, err := yamlNodeToDeferredRaw(node, seen)
+	if err != nil {
+		return err
+	}
+	for k, v := range raw.(map[string]any) {
+		if _, exists := obj[k]; !exists {
+			obj[k] = v
+		}
+	}
+	return nil
 }
 
 func normalizeYAMLNumber(value string) string {

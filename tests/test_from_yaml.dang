@@ -59,3 +59,63 @@ extra: 2
 ```) :: {{foo: Int!, bar: Status!}}!
 assert { anon.foo == 1 }
 assert { anon.bar == Status.PASSED }
+
+# `<<` merge keys: the mapping's own keys win wherever they appear, and in a
+# merge sequence earlier mappings win over later ones
+type Service {
+  image: String!
+  port: Int! = 80
+  replicas: Int! = 1
+}
+
+let services = YAML.decode(```yaml
+base: &base
+  image: nginx
+  port: 8080
+scaled: &scaled
+  image: redis
+  port: 9000
+  replicas: 3
+web:
+  port: 1
+  <<: *base
+api:
+  <<: [*base, *scaled]
+inline:
+  <<: {image: busybox}
+```) :: Map[Service!]!
+assert { services["web"].image == "nginx" }
+assert { services["web"].port == 1 }
+assert { services["api"].image == "nginx" }
+assert { services["api"].port == 8080 }
+assert { services["api"].replicas == 3 }
+assert { services["inline"].image == "busybox" }
+assert { services["inline"].port == 80 }
+
+# merging into a record works the same way
+let merged = YAML.decode("defaults: &d\n  image: alpine\nsvc:\n  <<: *d\n  replicas: 2") :: {{svc: Service!}}!
+assert { merged.svc.image == "alpine" }
+assert { merged.svc.replicas == 2 }
+
+# a quoted "<<" is an ordinary key
+let quotedMerge = YAML.decode("\"<<\": 1") :: Map[Int!]!
+assert { quotedMerge == ["<<": 1] }
+
+# YAML.encode quotes a "<<" key so it round-trips instead of reading back as a
+# merge key
+assert { YAML.encode(["<<": 1, "a": 2]) == "\"<<\": 1\na: 2" }
+let roundTripped = YAML.decode(YAML.encode(["<<": ["<<": 3]])) :: Map[Map[Int!]!]!
+assert { roundTripped == ["<<": ["<<": 3]] }
+
+# "<<" as a value stays a plain string
+assert { YAML.encode(["a": "<<"]) == "a: <<" }
+assert { YAML.encode(["<<"]) == "- <<" }
+assert { (YAML.decode(YAML.encode(["a": "<<"])) :: Map[String!]!) == ["a": "<<"] }
+
+# quoting "<<" keys leaves other output alone, e.g. tab-indented block text
+assert { YAML.encode(["k": "\tx\ny"]) == "k: |-\n    \tx\n    y" }
+
+let badMerge = (YAML.decode("a:\n  <<: 5") :: Map[Map[Int!]!]!) rescue {
+  err: Error => err.message
+}
+assert { badMerge == "YAML.decode: invalid YAML: a: <<: merge value must be a mapping or a sequence of mappings" }

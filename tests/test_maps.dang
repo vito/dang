@@ -139,6 +139,25 @@ assert { defaulted.env.isEmpty }
 let literalOfDecoded = ["a": JSON.decode("1")] :: Map[Int!]!
 assert { literalOfDecoded["a"] + 1 == 2 }
 
+# literal values coerce to enums/scalars like list literals do
+enum Light { RED GREEN }
+scalar Label
+let lights: Map[Light!]! = ["stop": "RED", "go": "GREEN"]
+assert { lights["stop"] == Light.RED }
+let nestedLights: Map[[Light!]!]! = ["cycle": ["RED", "GREEN"]]
+assert { nestedLights["cycle"] == [Light.RED, Light.GREEN] }
+
+lightFor(m: Map[Light!]!, key: String!): Light { m[key] }
+
+assert { lightFor(["go": "GREEN"], "go") == Light.GREEN }
+let labels: Map[Label!]! = ["a": "first"]
+assert { labels["a"] == "first" }
+
+# custom scalar values degrade to String in a Map[String!] slot
+let label: Label! = "tagged"
+let plain: Map[String!]! = ["a": label]
+assert { plain["a"].toUpper == "TAGGED" }
+
 # decode errors name the offending key
 let wrongValue = (JSON.decode("""{"a": "x"}""") :: Map[Int!]!) rescue {
   err: Error => err.message

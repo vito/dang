@@ -1,0 +1,4 @@
+# Map literal values coerce to enums like list elements do, so an unknown
+# value fails at materialization, naming its key.
+enum Light { RED GREEN }
+let lights: Map[Light!]! = ["stop": "RED", "go": "BLUE"]

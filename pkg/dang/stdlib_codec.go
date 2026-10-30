@@ -215,11 +215,51 @@ func encodeYAML(val Value) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := yaml.Marshal(numbersToGo(tree))
+	out, err := yaml.Marshal(quoteYAMLMergeKeys(numbersToGo(tree)))
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
+}
+
+// yamlQuotedKey is a map key yaml.v3 must emit double-quoted. yaml.v3 writes a
+// "<<" string key bare, which any YAML reader — YAML.decode included — takes
+// as a merge key, so YAML.encode's output would not round-trip.
+type yamlQuotedKey string
+
+func (k yamlQuotedKey) MarshalYAML() (any, error) {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: string(k), Style: yaml.DoubleQuotedStyle}, nil
+}
+
+// quoteYAMLMergeKeys rewrites every map holding a "<<" key so that key
+// marshals quoted (see yamlQuotedKey). Other maps, and "<<" values, which
+// cannot merge, are left exactly as yaml.Marshal renders them.
+func quoteYAMLMergeKeys(v any) any {
+	switch x := v.(type) {
+	case []any:
+		for i := range x {
+			x[i] = quoteYAMLMergeKeys(x[i])
+		}
+		return x
+	case map[string]any:
+		for k := range x {
+			x[k] = quoteYAMLMergeKeys(x[k])
+		}
+		if _, ok := x["<<"]; !ok {
+			return x
+		}
+		quoted := make(map[any]any, len(x))
+		for k, val := range x {
+			if k == "<<" {
+				quoted[yamlQuotedKey(k)] = val
+			} else {
+				quoted[k] = val
+			}
+		}
+		return quoted
+	default:
+		return v
+	}
 }
 
 // decodeYAMLRaw wraps decodeYAML (deferred_yaml.go) with the "invalid YAML:"

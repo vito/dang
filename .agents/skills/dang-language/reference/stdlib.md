@@ -159,6 +159,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 ```
 - Works for primitives, lists, maps (`Map[T]`, from an object), records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
+- YAML anchors/aliases and `<<` merge keys are resolved; a mapping's own keys beat merged ones, and earlier entries of `<<: [*a, *b]` beat later ones.
 - Empty input differs by format: `JSON.decode("")` errors (invalid JSON); `YAML.decode("")` is `null` (an empty YAML document), so it won't materialize into a non-null record; `TOML.decode("")` is an empty table, so it fills declared defaults.
 
 ### Coercion during parsing

@@ -1,0 +1,10 @@
+[1m[31mError:[0m lights["go"]: invalid enum value "BLUE" for Light
+  [2m[34m--> errors/map_literal_invalid_enum.dang:4:28[0m
+ [2m    |[0m
+ [2m  2 | # value fails at materialization, naming its key.[0m
+ [2m  3 | enum Light { RED GREEN }[0m
+ [2m[34m[1m  4 | [0mlet lights: Map[Light!]! = ["stop": "RED", "go": "BLUE"]
+[2m                                  [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+
