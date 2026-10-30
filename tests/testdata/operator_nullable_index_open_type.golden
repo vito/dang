@@ -1,0 +1,11 @@
+[1m[31mError:[0m operator addition is not defined for nullable type a?: supply a default with ??, assert it with !, or bind it to a local with let and check that for null
+  [2m[34m--> errors/operator_nullable_index_open_type.dang:6:3[0m
+ [2m    |[0m
+ [2m  4 |   let acc = [][0m
+ [2m  5 |   acc += [1][0m
+ [2m[34m[1m  6 | [0m  acc[5] + 1
+[2m         [31m^^^^^^[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

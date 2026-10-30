@@ -1,0 +1,3 @@
+# Assigning through `!` would write to the assertion, not the variable.
+let total: Int = 0
+total! += 1

@@ -26,10 +26,17 @@ type ConditionFacts struct {
 //   - x != null / null != x  (truthy: x is non-null, falsy: x is null)
 //   - a and b                (truthy: combine both; falsy: cannot narrow)
 //   - a or b                 (truthy: cannot narrow; falsy: combine both)
+//   - (a)                    (same as a)
+//   - !a                     (truthy and falsy swapped)
 //
 // Unknown shapes contribute no facts.
 func analyzeCondition(cond Node, env hm.Env) ConditionFacts {
 	switch c := cond.(type) {
+	case *Grouped:
+		return analyzeCondition(c.Expr, env)
+	case *UnaryNegation:
+		inner := analyzeCondition(c.Expr, env)
+		return ConditionFacts{Truthy: inner.Falsy, Falsy: inner.Truthy}
 	case *Equality:
 		return equalityFacts(c, env, true)
 	case *Inequality:
@@ -100,7 +107,9 @@ func nullCheckSymbol(a, b Node) string {
 }
 
 // nonNullType returns the NonNull version of a symbol's current type, or
-// false if the symbol isn't in scope or its type can't be narrowed.
+// false if the symbol isn't in scope or its type can't be narrowed. A
+// function-typed symbol (e.g. a zero-arity computed member, auto-called on
+// each read) isn't narrowed: like a field access, each call could differ.
 func nonNullType(env hm.Env, sym string) (hm.Type, bool) {
 	scheme, found := env.SchemeOf(sym)
 	if !found {
@@ -108,6 +117,9 @@ func nonNullType(env hm.Env, sym string) (hm.Type, bool) {
 	}
 	t, mono := scheme.Type()
 	if !mono {
+		return nil, false
+	}
+	if _, isFn := unwrapNonNull(t).(*hm.FunctionType); isFn {
 		return nil, false
 	}
 	if _, isNonNull := t.(hm.NonNullType); isNonNull {

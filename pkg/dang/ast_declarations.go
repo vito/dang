@@ -532,6 +532,10 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err := checkDefaultWrite(ctx, env, r.Target); err != nil {
 			return nil, NewInferError(err, r)
 		}
+		// `x! = v` / `x! += v` would assign to the assertion, not to x.
+		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
+			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
+		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
 		// A location is not a function value escaping.
@@ -570,6 +574,12 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			r.Value = wrapCoerce(r.Value, targetType, materializePathForNode(r.Target))
 			return targetType, nil
 		case "+":
+			// `x += v` reads x as an operand, so a nullable target is a
+			// nullable operand; say how to fix it as a target, which `!` and
+			// rebinding to a local can't.
+			if knownNullable(targetType) {
+				return nil, NewInferError(fmt.Errorf("compound assignment needs a non-null target, got %s: declare it non-null (with a default), or write `x = (x ?? default) + value`", targetType), r.Target)
+			}
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)

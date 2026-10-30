@@ -96,14 +96,14 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 
 		switch b.OpType {
 		case ArithmeticOp:
-			return b.resolveOperands(lt, rt)
+			return b.resolveOperands(env, lt, rt)
 		case ComparisonOp:
 			// Ordering comparisons (< > <= >=) carry a domain just like
 			// arithmetic and must reject non-orderable operands (e.g.
 			// `"a" < "b"`). Equality (== !=) carries no domain — it is
 			// deliberately defined across all types — so it skips the check.
 			if b.Operands != 0 {
-				if _, err := b.resolveOperands(lt, rt); err != nil {
+				if _, err := b.resolveOperands(env, lt, rt); err != nil {
 					return nil, err
 				}
 			}
@@ -120,7 +120,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 // rejects operands outside the domain (e.g. `"a" * "b"` or `"a" < "b"`) and
 // allows Int and Float to mix, widening to Float when either side is Float —
 // something the old "assign right to left" check rejected.
-func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
+func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, error) {
 	// An operator is not defined for an unconstrained generic type variable: a
 	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work
 	// for every possible type, so we cannot assume it is numeric/string/etc.
@@ -142,10 +142,10 @@ func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
 	// known to be nullable is still an error (`ys + []` with ys: [Int!]).
 	if hasFreeVar(lt) || hasFreeVar(rt) {
 		if knownNullable(lt) {
-			return nil, b.nullableOperandError(b.Left, lt)
+			return nil, b.nullableOperandError(env, b.Left, lt)
 		}
 		if knownNullable(rt) {
-			return nil, b.nullableOperandError(b.Right, rt)
+			return nil, b.nullableOperandError(env, b.Right, rt)
 		}
 		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
@@ -165,10 +165,10 @@ func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
 	// in-domain operands get the more specific nullability error.
 	if numeric || str || list {
 		if !lNonNull {
-			return nil, b.nullableOperandError(b.Left, lt)
+			return nil, b.nullableOperandError(env, b.Left, lt)
 		}
 		if !rNonNull {
-			return nil, b.nullableOperandError(b.Right, rt)
+			return nil, b.nullableOperandError(env, b.Right, rt)
 		}
 	}
 
@@ -227,12 +227,15 @@ func knownNullable(t hm.Type) bool {
 }
 
 // nullableOperandError reports a nullable operand, located at the operand
-// itself. A null check only narrows a bare name, so for anything else (a
-// field, call or index) the advice is to bind it to a local first.
-func (b *BinaryOperator) nullableOperandError(operand Node, t hm.Type) error {
-	advice := "check it for null first, supply a default with ??, or assert it with !"
-	if _, isSymbol := operand.(*Symbol); !isSymbol {
-		advice = "supply a default with ??, assert it with !, or bind it to a local with let and check that for null"
+// itself. A null check only narrows a bare name holding a value (not a field,
+// call, index, or auto-called member), so for anything else the advice is to
+// bind it to a local first.
+func (b *BinaryOperator) nullableOperandError(env hm.Env, operand Node, t hm.Type) error {
+	advice := "supply a default with ??, assert it with !, or bind it to a local with let and check that for null"
+	if sym, isSymbol := operand.(*Symbol); isSymbol {
+		if _, narrowable := nonNullType(env, sym.Name); narrowable {
+			advice = "check it for null first, supply a default with ??, or assert it with !"
+		}
 	}
 	return NewInferError(fmt.Errorf("operator %s is not defined for nullable type %s: %s", b.OpName, t, advice), operand)
 }

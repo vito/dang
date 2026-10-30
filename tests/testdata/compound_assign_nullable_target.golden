@@ -1,0 +1,10 @@
+[1m[31mError:[0m compound assignment needs a non-null target, got Int: declare it non-null (with a default), or write `x = (x ?? default) + value`
+  [2m[34m--> errors/compound_assign_nullable_target.dang:3:1[0m
+ [2m    |[0m
+ [2m  1 | # `x += v` reads x, so the target must be non-null.[0m
+ [2m  2 | let total: Int = 0[0m
+ [2m[34m[1m  3 | [0mtotal += 1
+[2m       [31m^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+
