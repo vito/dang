@@ -85,3 +85,21 @@ assert {
     acc + "!"
   } == "!"
 }
+
+# each call gets its own copy of a generic function's variables
+nonez(x: Int! = 1): [z]! { [] }
+
+takesLists(x: [Int!]!, y: [String!]!): Int! { 1 }
+
+assert { takesLists(nonez(1), nonez(1)) == 1 }
+assert { takesLists(none, none) == 1 }
+
+zipped(v: z, w: [String!]!): Int! { w.length }
+
+assert { zipped(1, w: nonez(1)) == 0 }
+
+# records built from separate calls still have one shape
+let r1 = {{xs: none}}
+let r2 = {{xs: none}}
+assert { r1 == r2 }
+assert { [r1, r2].length == 2 }

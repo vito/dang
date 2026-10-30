@@ -1,0 +1,7 @@
+# A mismatched argument names the callee's type variables as written
+let n1 = null
+let n2 = []
+
+strs(v: a, w: [a]!): Int! { w.length }
+
+let result = strs(1, w: "x")

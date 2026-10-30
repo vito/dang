@@ -133,6 +133,8 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 
 // inferFunctionType handles type inference for FunctionType calls
 func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
+	ft = instantiateCallee(ft)
+
 	// Handle positional argument mapping for type inference
 	argMapping, err := c.mapArgumentsForInference(ft)
 	if err != nil {
@@ -227,6 +229,46 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		retType = mergeCallBreakTypes(retType, c.BlockArg.BodyNode, blockBreakTarget, blockArgSubs, fresh)
 	}
 	return retType, nil
+}
+
+// instantiateCallee gives a callee's flexible type variables new identities
+// (keeping their names), so that each call gets its own copy of them, as
+// instantiating a type scheme does in HM. Without this, the variables of a
+// generic signature meet those of any other written with the same letter: in
+// `g(1, w: nonez(1))`, with `g(v: z, w: [String!]!)` and `nonez: [z]!`, `g`'s
+// `z := Int!` from `v` clashed with the `z` in `nonez`'s result. Rigid
+// variables stand for the enclosing generic function's own parameters and
+// are left alone.
+func instantiateCallee(ft *hm.FunctionType) *hm.FunctionType {
+	subs := freshenSubs(ft.FreeTypeVar())
+	if len(subs) == 0 {
+		return ft
+	}
+	return ft.Apply(subs).(*hm.FunctionType)
+}
+
+// freshenSubs maps each flexible variable in tvs to a new one of its name.
+func freshenSubs(tvs hm.TypeVarSet) hm.Subs {
+	subs := hm.NewSubs()
+	for tv := range tvs {
+		if !tv.IsRigid() {
+			subs.Add(tv, hm.Freshen(tv))
+		}
+	}
+	return subs
+}
+
+// autoCallInstantiated is autoCallFnType for a reference being inferred: an
+// auto-call is a call too, so its result comes from an instantiated callee.
+func autoCallInstantiated(t hm.Type) (hm.Type, bool, error) {
+	ret, called, err := autoCallFnType(t)
+	if err != nil || !called {
+		return ret, called, err
+	}
+	if ft, ok := t.(*hm.FunctionType); ok {
+		return instantiateCallee(ft).Ret(false), true, nil
+	}
+	return ret, called, nil
 }
 
 // inferBlockArg performs bidirectional type inference for block arguments.
@@ -640,7 +682,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			var err error
 			var called bool
 			before := t
-			t, called, err = autoCallFnType(t)
+			t, called, err = autoCallInstantiated(t)
 			if err != nil {
 				return nil, err
 			}
@@ -803,7 +845,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							}
 							if d.AutoCall {
 								var err error
-								t, _, err = autoCallFnType(t)
+								t, _, err = autoCallInstantiated(t)
 								if err != nil {
 									return nil, err
 								}
@@ -961,7 +1003,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			var err error
 			var called bool
 			before := t
-			t, called, err = autoCallFnType(t)
+			t, called, err = autoCallInstantiated(t)
 			if err != nil {
 				return nil, err
 			}
@@ -1238,7 +1280,7 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		// Apply auto-call if needed
 		if i.AutoCall {
 			var err error
-			elementType, _, err = autoCallFnType(elementType)
+			elementType, _, err = autoCallInstantiated(elementType)
 			if err != nil {
 				return nil, err
 			}
@@ -3593,21 +3635,42 @@ func (b *BlockArg) Walk(fn func(Node) bool) {
 // instantiateListMethod instantiates a list method's type by substituting
 // the type variable 'a' with the actual element type of the list.
 func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
+	// The method's other variables (e.g. reduce's accumulator `b`) get new
+	// identities first, so that the element type cannot capture them.
+	own := hm.NewTypeVarSet()
+	for _, param := range def.ParamTypes {
+		own = own.Union(param.Type.FreeTypeVar())
+	}
+	if def.ReturnType != nil {
+		own = own.Union(def.ReturnType.FreeTypeVar())
+	}
+	if def.BlockType != nil {
+		own = own.Union(def.BlockType.FreeTypeVar())
+	}
+	own.Remove('a')
+	rename := freshenSubs(own)
+	instantiate := func(t hm.Type) hm.Type {
+		if t == nil {
+			return nil
+		}
+		return substituteTypeVar(t.Apply(rename).(hm.Type), 'a', elemType)
+	}
+
 	// Build a record type for the method arguments, replacing TypeVar('a') with elemType
 	args := NewRecordType("")
 	for _, param := range def.ParamTypes {
-		paramType := substituteTypeVar(param.Type, 'a', elemType)
+		paramType := instantiate(param.Type)
 		args.Add(param.Name, hm.NewScheme(nil, paramType))
 	}
 
 	// Similarly, handle the return type
-	returnType := substituteTypeVar(def.ReturnType, 'a', elemType)
+	returnType := instantiate(def.ReturnType)
 
 	fnType := hm.NewFnType(args, returnType)
 
 	// Copy the block type if present, substituting type variables
 	if def.BlockType != nil {
-		blockType := substituteTypeVar(def.BlockType, 'a', elemType).(*hm.FunctionType)
+		blockType := instantiate(def.BlockType).(*hm.FunctionType)
 		fnType.SetBlock(blockType)
 	}
 
