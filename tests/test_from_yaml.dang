@@ -112,6 +112,9 @@ assert { YAML.encode(["a": "<<"]) == "a: <<" }
 assert { YAML.encode(["<<"]) == "- <<" }
 assert { (YAML.decode(YAML.encode(["a": "<<"])) :: Map[String!]!) == ["a": "<<"] }
 
+# quoting "<<" keys leaves other output alone, e.g. tab-indented block text
+assert { YAML.encode(["k": "\tx\ny"]) == "k: |-\n    \tx\n    y" }
+
 let badMerge = (YAML.decode("a:\n  <<: 5") :: Map[Map[Int!]!]!) rescue {
   err: Error => err.message
 }

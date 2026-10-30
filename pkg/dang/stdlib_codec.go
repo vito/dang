@@ -215,38 +215,50 @@ func encodeYAML(val Value) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var node yaml.Node
-	if err := node.Encode(numbersToGo(tree)); err != nil {
-		return "", err
-	}
-	quoteYAMLMergeLikeKeys(&node)
-	out, err := yaml.Marshal(&node)
+	out, err := yaml.Marshal(quoteYAMLMergeKeys(numbersToGo(tree)))
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
 
-// quoteYAMLMergeLikeKeys retags every "<<" scalar as a string. Dang values are
-// never merge keys, but yaml.v3 resolves a "<<" string to the !!merge tag
-// while building the node: as a key it would be emitted bare and read back as
-// a merge key — so YAML.decode would not round-trip YAML.encode's output — and
-// as a value it would be emitted as `!!merge <<`. Keys are double-quoted; a
-// value is emitted plain, as before, since only keys can merge.
-func quoteYAMLMergeLikeKeys(node *yaml.Node) {
-	if node.Kind == yaml.ScalarNode && node.ShortTag() == "!!merge" {
-		node.Tag = "!!str"
-	}
-	if node.Kind == yaml.MappingNode {
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			if key := node.Content[i]; key.Kind == yaml.ScalarNode && key.Value == "<<" {
-				key.Tag = "!!str"
-				key.Style = yaml.DoubleQuotedStyle
+// yamlQuotedKey is a map key yaml.v3 must emit double-quoted. yaml.v3 writes a
+// "<<" string key bare, which any YAML reader — YAML.decode included — takes
+// as a merge key, so YAML.encode's output would not round-trip.
+type yamlQuotedKey string
+
+func (k yamlQuotedKey) MarshalYAML() (any, error) {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: string(k), Style: yaml.DoubleQuotedStyle}, nil
+}
+
+// quoteYAMLMergeKeys rewrites every map holding a "<<" key so that key
+// marshals quoted (see yamlQuotedKey). Other maps, and "<<" values, which
+// cannot merge, are left exactly as yaml.Marshal renders them.
+func quoteYAMLMergeKeys(v any) any {
+	switch x := v.(type) {
+	case []any:
+		for i := range x {
+			x[i] = quoteYAMLMergeKeys(x[i])
+		}
+		return x
+	case map[string]any:
+		for k := range x {
+			x[k] = quoteYAMLMergeKeys(x[k])
+		}
+		if _, ok := x["<<"]; !ok {
+			return x
+		}
+		quoted := make(map[any]any, len(x))
+		for k, val := range x {
+			if k == "<<" {
+				quoted[yamlQuotedKey(k)] = val
+			} else {
+				quoted[k] = val
 			}
 		}
-	}
-	for _, child := range node.Content {
-		quoteYAMLMergeLikeKeys(child)
+		return quoted
+	default:
+		return v
 	}
 }
 
