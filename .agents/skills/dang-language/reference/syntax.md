@@ -106,7 +106,7 @@ greet(
 - `+` overloads on `String!` (concat) and lists (concat). Operands must be **non-null** (a nullable one is a type error — `!`, `??`, or null-check it first); the result is non-null.
 
 ### Comparison
-- `< <= > >=` on **numbers only** (`Int`/`Float`, mixed allowed) — NOT on strings. Operands must be non-null, like arithmetic.
+- `< <= > >=` on numbers (`Int`/`Float`, mixed allowed) or strings (lexicographic); operands must match. Operands must be non-null, like arithmetic.
 - `== !=` are type-safe: mismatched types compare `false`, no coercion (`num == str` is `false`). Work on numbers, strings, bools, null, lists, maps, records. Return `Boolean!`. Records and objects: see objects.md "Equality".
 
 ### Logical

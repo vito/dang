@@ -8,7 +8,7 @@ greet(
   """
   Optional greeting prefix
   """
-  prefix: String = "Hello",
+  prefix: String! = "Hello",
 ): String {
   prefix + " " + name
 }

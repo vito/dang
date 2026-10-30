@@ -26,6 +26,19 @@ assert { addMaybe(2, 5) == 7 }
 # ordering comparisons follow the same rule
 assert { xs[1]! > 1 }
 
+# `and`/`or` guards narrow their right operand
+positive(x: Int): Boolean! { x != null and x > 0 }
+
+assert { positive(1) }
+assert { !positive(null) }
+assert { !positive(-1) }
+
+absentOrPositive(x: Int): Boolean! { x == null or x > 0 }
+
+assert { absentOrPositive(null) }
+assert { absentOrPositive(2) }
+assert { !absentOrPositive(-2) }
+
 # strings and lists too
 greeting(name: String): String! {
   if (name != null) { "hi " + name } else { "hi" }
