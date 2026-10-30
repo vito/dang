@@ -253,21 +253,21 @@ type Type struct {
 }
 
 func NewType(name string, kind Kind) *Type {
-	env := &Type{
-		Named:            name,
-		Kind:             kind,
-		objects:          make(map[string]TypeScope),
-		vars:             make(map[string]*hm.Scheme),
-		visibility:       make(map[string]Visibility),
-		directives:       make(map[string]*DirectiveDecl),
-		typeOrigins:      make(map[string]BindingOrigin),
-		valueOrigins:     make(map[string]BindingOrigin),
-		directiveOrigins: make(map[string]BindingOrigin),
-		fieldDirectives:  make(map[string][]*DirectiveApplication),
-		docStrings:       make(map[string]string),
-		typeDocString:    "",
+	// The maps are made on first write (see setIn): most types, such as the
+	// scope built for each builtin method call, never bind anything, and
+	// reading a nil map is the same as reading an empty one.
+	return &Type{
+		Named: name,
+		Kind:  kind,
 	}
-	return env
+}
+
+// setIn sets m[k] = v, making the map first if it is nil.
+func setIn[K comparable, V any](m *map[K]V, k K, v V) {
+	if *m == nil {
+		*m = make(map[K]V)
+	}
+	(*m)[k] = v
 }
 
 func gqlFieldToTypeNode(mod TypeScope, field *introspection.Field) (hm.Type, error) {
@@ -839,16 +839,16 @@ func (e *Type) Add(name string, s *hm.Scheme) hm.Env {
 	if _, exists := e.vars[name]; !exists {
 		e.varOrder = append(e.varOrder, name)
 	}
-	e.vars[name] = s
-	e.valueOrigins[name] = LocalBindingOrigin()
+	setIn(&e.vars, name, s)
+	setIn(&e.valueOrigins, name, LocalBindingOrigin())
 	if _, ok := e.visibility[name]; !ok {
-		e.visibility[name] = PrivateVisibility
+		setIn(&e.visibility, name, PrivateVisibility)
 	}
 	return e
 }
 
 func (e *Type) SetValueOrigin(name string, origin BindingOrigin) {
-	e.valueOrigins[name] = origin
+	setIn(&e.valueOrigins, name, origin)
 }
 
 func (e *Type) LocalValueOrigin(name string) (BindingOrigin, bool) {
@@ -857,7 +857,7 @@ func (e *Type) LocalValueOrigin(name string) (BindingOrigin, bool) {
 }
 
 func (e *Type) SetVisibility(name string, visibility Visibility) {
-	e.visibility[name] = visibility
+	setIn(&e.visibility, name, visibility)
 }
 
 func (e *Type) SchemeOf(name string) (*hm.Scheme, bool) {
@@ -910,12 +910,12 @@ func (e *Type) NamedTypes() iter.Seq2[string, TypeScope] {
 }
 
 func (e *Type) AddObject(name string, c TypeScope) {
-	e.objects[name] = c
-	e.typeOrigins[name] = LocalBindingOrigin()
+	setIn(&e.objects, name, c)
+	setIn(&e.typeOrigins, name, LocalBindingOrigin())
 }
 
 func (e *Type) SetTypeOrigin(name string, origin BindingOrigin) {
-	e.typeOrigins[name] = origin
+	setIn(&e.typeOrigins, name, origin)
 }
 
 func (e *Type) LocalTypeOrigin(name string) (BindingOrigin, bool) {
@@ -924,12 +924,12 @@ func (e *Type) LocalTypeOrigin(name string) (BindingOrigin, bool) {
 }
 
 func (e *Type) AddDirective(name string, directive *DirectiveDecl) {
-	e.directives[name] = directive
-	e.directiveOrigins[name] = LocalBindingOrigin()
+	setIn(&e.directives, name, directive)
+	setIn(&e.directiveOrigins, name, LocalBindingOrigin())
 }
 
 func (e *Type) SetDirectiveOrigin(name string, origin BindingOrigin) {
-	e.directiveOrigins[name] = origin
+	setIn(&e.directiveOrigins, name, origin)
 }
 
 func (e *Type) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
@@ -979,7 +979,7 @@ func (e *Type) Remove(name string) hm.Env {
 
 // SetDocString sets the documentation string for a symbol
 func (e *Type) SetDocString(name string, docString string) {
-	e.docStrings[name] = docString
+	setIn(&e.docStrings, name, docString)
 }
 
 // GetDocString gets the documentation string for a symbol
@@ -997,7 +997,7 @@ func (e *Type) GetDocString(name string) (string, bool) {
 
 // SetDirectives sets the documentation string for a symbol
 func (e *Type) SetDirectives(name string, directives []*DirectiveApplication) {
-	e.fieldDirectives[name] = directives
+	setIn(&e.fieldDirectives, name, directives)
 }
 
 // GetDirectives gets the documentation string for a symbol
