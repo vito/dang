@@ -18,7 +18,7 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 
 ## `String!` methods
 
-Strings have **no** `.length` / `.isEmpty` — those are list-only. Use the predicates below.
+Strings have **no** `.length` / `.isEmpty` — those are list/map-only. Use the predicates below.
 
 - `.toUpper -> String!`, `.toLower -> String!`
 - `.toBase64 -> String!` — standard padded base64 of the string's bytes; `.fromBase64 -> String!` — decode standard padded base64 (raises on invalid input)
@@ -90,7 +90,7 @@ Paths; use `.join` or interpolation.
 
 ## `[T]!` methods (lists)
 
-Lists are the **only collection type today** (no maps/sets). Block params shown as `x`/`i`.
+Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods](#map-methods) below); there are no sets. Block params shown as `x`/`i`.
 
 ### Construction / access
 - literal `[1, 2, 3]`; empty needs a type hint `[] :: [Int!]!` or annotation `let xs: [Int!]! = []`
@@ -122,6 +122,30 @@ Lists are the **only collection type today** (no maps/sets). Block params shown 
 - `[Cat, Dog]` where both implement `Animal` → `[Animal!]` (common supertype/interface; first common one found).
 - Mixing `null` widens elements to nullable.
 
+## `Map[T]!` methods {#map-methods}
+
+Maps are immutable, keyed by `String!` (only the value type is a parameter: `Map[Int!]!`), and keep **insertion order**. Block params are `key, value`.
+
+### Construction / access
+- literal `["a": 1, "b": 2]`; keys are any `String!` expression (`[name: true]`); a repeated key keeps its first position and last value
+- empty `[:]` needs a type hint, like `[]`: `let m: Map[Int!]! = [:]`
+- `m["a"] -> T` (nullable) — **missing key yields `null`**
+- `.get(key: String!) -> T` — also `null` for a missing key, but typed as the bare value type (`Int!` on `Map[Int!]!`), so the checker won't catch a missing key; prefer `m["a"]` or check `.has` first
+- `.has(key: String!) -> Boolean!`
+- `.length -> Int!`, `.isEmpty -> Boolean!`
+- `.keys -> [String!]!`, `.values -> [T]!` — insertion order
+
+### Update (each returns a new map)
+- `.with(key: String!, value: T) -> Map[T]!`, `.without(key: String!) -> Map[T]!`
+- `.merge(other: Map[T]!) -> Map[T]!` — `other` wins on conflicts; there is no `+` on maps
+
+### Iterate
+- `.map { key, value => ... } -> Map[U]!` — transforms values, keeps keys
+- `.each { key, value => ... } -> Map[T]!` — returns the original map
+- `.reduce(initial: U) { acc, key, value => ... } -> U`
+
+Equality ignores order (`["a": 1, "b": 2] == ["b": 2, "a": 1]`). `JSON.encode` emits a map as an object in insertion order (unlike records). `JSON`/`YAML`/`TOML.decode` into a `Map[T]` type reads an object, materializing each value at `T`; decoded maps come back with **sorted** keys (document order is not kept).
+
 ## JSON, YAML, and TOML
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods. The names double as scalar types (`:: JSON`) and are owned by Dang, so they work with **no `import`**; an in-scope scalar of the same name (e.g. Dagger's `scalar JSON`) merges with the codec rather than colliding.
@@ -134,7 +158,7 @@ let s = JSON.decode(...) :: Status!
 f(d: String!): Summary! { JSON.decode(d) }
 let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a table
 ```
-- Works for primitives, lists, records, custom types, enums.
+- Works for primitives, lists, maps (`Map[T]`, from an object), records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
 - Empty input differs by format: `JSON.decode("")` errors (invalid JSON); `YAML.decode("")` is `null` (an empty YAML document), so it won't materialize into a non-null record; `TOML.decode("")` is an empty table, so it fills declared defaults.
 

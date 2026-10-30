@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -396,6 +398,20 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			elements[i] = materialized
 		}
 		return ListValue{Elements: elements, ElemType: elemTarget}, nil
+	case MapValue:
+		valTarget, ok := mapValueTarget(target)
+		if !ok {
+			return val, nil
+		}
+		entries := make(map[string]Value, len(v.Entries))
+		for _, k := range v.Keys {
+			materialized, err := materializeValue(ctx, scope, v.Entries[k], valTarget, joinKeyPath(path, k))
+			if err != nil {
+				return nil, err
+			}
+			entries[k] = materialized
+		}
+		return MapValue{Keys: append([]string{}, v.Keys...), Entries: entries, ValType: valTarget}, nil
 	default:
 		return val, nil
 	}
@@ -507,6 +523,30 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			elements[i] = materialized
 		}
 		return ListValue{Elements: elements, ElemType: elemTarget}, nil
+	}
+
+	if valTarget, ok := mapValueTarget(target); ok {
+		obj, ok := raw.(map[string]any)
+		if !ok {
+			return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
+		}
+		// Decoded objects arrive as Go maps, so document order is already
+		// gone (and TOML's decoder never kept it); sort the keys so the
+		// map's insertion order is deterministic.
+		keys := make([]string, 0, len(obj))
+		for k := range obj {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		entries := make(map[string]Value, len(obj))
+		for _, k := range keys {
+			materialized, err := materializeDecoded(ctx, scope, obj[k], valTarget, joinKeyPath(path, k), codec)
+			if err != nil {
+				return nil, err
+			}
+			entries[k] = materialized
+		}
+		return MapValue{Keys: keys, Entries: entries, ValType: valTarget}, nil
 	}
 
 	if mod, ok := target.(*Type); ok {
@@ -714,6 +754,13 @@ func listElementTarget(target hm.Type) (hm.Type, bool) {
 	}
 }
 
+func mapValueTarget(target hm.Type) (hm.Type, bool) {
+	if m, ok := unwrapNonNull(target).(MapType); ok {
+		return m.Type, true
+	}
+	return nil, false
+}
+
 func unwrapNonNull(target hm.Type) hm.Type {
 	if nn, ok := target.(hm.NonNullType); ok {
 		return nn.Type
@@ -779,6 +826,13 @@ func joinIndexPath(path string, index int) string {
 		return fmt.Sprintf("[%d]", index)
 	}
 	return fmt.Sprintf("%s[%d]", path, index)
+}
+
+func joinKeyPath(path, key string) string {
+	if path == "$" {
+		path = ""
+	}
+	return fmt.Sprintf("%s[%s]", path, strconv.Quote(key))
 }
 
 func materializeError(path, format string, args ...any) error {
