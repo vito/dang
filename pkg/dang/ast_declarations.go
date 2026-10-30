@@ -540,7 +540,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		// `x! = v` / `x! += v` would assign to the assertion, not to x.
 		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
 			if r.Modifier == "+" {
-				return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion: %s", compoundNullableAdvice), r.Target)
+				return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion: drop the !, and if the target is nullable, %s", compoundNullableAdvice), r.Target)
 			}
 			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
 		}
@@ -596,7 +596,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 				if sel, ok := r.Target.(*Select); ok {
 					if typed, ok := sel.Receiver.(interface{ GetInferredType() hm.Type }); ok {
 						if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
-							advice = "it is read through a nullable value; check that for null first, or write `x = (x ?? default) + value`"
+							advice = "it is read through a nullable value; null-check that by its bare name first, e.g. `if (b != null) { b.c += 1 }` (a check on `self.b` doesn't narrow)"
 						}
 					}
 				}

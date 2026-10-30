@@ -209,10 +209,11 @@ func stripNonNull(t hm.Type) (hm.Type, bool) {
 // knownNullable reports whether t is certainly nullable: a nullable type
 // variable or concrete type, or a union with such a member. A NonNull type,
 // a flexible type variable (which may still resolve to one), and unions of
-// those are not known to be nullable yet.
+// those are not known to be nullable yet; nor is a function type, which is a
+// computed member's storage, not a value that can be null.
 func knownNullable(t hm.Type) bool {
 	switch t := t.(type) {
-	case hm.NonNullType, hm.TypeVariable:
+	case hm.NonNullType, hm.TypeVariable, *hm.FunctionType:
 		return false
 	case *hm.UnionType:
 		for _, option := range t.Options {

@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot assign to a non-null assertion: declare it non-null (with a default), or write `x = (x ?? default) + value`
+[1m[31mError:[0m cannot assign to a non-null assertion: drop the !, and if the target is nullable, declare it non-null (with a default), or write `x = (x ?? default) + value`
   [2m[34m--> errors/assign_through_nonnull_assert.dang:3:1[0m
  [2m    |[0m
  [2m  1 | # Assigning through `!` would write to the assertion, not the variable.[0m
