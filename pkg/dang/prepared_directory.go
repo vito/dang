@@ -31,6 +31,13 @@ type PreparedDirectory struct {
 // effect checking. The caller must prepare again when source or import schemas
 // change. Errors, including unsupported declarations, never evaluate user code.
 func PrepareDir(ctx context.Context, dir string) (*PreparedDirectory, error) {
+	// The prepared program keeps no clients, so services started to
+	// introspect imports stop here.
+	ctx, services := ensureServiceRegistry(ctx)
+	if services != nil {
+		defer services.StopAll()
+	}
+
 	ctx, blocks, err := parseDirBlocks(ctx, dir)
 	if err != nil {
 		return nil, err
@@ -89,13 +96,13 @@ func checkPreparable(blocks []*FileBlock) error {
 // and cancellation context belonging to this invocation. It is safe to call
 // Evaluate concurrently; the completed source/type graph is read-only.
 func (p *PreparedDirectory) Evaluate(ctx context.Context) (ValueScope, error) {
-	ctx, err := ensureProjectImports(ctx, p.dir)
-	if err != nil {
-		return nil, err
-	}
 	ctx, services := ensureServiceRegistry(ctx)
 	if services != nil {
 		defer services.StopAll()
+	}
+	ctx, err := ensureProjectImports(ctx, p.dir)
+	if err != nil {
+		return nil, err
 	}
 	ctx = withModuleScope(ctx, p.module)
 	evalCtx := NewEvalContext(p.dir, "")

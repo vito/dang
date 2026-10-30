@@ -2,13 +2,18 @@ package dang
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/stretchr/testify/require"
@@ -303,4 +308,70 @@ func TestPreparedDirectoryPureLanguageCorpus(t *testing.T) {
 		})
 	}
 	t.Logf("concurrently checked %d pure language programs", checked)
+}
+
+func TestPreparedDirectoryStopsServices(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads process state from /proc")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			OpName string `json:"operationName"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		if req.OpName == "IntrospectionQuery" {
+			fmt.Fprintf(w, `{"data": %s}`, fakeModuleSchemaJSON)
+		} else {
+			fmt.Fprint(w, `{"data": {"value": "served"}}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	// The service records its PID, reports the server's endpoint and stays up.
+	serviceDir := func(t *testing.T, toml, source string) (string, string) {
+		bin := t.TempDir()
+		pidFile := filepath.Join(bin, "pid")
+		script := fmt.Sprintf("#!/bin/sh\necho $$ > %q\necho '{\"endpoint\": %q}'\nexec cat > /dev/null\n", pidFile, srv.URL)
+		require.NoError(t, os.WriteFile(filepath.Join(bin, "service"), []byte(script), 0o755))
+		dir := preparedSource(t, source)
+		toml = fmt.Sprintf("[imports.Session]\nservice = [%q]\n", filepath.Join(bin, "service")) + toml
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dang.toml"), []byte(toml), 0o600))
+		return dir, pidFile
+	}
+	// A killed child stays a zombie until reaped, and nothing reaps it.
+	requireStopped := func(t *testing.T, pidFile string) {
+		pid, err := os.ReadFile(pidFile)
+		require.NoError(t, err, "the service never started")
+		statPath := filepath.Join("/proc", strings.TrimSpace(string(pid)), "stat")
+		require.Eventually(t, func() bool {
+			stat, err := os.ReadFile(statPath)
+			if err != nil {
+				return true
+			}
+			fields := strings.Fields(string(stat[strings.LastIndexByte(string(stat), ')')+1:]))
+			return fields[0] == "Z"
+		}, 5*time.Second, 10*time.Millisecond, "the service is still running")
+	}
+
+	t.Run("preparation", func(t *testing.T) {
+		// Without a schema, inference starts the service to introspect it.
+		dir, pidFile := serviceDir(t, "", "import Session\nvalue: Int! = 1\n")
+		_, err := PrepareDir(context.Background(), dir)
+		require.NoError(t, err)
+		requireStopped(t, pidFile)
+	})
+
+	t.Run("evaluation", func(t *testing.T) {
+		// With a schema, only evaluation starts the service.
+		dir, pidFile := serviceDir(t, "schema = \"session.graphqls\"\n", "import Session\nresult: String! = Session.value\n")
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "session.graphqls"), []byte("type Query { value: String! }\n"), 0o600))
+		program, err := PrepareDir(context.Background(), dir)
+		require.NoError(t, err)
+		_, err = os.Stat(pidFile)
+		require.ErrorIs(t, err, os.ErrNotExist, "preparation started the service")
+		_, err = program.Evaluate(context.Background())
+		require.NoError(t, err)
+		requireStopped(t, pidFile)
+	})
 }
