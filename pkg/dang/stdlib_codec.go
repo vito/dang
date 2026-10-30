@@ -227,11 +227,16 @@ func encodeYAML(val Value) (string, error) {
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
 
-// quoteYAMLMergeLikeKeys turns every "<<" mapping key into a quoted string.
-// Map keys are runtime data, but yaml.v3 resolves a "<<" key to the !!merge
-// tag and emits it bare, which reads back as a merge key — so without this,
-// YAML.decode would not round-trip YAML.encode's output.
+// quoteYAMLMergeLikeKeys retags every "<<" scalar as a string. Dang values are
+// never merge keys, but yaml.v3 resolves a "<<" string to the !!merge tag
+// while building the node: as a key it would be emitted bare and read back as
+// a merge key — so YAML.decode would not round-trip YAML.encode's output — and
+// as a value it would be emitted as `!!merge <<`. Keys are double-quoted; a
+// value is emitted plain, as before, since only keys can merge.
 func quoteYAMLMergeLikeKeys(node *yaml.Node) {
+	if node.Kind == yaml.ScalarNode && node.ShortTag() == "!!merge" {
+		node.Tag = "!!str"
+	}
 	if node.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			if key := node.Content[i]; key.Kind == yaml.ScalarNode && key.Value == "<<" {

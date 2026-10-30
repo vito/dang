@@ -107,6 +107,11 @@ assert { YAML.encode(["<<": 1, "a": 2]) == "\"<<\": 1\na: 2" }
 let roundTripped = YAML.decode(YAML.encode(["<<": ["<<": 3]])) :: Map[Map[Int!]!]!
 assert { roundTripped == ["<<": ["<<": 3]] }
 
+# "<<" as a value stays a plain string
+assert { YAML.encode(["a": "<<"]) == "a: <<" }
+assert { YAML.encode(["<<"]) == "- <<" }
+assert { (YAML.decode(YAML.encode(["a": "<<"])) :: Map[String!]!) == ["a": "<<"] }
+
 let badMerge = (YAML.decode("a:\n  <<: 5") :: Map[Map[Int!]!]!) rescue {
   err: Error => err.message
 }
