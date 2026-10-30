@@ -110,6 +110,11 @@ func canonical(t Type) Type {
 			visit(v)
 		case NullableTypeVariable:
 			visit(v.TypeVariable)
+		case *UnionType:
+			// A union lists no components in Types.
+			for _, o := range v.Options {
+				walk(o)
+			}
 		default:
 			for _, c := range t.Types() {
 				walk(c)

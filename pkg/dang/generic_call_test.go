@@ -151,6 +151,14 @@ print([r1, r2].length)`,
 			out: "true\n2\n",
 		},
 		{
+			name: "records of separate unions",
+			src: `let u1 = {{v: if (true) { [] } else { 1 }}}
+let u2 = {{v: if (true) { [] } else { 1 }}}
+print(u1 == u2)
+print([u1, u2].length)`,
+			out: "true\n2\n",
+		},
+		{
 			name: "records of separate auto-calls",
 			src: `none(x: Int! = 1): [a]! { [] }
 let r1 = {{xs: none}}
