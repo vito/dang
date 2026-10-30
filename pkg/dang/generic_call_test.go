@@ -122,3 +122,40 @@ func TestFreshVarsAcrossFreshers(t *testing.T) {
 	}
 	require.Equal(t, "0\n1\n", out.String())
 }
+
+// TestGenericCallsInstantiateCallees pins down calls whose callee's type
+// variables meet others written with the same letter: each call must get its
+// own copy of them.
+func TestGenericCallsInstantiateCallees(t *testing.T) {
+	runSnippetCases(t, []snippetCase{
+		{
+			name: "another function's variable",
+			src: `nonez(x: Int! = 1): [z]! { [] }
+g(v: z, w: [String!]!): Int! { w.length }
+print(g(1, w: nonez(1)))`,
+			out: "0\n",
+		},
+		{
+			name: "two calls to one function",
+			src: `nonez(x: Int! = 1): [z]! { [] }
+takes(x: [Int!]!, y: [String!]!): Int! { 1 }
+print(takes(nonez(1), nonez(1)))`,
+			out: "1\n",
+		},
+		{
+			name: "two auto-calls to one function",
+			src: `none(x: Int! = 1): [a]! { [] }
+takes(x: [Int!]!, y: [String!]!): Int! { 1 }
+print(takes(none, none))`,
+			out: "1\n",
+		},
+		{
+			// reduce's own `b` is not the receiver's element variable `b`.
+			name: "list method on a list of a written variable",
+			src: `noneb(x: Int! = 1): [b]! { [] }
+let ys = [noneb(1)]
+print(ys.reduce("") { acc, x => let n: [Int!]! = x; acc + "!" })`,
+			out: "!\n",
+		},
+	})
+}
