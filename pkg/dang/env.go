@@ -1252,9 +1252,12 @@ func (t *Type) Eq(other hm.Type) bool {
 		// Named modules are only equal if they're the exact same instance (pointer equality)
 		return t == otherMod
 	}
-	// Unnamed modules (anonymous record-like modules) use structural equality,
-	// which two separately inferred `{{xs: []}}`s pass despite their own
-	// variables.
+	// Unnamed modules (anonymous record-like modules) use structural equality
+	// up to a renaming of their variables: two `{{xs: []}}`s, or a `{{x: []}}`
+	// and a `{{x: [a]!}}` parameter, are typed with variables of their own.
+	// Anonymous record types hold no free variables to substitute (see
+	// FreeTypeVar), so this is also what lets such an argument meet such a
+	// parameter.
 	return hm.EqIgnoringIDs(t.AsRecord(), otherMod.AsRecord())
 }
 

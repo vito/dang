@@ -123,6 +123,45 @@ func TestFreshVarsAcrossFreshers(t *testing.T) {
 	require.Equal(t, "0\n1\n", out.String())
 }
 
+// TestAnonymousRecordsCompareUpToRenaming pins down anonymous record types,
+// which compare structurally, with variables that are named differently but
+// stand for the same thing: whatever came first must not decide the outcome.
+func TestAnonymousRecordsCompareUpToRenaming(t *testing.T) {
+	runSnippetCases(t, []snippetCase{
+		{
+			name: "record argument for a written-variable parameter",
+			src: `k(r: {{x: [a]!}}): Int! { 1 }
+print(k({{x: []}}))`,
+			out: "1\n",
+		},
+		{
+			// The null makes the [] `b`, unlike the parameter's `a`.
+			name: "record argument after a null",
+			src: `let n = null
+k(r: {{x: [a]!}}): Int! { 1 }
+print(k({{x: []}}))`,
+			out: "1\n",
+		},
+		{
+			name: "records of separate empty lists",
+			src: `let r1 = {{xs: []}}
+let r2 = {{xs: []}}
+print(r1 == r2)
+print([r1, r2].length)`,
+			out: "true\n2\n",
+		},
+		{
+			name: "records of separate auto-calls",
+			src: `none(x: Int! = 1): [a]! { [] }
+let r1 = {{xs: none}}
+let r2 = {{xs: none}}
+print(r1 == r2)
+print([r1, r2].length)`,
+			out: "true\n2\n",
+		},
+	})
+}
+
 // TestGenericCallsInstantiateCallees pins down calls whose callee's type
 // variables meet others written with the same letter: each call must get its
 // own copy of them.
@@ -150,10 +189,10 @@ print(takes(none, none))`,
 			out: "1\n",
 		},
 		{
-			// reduce's own `b` is not the receiver's element variable `b`.
+			// The receiver's annotation writes a `b` of its own, which
+			// reduce's own `b` must not be.
 			name: "list method on a list of a written variable",
-			src: `noneb(x: Int! = 1): [b]! { [] }
-let ys = [noneb(1)]
+			src: `let ys: [[b]!]! = [[]]
 print(ys.reduce("") { acc, x => let n: [Int!]! = x; acc + "!" })`,
 			out: "!\n",
 		},
