@@ -275,3 +275,46 @@ func TestParseBlueprintCorpus(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSourceFileThroughSyntaxCache(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.dang")
+	source := []byte("type Thing { value: String! = \"one\" }\n")
+	if err := os.WriteFile(file, source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want, err := ParseWithRecovery(file, source, GlobalStore("filePath", file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := NewSyntaxCache()
+	ctx := WithSyntaxCache(context.Background(), cache)
+	first, err := ParseSourceFile(ctx, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first, want) {
+		t.Fatal("ParseSourceFile returned different syntax than parsing the file")
+	}
+	if _, ok := cache.get(parseBlueprintKey{digest: sha256.Sum256(source), version: CurrentVersion}); !ok {
+		t.Fatal("ParseSourceFile did not fill the syntax cache")
+	}
+	first.Forms = nil
+	second, err := ParseSourceFile(ctx, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(second, want) {
+		t.Fatal("cached syntax changed after mutating a previous ParseSourceFile result")
+	}
+	env, err := RunDir(ctx, dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !env.Has("Thing") {
+		t.Fatal("RunDir of the cached source lost a declaration")
+	}
+	if _, err := ParseSourceFile(context.Background(), file); err != nil {
+		t.Fatalf("ParseSourceFile without a cache: %v", err)
+	}
+}
