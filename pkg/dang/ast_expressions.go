@@ -857,9 +857,14 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			}
 
 			// For nullable list receivers, mark as nullable so the call site
-			// propagates null and makes the return type nullable.
+			// propagates null and makes the return type nullable. An
+			// auto-called method (`xs.length`) has no call site, so its
+			// result is made nullable here.
 			if nullableList {
 				d.NullableReceiver = true
+				if d.AutoCall {
+					methodType = Nullable(methodType)
+				}
 			}
 
 			d.SetInferredType(methodType)
@@ -899,6 +904,9 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			if nullableMap {
 				d.NullableReceiver = true
+				if d.AutoCall {
+					methodType = Nullable(methodType)
+				}
 			}
 
 			d.SetInferredType(methodType)
@@ -1243,8 +1251,12 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Indexing can fail (out of bounds) and the receiver may be null, so
 		// the result is the nullable element type — a nullable type variable
-		// while the element type is still open, so operators can tell.
+		// while the element type is still open (even `a!`, which Nullable
+		// unwraps to a bare `a`), so operators can tell.
 		resultType := Nullable(elementType)
+		if tv, isVar := resultType.(hm.TypeVariable); isVar {
+			resultType = hm.NullableTypeVariable{TypeVariable: tv}
+		}
 		i.SetInferredType(resultType)
 		return resultType, nil
 	})

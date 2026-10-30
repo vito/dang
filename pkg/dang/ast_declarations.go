@@ -536,6 +536,10 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
 			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
 		}
+		// Lists and maps are immutable values; there is no element write.
+		if _, isIndex := r.Target.(*Index); isIndex {
+			return nil, NewInferError(fmt.Errorf("cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that"), r.Target)
+		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
 		// A location is not a function value escaping.

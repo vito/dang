@@ -232,9 +232,14 @@ func knownNullable(t hm.Type) bool {
 // bind it to a local first.
 func (b *BinaryOperator) nullableOperandError(env hm.Env, operand Node, t hm.Type) error {
 	advice := "supply a default with ??, assert it with !, or bind it to a local with let and check that for null"
-	if sym, isSymbol := operand.(*Symbol); isSymbol {
-		if _, narrowable := nonNullType(env, sym.Name); narrowable {
+	switch op := operand.(type) {
+	case *Symbol:
+		if _, narrowable := nonNullType(env, op.Name); narrowable {
 			advice = "check it for null first, supply a default with ??, or assert it with !"
+		}
+	case *Select:
+		if _, onSelf := op.Receiver.(*SelfKeyword); onSelf {
+			advice += "; if it's a field with a default, declare it non-null (T! = default)"
 		}
 	}
 	return NewInferError(fmt.Errorf("operator %s is not defined for nullable type %s: %s", b.OpName, t, advice), operand)
