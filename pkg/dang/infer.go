@@ -65,29 +65,10 @@ func newInferer(env hm.Env) *inferer {
 	}
 }
 
-const letters = `abcdefghijklmnopqrstuvwxyz`
-
 func (infer *inferer) Fresh() hm.TypeVariable {
-	if infer.varCount < len(letters) {
-		retVal := letters[infer.varCount]
-		infer.varCount++
-		return hm.TypeVariable(retVal)
-	} else {
-		// Use Greek letters and other Unicode characters when we run out of Latin letters
-		// Start with Greek lowercase letters (α, β, γ, etc.)
-		greekStart := infer.varCount - len(letters)
-		if greekStart < 24 { // 24 Greek letters
-			greek := rune('α' + greekStart)
-			infer.varCount++
-			return hm.TypeVariable(greek)
-		} else {
-			// Fall back to using numbers as characters
-			numStart := greekStart - 24
-			char := rune('0' + (numStart % 10))
-			infer.varCount++
-			return hm.TypeVariable(char)
-		}
-	}
+	tv := hm.FreshVar(infer.varCount)
+	infer.varCount++
+	return tv
 }
 
 func (infer *inferer) consGen(ctx context.Context, expr hm.Expression) (err error) {

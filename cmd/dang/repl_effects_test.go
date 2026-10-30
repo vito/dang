@@ -78,3 +78,42 @@ func TestReplChecksFieldPurity(t *testing.T) {
 	_, err = s.enter("run2: Int! { let n = 0; {{a: if (true) { n += 1; n } else { 0 }}}.a }")
 	require.ErrorContains(t, err, "{{ }} fields run concurrently; this assignment writes `n`")
 }
+
+// Each entry infers with a new fresher, whose variables must still be none of
+// those that earlier entries left behind.
+func TestReplGenericCallsAcrossEntries(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("f(v: b, w: [String!]!): Int! { w.length }")
+	require.NoError(t, err)
+	_, err = s.enter("let empty = []")
+	require.NoError(t, err)
+	v, err := s.enter("f(1, w: empty)")
+	require.NoError(t, err)
+	require.Equal(t, "0", dang.Repr(v))
+
+	_, err = s.enter("let p = null\nlet ys = [null]")
+	require.NoError(t, err)
+	v, err = s.enter(`ys.reduce("") { acc, x => let n: Int! = x ?? 1; acc + "!" }`)
+	require.NoError(t, err)
+	require.Equal(t, `"!"`, dang.Repr(v))
+
+	_, err = s.enter("nonez(x: Int! = 1): [z]! { [] }")
+	require.NoError(t, err)
+	v, err = s.enter("[p, nonez(1)]")
+	require.NoError(t, err)
+	require.Equal(t, "[null, []]", dang.Repr(v))
+}
+
+// Re-entering a binding redefines it as it was, though the new entry types it
+// with variables of its own.
+func TestReplRedefinesGenericBindings(t *testing.T) {
+	s := newTestReplSession(t)
+	for _, entry := range []string{
+		"let xs = []", "let xs = []",
+		"let p = null", "let p = null",
+		"let u = if (true) { [] } else { 1 }", "let u = if (true) { [] } else { 1 }",
+	} {
+		_, err := s.enter(entry)
+		require.NoError(t, err, entry)
+	}
+}

@@ -1253,7 +1253,12 @@ func (t *Type) Eq(other hm.Type) bool {
 		return t == otherMod
 	}
 	// Unnamed modules (anonymous record-like modules) use structural equality
-	return t.AsRecord().Eq(otherMod.AsRecord())
+	// up to a renaming of their variables: two `{{xs: []}}`s, or a `{{x: []}}`
+	// and a `{{x: [a]!}}` parameter, are typed with variables of their own.
+	// Anonymous record types hold no free variables to substitute (see
+	// FreeTypeVar), so this is also what lets such an argument meet such a
+	// parameter.
+	return hm.EqIgnoringIDs(t.AsRecord(), otherMod.AsRecord())
 }
 
 func (t *Type) Supertypes() []hm.Type {

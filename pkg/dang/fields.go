@@ -287,7 +287,9 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 				return nil, fmt.Errorf("FieldDecl.Infer: TODO: type is not monomorphic")
 			}
 
-			if !definedType.Eq(curT) {
+			// A REPL entry may redefine a binding as it was, e.g. `let xs =
+			// []` again, though with variables of its own.
+			if !hm.EqIgnoringIDs(definedType, curT) {
 				return nil, WrapInferError(
 					fmt.Errorf("FieldDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
 					s,
