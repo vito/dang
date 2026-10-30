@@ -1,0 +1,4 @@
+# Map.get yields null for a missing key, so its result is nullable even when
+# the value type is not.
+let counts = ["a": 1]
+let n: Int! = counts.get("a")

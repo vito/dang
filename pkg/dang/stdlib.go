@@ -951,12 +951,12 @@ func registerStdlib() {
 			return ToValue(strings.Join(parts, separator))
 		})
 
-	// Map.get method: get(key: String!) -> a
+	// Map.get method: get(key: String!) -> a (nullable: the key may be absent)
 	Method(MapTypeModule, "get").
 		Doc("returns the value for the given key, or null if the key is absent").
 		Example(`["a": 1, "b": 2].get("a")`).
 		Params("key", NonNull(StringType)).
-		Returns(TypeVar('a')).
+		Returns(Nullable(TypeVar('a'))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MapValue)
 			key := args.GetString("key")
