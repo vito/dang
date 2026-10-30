@@ -31,7 +31,7 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`)
 - `+` overloads on `String!` (concat) and lists (concat); `- * / %` are numeric-only
 - operands must be **non-null**: operators don't propagate null the way field access does, so a nullable operand is a static type error — `xs[0] + 1` reports "operator addition is not defined for nullable type Int". Hand the operator a non-null value with `!` (`xs[0]! + 1`), `??` (`(xs[0] ?? 0) + 1`), or a null check ([#flow-typing])
-- the result is non-null; mixed `Int`/`Float` widens to `Float!`, and list `+` unifies the element types
+- the result is non-null; mixed `Int`/`Float` widens to `Float!`, and list `+` takes the left operand's type — the right operand's elements must fit the left's element type (`[1] + [xs[0]]` is an error; `[xs[0]] + [1]` is fine)
 - operands outside an operator's domain are a **static** type error, not a runtime failure: `"a" * "b"` ("operator multiplication is not defined for type String!"), `1 + "foo"` ("… not defined between types Int! and String!")
 
 ## Comparison
