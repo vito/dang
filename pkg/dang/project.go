@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -751,8 +753,10 @@ func astSchemaToIntrospection(schema *ast.Schema) *introspection.Schema {
 		}{Name: schema.Subscription.Name}
 	}
 
-	// Convert types
-	for _, t := range schema.Types {
+	// Convert types and directives in name order: the parser keeps them in
+	// maps, and the same SDL must always convert to the same schema.
+	for _, name := range slices.Sorted(maps.Keys(schema.Types)) {
+		t := schema.Types[name]
 		// Skip built-in introspection types
 		if strings.HasPrefix(t.Name, "__") {
 			continue
@@ -760,8 +764,8 @@ func astSchemaToIntrospection(schema *ast.Schema) *introspection.Schema {
 		result.Types = append(result.Types, astTypeToIntrospection(schema, t))
 	}
 
-	// Convert directives
-	for _, d := range schema.Directives {
+	for _, name := range slices.Sorted(maps.Keys(schema.Directives)) {
+		d := schema.Directives[name]
 		// Skip built-in directives
 		if d.Name == "skip" || d.Name == "include" || d.Name == "deprecated" || d.Name == "specifiedBy" {
 			continue

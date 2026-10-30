@@ -86,6 +86,36 @@ bumped: Int! = Box().add.value
 	require.Zero(t, client.calls.Load(), "changed schema reached evaluation")
 }
 
+func TestPreparedDirectoryReloadedSchema(t *testing.T) {
+	dir := preparedSource(t, "import Session\nresult: String! = Session.value\n")
+	const sdl = `
+directive @a on FIELD_DEFINITION
+directive @b on FIELD_DEFINITION
+type Query { value: String! @a @b one: One! two: Two! }
+type One { value: String! }
+type Two { value: String! }
+enum Three { A B }
+`
+	// Each evaluation loads the same SDL again, as a dang.toml schema import
+	// does, so it is equal to the prepared schema but not the same pointer.
+	ctxFor := func(name string) context.Context {
+		schema, err := SchemaFromSDL(sdl, "session.graphqls")
+		require.NoError(t, err)
+		return ContextWithImportConfigs(context.Background(), ImportConfig{Name: "Session", Client: blueprintClient(name), Schema: schema})
+	}
+	program, err := PrepareDir(ctxFor("prepare"), dir)
+	require.NoError(t, err)
+	for range 5 {
+		ctx := ctxFor("current")
+		values, err := program.Evaluate(ctx)
+		require.NoError(t, err)
+		result, found, err := values.Lookup(ctx, "result")
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, "current", result.(StringValue).Val)
+	}
+}
+
 func assertPreparedNoError(t *testing.T, err error) bool {
 	t.Helper()
 	if err != nil {
