@@ -1,4 +1,4 @@
-[1m[31mError:[0m operator addition is not defined for nullable type Int: supply a default with ??, assert it with !, or bind it to a local with let and check that for null
+[1m[31mError:[0m operator addition is not defined for nullable type Int: supply a default with ??, assert it with !, or bind it to a local with let and check that for null; if it's a field with a default, declare it non-null (T! = default)
   [2m[34m--> errors/operator_nullable_field_operand.dang:6:16[0m
  [2m    |[0m
  [2m  4 |   val: Int = 0[0m

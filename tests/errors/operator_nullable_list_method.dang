@@ -1,0 +1,3 @@
+# Auto-called list methods on a nullable list yield null, so `.length` on a
+# nullable list is nullable too.
+hasAny(xs: [Int!]): Boolean! { xs.length > 0 }
