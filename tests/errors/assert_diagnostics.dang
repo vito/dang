@@ -19,7 +19,7 @@ print(assert { count > 5 } rescue {
   e: AssertionError => e.message
 })
 
-print(assert { items[0] <= count - 3 } rescue {
+print(assert { items[0]! <= count - 3 } rescue {
   e: AssertionError => e.message
 })
 

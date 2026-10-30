@@ -1,0 +1,4 @@
+# Arithmetic needs non-null operands: indexing yields a nullable value, so it
+# must be asserted (`!`), defaulted (`??`) or null-checked first.
+let xs = [1, 2, 3]
+let next = xs[0] + 1
