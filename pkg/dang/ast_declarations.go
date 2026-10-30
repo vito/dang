@@ -342,8 +342,15 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	skolem, unskolem := skolemSubs(sigTypes...)
 	if len(skolem) > 0 {
+		// Rebind each argument from its body binding, not its signature type:
+		// a defaulted `x: T! = d` is nullable in the signature (callers may
+		// omit it or pass null) but T! in the body.
 		for _, arg := range args {
-			if t, ok := arg.Value.Type(); ok {
+			scheme, found := f.InferredScope.LocalSchemeOf(arg.Key)
+			if !found {
+				scheme = arg.Value
+			}
+			if t, ok := scheme.Type(); ok {
 				newEnv.Add(arg.Key, hm.NewScheme(nil, t.Apply(skolem).(hm.Type)))
 			}
 		}
