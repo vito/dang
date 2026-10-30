@@ -92,3 +92,62 @@ assert { seen == ["a", "b", "c"] }
 let k = "dynamic"
 let dyn = [k: 42]
 assert { dyn["dynamic"] == 42 }
+
+# decoding into Map[T]: values materialize at T, keys come back sorted
+let decoded: Map[Int!]! = JSON.decode("""{"z": 1, "a": 2}""")
+assert { decoded == ["a": 2, "z": 1] }
+assert { decoded.keys == ["a", "z"] }
+assert { JSON.encode(decoded) == """{"a":2,"z":1}""" }
+
+let emptyDecoded: Map[Int!]! = JSON.decode("{}")
+assert { emptyDecoded.isEmpty }
+
+let nullDecoded: Map[Int!] = JSON.decode("null")
+assert { nullDecoded == null }
+
+enum MapStatus { UP DOWN }
+let statuses = JSON.decode("""{"web": "UP", "db": "DOWN"}""") :: Map[MapStatus!]!
+assert { statuses["web"] == MapStatus.UP }
+assert { statuses["db"] == MapStatus.DOWN }
+
+let nested: Map[Map[String]!]! = JSON.decode("""{"o": {"k": null, "j": "v"}}""")
+assert { nested["o"] == ["j": "v", "k": null] }
+
+let yamlDecoded = YAML.decode("b: [1, 2]\na: []") :: Map[[Int!]!]!
+assert { yamlDecoded == ["a": [], "b": [1, 2]] }
+
+type MapItem {
+  name: String!
+  n: Int! = 1
+}
+
+let tomlDecoded: Map[MapItem!]! = TOML.decode("[x]\nname = \"one\"\n[y]\nname = \"two\"\nn = 5")
+assert { tomlDecoded.map { key, item => item.n } == ["x": 1, "y": 5] }
+assert { tomlDecoded["y"].name == "two" }
+
+type MapConfig {
+  env: Map[String!]! = [:]
+}
+
+let config: MapConfig! = JSON.decode("""{"env": {"FOO": "bar"}}""")
+assert { config.env == ["FOO": "bar"] }
+let defaulted: MapConfig! = JSON.decode("{}")
+assert { defaulted.env.isEmpty }
+
+# map literals holding decoded values materialize at the expected value type
+let literalOfDecoded = ["a": JSON.decode("1")] :: Map[Int!]!
+assert { literalOfDecoded["a"] + 1 == 2 }
+
+# decode errors name the offending key
+let wrongValue = (JSON.decode("""{"a": "x"}""") :: Map[Int!]!) rescue {
+  err: Error => err.message
+}
+assert { wrongValue == """["a"]: expected int, got string""" }
+let notObject = (JSON.decode("[1]") :: Map[Int!]!) rescue {
+  err: Error => err.message
+}
+assert { notObject == "expected object, got array" }
+let nestedNull = (JSON.decode("""{"a": {"b c": null}}""") :: Map[Map[Int!]!]!) rescue {
+  err: Error => err.message
+}
+assert { nestedNull == """["a"]["b c"]: null is not allowed for Int!""" }
