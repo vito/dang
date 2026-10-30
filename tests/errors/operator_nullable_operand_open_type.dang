@@ -1,0 +1,4 @@
+# A nullable operand is rejected even when the other side's type is still
+# open, as with an empty list literal.
+let ys: [Int!] = null
+let both = ys + []

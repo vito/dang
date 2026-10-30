@@ -1,10 +1,10 @@
-[1m[31mError:[0m operator addition is not defined for nullable type Int: check it for null first, supply a default with ??, or assert it with !
+[1m[31mError:[0m operator addition is not defined for nullable type Int: supply a default with ??, assert it with !, or bind it to a local with let and check that for null
   [2m[34m--> errors/operator_nullable_operand.dang:4:12[0m
  [2m    |[0m
  [2m  2 | # must be asserted (`!`), defaulted (`??`) or null-checked first.[0m
  [2m  3 | let xs = [1, 2, 3][0m
  [2m[34m[1m  4 | [0mlet next = xs[0] + 1
-[2m                  [31m^^^^^^^^^[0m
+[2m                  [31m^^^^^[0m
  [2m  5 | [0m
  [2m    |[0m
 
