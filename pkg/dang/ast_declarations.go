@@ -88,6 +88,20 @@ func (f *FunctionBase) attachParamEffects(rec *RecordType, block *hm.FunctionTyp
 	}
 }
 
+// paramBodyType is the type a parameter has inside its function or
+// constructor body. Omitting a defaulted argument or passing null yields the
+// default, so a parameter whose default is non-null is non-null in the body,
+// even though its signature type stays nullable for callers.
+func paramBodyType(arg *FieldDecl, t hm.Type) hm.Type {
+	if arg.Value == nil || !arg.defaultNonNull {
+		return t
+	}
+	if _, isNonNull := t.(hm.NonNullType); isNonNull {
+		return t
+	}
+	return hm.NonNullType{Type: t}
+}
+
 // inferFunctionArguments processes FieldDecl arguments into function type arguments
 func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
 	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*FieldDecl).Infer)
@@ -126,6 +140,8 @@ func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.En
 			// Argument has a default value - make it nullable in the function signature
 			if nonNullType, isNonNull := finalArgType.(hm.NonNullType); isNonNull {
 				signatureType = nonNullType.Type
+			} else {
+				env.Add(arg.Name.Name, hm.NewScheme(nil, paramBodyType(arg, finalArgType)))
 			}
 		}
 
@@ -342,8 +358,15 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	skolem, unskolem := skolemSubs(sigTypes...)
 	if len(skolem) > 0 {
+		// Rebind each argument from its body binding, not its signature type:
+		// a defaulted parameter is nullable in the signature but may be
+		// non-null in the body (see inferFunctionArgumentsWith).
 		for _, arg := range args {
-			if t, ok := arg.Value.Type(); ok {
+			scheme, found := f.InferredScope.LocalSchemeOf(arg.Key)
+			if !found {
+				scheme = arg.Value
+			}
+			if t, ok := scheme.Type(); ok {
 				newEnv.Add(arg.Key, hm.NewScheme(nil, t.Apply(skolem).(hm.Type)))
 			}
 		}

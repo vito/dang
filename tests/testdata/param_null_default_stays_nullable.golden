@@ -1,0 +1,9 @@
+[1m[31mError:[0m return type mismatch: declared String!, inferred String
+  [2m[34m--> errors/param_null_default_stays_nullable.dang:2:34[0m
+ [2m    |[0m
+ [2m  1 | # A parameter whose default can be null stays nullable in the body.[0m
+ [2m[34m[1m  2 | [0mmaybe(x: String = null): String! { x }
+[2m                                        [31m^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

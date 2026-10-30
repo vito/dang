@@ -159,6 +159,10 @@ excise null at the boundary — prefer a non-null-with-default parameter over a 
 whenever a sensible default (including a sentinel like `""`) exists, keeping both the caller
 (who can omit the argument) and the body (which never sees null) happy.
 
+The same goes for a parameter declared nullable whose default is non-null
+(`name: String = "world"`): it is non-null in the body too. Only a default that can itself
+be null (`= null`, or a nullable expression) leaves the parameter nullable there.
+
 ```dang
 greet(name: String! = "world"): String! { "hi " + name }
 greet                      # "hi world"  (omitted)

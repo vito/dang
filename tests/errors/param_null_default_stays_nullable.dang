@@ -1,0 +1,2 @@
+# A parameter whose default can be null stays nullable in the body.
+maybe(x: String = null): String! { x }

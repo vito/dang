@@ -1,0 +1,48 @@
+# A parameter with a non-null default is non-null in the body: omitting the
+# argument or passing null both yield the default.
+
+greet(name: String!, prefix: String = "Hello"): String! {
+  let p: String! = prefix
+  p + ", " + name
+}
+
+assert { greet("Ada") == "Hello, Ada" }
+assert { greet("Ada", prefix: null) == "Hello, Ada" }
+assert { greet("Ada", prefix: "Hi") == "Hi, Ada" }
+
+# a default computed from an earlier parameter
+shout(word: String!, loud: String = word.toUpper): String! { loud }
+
+assert { shout("hey") == "HEY" }
+
+# a null default leaves the parameter nullable
+maybe(x: String = null): String { x }
+
+assert { maybe == null }
+assert { maybe("set") == "set" }
+
+# generic functions keep the narrowing, and non-null defaulted params stay
+# non-null too (they used to read as nullable in a generic function's body)
+pick(v: a, label: String! = "picked", note: String = "noted"): String! {
+  let l: String! = label
+  let n: String! = note
+  l + "/" + n
+}
+
+assert { pick(1) == "picked/noted" }
+assert { pick("x", label: null, note: null) == "picked/noted" }
+
+# constructor parameters
+type Counter {
+  start: Int! = 0
+
+  new(from: Int = 10) {
+    let f: Int! = from
+    self.start = f
+    self
+  }
+}
+
+assert { Counter.start == 10 }
+assert { Counter(from: null).start == 10 }
+assert { Counter(from: 3).start == 3 }

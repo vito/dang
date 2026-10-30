@@ -22,6 +22,12 @@ type FieldDecl struct {
 
 	// A type inferred from context, i.e. a lambda passed as a function argument.
 	ContextInferredType hm.Type
+
+	// defaultNonNull records, during Infer, that Value's type is non-null. As
+	// a function or constructor parameter, such a default is what the body
+	// sees whenever the caller omits the argument or passes null, so the
+	// parameter is non-null inside the body (see paramBodyType).
+	defaultNonNull bool
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -259,6 +265,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		if err != nil {
 			return nil, err
 		}
+		_, s.defaultNonNull = inferredType.(hm.NonNullType)
 
 		if definedType != nil {
 			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
@@ -1135,7 +1142,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 		if argFn := fnTypeOf(argType); argFn != nil && c.ctorFn != nil {
 			argFn.SetEffect(c.ctorFn.paramEffect(arg.Name.Name))
 		}
-		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
+		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramBodyType(arg, argType)))
 	}
 	if newDecl.BlockParam != nil {
 		var blockType hm.Type
