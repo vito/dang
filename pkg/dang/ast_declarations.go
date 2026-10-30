@@ -1188,6 +1188,10 @@ type ImportDecl struct {
 	// It carries the compiled module reused at Eval, mirroring how client/schema
 	// are stashed for GraphQL imports.
 	dangMod *dangModule
+
+	// Prepared source retains schema/type metadata, never a client. Evaluation
+	// resolves this import against the current invocation's configuration.
+	prepared bool
 }
 
 type ImportConfig struct {
@@ -1364,7 +1368,18 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 	}
 
 	// Create evaluation environment for the imported schema
-	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
+	client, schema := i.client, i.schema
+	if i.prepared {
+		config, err := i.loadImportConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if config.DangModuleDir != "" || !samePreparedSchema(i.schema, config.Schema) {
+			return nil, fmt.Errorf("prepared import %q has a different schema", i.Name.Name)
+		}
+		client, schema = config.Client, config.Schema
+	}
+	importValueScope := ValueScopeFromSchema(i.inferred, client, schema)
 
 	installImportedValueScope(scope, i.Name.Name, importValueScope)
 

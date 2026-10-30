@@ -1199,11 +1199,6 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			panic(fmt.Errorf("ObjectDecl.Eval: object %q has not been inferred", c.Name.Name))
 		}
 
-		// Set doc string for the object/module itself
-		if c.DocString != "" {
-			c.Inferred.SetTypeDocString(c.DocString)
-		}
-
 		// Find explicit new() or derive constructor from fields
 		newDecl := c.findNewConstructor()
 		var constructorParams []*FieldDecl
