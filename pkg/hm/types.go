@@ -69,22 +69,56 @@ func Freshen(tv TypeVariable) TypeVariable {
 // Rigid returns the rigid (skolem) counterpart of a flexible type variable.
 func Rigid(tv TypeVariable) TypeVariable { return tv | rigidBit }
 
-// EqIgnoringIDs reports whether a and b are equal once their flexible type
-// variables are compared by name alone, as they were before variables had
-// ids. It is for comparing shapes that separate inferences produced, each
-// with variables of its own: two `[]`s typed by two REPL entries are both
-// `[a]!`. Rigid variables keep their ids, so that no signature's can pass
-// for another's.
+// EqIgnoringIDs reports whether a and b are equal up to a consistent renaming
+// of their flexible type variables: `{x: [b]!}` matches `{x: [a]!}`, but
+// `{x: [a]!, y: [a]!}` does not match `{x: [a]!, y: [b]!}`. It is for
+// comparing shapes that separate inferences produced, each with variables of
+// its own, such as two `{{xs: []}}`s, or a `{{x: []}}` and a parameter
+// written `{{x: [a]!}}`. Rigid variables are compared as they are.
 func EqIgnoringIDs(a, b Type) bool {
-	return withoutIDs(a).Eq(withoutIDs(b))
+	if a.Eq(b) {
+		return true
+	}
+	return canonical(a).Eq(canonical(b))
 }
 
-func withoutIDs(t Type) Type {
-	subs := NewSubs()
-	for tv := range t.FreeTypeVar() {
-		if !tv.IsRigid() {
-			subs.Add(tv, tv&nameMask)
+// canonicalBase offsets the names canonical gives variables past any written
+// letter; with id 0, none of them is a fresh variable either. Only canonical
+// types, compared and dropped, ever hold them.
+const canonicalBase = 0x800000
+
+// canonical renames t's flexible variables after the order they first occur
+// in it, walking its components in order (record fields by key).
+func canonical(t Type) Type {
+	var subs Subs
+	var walk func(Type)
+	visit := func(tv TypeVariable) {
+		if tv.IsRigid() {
+			return
 		}
+		if _, seen := subs[tv]; seen {
+			return
+		}
+		if subs == nil {
+			subs = NewSubs()
+		}
+		subs.Add(tv, TypeVariable(canonicalBase+len(subs)))
+	}
+	walk = func(t Type) {
+		switch v := t.(type) {
+		case TypeVariable:
+			visit(v)
+		case NullableTypeVariable:
+			visit(v.TypeVariable)
+		default:
+			for _, c := range t.Types() {
+				walk(c)
+			}
+		}
+	}
+	walk(t)
+	if len(subs) == 0 {
+		return t
 	}
 	return t.Apply(subs).(Type)
 }

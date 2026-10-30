@@ -59,4 +59,19 @@ func TestEqIgnoringIDs(t *testing.T) {
 	if EqIgnoringIDs(Rigid(one), Rigid(other)) {
 		t.Fatalf("rigid %v and %v compare equal ignoring ids", one, other)
 	}
+
+	// Written and fresh variables compare up to a consistent renaming.
+	a, b := TypeVariable('a'), NewSimpleFresher().Fresh()
+	if !EqIgnoringIDs(NewFnType(a, NonNullType{Type: a}), NewFnType(b, NonNullType{Type: b})) {
+		t.Errorf("(a) -> a! and (b) -> b! differ")
+	}
+	if !EqIgnoringIDs(NewFnType(a, TypeVariable('b')), NewFnType(TypeVariable('b'), a)) {
+		t.Errorf("(a) -> b and (b) -> a differ")
+	}
+	if EqIgnoringIDs(NewFnType(a, a), NewFnType(a, b)) {
+		t.Errorf("(a) -> a and (a) -> b match")
+	}
+	if EqIgnoringIDs(NewFnType(a, NullableTypeVariable{TypeVariable: a}), NewFnType(b, a)) {
+		t.Errorf("(a) -> a? and (b) -> a match")
+	}
 }

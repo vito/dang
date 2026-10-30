@@ -103,3 +103,23 @@ let r1 = {{xs: none}}
 let r2 = {{xs: none}}
 assert { r1 == r2 }
 assert { [r1, r2].length == 2 }
+
+# and so do records built from separate empty lists
+let e1 = {{xs: []}}
+let e2 = {{xs: []}}
+assert { e1 == e2 }
+assert { [e1, e2].length == 2 }
+
+# a record argument meets a parameter written with its own variable
+takesRecord(r: {{x: [a]!}}): Int! { 1 }
+
+assert { takesRecord({{x: []}}) == 1 }
+
+# reduce's own `b` is not one written in the receiver's annotation
+let annotated: [[b]!]! = [[]]
+assert {
+  annotated.reduce("") { acc, x =>
+    let n: [Int!]! = x
+    acc + "!"
+  } == "!"
+}
