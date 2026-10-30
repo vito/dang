@@ -30,13 +30,14 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 - `%` is `Int`-only
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`)
 - `+` overloads on `String!` (concat) and lists (concat); `- * / %` are numeric-only
-- result type unifies the operands
+- operands must be **non-null**: operators don't propagate null the way field access does, so a nullable operand is a static type error — `xs[0] + 1` reports "operator addition is not defined for nullable type Int". Hand the operator a non-null value with `!` (`xs[0]! + 1`), `??` (`(xs[0] ?? 0) + 1`), or a null check ([#flow-typing])
+- the result is non-null; mixed `Int`/`Float` widens to `Float!`, and list `+` unifies the element types
 - operands outside an operator's domain are a **static** type error, not a runtime failure: `"a" * "b"` ("operator multiplication is not defined for type String!"), `1 + "foo"` ("… not defined between types Int! and String!")
 
 ## Comparison
 
-- `<` `<=` `>` `>=` on numbers (`Int`/`Float`, mixed allowed) or strings (compared lexicographically) — operands must match (`"a" < 1` is a static type error)
-- `==` `!=` are type-safe — mismatched types compare `false`, no coercion (`num == str` is `false`)
+- `<` `<=` `>` `>=` on numbers (`Int`/`Float`, mixed allowed) or strings (compared lexicographically) — operands must match (`"a" < 1` is a static type error) and be non-null, as for arithmetic
+- `==` `!=` are type-safe — mismatched types compare `false`, no coercion (`num == str` is `false`); they accept nullable operands (`x == null`)
 - `==`/`!=` work on numbers, strings, bools, null, lists, maps, and records; both return `Boolean!`
 - **anonymous records** (`{{…}}` literals and `.{{…}}` selections) compare by **value**: equal when they have the same fields and every field is equal, so `{{a: 1}} == {{a: 1}}` is `true` and `{{a: 1}} == {{a: 2}}` is `false`
 - **named-type objects** compare by **type identity, then by their stored fields**: equal only when both are the same named type *and* every data field is equal. So `Rabbit("x") == Rabbit("x")` is `true`, `Rabbit("x") == Rabbit("y")` is `false`, distinct types never match (`Rabbit == Hare` is `false`), and a named object never equals an anonymous record of the same shape. Computed members (`field: T { … }`) are behavior, not stored state, so they're ignored

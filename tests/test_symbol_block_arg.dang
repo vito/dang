@@ -1,4 +1,4 @@
-do(&yield: Int): Int {
+do(&yield: Int!): Int! {
   yield * 2
 }
 

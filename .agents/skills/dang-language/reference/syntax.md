@@ -103,10 +103,10 @@ greet(
 ### Arithmetic
 - `+ - * /` on `Int`/`Float` (mixed promotes to `Float`). `%` is `Int`-only.
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`).
-- `+` overloads on `String!` (concat) and lists (concat). Result type unifies operands.
+- `+` overloads on `String!` (concat) and lists (concat). Operands must be **non-null** (a nullable one is a type error — `!`, `??`, or null-check it first); the result is non-null.
 
 ### Comparison
-- `< <= > >=` on **numbers only** (`Int`/`Float`, mixed allowed) — NOT on strings.
+- `< <= > >=` on **numbers only** (`Int`/`Float`, mixed allowed) — NOT on strings. Operands must be non-null, like arithmetic.
 - `== !=` are type-safe: mismatched types compare `false`, no coercion (`num == str` is `false`). Work on numbers, strings, bools, null, lists, maps, records. Return `Boolean!`. Records and objects: see objects.md "Equality".
 
 ### Logical

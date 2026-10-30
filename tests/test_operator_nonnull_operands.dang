@@ -1,0 +1,39 @@
+# Arithmetic and ordering operators need non-null operands: a null operand
+# would raise at runtime, so the checker rejects a nullable one up front.
+# These are the ways to hand an operator a non-null value.
+
+let xs = [1, 2, 3]
+let counts = ["a": 1]
+
+# `!` asserts non-null
+assert { xs[0]! + 1 == 2 }
+
+# `??` supplies a default
+assert { (xs[9] ?? 0) + 1 == 1 }
+assert { (counts["missing"] ?? 10) * 2 == 20 }
+
+# narrowing by a null check
+addMaybe(a: Int, b: Int!): Int! {
+  if (a == null) {
+    return b
+  }
+  a + b
+}
+
+assert { addMaybe(null, 5) == 5 }
+assert { addMaybe(2, 5) == 7 }
+
+# ordering comparisons follow the same rule
+assert { xs[1]! > 1 }
+
+# strings and lists too
+greeting(name: String): String! {
+  if (name != null) { "hi " + name } else { "hi" }
+}
+
+assert { greeting("ada") == "hi ada" }
+assert { greeting(null) == "hi" }
+
+# equality is defined for nullable operands
+assert { xs[9] == null }
+assert { counts["a"] != 2 }

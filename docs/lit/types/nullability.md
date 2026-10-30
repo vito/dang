@@ -34,6 +34,7 @@
 
 - `nullable.field` is nullable even if `field: T!`
 - chains short-circuit: `a.b.c` is null if any link is null
+- operators are the exception: arithmetic and ordering comparisons need non-null operands, so `xs[0] + 1` is a type error rather than `null` (see [#operators])
 - recovers via `??` (see [#operators]) or flow narrowing (next section)
 
 ## Flow-sensitive narrowing {#flow-typing}
