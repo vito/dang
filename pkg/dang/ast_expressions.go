@@ -189,6 +189,14 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		}
 	}
 
+	// Required arguments are judged once the given arguments have pinned the
+	// signature's variables, but before omitted ones make theirs nullable:
+	// with `choose(x: a, y: a)`, `choose(1)` misses an Int!.
+	signature := ft
+	if argSubs != nil {
+		signature = ft.Apply(argSubs).(*hm.FunctionType)
+	}
+
 	// An omitted argument is null or its default; see omittedParamSubs.
 	if omittedSubs := c.omittedArgSubs(argRecord, argMapping); omittedSubs != nil {
 		if argSubs == nil {
@@ -202,10 +210,6 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	if err := hm.CommitWeak(argSubs); err != nil {
 		return nil, NewInferError(err, c)
 	}
-
-	// Required arguments are those of the signature, before the arguments'
-	// substitutions: a defaulted `y: a = x` isn't required once a := Int!.
-	signature := ft
 
 	// Apply argument substitutions to the function type before inferring the
 	// block arg, so that type variables resolved from arguments (like 'b' from
@@ -277,6 +281,15 @@ func instantiateCallee(ft *hm.FunctionType) *hm.FunctionType {
 	subs := freshenSubs(ft.FreeTypeVar())
 	if len(subs) == 0 {
 		return ft
+	}
+	// A variable the signature writes `a!` stands for nullable types only
+	// (its non-null form being `a!`), so the call's copy is a nullable one:
+	// `first(xs: [a!]!): a` may return null, which no use of its result
+	// can then take for an Int!.
+	for tv := range hm.NonNullVars(ft) {
+		if fresh, ok := subs[tv]; ok {
+			subs[tv] = hm.Nullable(fresh)
+		}
 	}
 	return ft.Apply(subs).(*hm.FunctionType)
 }
@@ -685,8 +698,10 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 		paramName := field.Key
 		scheme := field.Value
 
-		// Skip if this argument was provided
-		if providedArgs[paramName] {
+		// Skip if this argument was provided, or has a default (which a
+		// non-null type pinned by the other arguments doesn't change:
+		// `y: a = x` isn't required once a := Int!)
+		if providedArgs[paramName] || rt.Defaulted[paramName] {
 			continue
 		}
 

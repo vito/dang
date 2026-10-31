@@ -1,0 +1,5 @@
+# `a!` is a's non-null form, so `a` itself may be null: a caller can't take
+# `firstOfNonNull([])` for an Int!.
+firstOfNonNull(xs: [a!]!): a { xs[0] }
+
+let n: Int! = firstOfNonNull([])

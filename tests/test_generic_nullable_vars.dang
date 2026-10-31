@@ -27,8 +27,14 @@ firstNonNull(xs: [a]!): a! { xs[0]! }
 
 assert { firstNonNull([3]) == 3 }
 
-# with the element written non-null, indexing gives a (nullable) `a`
+# with the element written non-null, indexing gives a (nullable) `a`, and
+# callers' `a` is nullable
 firstOfNonNull(xs: [a!]!): a { xs[0] }
 
 assert { firstOfNonNull([4]) == 4 }
 assert { firstOfNonNull([]) == null }
+
+nonNull(x: a!): a! { x }
+
+let three: Int! = nonNull(3)
+assert { three == 3 }

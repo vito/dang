@@ -1,0 +1,10 @@
+[1m[31mError:[0m missing required argument: "y"
+  [2m[34m--> errors/generic_missing_pinned_arg.dang:5:9[0m
+ [2m    |[0m
+ [2m  3 | choose(x: a, y: a): a { y }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet n = choose(1)
+[2m               [31m^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

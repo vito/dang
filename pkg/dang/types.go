@@ -291,6 +291,9 @@ type RecordType struct {
 	Fields     []Keyed[*hm.Scheme]
 	Directives []Keyed[[]*DirectiveApplication]
 	DocStrings map[string]string // Maps field names to their doc strings
+	// Defaulted names the fields, as a function's parameters, that have a
+	// default value.
+	Defaulted map[string]bool
 }
 
 var _ hm.Type = (*RecordType)(nil)
@@ -301,6 +304,20 @@ func NewRecordType(name string, fields ...Keyed[*hm.Scheme]) *RecordType {
 		Named:  name,
 		Fields: fields,
 	}
+}
+
+// defaultedParams names the parameters among args that have a default.
+func defaultedParams(args []*FieldDecl) map[string]bool {
+	var out map[string]bool
+	for _, a := range args {
+		if a.Value != nil {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[a.Name.Name] = true
+		}
+	}
+	return out
 }
 
 var _ hm.Env = (*RecordType)(nil)
@@ -323,6 +340,7 @@ func (t *RecordType) Clone() hm.Env {
 	}
 	retVal.Fields = ts
 	retVal.Directives = t.Directives
+	retVal.Defaulted = t.Defaulted
 	// Clone doc strings map
 	if t.DocStrings != nil {
 		retVal.DocStrings = make(map[string]string, len(t.DocStrings))
@@ -354,6 +372,7 @@ func (t *RecordType) Apply(subs hm.Subs) hm.Substitutable {
 	dup := NewRecordType(t.Named, fields...)
 	dup.Directives = t.Directives
 	dup.DocStrings = t.DocStrings
+	dup.Defaulted = t.Defaulted
 	return dup
 }
 
@@ -646,6 +665,7 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	argsRec := NewRecordType("", regularArgs...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(t.Args)
 
 	// Create function type with optional block parameter
 	fnType := hm.NewFnType(argsRec, ret)

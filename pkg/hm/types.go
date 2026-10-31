@@ -252,6 +252,42 @@ func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
 // t itself when it is already nullable.
 func Nullable(t Type) Type { return makeNullable(t) }
 
+// NonNullVars returns the variables t writes non-null, as `a!`. Such a
+// variable stands only for nullable types: `a!` is its non-null form, and
+// `a` itself may be null (a list of `a!` indexed out of bounds, say).
+func NonNullVars(t Type) TypeVarSet {
+	set := TypeVarSet{}
+	var walk func(Type)
+	walk = func(t Type) {
+		switch v := t.(type) {
+		case NonNullType:
+			if tv, ok := v.Type.(TypeVariable); ok {
+				set.Add(tv)
+				return
+			}
+			walk(v.Type)
+		case *FunctionType:
+			walk(v.arg)
+			walk(v.ret)
+			if v.block != nil {
+				walk(v.block)
+			}
+		case *UnionType:
+			for _, o := range v.Options {
+				walk(o)
+			}
+		default:
+			for _, c := range t.Types() {
+				if c != nil {
+					walk(c)
+				}
+			}
+		}
+	}
+	walk(t)
+	return set
+}
+
 // NonNull returns the non-null form of t: T! for T, a! for a variable a or
 // its nullable form a?, and t itself when it is already non-null.
 func NonNull(t Type) Type {
@@ -637,7 +673,9 @@ func (t NonNullType) Name() string {
 
 func (t NonNullType) Apply(subs Subs) Substitutable {
 	applied := t.Type.Apply(subs).(Type)
-	return NonNullType{applied}
+	// A variable may stand for a non-null type (a bound weak one, say),
+	// or for a? : T!! is T!, and a?! is a!.
+	return NonNull(applied)
 }
 
 func (t NonNullType) FreeTypeVar() TypeVarSet {
