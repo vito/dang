@@ -1118,6 +1118,17 @@ func typeNameValueType(t *Type) hm.Type {
 	return hm.NonNullType{Type: t.MetaType()}
 }
 
+// namespaceModuleOf returns the module for the runtime value of a type's
+// name: its meta-type when one was created at type-check time (see
+// typeNameValueType), else the type itself. It never creates a meta-type,
+// so it is safe on types shared between evaluations.
+func namespaceModuleOf(t TypeScope) TypeScope {
+	if mod, ok := t.(*Type); ok && mod.meta != nil {
+		return mod.meta
+	}
+	return t
+}
+
 // enumNamespaceType is the type of an enum's name used as a value: the
 // namespace holding its values (`Color.RED`, `Color.values`), as opposed to
 // an enum value, which has no members. It copies the enum's public members

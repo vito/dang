@@ -611,8 +611,10 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				continue
 			}
 
-			// Create a module for the interface type (just a type placeholder)
-			interfaceModuleVal := NewObject(interfaceTypeScope)
+			// Create a module for the interface type (just a type placeholder),
+			// of its meta-type like its type-level binding, so no type
+			// pattern on the interface matches it.
+			interfaceModuleVal := NewObject(namespaceModuleOf(interfaceTypeScope))
 
 			// Add the interface module to the environment
 			env.Bind(t.Name, interfaceModuleVal, PublicVisibility)
@@ -625,7 +627,7 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				continue
 			}
 
-			unionModuleVal := NewObject(unionTypeScope)
+			unionModuleVal := NewObject(namespaceModuleOf(unionTypeScope))
 			env.Bind(t.Name, unionModuleVal, PublicVisibility)
 		}
 
