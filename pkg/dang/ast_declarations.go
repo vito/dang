@@ -360,6 +360,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		if definedRet != nil {
 			definedRet = definedRet.Apply(skolem).(hm.Type)
 		}
+		effCtx = withScopedTypeVars(effCtx, skolem)
 	}
 
 	// Infer return type from function body. A fresh return target lets

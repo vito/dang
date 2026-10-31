@@ -494,7 +494,40 @@ func (t VariableTypeNode) ReferencedSymbols() []string {
 }
 
 func (t VariableTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return hm.TypeVariable(t.Name), nil
+	tv := hm.TypeVariable(t.Name)
+	if scoped, ok := scopedTypeVars(ctx)[tv]; ok {
+		return scoped, nil
+	}
+	return tv, nil
+}
+
+type scopedTypeVarsKey struct{}
+
+// withScopedTypeVars brings a generic function's own type variables into
+// scope for its body, as the rigid variables skolem maps them to: there, an
+// `a` written in an annotation (`let r: a = v`, `v :: a`, a nested function's
+// signature) is the function's `a`, which stands for whatever type the caller
+// picks, not a new variable free to unify with anything.
+func withScopedTypeVars(ctx context.Context, skolem hm.Subs) context.Context {
+	outer := scopedTypeVars(ctx)
+	scoped := make(hm.Subs, len(outer)+len(skolem))
+	for tv, t := range outer {
+		scoped[tv] = t
+	}
+	for tv, t := range skolem {
+		// Only written variables can be written again; fresh ones (from an
+		// inferred default, say) have no name to write.
+		if !tv.IsWritten() {
+			continue
+		}
+		scoped[tv] = t
+	}
+	return context.WithValue(ctx, scopedTypeVarsKey{}, scoped)
+}
+
+func scopedTypeVars(ctx context.Context) hm.Subs {
+	s, _ := ctx.Value(scopedTypeVarsKey{}).(hm.Subs)
+	return s
 }
 
 type ObjectTypeField struct {
