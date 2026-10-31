@@ -20,17 +20,27 @@ func (e UnificationError) Error() string {
 // as String -> ID/custom scalar; use AssignableWithCoercion at explicit Coerce
 // boundaries instead.
 func Assignable(have, want Type) (Subs, error) {
-	return assignable(have, want, false)
+	subs, err := assignable(have, want, false)
+	if err == nil {
+		CommitWeak(subs)
+	}
+	return subs, err
 }
 
 // AssignableWithCoercion is like Assignable, but additionally accepts explicit
 // Coercible relationships such as String -> ID/custom scalar/enum. Use this
 // only when the expression is wrapped in a runtime Coerce node.
 func AssignableWithCoercion(have, want Type) (Subs, error) {
-	return assignable(have, want, true)
+	subs, err := assignable(have, want, true)
+	if err == nil {
+		CommitWeak(subs)
+	}
+	return subs, err
 }
 
 func assignable(have, want Type, allowCoercion bool) (Subs, error) {
+	have, want = prune(have), prune(want)
+
 	// Handle nullable type variables first (before regular TypeVariable,
 	// since NullableTypeVariable embeds TypeVariable)
 	if haveNTV, ok := have.(NullableTypeVariable); ok {
@@ -198,6 +208,12 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	}
 
 	subs := NewSubs()
+	// A weak variable meeting a flexible one keeps its identity: the
+	// flexible one, which nothing persists, takes the weak one on.
+	if tv2, ok := t.(TypeVariable); ok && tv.IsWeak() && !tv2.IsWeak() && !tv2.IsRigid() {
+		subs.Add(tv2, tv)
+		return subs, nil
+	}
 	subs.Add(tv, t)
 	return subs, nil
 }
@@ -214,8 +230,9 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 			return subs, nil
 		}
 		// Never bind a rigid variable: a flexible one absorbs it instead.
+		// Nor a weak one to a flexible one, which nothing persists.
 		switch {
-		case !tv.IsRigid():
+		case !tv.IsRigid() && !(tv.IsWeak() && !tv2.IsWeak() && !tv2.IsRigid()):
 			subs.Add(tv.TypeVariable, tv2)
 		case !tv2.IsRigid():
 			subs.Add(tv2.TypeVariable, tv)
@@ -247,6 +264,14 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 
 	// Strip NonNull — null is inherently nullable.
 	t = makeNullable(t)
+	if tv.IsWeak() && varOf(t) < 0 && !occursCheck(tv.TypeVariable, t) {
+		// A weak variable is bound for good, so bind it as precisely as
+		// this allows: its nullable form a? fits T exactly when a is T!,
+		// which keeps `let n: Int = xs[0]` from making xs a list of
+		// nullable Ints.
+		subs.Add(tv.TypeVariable, NonNullType{Type: t})
+		return subs, nil
+	}
 	return bindVar(tv.TypeVariable, t)
 }
 

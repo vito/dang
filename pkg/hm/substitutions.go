@@ -29,7 +29,7 @@ func (s Subs) Compose(other Subs) (Subs, error) {
 
 	for tv, t := range other {
 		if existing, exists := result[tv]; exists {
-			merged, extraSubs, err := MergeTypes(existing, t)
+			merged, extraSubs, err := mergeTypes(existing, t)
 			if err != nil {
 				return nil, err
 			}
@@ -57,7 +57,7 @@ func (s Subs) mergeIn(extra Subs) (Subs, error) {
 	}
 	for tv, t := range extra {
 		if existing, exists := result[tv]; exists {
-			merged, moreSubs, err := MergeTypes(existing, t)
+			merged, moreSubs, err := mergeTypes(existing, t)
 			if err != nil {
 				return nil, err
 			}

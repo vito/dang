@@ -1,9 +1,10 @@
 package hm
 
 // IsSubtypeOf checks whether sub is a true subtype of super, ignoring
-// value-level Coercible relationships.
+// value-level Coercible relationships. It is a question, not a constraint:
+// it binds no weak variable.
 func IsSubtypeOf(sub, super Type) bool {
-	_, err := Assignable(sub, super)
+	_, err := assignable(sub, super, false)
 	return err == nil
 }
 
@@ -61,6 +62,16 @@ func CommonSupertype(t1, t2 Type) Type {
 // MergeTypes returns the least type that can accept values of both current and
 // next, plus any substitutions discovered while merging type variables.
 func MergeTypes(current, next Type) (Type, Subs, error) {
+	merged, subs, err := mergeTypes(current, next)
+	if err == nil {
+		CommitWeak(subs)
+	}
+	return merged, subs, err
+}
+
+// mergeTypes is MergeTypes without committing weak variables, for merging
+// within a unification, which commits them only if it succeeds as a whole.
+func mergeTypes(current, next Type) (Type, Subs, error) {
 	if current == nil {
 		return next, NewSubs(), nil
 	}
@@ -68,7 +79,7 @@ func MergeTypes(current, next Type) (Type, Subs, error) {
 		return current, NewSubs(), nil
 	}
 
-	if subs, err := Assignable(next, current); err == nil {
+	if subs, err := assignable(next, current, false); err == nil {
 		merged := current.Apply(subs).(Type)
 		resolvedNext := next.Apply(subs).(Type)
 		if mergedNonNull, ok := merged.(NonNullType); ok {
@@ -79,7 +90,7 @@ func MergeTypes(current, next Type) (Type, Subs, error) {
 		return merged, subs, nil
 	}
 
-	if subs, err := Assignable(current, next); err == nil {
+	if subs, err := assignable(current, next, false); err == nil {
 		merged := next.Apply(subs).(Type)
 		resolvedCurrent := current.Apply(subs).(Type)
 		if mergedNonNull, ok := merged.(NonNullType); ok {
