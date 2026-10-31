@@ -14,6 +14,9 @@ scalar Timestamp
 scalar URL
 scalar JSON
 scalar BigInt
+# A scalar whose values are arbitrary JSON (numbers, objects, booleans,
+# strings), not just strings.
+scalar Opaque
 
 # Objects implementing Node have globally unique, opaque IDs of the form
 # "<Type>:<key>" (e.g. "User:1", "Post:1"), so node(id:) can load any of them
@@ -60,6 +63,14 @@ type Query {
   formatTimestamp(ts: Timestamp!): String!
   parseJSON(data: JSON!): String!
   addBigInt(a: BigInt!, b: BigInt!): BigInt!
+  # Non-string custom scalar values, and an echo reporting the JSON it was
+  # sent, for checking they round-trip unchanged.
+  opaqueNumber: Opaque!
+  opaqueObject: Opaque!
+  opaqueFlag: Opaque!
+  opaqueString: Opaque!
+  opaqueList: [Opaque!]!
+  describeOpaque(value: Opaque!): String!
   fetchURLNullable(url: URL): String
   fetchMultipleURLs(urls: [URL!]!): [String!]!
   search(query: String!): [SearchResult!]!

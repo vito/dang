@@ -1422,17 +1422,25 @@ func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType 
 				}
 				return EnumValue{Val: str, EnumType: enumType}, nil
 			case introspection.TypeKindScalar:
-				str, ok := raw.(string)
-				if ok {
-					if typeScope == nil {
-						return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
-					}
-					scalarType, found := typeScope.NamedType(typeRef.Name)
-					if !found {
-						return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
-					}
+				if typeScope == nil {
+					return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
+				}
+				scalarType, found := typeScope.NamedType(typeRef.Name)
+				if !found {
+					return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
+				}
+				if str, ok := raw.(string); ok {
 					return ScalarValue{Val: str, ScalarType: scalarType}, nil
 				}
+				// A custom scalar may be any JSON value. Keep it as its JSON
+				// (numbers stay json.Number, so their text is exact) so it is
+				// still a value of the scalar type, and goes back to the
+				// server unchanged.
+				encoded, err := json.Marshal(raw)
+				if err != nil {
+					return nil, fmt.Errorf("encoding %s value: %w", typeRef.Name, err)
+				}
+				return ScalarValue{Val: string(encoded), ScalarType: scalarType, Encoded: true}, nil
 			}
 		}
 	}
@@ -1476,6 +1484,10 @@ func dangValueToGo(val Value) (any, error) {
 	case EnumValue:
 		return gqlEnumValue{val: v.Val}, nil
 	case ScalarValue:
+		if v.Encoded {
+			// A non-string scalar goes back as the JSON value it came as.
+			return jsonBytesToRaw([]byte(v.Val))
+		}
 		// Scalar values are represented as strings in GraphQL
 		return v.Val, nil
 	case IntValue:
@@ -1633,8 +1645,15 @@ func (e EnumValue) MarshalJSON() ([]byte, error) {
 
 // ScalarValue represents a custom scalar value
 type ScalarValue struct {
+	// Val is the scalar's string form: the string itself for a string-valued
+	// scalar, and otherwise (Encoded) the JSON encoding of its value.
 	Val        string
 	ScalarType hm.Type
+	// Encoded marks a scalar whose GraphQL value is not a string (a number,
+	// object, list or boolean): Val holds its JSON, which is sent back to
+	// the server as that same value and reads as the JSON text in String
+	// slots.
+	Encoded bool
 }
 
 var _ Value = ScalarValue{}
@@ -1648,6 +1667,9 @@ func (s ScalarValue) String() string {
 }
 
 func (s ScalarValue) MarshalJSON() ([]byte, error) {
+	if s.Encoded {
+		return []byte(s.Val), nil
+	}
 	return json.Marshal(s.Val)
 }
 

@@ -80,6 +80,7 @@ type ComplexityRoot struct {
 	Query struct {
 		AddBigInt         func(childComplexity int, a string, b string) int
 		AverageRating     func(childComplexity int) int
+		DescribeOpaque    func(childComplexity int, value any) int
 		EchoFloat         func(childComplexity int, value float64) int
 		FavoriteNode      func(childComplexity int) int
 		FavoriteNodeID    func(childComplexity int) int
@@ -97,6 +98,11 @@ type ComplexityRoot struct {
 		NodeLabel         func(childComplexity int, node string) int
 		Nodes             func(childComplexity int) int
 		Now               func(childComplexity int) int
+		OpaqueFlag        func(childComplexity int) int
+		OpaqueList        func(childComplexity int) int
+		OpaqueNumber      func(childComplexity int) int
+		OpaqueObject      func(childComplexity int) int
+		OpaqueString      func(childComplexity int) int
 		ParseJSON         func(childComplexity int, data string) int
 		PostTitles        func(childComplexity int) int
 		Posts             func(childComplexity int, authorID *string, limit *int) int
@@ -191,6 +197,12 @@ type QueryResolver interface {
 	FormatTimestamp(ctx context.Context, ts string) (string, error)
 	ParseJSON(ctx context.Context, data string) (string, error)
 	AddBigInt(ctx context.Context, a string, b string) (string, error)
+	OpaqueNumber(ctx context.Context) (any, error)
+	OpaqueObject(ctx context.Context) (any, error)
+	OpaqueFlag(ctx context.Context) (any, error)
+	OpaqueString(ctx context.Context) (any, error)
+	OpaqueList(ctx context.Context) ([]any, error)
+	DescribeOpaque(ctx context.Context, value any) (string, error)
 	FetchURLNullable(ctx context.Context, url *string) (*string, error)
 	FetchMultipleURLs(ctx context.Context, urls []string) ([]string, error)
 	Search(ctx context.Context, query string) ([]SearchResult, error)
@@ -368,6 +380,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.AverageRating(childComplexity), true
+	case "Query.describeOpaque":
+		if e.complexity.Query.DescribeOpaque == nil {
+			break
+		}
+
+		args, err := ec.field_Query_describeOpaque_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.DescribeOpaque(childComplexity, args["value"].(any)), true
 	case "Query.echoFloat":
 		if e.complexity.Query.EchoFloat == nil {
 			break
@@ -515,6 +538,36 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Now(childComplexity), true
+	case "Query.opaqueFlag":
+		if e.complexity.Query.OpaqueFlag == nil {
+			break
+		}
+
+		return e.complexity.Query.OpaqueFlag(childComplexity), true
+	case "Query.opaqueList":
+		if e.complexity.Query.OpaqueList == nil {
+			break
+		}
+
+		return e.complexity.Query.OpaqueList(childComplexity), true
+	case "Query.opaqueNumber":
+		if e.complexity.Query.OpaqueNumber == nil {
+			break
+		}
+
+		return e.complexity.Query.OpaqueNumber(childComplexity), true
+	case "Query.opaqueObject":
+		if e.complexity.Query.OpaqueObject == nil {
+			break
+		}
+
+		return e.complexity.Query.OpaqueObject(childComplexity), true
+	case "Query.opaqueString":
+		if e.complexity.Query.OpaqueString == nil {
+			break
+		}
+
+		return e.complexity.Query.OpaqueString(childComplexity), true
 	case "Query.parseJSON":
 		if e.complexity.Query.ParseJSON == nil {
 			break
@@ -1038,6 +1091,17 @@ func (ec *executionContext) field_Query_addBigInt_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["b"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_describeOpaque_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "value", ec.unmarshalNOpaque2interface)
+	if err != nil {
+		return nil, err
+	}
+	args["value"] = arg0
 	return args, nil
 }
 
@@ -3044,6 +3108,198 @@ func (ec *executionContext) fieldContext_Query_addBigInt(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_addBigInt_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_opaqueNumber(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_opaqueNumber,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().OpaqueNumber(ctx)
+		},
+		nil,
+		ec.marshalNOpaque2interface,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_opaqueNumber(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Opaque does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_opaqueObject(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_opaqueObject,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().OpaqueObject(ctx)
+		},
+		nil,
+		ec.marshalNOpaque2interface,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_opaqueObject(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Opaque does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_opaqueFlag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_opaqueFlag,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().OpaqueFlag(ctx)
+		},
+		nil,
+		ec.marshalNOpaque2interface,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_opaqueFlag(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Opaque does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_opaqueString(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_opaqueString,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().OpaqueString(ctx)
+		},
+		nil,
+		ec.marshalNOpaque2interface,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_opaqueString(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Opaque does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_opaqueList(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_opaqueList,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().OpaqueList(ctx)
+		},
+		nil,
+		ec.marshalNOpaque2ᚕinterfaceᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_opaqueList(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Opaque does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_describeOpaque(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_describeOpaque,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().DescribeOpaque(ctx,
+				func() any {
+					if fc.Args["value"] == nil {
+						return nil
+					}
+					return fc.Args["value"].(any)
+				}())
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_describeOpaque(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_describeOpaque_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6729,6 +6985,138 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "opaqueNumber":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_opaqueNumber(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "opaqueObject":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_opaqueObject(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "opaqueFlag":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_opaqueFlag(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "opaqueString":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_opaqueString(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "opaqueList":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_opaqueList(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "describeOpaque":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_describeOpaque(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "fetchURLNullable":
 			field := field
 
@@ -7837,6 +8225,58 @@ func (ec *executionContext) marshalNNode2ᚕgithubᚗcomᚋvitoᚋdangᚋv2ᚋte
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) unmarshalNOpaque2interface(ctx context.Context, v any) (any, error) {
+	res, err := graphql.UnmarshalAny(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNOpaque2interface(ctx context.Context, sel ast.SelectionSet, v any) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	_ = sel
+	res := graphql.MarshalAny(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
+func (ec *executionContext) unmarshalNOpaque2ᚕinterfaceᚄ(ctx context.Context, v any) ([]any, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]any, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNOpaque2interface(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNOpaque2ᚕinterfaceᚄ(ctx context.Context, sel ast.SelectionSet, v []any) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNOpaque2interface(ctx, sel, v[i])
+	}
 
 	for _, e := range ret {
 		if e == graphql.Null {

@@ -1,0 +1,31 @@
+# Custom scalars whose values aren't strings (numbers, objects, booleans)
+# keep their JSON value: it round-trips unchanged when sent back as an
+# argument, and reads as its JSON text wherever a String is expected.
+import Test
+
+let n = opaqueNumber
+assert { describeOpaque(n) == "42" }
+assert { toString(n) == "42" }
+assert { `${n}` == "42" }
+let asString: String! = n
+assert { asString == "42" }
+assert { n == opaqueNumber }
+
+let obj = opaqueObject
+assert { describeOpaque(obj) == """{"name":"dang","size":1.5,"tags":["a","b"]}""" }
+assert { toString(obj) == """{"name":"dang","size":1.5,"tags":["a","b"]}""" }
+assert { JSON.encode([obj]) == """[{"name":"dang","size":1.5,"tags":["a","b"]}]""" }
+
+assert { describeOpaque(opaqueFlag) == "true" }
+
+# String values are unchanged: bare in String slots, quoted on the wire.
+let str = opaqueString
+assert { describeOpaque(str) == "\"plain\"" }
+assert { toString(str) == "plain" }
+assert { JSON.encode(str) == "\"plain\"" }
+
+assert { opaqueList.map { x => describeOpaque(x) } == ["1", "\"two\"", "false"] }
+
+# Encoded to JSON and decoded back, a non-string value is still itself.
+let decoded = JSON.decode(JSON.encode([n, obj, str])) :: [Opaque!]!
+assert { decoded.map { x => describeOpaque(x) } == ["42", describeOpaque(obj), "\"plain\""] }

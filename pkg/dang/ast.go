@@ -270,7 +270,7 @@ func valuesEqual(left, right Value) bool {
 	case ScalarValue:
 		// Compare scalar values - must be same value and same type
 		if r, ok := right.(ScalarValue); ok {
-			return l.ScalarType == r.ScalarType && l.Val == r.Val
+			return l.ScalarType == r.ScalarType && l.Encoded == r.Encoded && l.Val == r.Val
 		}
 		// Allow comparison with StringValue
 		if r, ok := right.(StringValue); ok {
