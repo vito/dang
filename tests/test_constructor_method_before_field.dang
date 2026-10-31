@@ -1,0 +1,19 @@
+# Methods are never constructor parameters, wherever they're declared. A
+# method declared before a field used to be counted as one at runtime when
+# inference had wrapped its value (here, because of its nullable argument),
+# so `Impl(3)` bound 3 to `cb` and left `v` unset.
+
+type Impl {
+  cb(x: Int): Int! { 7 }
+
+  v: Int!
+
+  after(y: Int, z: Int): Int! { 8 }
+
+  w: String! = "w"
+}
+
+assert { Impl(3).v == 3 }
+assert { Impl(3, "x").w == "x" }
+assert { Impl(v: 4).v == 4 }
+assert { Impl(3).cb(1) == 7 }
