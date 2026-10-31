@@ -679,9 +679,14 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)
-			_, err := tempAddition.Infer(ctx, env, fresh)
+			sumType, err := tempAddition.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
+			}
+			// The sum is what gets stored, so it must fit the target: Int! +
+			// Float! is a Float!, which an Int! can't hold.
+			if _, err := hm.Assignable(sumType, targetType); err != nil {
+				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", sumType, targetType, err)
 			}
 			return targetType, nil
 		default:
