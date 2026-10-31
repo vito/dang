@@ -51,6 +51,9 @@ type narrowWrite struct {
 type narrowRead struct {
 	n    *Narrowing
 	node Node
+	// rerun is, for a captured read, the tick the outermost body around the
+	// closure that may run again with the same binding began at (0 if none).
+	rerun int
 }
 
 type narrowCapture struct {
@@ -65,9 +68,6 @@ type narrowCapture struct {
 	// scope it is declared in.
 	parent *effFrame
 	scope  *narrowScope
-	// rerun is the tick the outermost body around the closure that may run
-	// again began at (0 if none).
-	rerun int
 }
 
 type narrowLog struct {
@@ -82,6 +82,66 @@ type narrowLog struct {
 	// noRerun are tick ranges of branches after which closure bodies frames
 	// don't run again.
 	noRerun []rerunRange
+	// returns are tick ranges of branches leaving their function.
+	returns []tickRange
+	// exclusive are groups of tick ranges of which one runs per run of the
+	// code around them: the branches of an `if`, the arms of a `case`.
+	exclusive [][]tickRange
+}
+
+// noteExclusive records that one of ranges runs per run.
+func noteExclusive(ctx context.Context, ranges []tickRange) {
+	if l := narrowLogFrom(ctx); l != nil && len(ranges) > 1 {
+		l.exclusive = append(l.exclusive, ranges)
+	}
+}
+
+// exclusiveOf reports whether ticks a and b are in different ranges of an
+// exclusive group, so they can't both run in one run.
+func (l *narrowLog) exclusiveOf(a, b int) bool {
+	for _, group := range l.exclusive {
+		ia, ib := -1, -1
+		for i, r := range group {
+			if a > r.from && a < r.to {
+				ia = i
+			}
+			if b > r.from && b < r.to {
+				ib = i
+			}
+		}
+		if ia >= 0 && ib >= 0 && ia != ib {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *narrowLog) inReturn(at int) bool {
+	for _, r := range l.returns {
+		if at > r.from && at < r.to {
+			return true
+		}
+	}
+	return false
+}
+
+// skipRange makes reads skip the writes in ticks (from, to), returning a
+// function undoing it.
+func skipRange(ctx context.Context, from, to int) func() {
+	l := narrowLogFrom(ctx)
+	if l == nil {
+		return func() {}
+	}
+	skip := &tickRange{from: from, to: to}
+	l.skips = append(l.skips, skip)
+	return func() {
+		for i, r := range l.skips {
+			if r == skip {
+				l.skips = append(l.skips[:i:i], l.skips[i+1:]...)
+				return
+			}
+		}
+	}
 }
 
 type rerunRange struct {
@@ -175,10 +235,18 @@ func skipBranch(ctx context.Context, branch Node, start int) {
 	if l == nil || inRescue(ctx) {
 		return
 	}
+	// Likewise in a block passed to a Dang-defined function, which may
+	// rescue a raise from it and carry on.
+	for fr := bodyFrame(ctx); fr != nil && fr.block; fr = fr.parent {
+		if fr.toDang {
+			return
+		}
+	}
 	loopExits, continues := loopExitsIn(branch)
 	switch {
 	case returnsAlways(branch) && !loopExits:
 		skipWrites(ctx, start)
+		l.returns = append(l.returns, tickRange{from: start, to: l.clock + 1})
 		// The function is left: the blocks within it don't run again.
 		var frames []*effFrame
 		for fr := bodyFrame(ctx); fr != nil && (fr.block || fr.field); fr = fr.parent {

@@ -383,6 +383,7 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 
 	// Set expected return type on the block arg
 	c.BlockArg.ExpectedReturnType = expectedFnType.Ret(false)
+	c.BlockArg.toDang = effectOf(ft) != nil
 
 	// Now infer the block arg with these constraints
 	inferredType, err := c.BlockArg.Infer(ctx, env, fresh)
@@ -3025,19 +3026,21 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		if err != nil {
 			return nil, err
 		}
+		thenEnd := enterBranch(ctx)
 		// Writes in a branch that returns never reach what follows.
 		skipBranch(ctx, c.Then, thenStart)
 
 		if c.Else != nil {
 			elseEnv := withNarrowings(ctx, env, facts.Falsy)
 			// The else branch can't see the then branch's writes.
-			unskip := skipWrites(ctx, thenStart)
+			unskip := skipRange(ctx, thenStart, thenEnd)
 			elseStart := enterBranch(ctx)
 			elseType, err := c.Else.Infer(ctx, elseEnv, fresh)
 			unskip()
 			if err != nil {
 				return nil, err
 			}
+			noteExclusive(ctx, []tickRange{{thenStart, thenEnd}, {elseStart, enterBranch(ctx)}})
 			skipBranch(ctx, c.Else, elseStart)
 
 			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
@@ -3516,6 +3519,10 @@ type BlockArg struct {
 
 	// effect is the block's closure effect (see effects.go).
 	effect *Effect
+
+	// toDang is set when the block is passed to a Dang-defined function,
+	// which may rescue a raise from it (narrowlog.go).
+	toDang bool
 }
 
 // blockArgUsesImplicitUnderscore reports whether the body references the
@@ -3660,6 +3667,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		var fr *effFrame
 		bodyCtx, fr = withEffFrame(bodyCtx, b.effect.reset(), newEnv, nil)
 		fr.block = true
+		fr.toDang = b.toDang
 		fr.entryBreak = currentInferBreakTarget(ctx)
 		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
 		endBlockSkips(fr)

@@ -105,7 +105,7 @@ The same goes for writes the checker sees less directly:
 - calling a block parameter ends the narrowing of anything declared outside the function taking it, which the caller's block may reassign
 - a block or nested function can't rely on a check made outside it if it may run again, or later, after `x` is set to null: when the block itself assigns `x` null (it runs again on the next iteration), or when `x` is set to null after a nested function or stored block that reads it is created. Check `x` inside it, or bind the checked value to a local
 
-Writes a read can't follow from don't count: those in the other branch of the same `if`, in a branch that returns (or, for the rest of a loop body, breaks or continues; but not inside a `rescue` operand, where a raise before the exit may be rescued), or in a nested function that isn't called.
+Writes a read can't follow from don't count: those in the other branch of the same `if` or another arm of the same `case`, in a branch that returns (or, for the rest of a loop body, breaks or continues), or in a nested function that isn't called. A branch's exit doesn't hide its writes inside a `rescue` operand or a block passed to a Dang function, though: a raise before the exit may be rescued.
 
 ### Type narrowing via `case`
 
