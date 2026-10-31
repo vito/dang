@@ -31,6 +31,9 @@ type FieldDecl struct {
 	// counterparts, whose cells weakCells keeps alive (see weaken).
 	weakVars  hm.Subs
 	weakCells []*hm.WeakCell
+	// declaredType is the (weakened) type a declaration pass gave a field
+	// without an annotation, which Infer keeps.
+	declaredType hm.Type
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -149,31 +152,52 @@ func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 // the first write. The same variable is weakened the same way each time,
 // so hoisting and inference agree. Functions are not bindings in this
 // sense: their variables are their generic parameters.
-func (s *FieldDecl) weaken(t hm.Type) hm.Type {
+func (s *FieldDecl) weaken(ctx context.Context, t hm.Type) hm.Type {
 	if t == nil || s.funDecl() != nil {
 		return t
 	}
 	if _, isFn := s.Value.(*FunDecl); isFn {
 		return t
 	}
+	if s.weakVars == nil {
+		s.weakVars = hm.NewSubs()
+	}
+	t = weakenVars(ctx, t, s.weakVars, &s.weakCells)
+	// Weak variables of other bindings, now part of this one's type, live
+	// as long as it does too.
+	s.weakCells = append(s.weakCells, hm.WeakCells(t)...)
+	return t
+}
+
+// weakenVars makes t's flexible variables weak, reusing (and adding to) the
+// ones vars already maps them to, and appends the new ones' cells to cells.
+// The weak variables may hold the enclosing generic functions' own
+// variables, but no other function's.
+func weakenVars(ctx context.Context, t hm.Type, vars hm.Subs, cells *[]*hm.WeakCell) hm.Type {
+	var scope hm.TypeVarSet
+	for _, r := range scopedTypeVars(ctx) {
+		if rv, ok := r.(hm.TypeVariable); ok {
+			if scope == nil {
+				scope = hm.NewTypeVarSet()
+			}
+			scope.Add(rv)
+		}
+	}
 	for tv := range t.FreeTypeVar() {
 		if tv.IsRigid() || tv.IsWeak() {
 			continue
 		}
-		if s.weakVars == nil {
-			s.weakVars = hm.NewSubs()
-		}
-		if _, ok := s.weakVars[tv]; ok {
+		if _, ok := vars[tv]; ok {
 			continue
 		}
-		w, cell := hm.NewWeakVar(tv)
-		s.weakVars[tv] = w
-		s.weakCells = append(s.weakCells, cell)
+		w, cell := hm.NewWeakVar(tv, scope)
+		vars[tv] = w
+		*cells = append(*cells, cell)
 	}
-	if len(s.weakVars) == 0 {
+	if len(vars) == 0 {
 		return t
 	}
-	return t.Apply(s.weakVars).(hm.Type)
+	return t.Apply(vars).(hm.Type)
 }
 
 type paramDeclKey struct{}
@@ -197,7 +221,35 @@ func (s *FieldDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fres
 	if err != nil || t == nil || inParamDecl(ctx) {
 		return t, err
 	}
-	return s.weaken(t), nil
+	t = s.weaken(ctx, t)
+	if s.Type_ == nil {
+		// Inferring the value again would give its unknown parts new
+		// variables: Infer reuses these instead (see declaredType).
+		s.declaredType = t
+	}
+	keepWeakCells(env, s)
+	return t, nil
+}
+
+// keepWeakCells keeps s's weak cells alive as long as the frame binding it,
+// whose types mention them: the syntax may be dropped first, as a REPL
+// entry's is.
+func keepWeakCells(env hm.Env, s *FieldDecl) {
+	frame, ok := envFrame(env).(*Type)
+	if !ok {
+		return
+	}
+	frame.keepWeakCells(s)
+}
+
+func (frame *Type) keepWeakCells(s *FieldDecl) {
+	if len(s.weakCells) == 0 {
+		return
+	}
+	if frame.weakDecls == nil {
+		frame.weakDecls = map[*FieldDecl]struct{}{}
+	}
+	frame.weakDecls[s] = struct{}{}
 }
 
 func (s *FieldDecl) unweakenedSignatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
@@ -312,7 +364,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			return nil, err
 		}
 		if !isParam {
-			definedType = s.weaken(definedType)
+			definedType = s.weaken(ctx, definedType)
 		}
 	}
 
@@ -339,19 +391,33 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			}
 			s.defaultType = inferredType
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
+		} else if !isParam && s.declaredType != nil {
+			// Declared (hoisted) from an earlier inference of the value:
+			// keep that type, whose unknown parts others may already use.
+			if _, err := assignableForValue(inferredType, s.declaredType, s.Value); err != nil {
+				return nil, NewInferError(err, s.Value)
+			}
+			definedType = s.declaredType
 		} else {
 			definedType = inferredType
 			if !isParam {
-				definedType = s.weaken(definedType)
+				definedType = s.weaken(ctx, definedType)
 			}
 		}
 	}
 
 	if definedType == nil {
-		definedType = fresh.Fresh()
-		if !isParam {
-			definedType = s.weaken(definedType)
+		if !isParam && s.declaredType != nil {
+			definedType = s.declaredType
+		} else {
+			definedType = fresh.Fresh()
+			if !isParam {
+				definedType = s.weaken(ctx, definedType)
+			}
 		}
+	}
+	if !isParam {
+		keepWeakCells(env, s)
 	}
 	// A function field's annotation is built fresh: give it the function's
 	// effect and its parameters' effect variables (see effects.go).
@@ -1164,6 +1230,11 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s Constructor.Declare: %w", objectType.Named, err)
+	}
+	// The constructor's type outlives argEnv: its parameters' weak
+	// variables live as long as the type.
+	for _, p := range params {
+		objectType.keepWeakCells(p)
 	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives

@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use [Int!]! as [String!]
+  [2m[34m--> errors/weak_inferred_field_param.dang:9:18[0m
+ [2m    |[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0mprint(Bag(items: [1]).strings[0]!.toUpper)
+[2m                        [31m^^^[0m
+ [2m 10 | [0m
+ [2m    |[0m
+

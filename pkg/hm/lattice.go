@@ -64,9 +64,12 @@ func CommonSupertype(t1, t2 Type) Type {
 func MergeTypes(current, next Type) (Type, Subs, error) {
 	merged, subs, err := mergeTypes(current, next)
 	if err == nil {
-		CommitWeak(subs)
+		err = CommitWeak(subs)
 	}
-	return merged, subs, err
+	if err != nil {
+		return nil, nil, err
+	}
+	return merged, subs, nil
 }
 
 // mergeTypes is MergeTypes without committing weak variables, for merging

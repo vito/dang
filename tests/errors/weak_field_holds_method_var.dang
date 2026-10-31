@@ -1,0 +1,18 @@
+# A field outlives every call of its type's methods, so it can't hold one
+# method's `a`: `get`'s caller would pick a different one.
+type Store {
+  let items = []
+
+  put(v: a): Store! {
+    items += [v]
+    self
+  }
+
+  get(w: a): a {
+    let r = items[0]
+    if (r == null) {
+      raise "empty"
+    }
+    r
+  }
+}

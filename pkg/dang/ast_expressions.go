@@ -67,6 +67,10 @@ type FunCall struct {
 	// (`.field`, `.method(...)` or `.{{ }}`), which defers the null probe of
 	// GraphQL object fields to whatever runs the chain. See markSelectedThrough.
 	selectedThrough bool
+
+	// weakCells keeps alive the weak variables made for a call with a
+	// block (see inferFunctionType).
+	weakCells []*hm.WeakCell
 }
 
 var _ Node = (*FunCall)(nil)
@@ -195,7 +199,9 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 	// Merging the arguments' constraints may pin weak variables (the
 	// element type of a `let xs = []`) that no one argument did.
-	hm.CommitWeak(argSubs)
+	if err := hm.CommitWeak(argSubs); err != nil {
+		return nil, NewInferError(err, c)
+	}
 
 	// Required arguments are those of the signature, before the arguments'
 	// substitutions: a defaulted `y: a = x` isn't required once a := Int!.
@@ -213,6 +219,18 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	var blockArgSubs hm.Subs
 	var blockBreakTarget *InferControlTarget
 	if c.BlockArg != nil {
+		// A block is checked once but may run many times, each run seeing
+		// what the last one left through its parameters (reduce's
+		// accumulator, say): the unknowns of its parameters' types are one
+		// type for all runs, which the block's uses pin down, not a type
+		// for each use. (Its result alone carries nothing back.)
+		if block := ft.Block(); block != nil {
+			own := hm.NewSubs()
+			weakenVars(ctx, block.Arg(), own, &c.weakCells)
+			if len(own) > 0 {
+				ft = ft.Apply(own).(*hm.FunctionType)
+			}
+		}
 		blockBreakTarget = NewInferControlTarget(BlockCallFrame)
 		blockCtx := contextWithInferBreakTarget(ctx, blockBreakTarget)
 		subs, err := c.inferBlockArg(blockCtx, env, fresh, ft)

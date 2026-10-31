@@ -1,0 +1,6 @@
+# reduce runs its block once per element, each run getting the accumulator
+# the last one returned: it can't be read as strings while Ints go in.
+let r = [1, 2].reduce([]) { acc, x =>
+  let z: [String!]! = acc
+  acc + [x]
+}

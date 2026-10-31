@@ -282,7 +282,14 @@ func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type) error 
 		if len(rigid.FreeTypeVar()) == 0 {
 			return nil
 		}
-		if _, err := assignableForValue(p.defaultType, rigid, p.Value); err != nil {
+		want := rigid
+		if tv, ok := rigid.(hm.TypeVariable); ok {
+			// Leaving out a parameter typed by a bare variable makes the
+			// variable nullable for that call (see omittedParamSubs), so a
+			// null default fits.
+			want = hm.Nullable(tv)
+		}
+		if _, err := assignableForValue(p.defaultType, want, p.Value); err != nil {
 			return NewInferError(
 				fmt.Errorf("default %s doesn't fit every type the caller may pick for %s: %w", p.defaultType, rigid, err),
 				p.Value,

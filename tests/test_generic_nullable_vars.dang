@@ -23,6 +23,10 @@ firstAsserted(xs: [a]!): a { xs[0]! }
 
 assert { firstAsserted([3]) == 3 }
 
+firstNonNull(xs: [a]!): a! { xs[0]! }
+
+assert { firstNonNull([3]) == 3 }
+
 # with the element written non-null, indexing gives a (nullable) `a`
 firstOfNonNull(xs: [a!]!): a { xs[0] }
 

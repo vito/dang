@@ -207,6 +207,10 @@ type Type struct {
 	// an outer binding (see applyNarrowings).
 	narrowed map[string]bool
 
+	// weakDecls keeps alive the declarations of the bindings here whose
+	// types have weak variables, and so their cells (see keepWeakCells).
+	weakDecls map[*FieldDecl]struct{}
+
 	// Scalar-body runtime hooks: Dang-defined methods and the new()
 	// materialization hook for scalars declared with a body. Written once by
 	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).

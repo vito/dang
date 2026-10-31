@@ -212,6 +212,10 @@ func (tv TypeVariable) String() string {
 	if b, ok := tv.weakBinding(); ok {
 		return b.String()
 	}
+	if tv.IsWeak() {
+		// Like OCaml's '_weak: not a generic type, one not known yet.
+		return "_" + tv.name()
+	}
 	return tv.name()
 }
 
@@ -248,6 +252,19 @@ func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
 // t itself when it is already nullable.
 func Nullable(t Type) Type { return makeNullable(t) }
 
+// NonNull returns the non-null form of t: T! for T, a! for a variable a or
+// its nullable form a?, and t itself when it is already non-null.
+func NonNull(t Type) Type {
+	switch tt := prune(t).(type) {
+	case NonNullType:
+		return tt
+	case NullableTypeVariable:
+		return NonNullType{Type: tt.TypeVariable}
+	default:
+		return NonNullType{Type: tt}
+	}
+}
+
 func makeNullable(t Type) Type {
 	switch tt := t.(type) {
 	case NullableTypeVariable:
@@ -282,7 +299,7 @@ func (ntv NullableTypeVariable) String() string {
 	if b, ok := ntv.TypeVariable.weakBinding(); ok {
 		return makeNullable(b).String()
 	}
-	return ntv.TypeVariable.name() + "?"
+	return ntv.TypeVariable.String() + "?"
 }
 
 func (ntv NullableTypeVariable) Format(s fmt.State, c rune) {

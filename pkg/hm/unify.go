@@ -22,9 +22,12 @@ func (e UnificationError) Error() string {
 func Assignable(have, want Type) (Subs, error) {
 	subs, err := assignable(have, want, false)
 	if err == nil {
-		CommitWeak(subs)
+		err = CommitWeak(subs)
 	}
-	return subs, err
+	if err != nil {
+		return nil, err
+	}
+	return subs, nil
 }
 
 // AssignableWithCoercion is like Assignable, but additionally accepts explicit
@@ -33,9 +36,12 @@ func Assignable(have, want Type) (Subs, error) {
 func AssignableWithCoercion(have, want Type) (Subs, error) {
 	subs, err := assignable(have, want, true)
 	if err == nil {
-		CommitWeak(subs)
+		err = CommitWeak(subs)
 	}
-	return subs, err
+	if err != nil {
+		return nil, err
+	}
+	return subs, nil
 }
 
 func assignable(have, want Type, allowCoercion bool) (Subs, error) {
@@ -57,7 +63,13 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 		return bindNullableVar(haveNTV, want)
 	}
 	if wantNTV, ok := want.(NullableTypeVariable); ok {
-		return bindNullableVar(wantNTV, have)
+		subs, err := bindNullableVar(wantNTV, have)
+		if _, ok := err.(UnificationError); ok {
+			// bindNullableVar reports the variable as the value; it is the
+			// target.
+			return nil, UnificationError{have, want}
+		}
+		return subs, err
 	}
 
 	// Handle type variables

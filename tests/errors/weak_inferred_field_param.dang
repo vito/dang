@@ -1,0 +1,9 @@
+# A field's constructor parameter has the field's type: `strings` makes
+# `items` a [String!]!, so `Bag(items: [1])` is an error.
+type Bag {
+  pub items = []
+
+  strings: [String!]! { items }
+}
+
+print(Bag(items: [1]).strings[0]!.toUpper)
