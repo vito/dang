@@ -993,9 +993,13 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			}
 
 			// For nullable list receivers, mark as nullable so the call site
-			// propagates null and makes the return type nullable.
+			// propagates null and makes the return type nullable. An
+			// auto-called method has no call site: the null propagates here.
 			if nullableList {
 				d.NullableReceiver = true
+				if d.AutoCall {
+					methodType, _ = stripNonNull(methodType)
+				}
 			}
 
 			d.SetInferredType(methodType)
@@ -1035,6 +1039,9 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			if nullableMap {
 				d.NullableReceiver = true
+				if d.AutoCall {
+					methodType, _ = stripNonNull(methodType)
+				}
 			}
 
 			d.SetInferredType(methodType)
@@ -2964,7 +2971,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		}
 
 		if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), c.Condition)
+			return nil, NewInferError(notBooleanError("condition", condType), c.Condition)
 		}
 
 		// Apply flow-sensitive narrowings to each branch based on the condition.

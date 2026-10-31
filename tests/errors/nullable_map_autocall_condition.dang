@@ -1,0 +1,6 @@
+# An auto-called method on a nullable map yields null when the map is null, so
+# it can't be a condition, which must be Boolean!.
+let counts: Map[Int!] = null
+if (counts.isEmpty) {
+  print("empty")
+}

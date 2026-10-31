@@ -206,6 +206,16 @@ func stripNonNull(t hm.Type) (hm.Type, bool) {
 	return t, false
 }
 
+// notBooleanError reports a non-Boolean! condition or logical operand. A
+// nullable Boolean (e.g. `xs.isEmpty` on a nullable list) gets advice, since
+// "must be Boolean!, got Boolean" alone reads as a contradiction.
+func notBooleanError(what string, t hm.Type) error {
+	if mod, ok := t.(*Type); ok && mod == BooleanType {
+		return fmt.Errorf("%s must be Boolean!, got %s, which may be null: check it for null first, or supply a default with ??", what, t)
+	}
+	return fmt.Errorf("%s must be Boolean!, got %s", what, t)
+}
+
 // knownNullable reports whether t is certainly nullable: a nullable type
 // variable or concrete type, or a union with such a member. A NonNull type,
 // a flexible type variable (which may still resolve to one), and unions of
@@ -959,7 +969,7 @@ func (u *UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		_, err = hm.Assignable(exprType, boolType)
 		if err != nil {
-			return nil, fmt.Errorf("unary negation requires Boolean type, got %s", exprType)
+			return nil, notBooleanError("the operand of !", exprType)
 		}
 
 		// Return Boolean type
@@ -1227,13 +1237,13 @@ func (l *LogicalAnd) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		// Verify left side is Boolean
 		_, err = hm.Assignable(leftType, boolType)
 		if err != nil {
-			return nil, fmt.Errorf("logical 'and' left operand must be Boolean, got %s", leftType)
+			return nil, notBooleanError("logical 'and' left operand", leftType)
 		}
 
 		// Verify right side is Boolean
 		_, err = hm.Assignable(rightType, boolType)
 		if err != nil {
-			return nil, fmt.Errorf("logical 'and' right operand must be Boolean, got %s", rightType)
+			return nil, notBooleanError("logical 'and' right operand", rightType)
 		}
 
 		return boolType, nil
@@ -1330,13 +1340,13 @@ func (l *LogicalOr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		// Verify left side is Boolean
 		_, err = hm.Assignable(leftType, boolType)
 		if err != nil {
-			return nil, fmt.Errorf("logical 'or' left operand must be Boolean, got %s", leftType)
+			return nil, notBooleanError("logical 'or' left operand", leftType)
 		}
 
 		// Verify right side is Boolean
 		_, err = hm.Assignable(rightType, boolType)
 		if err != nil {
-			return nil, fmt.Errorf("logical 'or' right operand must be Boolean, got %s", rightType)
+			return nil, notBooleanError("logical 'or' right operand", rightType)
 		}
 
 		return boolType, nil

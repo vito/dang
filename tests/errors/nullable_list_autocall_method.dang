@@ -1,0 +1,4 @@
+# An auto-called method on a nullable list yields null when the list is null,
+# so its result is nullable even though the method returns Int!.
+let xs: [Int!] = null
+let n: Int! = xs.length

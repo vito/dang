@@ -8,7 +8,7 @@
 let status = if (active) "on" else "off"
 ```
 - Branches are plain expressions; braces aren't part of the `if` syntax. `if (x) { a } else { b }` is just `if`/`else` applied to two blocks — use a block when a branch needs multiple expressions.
-- Condition must be `Boolean!` — **no truthiness**. A non-`Boolean` condition is a compile error (`condition must be Boolean, got Int!`).
+- Condition must be `Boolean!` — **no truthiness**. A non-`Boolean` condition is a compile error (`condition must be Boolean!, got Int!`).
 - `else if` chains are just `else` whose branch is another `if`: `if (a) {..} else if (b) {..} else {..}`.
 - No-else form returns `null` when the condition is false — result type is **nullable** (`if (false) { "value" }` is `null`). `else if` chains with no final `else` are likewise nullable.
 - Branches must merge to a common type; divergent branches widen to a union (see types.md flow-typing).
