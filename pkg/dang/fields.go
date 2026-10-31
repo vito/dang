@@ -1486,9 +1486,9 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		mod.SetDocString(e.Name.Name, e.DocString)
 	}
 
-	// Add the enum module to the environment so it can be referenced
-	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
-	enumScheme := hm.NewScheme(nil, NonNull(enumType))
+	// Add the enum's namespace to the environment so it can be referenced.
+	// Its members are filled in below, in pass 1.
+	enumScheme := hm.NewScheme(nil, typeNameValueType(enumType))
 	env.Add(e.Name.Name, enumScheme)
 	// Carry the declaration's visibility so the enum's value binding is exported
 	// across a module boundary (the eval side binds it with e.Visibility). Without
@@ -1509,6 +1509,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(enumType)}))
 		enumType.Add("values", valuesType)
 		enumType.SetVisibility("values", PublicVisibility)
+		enumNamespaceType(enumType)
 	}
 
 	return nil

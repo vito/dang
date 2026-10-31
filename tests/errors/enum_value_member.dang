@@ -1,0 +1,10 @@
+# An enum value has no members: RED and GREEN belong to the enum's name,
+# Color, not to its values.
+
+enum Color {
+  RED
+  GREEN
+}
+
+let c = Color.RED
+print(c.GREEN)

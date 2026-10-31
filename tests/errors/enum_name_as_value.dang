@@ -1,0 +1,16 @@
+# An enum's name is the namespace holding its values, not one of them.
+
+enum Color {
+  RED
+  GREEN
+}
+
+paint(c: Color!): String! {
+  case (c) {
+    Color.RED => "red"
+    Color.GREEN => "green"
+    else => "?"
+  }
+}
+
+print(paint(Color))

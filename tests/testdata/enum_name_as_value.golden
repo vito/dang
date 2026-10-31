@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Color! as Color!: Color here is the type itself, not a value of that type
+  [2m[34m--> errors/enum_name_as_value.dang:16:13[0m
+ [2m    |[0m
+ [2m 14 | }[0m
+ [2m 15 | [0m
+ [2m[34m[1m 16 | [0mprint(paint(Color))
+[2m                   [31m^^^^^[0m
+ [2m 17 | [0m
+ [2m    |[0m
+

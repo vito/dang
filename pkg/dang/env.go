@@ -536,9 +536,12 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		if t.Kind == introspection.TypeKindEnum {
 			sub, found := schemaTypes[t.Name]
 			if found {
-				// Add the enum type as a scheme that represents the module itself
-				env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
-				env.SetVisibility(t.Name, PublicVisibility)
+				// Bind the enum's namespace; its members are filled in with
+				// the enum's values below.
+				if subMod, ok := sub.(*Type); ok {
+					env.Add(t.Name, hm.NewScheme(nil, typeNameValueType(subMod)))
+					env.SetVisibility(t.Name, PublicVisibility)
+				}
 			}
 		}
 	}
@@ -668,6 +671,9 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(install)}))
 			install.Add("values", valuesType)
 			install.SetVisibility("values", PublicVisibility)
+			if enumMod, ok := install.(*Type); ok {
+				enumNamespaceType(enumMod)
+			}
 		}
 
 		for _, f := range t.Fields {
@@ -1105,6 +1111,24 @@ func (e *Type) IsMeta() bool { return e.metaOf != nil }
 // the declaring scope is still private to one goroutine.
 func typeNameValueType(t *Type) hm.Type {
 	return hm.NonNullType{Type: t.MetaType()}
+}
+
+// enumNamespaceType is the type of an enum's name used as a value: the
+// namespace holding its values (`Color.RED`, `Color.values`), as opposed to
+// an enum value, which has no members. It copies the enum's public members
+// onto its meta-type; call it once they are all declared, while the enum is
+// still private to one goroutine. The enum keeps its own copy, so readers
+// listing an enum's values (hover, imports, validation) see them as before.
+func enumNamespaceType(enum *Type) hm.Type {
+	meta := enum.MetaType()
+	for name, scheme := range enum.Bindings(PublicVisibility) {
+		meta.Add(name, scheme)
+		meta.SetVisibility(name, PublicVisibility)
+		if doc, ok := enum.GetDocString(name); ok {
+			meta.SetDocString(name, doc)
+		}
+	}
+	return hm.NonNullType{Type: meta}
 }
 
 // InstanceType returns the type a meta-type describes, or nil when e is not a
