@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use {name: String!}! as Dog!: a record can't stand in for Dog, even with the same fields
+  [2m[34m--> errors/record_as_named_type.dang:14:15[0m
+ [2m    |[0m
+ [2m 12 | union Pet = Dog | Cat[0m
+ [2m 13 | [0m
+ [2m[34m[1m 14 | [0mlet d: Dog! = {{name: "x"}}
+[2m                     [31m^^^^^^^^^^^^^[0m
+ [2m 15 | let p: Pet! = d[0m
+ [2m 16 | [0m
+ [2m    |[0m
+

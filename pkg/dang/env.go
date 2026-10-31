@@ -1277,6 +1277,10 @@ func (t *Type) Eq(other hm.Type) bool {
 		// Named modules are only equal if they're the exact same instance (pointer equality)
 		return t == otherMod
 	}
+	if otherMod.Named != "" {
+		// Named types are nominal: a record of the same shape isn't one.
+		return false
+	}
 	// Unnamed modules (anonymous record-like modules) use structural equality
 	// up to a renaming of their variables: two `{{xs: []}}`s, or a `{{x: []}}`
 	// and a `{{x: [a]!}}` parameter, are typed with variables of their own.
