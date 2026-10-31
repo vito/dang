@@ -1,0 +1,26 @@
+# Inside a generic function, its type variables are in scope: annotations,
+# hints and nested functions can name them.
+outer(v: a): [a]! {
+  inner(w: a): a { w }
+  let r: a = inner(v)
+  let hinted = v :: a
+  pair(x: b, y: a): [a]! { [y] }
+  pair(1, r) + pair("s", hinted)
+}
+
+assert { outer(1) == [1, 1] }
+assert { outer("s") == ["s", "s"] }
+
+# a letter the enclosing function doesn't use stays generic
+other(v: a): String! {
+  wrap(x: b): [b]! { [x] }
+  let s: [String!]! = wrap("s")
+  let n: [Int!]! = wrap(1)
+  s[0]! + toString(n[0]!)
+}
+
+assert { other(2) == "s1" }
+
+# outside a generic function, a written variable is not anyone's
+let empty: [a]! = []
+assert { empty.length == 0 }

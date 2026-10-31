@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use Int! as a
+  [2m[34m--> errors/generic_nested_shares_variable.dang:5:9[0m
+ [2m    |[0m
+ [2m  3 | outer(v: a): Int! {[0m
+ [2m  4 |   inner(w: a): a { v }[0m
+ [2m[34m[1m  5 | [0m  inner(1)
+[2m               [31m^[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

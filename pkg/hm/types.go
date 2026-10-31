@@ -133,6 +133,12 @@ func (tv TypeVariable) IsRigid() bool {
 	return tv&rigidBit != 0
 }
 
+// IsWritten reports whether tv is a flexible variable as an author writes
+// it, with no id: not one a fresher minted or Freshen copied.
+func (tv TypeVariable) IsWritten() bool {
+	return tv >= 0 && tv>>nameBits == 0 && tv < freshBase
+}
+
 // freshBase offsets the names of the fresh variables minted past 'z' beyond
 // Unicode, where they can repeat neither a letter nor each other.
 const freshBase = 0x110000
