@@ -113,6 +113,10 @@ func nonNullType(env hm.Env, sym string) (hm.Type, bool) {
 	if _, isNonNull := t.(hm.NonNullType); isNonNull {
 		return t, true
 	}
+	// a? (a possibly-null a) narrows to a!, not a?!.
+	if ntv, ok := t.(hm.NullableTypeVariable); ok {
+		t = ntv.TypeVariable
+	}
 	return hm.NonNullType{Type: t}, true
 }
 

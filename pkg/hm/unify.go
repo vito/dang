@@ -37,6 +37,13 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 		if _, wantNonNull := want.(NonNullType); wantNonNull {
 			return nil, UnificationError{have, want}
 		}
+		// A rigid variable stands for whatever type the caller picks, which
+		// may be non-null: a possibly-null value is no value of it. (The
+		// same rigid variable made nullable, `a?`, is matched by
+		// bindNullableVar.)
+		if wantTV, ok := want.(TypeVariable); ok && wantTV.IsRigid() {
+			return nil, UnificationError{have, want}
+		}
 		return bindNullableVar(haveNTV, want)
 	}
 	if wantNTV, ok := want.(NullableTypeVariable); ok {
@@ -48,6 +55,10 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 		return bindVar(haveTV, want)
 	}
 	if wantTV, ok := want.(TypeVariable); ok {
+		// a! (an a known not to be null) is an a.
+		if nn, ok := have.(NonNullType); ok && varOf(nn.Type) == wantTV {
+			return NewSubs(), nil
+		}
 		return bindVar(wantTV, have)
 	}
 
@@ -197,11 +208,32 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 		if tv.TypeVariable == tv2.TypeVariable {
 			return subs, nil
 		}
-		subs.Add(tv.TypeVariable, tv2)
+		// Never bind a rigid variable: a flexible one absorbs it instead.
+		switch {
+		case !tv.IsRigid():
+			subs.Add(tv.TypeVariable, tv2)
+		case !tv2.IsRigid():
+			subs.Add(tv2.TypeVariable, tv)
+		default:
+			return nil, UnificationError{tv, t}
+		}
 		return subs, nil
 	}
 
 	if tv2, ok := t.(TypeVariable); ok {
+		if tv2.IsRigid() {
+			if tv.TypeVariable == tv2 {
+				// a fits a? (the reverse is refused by assignable).
+				return subs, nil
+			}
+			// A rigid variable can't be made nullable: the nullable variable
+			// takes it on instead, as its nullable form (a? := b, so a? is b?).
+			if tv.IsRigid() {
+				return nil, UnificationError{tv, t}
+			}
+			subs.Add(tv.TypeVariable, tv2)
+			return subs, nil
+		}
 		// Bind the other variable to the nullable one so the taint is visible when
 		// that variable appears elsewhere, such as a generic function's return type.
 		subs.Add(tv2, tv)
@@ -211,6 +243,17 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 	// Strip NonNull — null is inherently nullable.
 	t = makeNullable(t)
 	return bindVar(tv.TypeVariable, t)
+}
+
+// varOf returns the variable t is, nullable or not, or -1.
+func varOf(t Type) TypeVariable {
+	switch v := t.(type) {
+	case TypeVariable:
+		return v
+	case NullableTypeVariable:
+		return v.TypeVariable
+	}
+	return -1
 }
 
 // occursCheck checks if a type variable occurs in a type

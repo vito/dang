@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use a possibly-null value as a: callers may pick a non-null type for a
+  [2m[34m--> errors/generic_null_for_rigid_param.dang:3:26[0m
+ [2m    |[0m
+ [2m  1 | # Inside a generic function, `a` may stand for a non-null type the caller[0m
+ [2m  2 | # picks, so null is not an `a`: `pass { x => x + 1 }` would add 1 to null.[0m
+ [2m[34m[1m  3 | [0mpass(&f(x: a): b): b { f(null) }
+[2m                                [31m^^^^[0m
+ [2m  4 | [0m
+ [2m  5 | print(toString(pass { x => x + 1 }))[0m
+ [2m    |[0m
+
