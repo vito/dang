@@ -1,11 +1,26 @@
+2 inference errors:
+
+Error 1:
 [1m[31mError:[0m cannot use a? as Int!
-  [2m[34m--> errors/generic_omitted_arg_nullable.dang:4:15[0m
+  [2m[34m--> errors/generic_omitted_arg_nullable.dang:5:15[0m
  [2m    |[0m
- [2m  2 | id(v: a): a { v }[0m
- [2m  3 | [0m
- [2m[34m[1m  4 | [0mlet n: Int! = id()
-[2m                     [31m^^^^[0m
- [2m  5 | print(toString(n + 1))[0m
+ [2m  3 | id(v: a): a { v }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet n: Int! = id
+[2m                     [31m^^[0m
  [2m  6 | [0m
+ [2m  7 | second(x: Int!, v: a): a { v }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m cannot use a? as Int!
+  [2m[34m--> errors/generic_omitted_arg_nullable.dang:9:15[0m
+ [2m    |[0m
+ [2m  7 | second(x: Int!, v: a): a { v }[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0mlet m: Int! = second(1)
+[2m                     [31m^^^^^^^^^[0m
+ [2m 10 | [0m
  [2m    |[0m
 
