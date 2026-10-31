@@ -193,6 +193,9 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			return nil, NewInferError(err, c)
 		}
 	}
+	// Merging the arguments' constraints may pin weak variables (the
+	// element type of a `let xs = []`) that no one argument did.
+	hm.CommitWeak(argSubs)
 
 	// Required arguments are those of the signature, before the arguments'
 	// substitutions: a defaulted `y: a = x` isn't required once a := Int!.
@@ -261,10 +264,12 @@ func instantiateCallee(ft *hm.FunctionType) *hm.FunctionType {
 }
 
 // freshenSubs maps each flexible variable in tvs to a new one of its name.
+// Weak variables, the unknown parts of a mutable binding's type, have one
+// identity everywhere.
 func freshenSubs(tvs hm.TypeVarSet) hm.Subs {
 	subs := hm.NewSubs()
 	for tv := range tvs {
-		if !tv.IsRigid() {
+		if !tv.IsRigid() && !tv.IsWeak() {
 			subs.Add(tv, hm.Freshen(tv))
 		}
 	}
@@ -733,6 +738,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 		t, _ := scheme.Type()
+		t = hm.ResolveWeak(t)
 		if s.AutoCall {
 			var err error
 			var called bool

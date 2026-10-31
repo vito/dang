@@ -1,0 +1,10 @@
+# `xs` is a list of one type: after `xs += [1]` it is an [Int!]!, so adding
+# strings to it is an error rather than a runtime failure in the sum.
+total: Int! {
+  let xs = []
+  xs += [1]
+  xs += ["s"]
+  xs.reduce(0) { acc, x => acc + x }
+}
+
+print(toString(total))

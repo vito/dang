@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared Int, inferred String
+  [2m[34m--> errors/weak_null_reassigned.dang:3:11[0m
+ [2m    |[0m
+ [2m  1 | # `p` starts out null, and becomes a String once a string is assigned to it:[0m
+ [2m  2 | # it can't then be returned as an Int.[0m
+ [2m[34m[1m  3 | [0mnext: Int {
+[2m                 [31m^[0m
+ [2m  4 |   let p = null[0m
+ [2m  5 |   p = "str"[0m
+ [2m    |[0m
+

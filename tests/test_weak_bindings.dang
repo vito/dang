@@ -1,0 +1,84 @@
+# The unknown parts of a binding's type (the element type of `[]`, the type
+# of `null`) are worked out from how the binding is used, and are then one
+# type everywhere.
+collect: [String!]! {
+  let out = []
+  [1, 2, 3].each { x => out += [toString(x)] }
+  out
+}
+
+assert { collect == ["1", "2", "3"] }
+
+dedupe: [Int!]! {
+  let seen = []
+  [1, 2, 2, 3, 1].each { x =>
+    if (!seen.contains(x)) {
+      seen += [x]
+    }
+  }
+  seen
+}
+
+assert { dedupe == [1, 2, 3] }
+
+# a use that doesn't constrain the element type is fine before a write
+countThenAdd: Int! {
+  let xs = []
+  let before = xs.length
+  xs += [1]
+  before + xs.length
+}
+
+assert { countThenAdd == 1 }
+
+# null, then a value
+lastEven: Int {
+  let found = null
+  [1, 2, 3, 4, 5].each { x =>
+    if (x % 2 == 0) {
+      found = x
+    }
+  }
+  found
+}
+
+assert { lastEven == 4 }
+
+# reading pins the type too, so later writes must agree
+sumFirst: Int! {
+  let xs = []
+  let first: Int = xs[0]
+  xs += [10, 20]
+  (first ?? 0) + xs[0]!
+}
+
+assert { sumFirst == 10 }
+
+# a record holding an empty list
+withRecord: [Int!]! {
+  let r = {{xs: []}}
+  r.xs += [1]
+  r.xs
+}
+
+assert { withRecord == [1] }
+
+# a type's field defaulting to an empty list
+type Bag {
+  let items = []
+  add(x: String!): Bag! {
+    items += [x]
+    self
+  }
+  all: [String!]! { items }
+}
+
+assert { Bag.add("a").add("b").all == ["a", "b"] }
+
+# a field written without a concrete type takes the one its uses give it
+type Cell {
+  v: a
+}
+
+assert { Cell(1).v == 1 }
+assert { Cell(2).v + 1 == 3 }

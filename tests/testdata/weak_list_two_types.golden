@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use [String!]! as [Int!]!
+  [2m[34m--> errors/weak_list_two_types.dang:6:3[0m
+ [2m    |[0m
+ [2m  4 |   let xs = [][0m
+ [2m  5 |   xs += [1][0m
+ [2m[34m[1m  6 | [0m  xs += ["s"]
+[2m         [31m^^^^^^^^^^^[0m
+ [2m  7 |   xs.reduce(0) { acc, x => acc + x }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+
