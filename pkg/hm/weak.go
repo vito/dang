@@ -216,11 +216,14 @@ func CommitWeak(subs Subs) error {
 			case fv.IsRigid():
 			case fv.IsWeak():
 				// It is now part of this binding too, so it may mention
-				// only what both may.
+				// only what both may, and lives as long as this one.
 				if other := fv.cell(); other != nil && other != cell {
 					other.mu.Lock()
 					other.scope = intersect(other.scope, cell.scope)
 					other.mu.Unlock()
+					cell.mu.Lock()
+					cell.children = append(cell.children, other)
+					cell.mu.Unlock()
 				}
 			default:
 				cell.mu.Lock()

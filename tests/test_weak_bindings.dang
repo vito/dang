@@ -53,6 +53,39 @@ afterWrite: Int! {
 
 assert { afterWrite == 2 }
 
+# narrowed before a branch pins it
+sumAll(xs: [Int!]!): Int! {
+  let best = null
+  xs.each { x =>
+    if (best == null) {
+      best = x
+    } else {
+      best = best + x
+    }
+  }
+  best ?? 0
+}
+
+assert { sumAll([1, 2]) == 3 }
+
+# an interface's field written with a variable is met by each
+# implementation in its own type
+interface Container {
+  items: [a]!
+}
+
+type Ints implements Container {
+  items: [Int!]! = [1]
+}
+
+type Strs implements Container {
+  items: [String!]! = ["s"]
+}
+
+count(c: Container!): Int! { c.items.length }
+
+assert { count(Ints) + count(Strs) == 2 }
+
 # a local of a generic function may hold its `a`
 orRaise(c: Boolean!, v: a): a {
   let r = null
