@@ -101,9 +101,11 @@ if (x != null) {
 The same goes for writes the checker sees less directly:
 
 - `self.x = v` ends the narrowing of the bare field `x`
-- calling a closure that assigns `x` ends it, even if the closure was written before the check
-- inside a function, calling a block parameter ends the narrowing of top-level bindings, which the caller's block may reassign
+- calling a closure that assigns `x` null ends it, even if the closure was written before the check
+- calling a block parameter ends the narrowing of anything declared outside the function taking it, which the caller's block may reassign
 - a block or nested function can't rely on a check made outside it if it may run again, or later, after `x` is set to null: when the block itself assigns `x` null (it runs again on the next iteration), or when `x` is set to null after a nested function or stored block that reads it is created. Check `x` inside it, or bind the checked value to a local
+
+Writes a read can't follow from don't count: those in the other branch of the same `if`, in a branch that returns (or, for the rest of a loop body, breaks or continues), or in a nested function that isn't called.
 
 ### Type narrowing via `case`
 

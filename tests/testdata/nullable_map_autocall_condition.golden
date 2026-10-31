@@ -1,4 +1,4 @@
-[1m[31mError:[0m condition must be Boolean!, got Boolean, which may be null: check it for null first, or supply a default with ??
+[1m[31mError:[0m condition must be Boolean!, got Boolean, which may be null: supply a default with ?? (e.g. `?? false`), or check its receiver for null first
   [2m[34m--> errors/nullable_map_autocall_condition.dang:4:5[0m
  [2m    |[0m
  [2m  2 | # it can't be a condition, which must be Boolean!.[0m

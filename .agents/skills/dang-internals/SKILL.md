@@ -316,16 +316,20 @@ Gotchas:
 - Flow-sensitive narrowing re-adds a name to a clone frame; `Type.narrowed`
   marks those so writes resolve to the real declaration, and
   `Type.narrowings` keeps the refinement itself (its binding, unrefined type
-  and log tick). A refinement holds until something may null its binding:
-  the solver's `narrowLog` (narrowing.go) records, in inference order, nullable
-  assignments (`noteAssignment`, including `self.x` for bare `x`), calls of
-  closures that write it (from `absorbCall`, via the effect's targets) and, in
-  function bodies, calls of function parameters (which may run top-level
-  script code). `Symbol.Infer` reads through `readNarrowed`, which falls back to
-  the unrefined type once invalidated. Closures (block args, nested functions)
+  and log tick). A refinement holds from its null check (the tick
+  `Equality`/`Inequality` were inferred at) until something may null its
+  binding: the solver's `narrowLog` (narrowlog.go) records, in inference
+  order, nullable assignments (`noteAssignment`, including `self.x` for bare
+  `x`; a write in a nested function counts only where it's called, via the
+  effect's `nullTargets`) and calls of function parameters (which may write
+  anything declared outside the parameter's function). `Symbol.Infer` reads
+  through `readNarrowed`, which falls back to the unrefined type once
+  invalidated, skipping writes in a sibling `if` branch or a branch that
+  returns (`skipBranch`). Closures (block args, nested functions)
   record their reads of outer refinements on their `effFrame`;
   `exitNarrowBody` checks them against the body's own writes (a re-run) and
-  `solve` against later writes for nested functions and escaping blocks.
+  `solve` against later writes for nested functions (until their block
+  scope ends) and escaping blocks.
 - `Coerce` wraps field values after inference; look through it
   (`FieldDecl.funDecl`) when you need the `FunDecl`.
 - Effects attach to fresh function types only (`attachEffects` on

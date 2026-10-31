@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared Int!, inferred Int
+  [2m[34m--> errors/narrowing_guard_else_write.dang:8:24[0m
+ [2m    |[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0mlast(head: Link): Int! {
+[2m                              [31m^[0m
+ [2m  9 |   let cur = head[0m
+ [2m 10 |   if (cur == null) { return 0 } else { cur = cur.next }[0m
+ [2m    |[0m
+

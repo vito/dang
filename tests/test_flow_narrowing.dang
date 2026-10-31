@@ -247,3 +247,81 @@ let joined(parts: [String!]!): String {
 }
 
 assert("narrowing inside a block that reassigns") { joined(["a", "b"]) == "ab" }
+
+# Writes the read can't follow from don't end a narrowing: in the other
+# branch, in a branch that returns or continues, or in a nested function that
+# isn't called (or is out of scope).
+type Gauge {
+  v: Int = 1
+
+  read(flag: Boolean!): Int! {
+    if (v == null) { return 0 }
+    if (flag) {
+      self.v = null
+      0
+    } else {
+      v + 1
+    }
+  }
+}
+
+assert("write in the other branch") { Gauge.read(false) == 2 }
+
+let unreached(a: Int, flag: Boolean!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  let reset: Int! {
+    x = null
+    0
+  }
+  if (flag) {
+    x = null
+    return 5
+  }
+  x + 1
+}
+
+assert("writes in a returning branch or uncalled function") {
+  unreached(1, false) == 2
+}
+
+let scoped(a: Int): Int! {
+  let x = a
+  let r = 0
+  if (x != null) {
+    let inc: Int! { x + 1 }
+    r = inc
+  }
+  x = null
+  r
+}
+
+assert("nested function out of scope") { scoped(1) == 2 }
+
+let skipZeros(head: Link): Int! {
+  let cur = head
+  let total = 0
+  loop {
+    if (cur == null) { break }
+    if (cur.val == 0) {
+      cur = cur.next
+      continue
+    }
+    total += cur.val
+    cur = cur.next
+  }
+  total
+}
+
+assert("write in a branch that continues") {
+  skipZeros(Link(1, next: Link(0, next: Link(2)))) == 3
+}
+
+let addAll(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  [1, 2].each { i => x = x + i }
+  x + 1
+}
+
+assert("non-null writes in a block keep the narrowing") { addAll(1) == 5 }

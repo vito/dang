@@ -209,9 +209,17 @@ func stripNonNull(t hm.Type) (hm.Type, bool) {
 // notBooleanError reports a non-Boolean! condition or logical operand. A
 // nullable Boolean (e.g. `xs.isEmpty` on a nullable list) gets advice, since
 // "must be Boolean!, got Boolean" alone reads as a contradiction.
-func notBooleanError(what string, t hm.Type) error {
+func notBooleanError(what string, t hm.Type, operand Node) error {
 	if mod, ok := t.(*Type); ok && mod == BooleanType {
-		return fmt.Errorf("%s must be Boolean!, got %s, which may be null: check it for null first, or supply a default with ??", what, t)
+		advice := "check it for null first, or supply a default with ??"
+		if g, ok := operand.(*Grouped); ok {
+			operand = g.Expr
+		}
+		if _, isSym := operand.(*Symbol); !isSym {
+			// A check on a field or call result doesn't narrow it.
+			advice = "supply a default with ?? (e.g. `?? false`), or check its receiver for null first"
+		}
+		return fmt.Errorf("%s must be Boolean!, got %s, which may be null: %s", what, t, advice)
 	}
 	return fmt.Errorf("%s must be Boolean!, got %s", what, t)
 }
@@ -609,6 +617,7 @@ func (e *Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			return nil, err
 		}
+		noteCheck(ctx, e)
 
 		// Equality always returns a boolean
 		return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", e.Loc}}.Infer(ctx, env, fresh)
@@ -821,6 +830,14 @@ func NewInequality(left, right Node, loc *SourceLocation) *Inequality {
 	}
 }
 
+func (i *Inequality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t, err := i.BinaryOperator.Infer(ctx, env, fresh)
+	if err == nil {
+		noteCheck(ctx, i)
+	}
+	return t, err
+}
+
 func (i *Inequality) Walk(fn func(Node) bool) {
 	if !fn(i) {
 		return
@@ -969,7 +986,7 @@ func (u *UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		_, err = hm.Assignable(exprType, boolType)
 		if err != nil {
-			return nil, notBooleanError("the operand of !", exprType)
+			return nil, notBooleanError("the operand of !", exprType, u.Expr)
 		}
 
 		// Return Boolean type
@@ -1237,13 +1254,13 @@ func (l *LogicalAnd) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		// Verify left side is Boolean
 		_, err = hm.Assignable(leftType, boolType)
 		if err != nil {
-			return nil, notBooleanError("logical 'and' left operand", leftType)
+			return nil, notBooleanError("logical 'and' left operand", leftType, l.Left)
 		}
 
 		// Verify right side is Boolean
 		_, err = hm.Assignable(rightType, boolType)
 		if err != nil {
-			return nil, notBooleanError("logical 'and' right operand", rightType)
+			return nil, notBooleanError("logical 'and' right operand", rightType, l.Right)
 		}
 
 		return boolType, nil
@@ -1340,13 +1357,13 @@ func (l *LogicalOr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		// Verify left side is Boolean
 		_, err = hm.Assignable(leftType, boolType)
 		if err != nil {
-			return nil, notBooleanError("logical 'or' left operand", leftType)
+			return nil, notBooleanError("logical 'or' left operand", leftType, l.Left)
 		}
 
 		// Verify right side is Boolean
 		_, err = hm.Assignable(rightType, boolType)
 		if err != nil {
-			return nil, notBooleanError("logical 'or' right operand", rightType)
+			return nil, notBooleanError("logical 'or' right operand", rightType, l.Right)
 		}
 
 		return boolType, nil

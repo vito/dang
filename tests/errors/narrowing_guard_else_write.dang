@@ -1,0 +1,14 @@
+# A guard's narrowing holds from the check: a write in the branch that falls
+# through ends it.
+type Link {
+  val: Int!
+  next: Link = null
+}
+
+last(head: Link): Int! {
+  let cur = head
+  if (cur == null) { return 0 } else { cur = cur.next }
+  cur.val
+}
+
+print(last(Link(1)))
