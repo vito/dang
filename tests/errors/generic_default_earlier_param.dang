@@ -1,0 +1,5 @@
+# A default naming an earlier parameter must still fit every type: `x` is an
+# `a`, which needn't be the `b` the caller picks for `y`.
+f(x: a, y: b = x): b { y }
+
+let s: String = f(1)

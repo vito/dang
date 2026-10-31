@@ -173,6 +173,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(f.Args)
 
 	var blockType *hm.FunctionType
 	if f.BlockParam != nil {
@@ -272,8 +273,9 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 // argument out still picks the function's type variables (from the other
 // arguments, or from where the result goes), so the default must be a value
 // of every type they might pick. `v: a = 1` would make `let s: String! = f`
-// a String! holding 1.
-func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type) error {
+// a String! holding 1. The default's own type is made rigid the same way:
+// it may mention earlier parameters' types, which are the same variables.
+func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type, skolem hm.Subs) error {
 	for _, p := range params {
 		if p.Name.Name != name || p.defaultType == nil {
 			continue
@@ -288,7 +290,8 @@ func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type) error 
 			// null default fits.
 			want = hm.Nullable(tv)
 		}
-		if _, err := assignableForValue(p.defaultType, want, p.Value); err != nil {
+		have := p.defaultType.Apply(skolem).(hm.Type)
+		if _, err := assignableForValue(have, want, p.Value); err != nil {
 			return NewInferError(
 				fmt.Errorf("default %s doesn't fit every type the caller may pick for %s: %w", p.defaultType, rigid, err),
 				p.Value,
@@ -327,6 +330,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(f.Args)
 
 	// Process block parameter if present
 	var blockType *hm.FunctionType
@@ -389,7 +393,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 			if t, ok := scheme.Type(); ok {
 				rigid := t.Apply(skolem).(hm.Type)
 				newEnv.Add(arg.Key, hm.NewScheme(nil, rigid))
-				if err := checkGenericDefault(f.Args, arg.Key, rigid); err != nil {
+				if err := checkGenericDefault(f.Args, arg.Key, rigid, skolem); err != nil {
 					return nil, err
 				}
 			}

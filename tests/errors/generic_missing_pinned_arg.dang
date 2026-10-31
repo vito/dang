@@ -1,0 +1,5 @@
+# `x` pins `a` to Int!, and `y` has no default: leaving it out is an error,
+# not a null.
+choose(x: a, y: a): a { y }
+
+let n = choose(1)
