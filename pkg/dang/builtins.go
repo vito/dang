@@ -775,9 +775,9 @@ func DefineEnum(parent *Type, name string, values ...string) *Type {
 	enum.Add("values", valuesScheme)
 	enum.SetVisibility("values", PublicVisibility)
 
-	// Register on parent as both a object and a value
+	// Register on parent as both a object and a value (its namespace)
 	parent.AddObject(name, enum)
-	parent.Add(name, hm.NewScheme(nil, NonNull(enum)))
+	parent.Add(name, hm.NewScheme(nil, enumNamespaceType(enum)))
 	parent.SetVisibility(name, PublicVisibility)
 
 	return enum

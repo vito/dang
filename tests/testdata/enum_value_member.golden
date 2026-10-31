@@ -1,0 +1,10 @@
+[1m[31mError:[0m a Color value has no field "GREEN"; GREEN belongs to the enum itself (Color.GREEN)
+  [2m[34m--> errors/enum_value_member.dang:10:7[0m
+ [2m    |[0m
+ [2m  8 | [0m
+ [2m  9 | let c = Color.RED[0m
+ [2m[34m[1m 10 | [0mprint(c.GREEN)
+[2m             [31m^^^^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

@@ -939,7 +939,10 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if sym, ok := d.Receiver.(*Symbol); ok {
 			if ts, ok := env.(TypeScope); ok {
 				if named, found := ts.NamedType(sym.Name); found {
-					if owner, ok := named.(*Type); ok {
+					// An enum's meta-type holds its values, which are read off
+					// the enum's namespace value like any field, not from
+					// statics.
+					if owner, ok := named.(*Type); ok && owner.Kind != EnumKind {
 						// A public static is reachable as `Type.member`
 						// anywhere; a private (let) static only from within its
 						// declaring module (module-level visibility, matching
@@ -1104,6 +1107,17 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 
 		scheme, found := rec.SchemeOf(d.Field.Name)
+		if mod, ok := rec.(*Type); ok && mod.Kind == EnumKind {
+			// An enum value has no members: the enum's values (and
+			// `values`) belong to its namespace, the enum's name.
+			tv := fresh.Fresh()
+			d.SetInferredType(tv)
+			if found {
+				return tv, fmt.Errorf("a %s value has no field %q; %s belongs to the enum itself (%s.%s)",
+					mod, d.Field.Name, d.Field.Name, mod, d.Field.Name)
+			}
+			return tv, fmt.Errorf("a %s value has no field %q", mod, d.Field.Name)
+		}
 		if !found {
 			// Return a type variable to allow downstream inference to continue
 			tv := fresh.Fresh()
