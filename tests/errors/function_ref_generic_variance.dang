@@ -1,0 +1,29 @@
+# A generic function stands in for another only if one instantiation fits
+# both its parameters and its result. `ident` returns what it's given, so it
+# can't promise a Dog! back for any Animal! passed in.
+
+interface Animal {
+  name: String!
+}
+
+type Dog implements Animal {
+  name: String!
+
+  bark: String! { "woof" }
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+type Host {
+  hook(d: Animal!): Dog! { Dog(d.name) }
+
+  fire: String! { hook(Cat("kitty")).bark }
+}
+
+ident(d: a): a { d }
+
+let h = Host
+h.hook = &ident
+print(h.fire)

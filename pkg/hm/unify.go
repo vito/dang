@@ -217,6 +217,19 @@ func assignableFunction(have, want *FunctionType) (Subs, error) {
 			return nil, UnificationError{have, want}
 		}
 	}
+	// Composing widens a variable bound on both sides of the arrow to a
+	// common supertype (`ident(d: a): a` for `(d: Animal!): Dog!` binds a to
+	// Animal!), which holds for the parameters but not the result. Every
+	// pair must still hold under the combined substitution.
+	if len(subs) > 0 {
+		for _, p := range pairs {
+			from := p.from.Apply(subs).(Type)
+			to := p.to.Apply(subs).(Type)
+			if _, err := assignable(from, to, false); err != nil {
+				return nil, UnificationError{have, want}
+			}
+		}
+	}
 	return subs, nil
 }
 

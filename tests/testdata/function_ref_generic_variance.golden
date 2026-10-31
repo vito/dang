@@ -1,0 +1,11 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign (d: a): a to (d: Animal!): Dog!: cannot use (d: a): a as (d: Animal!): Dog!
+  [2m[34m--> errors/function_ref_generic_variance.dang:28:1[0m
+ [2m    |[0m
+ [2m 26 | [0m
+ [2m 27 | let h = Host[0m
+ [2m[34m[1m 28 | [0mh.hook = &ident
+[2m       [31m^^^^^^^^^^^^^^^[0m
+ [2m 29 | print(h.fire)[0m
+ [2m 30 | [0m
+ [2m    |[0m
+
