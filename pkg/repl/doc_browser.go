@@ -102,6 +102,11 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			}
 		} else {
 			inner := UnwrapType(t)
+			// A type's name is bound to its meta-type (its namespace):
+			// browse the type it names.
+			if meta, ok := inner.(*dang.Type); ok && meta.IsMeta() {
+				inner = meta.InstanceType()
+			}
 			if mod, ok := inner.(dang.TypeScope); ok {
 				item.RetTypeScope = mod
 				item.Kind = ClassifyTypeScope(mod)
