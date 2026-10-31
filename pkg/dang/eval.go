@@ -652,6 +652,7 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				FnType:    fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
+			constructor.TypeScope.SetConstructor(constructor)
 		}
 
 		for _, f := range t.Fields {
