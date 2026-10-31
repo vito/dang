@@ -3662,6 +3662,22 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			)
 		}
 
+		// A block's parameters take on the signature's names by position
+		// (see paramKey below), so one reusing a signature name in another
+		// position would be reached by callers naming the other parameter.
+		// (len(b.Args) <= len(b.ExpectedParamNames) whenever any are set.)
+		for i, arg := range b.Args {
+			for j, name := range b.ExpectedParamNames {
+				if j != i && name == arg.Name.Name {
+					return nil, NewInferError(
+						fmt.Errorf("block parameter %q takes the signature's %q; %q is a different parameter of the signature, so name this one differently",
+							arg.Name.Name, b.ExpectedParamNames[i], name),
+						arg,
+					)
+				}
+			}
+		}
+
 		// A block with no explicit parameters that references `_` in its body
 		// takes a single implicit parameter named `_` (Kotlin `it`-style). Every
 		// `_` in the block refers to that same single argument; a nested
