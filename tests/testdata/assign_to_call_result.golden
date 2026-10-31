@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot assign to a field of p.moved(2): a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that
+  [2m[34m--> errors/assign_to_call_result.dang:13:1[0m
+ [2m    |[0m
+ [2m 11 | [0m
+ [2m 12 | let p = Point(1)[0m
+ [2m[34m[1m 13 | [0mp.moved(2).x = 5
+[2m       [31m^^^^^^^^^^[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

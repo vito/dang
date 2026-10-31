@@ -1,0 +1,16 @@
+# A path through a computed member can't be written whatever else is on it,
+# so that is what's reported, not the nullable link a `!` wouldn't fix.
+type Inner {
+  x: Int! = 0
+}
+
+type Mid {
+  maybe: Inner = null
+}
+
+type Foo {
+  comp: Mid! { Mid }
+}
+
+let a = Foo
+a.comp.maybe.x = 4

@@ -1,0 +1,9 @@
+# A method's receiver is not a binding: return a new value instead
+type Counter {
+  n: Int! = 1
+
+  reset: Counter! {
+    self = Counter(0)
+    self
+  }
+}
