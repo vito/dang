@@ -1245,13 +1245,10 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		// Extract element/value type from the receiver. Maps are indexed by
 		// String!, lists by Int!.
 		var elementType hm.Type
-		var isNullable bool
 
 		unwrapped := receiverType
 		if nonNull, ok := receiverType.(hm.NonNullType); ok {
 			unwrapped = nonNull.Type
-		} else {
-			isNullable = true
 		}
 
 		switch recv := unwrapped.(type) {
@@ -1287,23 +1284,9 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		}
 
 		// Return nullable element type since indexing can fail (out of bounds)
-		// or if the original list was nullable
-		var resultType hm.Type
-		if isNullable {
-			// Remove NonNull wrapper if present, since nullable list means nullable result
-			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-				resultType = nonNullElem.Type
-			} else {
-				resultType = elementType
-			}
-		} else {
-			// Even for non-null lists, indexing can fail, so return nullable
-			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-				resultType = nonNullElem.Type
-			} else {
-				resultType = elementType
-			}
-		}
+		// or if the original list was nullable. A type variable element may
+		// stand for a non-null type, so it becomes its nullable form too.
+		resultType := hm.Nullable(elementType)
 		i.SetInferredType(resultType)
 		return resultType, nil
 	})

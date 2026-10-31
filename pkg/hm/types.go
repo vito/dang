@@ -223,6 +223,10 @@ func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
 	return ntv
 }
 
+// Nullable returns the nullable form of t: T for T!, a? for a variable a, and
+// t itself when it is already nullable.
+func Nullable(t Type) Type { return makeNullable(t) }
+
 func makeNullable(t Type) Type {
 	switch tt := t.(type) {
 	case NullableTypeVariable:

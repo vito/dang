@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared a, inferred a?
+  [2m[34m--> errors/generic_index_nullable.dang:3:20[0m
+ [2m    |[0m
+ [2m  1 | # Indexing a list can miss, so `xs[0]` is a possibly-null `a`, not an `a`:[0m
+ [2m  2 | # with a := Int!, `first([])` would be a null Int!.[0m
+ [2m[34m[1m  3 | [0mfirst(xs: [a]!): a { xs[0] }
+[2m                          [31m^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m  5 | let n: Int! = first([])[0m
+ [2m    |[0m
+
