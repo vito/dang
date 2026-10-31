@@ -335,6 +335,10 @@ func isConstantValue(value Node) bool {
 // read, and then forced in source order before non-declarations run. This is
 // used for both module top-levels and object bodies.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
+	// An entry point: look through a context without a frame once, rather
+	// than in every EvalNode below.
+	ctx, _ = ensureFrame(ctx)
+
 	var result Value = NullValue{}
 	var err error
 
