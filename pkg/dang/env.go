@@ -1552,5 +1552,20 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 		}
 	}
 
+	// The block argument is an argument too: callers going through the
+	// interface pass a block of the interface's block type, which the
+	// object's method then calls as its own block type.
+	ifaceBlock, objectBlock := ifaceFn.Block(), objectFn.Block()
+	switch {
+	case objectBlock == nil:
+		// Any block the interface's callers pass is ignored.
+	case ifaceBlock == nil:
+		return fmt.Errorf("field %q: object takes a block argument %s but interface does not",
+			fieldName, objectBlock)
+	case !hm.IsSubtypeOf(ifaceBlock, objectBlock):
+		return fmt.Errorf("field %q: block argument type %s is not compatible with interface block type %s (contravariance required)",
+			fieldName, objectBlock, ifaceBlock)
+	}
+
 	return nil
 }

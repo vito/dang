@@ -101,6 +101,14 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 		return assignableFromUnion(haveUnion, want, allowCoercion)
 	}
 
+	// Functions are contravariant in what they are given (arguments and
+	// block) and covariant in what they return.
+	if haveFn, ok := have.(*FunctionType); ok {
+		if wantFn, ok := want.(*FunctionType); ok {
+			return assignableFunction(haveFn, wantFn)
+		}
+	}
+
 	// Handle composite types using Types() method
 	haveTypes := have.Types()
 	wantTypes := want.Types()
@@ -165,6 +173,40 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 	}
 
 	return nil, UnificationError{have, want}
+}
+
+// assignableFunction reports whether a function of type have can be used
+// where one of type want is expected. Callers of a want-typed function pass
+// want's arguments and block, which have's body must accept (contravariance),
+// and expect want's result, which have must produce (covariance). Value-level
+// coercions never apply under a function type: nothing coerces the values
+// passing through a function at call time.
+func assignableFunction(have, want *FunctionType) (Subs, error) {
+	type pair struct{ from, to Type }
+	pairs := []pair{
+		{want.arg, have.arg},
+		{have.ret, want.ret},
+	}
+	switch {
+	case have.block == nil && want.block == nil:
+	case have.block != nil && want.block != nil:
+		pairs = append(pairs, pair{want.block, have.block})
+	default:
+		return nil, UnificationError{have, want}
+	}
+
+	subs := NewSubs()
+	for _, p := range pairs {
+		componentSubs, err := assignable(p.from, p.to, false)
+		if err != nil {
+			return nil, UnificationError{have, want}
+		}
+		subs, err = subs.Compose(componentSubs)
+		if err != nil {
+			return nil, UnificationError{have, want}
+		}
+	}
+	return subs, nil
 }
 
 func assignableToUnion(have Type, want *UnionType, allowCoercion bool) (Subs, error) {

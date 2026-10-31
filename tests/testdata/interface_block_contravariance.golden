@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "visit": block argument type (d: Animal!): String! is not compatible with interface block type (d: Dog!): String! (contravariance required)
+  [2m[34m--> errors/interface_block_contravariance.dang:23:19[0m
+ [2m    |[0m
+ [2m 21 | }[0m
+ [2m 22 | [0m
+ [2m[34m[1m 23 | [0mtype W implements Visitor {
+[2m                         [31m^^^^^^^[0m
+ [2m 24 |   visit(&f(d: Animal!): String!): String! { f(Cat("x")) }[0m
+ [2m 25 | }[0m
+ [2m    |[0m
+
