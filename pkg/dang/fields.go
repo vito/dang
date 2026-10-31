@@ -22,6 +22,10 @@ type FieldDecl struct {
 
 	// A type inferred from context, i.e. a lambda passed as a function argument.
 	ContextInferredType hm.Type
+
+	// defaultType is the inferred type of Value, when the field has both a
+	// type and a value: for a function's parameter, its default's type.
+	defaultType hm.Type
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -264,6 +268,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
+			s.defaultType = inferredType
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
 		} else {
 			definedType = inferredType

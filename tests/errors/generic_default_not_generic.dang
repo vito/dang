@@ -1,0 +1,7 @@
+# A caller who leaves out a defaulted argument still picks `a`, from where
+# the result goes: `let s: [String!]! = withDefault` would hold [1]. So a
+# default must fit every type the caller may pick.
+withDefault(v: [a]! = [1]): [a]! { v }
+
+let s: [String!]! = withDefault
+print(s[0]! + "x")
