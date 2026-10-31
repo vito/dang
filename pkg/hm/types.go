@@ -166,17 +166,23 @@ func (tv TypeVariable) name() string {
 }
 
 func (tv TypeVariable) Name() string {
-	return tv.name()
+	return tv.String()
 }
 
 func (tv TypeVariable) Apply(subs Subs) Substitutable {
 	if t, exists := subs[tv]; exists {
 		return t
 	}
+	if b, ok := tv.weakBinding(); ok {
+		return b.Apply(subs)
+	}
 	return tv
 }
 
 func (tv TypeVariable) FreeTypeVar() TypeVarSet {
+	if b, ok := tv.weakBinding(); ok {
+		return b.FreeTypeVar()
+	}
 	return NewTypeVarSet(tv)
 }
 
@@ -189,7 +195,10 @@ func (tv TypeVariable) Types() Types {
 }
 
 func (tv TypeVariable) Eq(other Type) bool {
-	if ot, ok := other.(TypeVariable); ok {
+	if b, ok := tv.weakBinding(); ok {
+		return b.Eq(other)
+	}
+	if ot, ok := prune(other).(TypeVariable); ok {
 		return tv == ot
 	}
 	return false
@@ -200,11 +209,14 @@ func (tv TypeVariable) Supertypes() []Type {
 }
 
 func (tv TypeVariable) String() string {
+	if b, ok := tv.weakBinding(); ok {
+		return b.String()
+	}
 	return tv.name()
 }
 
 func (tv TypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s", tv.name())
+	_, _ = fmt.Fprintf(s, "%s", tv.String())
 }
 
 // NullableTypeVariable is a type variable that carries a nullability taint.
@@ -225,6 +237,9 @@ func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
 	// a := b resolves to b?.
 	if t, exists := subs[ntv.TypeVariable]; exists {
 		return makeNullable(t)
+	}
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return makeNullable(b.Apply(subs).(Type))
 	}
 	return ntv
 }
@@ -247,18 +262,31 @@ func makeNullable(t Type) Type {
 }
 
 func (ntv NullableTypeVariable) Eq(other Type) bool {
-	if ot, ok := other.(NullableTypeVariable); ok {
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return makeNullable(b).Eq(other)
+	}
+	if ot, ok := prune(other).(NullableTypeVariable); ok {
 		return ntv.TypeVariable == ot.TypeVariable
 	}
 	return false
 }
 
+func (ntv NullableTypeVariable) FreeTypeVar() TypeVarSet {
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return b.FreeTypeVar()
+	}
+	return NewTypeVarSet(ntv.TypeVariable)
+}
+
 func (ntv NullableTypeVariable) String() string {
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return makeNullable(b).String()
+	}
 	return ntv.TypeVariable.name() + "?"
 }
 
 func (ntv NullableTypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s?", ntv.TypeVariable.name())
+	_, _ = fmt.Fprint(s, ntv.String())
 }
 
 // Effect is an opaque annotation on a function type describing what calling
