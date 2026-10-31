@@ -149,6 +149,11 @@ func containsDegradableScalar(t hm.Type) bool {
 // object/interface types. Returns nil when no enrichment applies and the
 // caller should use the bare unification error.
 func diagnoseAssignment(have, want hm.Type) error {
+	if wantTV, ok := want.(hm.TypeVariable); ok && wantTV.IsRigid() {
+		if _, nullable := have.(hm.NullableTypeVariable); nullable {
+			return fmt.Errorf("cannot use a possibly-null value as %s: callers may pick a non-null type for %s", want, want)
+		}
+	}
 	haveMod, wantMod, issues, ok := walkAssignment(have, want)
 	if !ok {
 		return nil
