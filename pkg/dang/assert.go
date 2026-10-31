@@ -15,7 +15,7 @@ func registerAssert() {
 		Example(`assert { 1 + 1 == 2 }`).
 		Params("message", StringType, NullValue{}).
 		Block(hm.NewFnType(NewRecordType(""), TypeVar('a'))).
-		Returns(TypeVar('n')).
+		Returns(Nullable(TypeVar('n'))).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			if args.Block == nil {
 				return nil, fmt.Errorf("assert requires a block argument")

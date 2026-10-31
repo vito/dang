@@ -24,7 +24,7 @@ func registerStdlib() {
 		Doc("prints a value to stdout").
 		Example(`print("hello, world")`).
 		Params("value", TypeVar('a')).
-		Returns(TypeVar('n')).
+		Returns(Nullable(TypeVar('n'))).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
 			writer := ioctx.StdoutFromContext(ctx)

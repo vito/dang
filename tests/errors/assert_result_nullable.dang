@@ -1,0 +1,4 @@
+# assert returns null, so its result can't flow into a non-null slot.
+id(x: Int!): Int! { x }
+
+id(assert { true })

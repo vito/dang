@@ -1,0 +1,2 @@
+# print returns null, so its result can't flow into a non-null slot.
+let s: String! = print("hi")

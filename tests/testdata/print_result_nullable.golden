@@ -1,0 +1,9 @@
+[1m[31mError:[0m cannot use n? as String!
+  [2m[34m--> errors/print_result_nullable.dang:2:18[0m
+ [2m    |[0m
+ [2m  1 | # print returns null, so its result can't flow into a non-null slot.[0m
+ [2m[34m[1m  2 | [0mlet s: String! = print("hi")
+[2m                        [31m^^^^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+
