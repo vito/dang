@@ -303,6 +303,15 @@ func diagnoseAssignment(have, want hm.Type) error {
 		return nil
 	}
 	if len(issues) == 0 {
+		switch {
+		case haveMod.Named == "" && wantMod.Named == "":
+			// Records unify only with records of the very same field types.
+			return fmt.Errorf("cannot use %s as %s: record fields must have exactly the same types", have, want)
+		case haveMod.Named == "":
+			// Named types are nominal; a record never stands in for one.
+			return fmt.Errorf("cannot use %s as %s: a record can't stand in for %s, even with the same fields",
+				have, want, wantMod.Named)
+		}
 		haveHome, wantHome := haveMod.HomeModule(), wantMod.HomeModule()
 		if haveMod.Named == wantMod.Named && haveHome != nil && wantHome != nil && haveHome != wantHome {
 			// Same type name, distinct module identities. This is a nominal
