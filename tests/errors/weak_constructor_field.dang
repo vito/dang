@@ -1,0 +1,8 @@
+# A field written `v: a` has one type for all Cells, not one per Cell: the
+# first constructor call makes it an Int!.
+type Cell {
+  v: a
+}
+
+let ints = Cell(1)
+let n: Int! = Cell("s").v + 1

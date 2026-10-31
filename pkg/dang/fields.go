@@ -1155,6 +1155,9 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
+		// The implicit constructor's parameters are the type's fields,
+		// with the fields' types.
+		paramsAreFields: c.findNewConstructor() == nil,
 	}
 	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 	argEnv := env.Clone()
