@@ -1,0 +1,30 @@
+# A possibly-null `a` (an index into `[a]!`, say) is an `a` again once it is
+# known not to be null.
+firstOrRaise(xs: [a]!): a {
+  let r = xs[0]
+  if (r == null) {
+    raise "empty"
+  }
+  r
+}
+
+assert { firstOrRaise([1]) == 1 }
+assert { firstOrRaise(["s"]) == "s" }
+assert { (firstOrRaise([]) rescue "none") == "none" }
+
+firstIfAny(xs: [a]!): a {
+  let r = xs[0]
+  if (r != null) { r } else { raise "empty" }
+}
+
+assert { firstIfAny([2]) == 2 }
+
+firstAsserted(xs: [a]!): a { xs[0]! }
+
+assert { firstAsserted([3]) == 3 }
+
+# with the element written non-null, indexing gives a (nullable) `a`
+firstOfNonNull(xs: [a!]!): a { xs[0] }
+
+assert { firstOfNonNull([4]) == 4 }
+assert { firstOfNonNull([]) == null }
