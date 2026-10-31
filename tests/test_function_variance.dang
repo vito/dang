@@ -28,6 +28,13 @@ let h = Host
 h.hook = &anyAnimal
 assert { h.fire == "rex!" }
 
+# A generic function fits when one instantiation does.
+ident(d: a): a { d }
+
+let h2 = Host
+h2.hook = &ident
+assert { h2.fire == "rex" }
+
 # An implementation may call its block with something more specific than
 # the interface promises the block.
 interface Visitor {
