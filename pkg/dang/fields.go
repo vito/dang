@@ -1207,8 +1207,11 @@ func (c *ObjectDecl) extractConstructorParameters() []*FieldDecl {
 
 	for _, form := range c.Value.Forms {
 		if field, ok := form.(*FieldDecl); ok {
-			// Skip function fields
-			if _, isFun := field.Value.(*FunDecl); isFun {
+			// Skip function fields. Look through the Coerce inference wraps
+			// some of them in: this also runs at eval, after inference, and
+			// must find the same parameters the constructor type was built
+			// from.
+			if field.funDecl() != nil {
 				continue
 			}
 
