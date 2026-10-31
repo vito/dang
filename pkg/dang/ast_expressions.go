@@ -1181,6 +1181,12 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			// Return a type variable to allow downstream inference to continue
 			tv := fresh.Fresh()
 			d.SetInferredType(tv)
+			if mod, ok := rec.(*Type); ok && mod.IsMeta() {
+				// The meta-type prints as the type's own name; say which.
+				if _, isMember := mod.InstanceType().LocalSchemeOf(d.Field.Name); isMember {
+					return tv, fmt.Errorf("field %q belongs to values of %s, not to %s itself", d.Field.Name, mod, mod)
+				}
+			}
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
 		if err := checkMemberAccessible(ctx, rec, d.Field.Name); err != nil {
