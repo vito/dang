@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign through a non-null assertion: copy the value to a local, assign to that, and assign it back (e.g. `let v = self.b!; v.c = ...; self.b = v`), or null-check it by its bare name first
+  [2m[34m--> errors/assign_path_through_nonnull_assert.dang:11:5[0m
+ [2m    |[0m
+ [2m  9 | [0m
+ [2m 10 |   bump: Outer! {[0m
+ [2m[34m[1m 11 | [0m    self.b!.c += 1
+[2m           [31m^^^^^^^[0m
+ [2m 12 |     self[0m
+ [2m 13 |   }[0m
+ [2m    |[0m
+

@@ -606,6 +606,11 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if _, isIndex := r.Target.(*Index); isIndex {
 			return nil, NewInferError(fmt.Errorf("cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that"), r.Target)
 		}
+		// A field write copies every link of its path back to a binding, so
+		// the path must start at a name or `self`.
+		if err := checkAssignmentPath(r.Target); err != nil {
+			return nil, err
+		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
 		// A location is not a function value escaping. A plain assignment's
@@ -932,6 +937,51 @@ func cowBind(v ValueScope, name string, value Value) {
 		return
 	}
 	v.Bind(name, value, v.Visibility(name))
+}
+
+// checkAssignmentPath rejects a field write whose path doesn't start at a
+// name or `self` (`self.b!.c = 1`, `xs[0].c = 1`, `f().c = 1`): there is no
+// binding to copy the updated value back to.
+func checkAssignmentPath(target Node) error {
+	sel, ok := target.(*Select)
+	if !ok {
+		return nil
+	}
+	var node Node = sel
+	var path []string
+	for {
+		s, ok := node.(*Select)
+		if !ok {
+			break
+		}
+		path = append([]string{s.Field.Name}, path...)
+		node = s.Receiver
+	}
+	switch root := node.(type) {
+	case *Symbol, *SelfKeyword:
+		return nil
+	case *NonNullAssert:
+		if checkAssignmentPath(root.Expr) == nil && isAssignable(root.Expr) {
+			expr := strings.TrimSpace(Format(root.Expr))
+			return NewInferError(fmt.Errorf("cannot assign through a non-null assertion: copy the value to a local, assign to that, and assign it back (e.g. `let v = %s; v.%s = ...; %s = v`), or null-check it by its bare name first", expr+"!", strings.Join(path, "."), expr), root)
+		}
+	}
+	return NewInferError(fmt.Errorf("cannot assign to a field of %s: a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that", strings.TrimSpace(Format(node))), node)
+}
+
+// isAssignable reports whether node names a place: a name, or a field path
+// from a name or self.
+func isAssignable(node Node) bool {
+	switch n := node.(type) {
+	case *Symbol:
+		return true
+	case *Select:
+		if _, isSelf := n.Receiver.(*SelfKeyword); isSelf {
+			return true
+		}
+		return isAssignable(n.Receiver)
+	}
+	return false
 }
 
 func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
