@@ -53,9 +53,15 @@ func newDecodeBench(tb testing.TB, entries int) *decodeBench {
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(tb, err, "infer")
-	ctx = WithEvalContext(ctx, NewEvalContext("decode_bench", src))
-	_, err = EvaluateFormsWithPhases(ctx, file.Forms, valueScope)
+	_, err = EvaluateFormsWithPhases(WithEvalContext(ctx, NewEvalContext("decode_bench", src)), file.Forms, valueScope)
 	require.NoError(tb, err, "eval")
+
+	// The SDK decodes under the engine's request context, which carries no
+	// Dang frame and many value layers of its own.
+	type engineKey int
+	for i := range 30 {
+		ctx = context.WithValue(ctx, engineKey(i), i)
+	}
 
 	types := map[string]TypeScope{}
 	for _, name := range []string{"Tool", "Module", "Tests", "Selection"} {
