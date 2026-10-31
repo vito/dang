@@ -210,11 +210,16 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 // createFunctionValue creates a FunctionValue from processed arguments
 func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
-	defaults := make(map[string]Node)
+	// Defaults is only read, so a function without any can share the nil
+	// map instead of allocating an empty one for every value of it.
+	var defaults map[string]Node
 
 	for i, arg := range f.Args {
 		argNames[i] = arg.Name.Name
 		if arg.Value != nil {
+			if defaults == nil {
+				defaults = make(map[string]Node)
+			}
 			defaults[arg.Name.Name] = arg.Value
 		}
 	}
