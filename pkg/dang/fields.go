@@ -1972,6 +1972,15 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		if err := evalScalarStatics(); err != nil {
 			return nil, err
 		}
+		// The name is typed as the scalar's meta-type, which holds its
+		// statics (see Hoist), so as a value it is the statics namespace:
+		// `let ns = Tag; ns.sep` reads it.
+		if statics := s.Inferred.Statics(); statics != nil {
+			if _, isBuiltin := BuiltinScalarModule(s.Name.Name); !isBuiltin {
+				scope.Bind(s.Name.Name, statics, s.Visibility)
+				return statics, nil
+			}
+		}
 		return scalarModule, nil
 	})
 }
