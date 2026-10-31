@@ -2412,10 +2412,16 @@ func (m *Object) nextFrame(cell *DynamicScope) (*Object, bool) {
 
 // NewObject creates a new Object with an empty values map
 func NewObject(mod TypeScope) *Object {
+	// An instance ends up binding every member its type declares, so size
+	// its maps for them up front rather than growing them one by one.
+	var size int
+	if t, ok := mod.(*Type); ok {
+		size = len(t.vars)
+	}
 	return &Object{
 		Mod:          mod,
-		Values:       make(map[string]Value),
-		Visibilities: make(map[string]Visibility),
+		Values:       make(map[string]Value, size),
+		Visibilities: make(map[string]Visibility, size),
 		Parent:       nil,
 	}
 }
