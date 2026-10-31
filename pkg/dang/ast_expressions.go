@@ -1073,6 +1073,10 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		var rec TypeScope
 		var isNullable bool
 
+		if _, ok := unwrapNonNull(lt).(DecodedType); ok {
+			return nil, fmt.Errorf("cannot select %q from decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T).%s`", d.Field.Name, lt, d.Field.Name)
+		}
+
 		if nn, ok := lt.(hm.NonNullType); ok {
 			// Non-null receiver
 			envType, ok := nn.Type.(TypeScope)

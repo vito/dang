@@ -84,3 +84,9 @@ assert { [1, 2].contains(JSON.decode("2")) }
 let decodedElems = [JSON.decode("1"), JSON.decode("2")] :: [Int!]!
 assert { decodedElems[1] == 2 }
 assert { JSON.encode(JSON.decode("{\"a\": [1]}")) == "{\"a\":[1]}" }
+
+# A list of untyped decode results compares its elements by their data.
+let rawItems = [JSON.decode("1"), JSON.decode("2"), JSON.decode("1")]
+assert { rawItems.contains(JSON.decode("2")) }
+assert { !rawItems.contains(JSON.decode("3")) }
+assert { rawItems.uniq.length == 2 }

@@ -1,0 +1,4 @@
+# Records compare field by field, so one holding decoded data would compare
+# the raw data too.
+let r = {{count: JSON.decode("1")}}
+assert { r == {{count: 1}} }

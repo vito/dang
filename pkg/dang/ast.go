@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"reflect"
 	"slices"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -320,6 +321,13 @@ func valuesEqual(left, right Value) bool {
 		// constructions don't.
 		if r, ok := right.(GraphQLValue); ok {
 			return l.QueryChain == r.QueryChain
+		}
+	case DeferredValue:
+		// Decoded data that never got a type (a [Decoded] list's elements,
+		// compared by contains/uniq) is equal when the data is. The checker
+		// rejects == on it; this is for the builtins that compare elements.
+		if r, ok := right.(DeferredValue); ok {
+			return reflect.DeepEqual(l.Raw, r.Raw)
 		}
 	}
 
