@@ -90,6 +90,21 @@ assert { Slug("Hi").shout == "HI" }
 assert { (Slug.empty :: String!) == "" }
 assert { Slug.sep == "-" }
 
+# --- a scalar without new(): its name is the statics namespace, also when
+# held in a variable ---
+scalar Label {
+  self {
+    sep: String! = "/"
+    join(a: String!, b: String!): String! { a + sep + b }
+  }
+}
+
+let labels = Label
+
+assert { Label.sep == "/" }
+assert { labels.sep == "/" }
+assert { labels.join("a", "b") == "a/b" }
+
 # --- a builtin static on a Go-native scalar (Regexp.escape) ---
 # Regexp has no Dang body; its static is wired directly onto the meta-type, but
 # it resolves through the exact same Type.member static path as the blocks above.
