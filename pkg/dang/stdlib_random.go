@@ -36,7 +36,10 @@ func registerRandom() {
 			if min >= max {
 				return nil, fmt.Errorf("random.int: min (%d) must be less than max (%d)", min, max)
 			}
-			return ToValue(min + mrand.IntN(max-min))
+			// max-min can overflow Int when the bounds straddle zero, so
+			// compute the span unsigned: it always fits since min < max.
+			span := uint64(max) - uint64(min)
+			return ToValue(int(uint64(min) + mrand.Uint64N(span)))
 		})
 
 	// Random.float() -> Float!

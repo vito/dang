@@ -5,6 +5,13 @@ let n = Random.int(min: 0, max: 10)
 assert { n >= 0 }
 assert { n < 10 }
 
+# Bounds whose span overflows Int still produce a value in range
+let wide = Random.int(min: -9223372036854775807 - 1, max: 9223372036854775807)
+assert { wide < 9223372036854775807 }
+let negative = Random.int(min: -5, max: -2)
+assert { negative >= -5 }
+assert { negative < -2 }
+
 # Random.float generates floats in [0, 1)
 let f = Random.float
 assert { f >= 0.0 }
