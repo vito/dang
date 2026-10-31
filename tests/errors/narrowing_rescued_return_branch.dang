@@ -1,0 +1,17 @@
+# A raise before a branch's return may be rescued, so inside a rescue operand
+# the branch's writes still reach the code after it.
+boom: Int! { raise "boom" }
+
+run(a: Int, c: Boolean!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  let r = {
+    if (c) {
+      x = null
+      boom
+      return 0
+    }
+    0
+  } rescue 1
+  x + 1
+}

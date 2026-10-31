@@ -1,0 +1,23 @@
+# A stored block that calls a nested function reads what the nested function
+# reads, so it may run after a narrowed name it reads is set to null.
+type Host {
+  let saved(x: Int!): Int! { x }
+
+  store(&cb(x: Int!): Int!): Host! {
+    self.saved = cb
+    self
+  }
+
+  call(x: Int!): Int! { saved(x) }
+}
+
+run(a: Int): Int! {
+  let x = a
+  let h = Host
+  if (x != null) {
+    let next(y: Int!): Int! { x + y }
+    h = h.store { y => next(y) }
+  }
+  x = null
+  h.call(1)
+}

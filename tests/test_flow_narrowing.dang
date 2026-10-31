@@ -325,3 +325,42 @@ let addAll(a: Int): Int! {
 }
 
 assert("non-null writes in a block keep the narrowing") { addAll(1) == 5 }
+
+# A block that returns after a write doesn't run again.
+let findAndReset(xs: [Int!]!, a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  xs.each { i =>
+    if (i == x + 0) {
+      x = null
+      return i
+    }
+  }
+  0
+}
+
+assert("write in a returning branch of a block") { findAndReset([1, 2], 2) == 2 }
+
+# A stored block's narrowing doesn't care about writes before the check.
+type Keeper {
+  let saved(n: Int!): Int! { n }
+
+  keep(&cb(n: Int!): Int!): Keeper! {
+    self.saved = cb
+    self
+  }
+
+  run(n: Int!): Int! { saved(n) }
+}
+
+let keepAfterCheck(a: Int): Int! {
+  let x: Int = 5
+  x = a
+  let k = Keeper
+  if (x != null) {
+    k = k.keep { n => x + n }
+  }
+  k.run(1)
+}
+
+assert("stored block after assign-then-check") { keepAfterCheck(1) == 2 }

@@ -78,7 +78,8 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			EmitInferWarning(ctx, t, "try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate")
 		}
 
-		bodyType, err := t.Operand.Infer(ctx, env, fresh)
+		// Writes before a raise in the operand reach the code after it.
+		bodyType, err := t.Operand.Infer(withinRescue(ctx), env, fresh)
 		if err != nil {
 			return nil, err
 		}

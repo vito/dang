@@ -65,6 +65,9 @@ type narrowCapture struct {
 	// scope it is declared in.
 	parent *effFrame
 	scope  *narrowScope
+	// rerun is the tick the outermost body around the closure that may run
+	// again began at (0 if none).
+	rerun int
 }
 
 type narrowLog struct {
@@ -76,6 +79,29 @@ type narrowLog struct {
 	checks map[Node]int
 	// skips are tick ranges of writes a read can't follow from.
 	skips []*tickRange
+	// noRerun are tick ranges of branches after which closure bodies frames
+	// don't run again.
+	noRerun []rerunRange
+}
+
+type rerunRange struct {
+	from, to int
+	frames   []*effFrame
+}
+
+// rerunSkips reports whether a write at tick at is in a branch after which
+// body fr doesn't run again.
+func (l *narrowLog) rerunSkips(at int, fr *effFrame) bool {
+	for _, r := range l.noRerun {
+		if at > r.from && at < r.to {
+			for _, f := range r.frames {
+				if f == fr {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 type tickRange struct{ from, to int }
@@ -141,17 +167,73 @@ func skipWrites(ctx context.Context, from int) func() {
 
 // skipBranch makes reads after a branch (started at tick start) skip its
 // writes when it never falls through: for good when it returns, and until
-// the end of the block it breaks or continues out of. (A raise may be
-// rescued.)
+// the end of the block it breaks or continues out of. Inside a `rescue`
+// operand nothing is skipped: a raise before the exit may be rescued, and
+// any call may raise.
 func skipBranch(ctx context.Context, branch Node, start int) {
+	l := narrowLogFrom(ctx)
+	if l == nil || inRescue(ctx) {
+		return
+	}
+	loopExits, continues := loopExitsIn(branch)
 	switch {
-	case returnsAlways(branch):
+	case returnsAlways(branch) && !loopExits:
 		skipWrites(ctx, start)
+		// The function is left: the blocks within it don't run again.
+		var frames []*effFrame
+		for fr := bodyFrame(ctx); fr != nil && (fr.block || fr.field); fr = fr.parent {
+			frames = append(frames, fr)
+		}
+		l.noRerun = append(l.noRerun, rerunRange{from: start, to: l.tick(), frames: frames})
 	case leavesIteration(branch):
-		if fr := bodyFrame(ctx); fr != nil && fr.block {
-			fr.unskips = append(fr.unskips, skipWrites(ctx, start))
+		fr := bodyFrame(ctx)
+		if fr == nil || !fr.block {
+			return
+		}
+		fr.unskips = append(fr.unskips, skipWrites(ctx, start))
+		if !continues {
+			// Breaking (or returning) leaves the block for good.
+			l.noRerun = append(l.noRerun, rerunRange{from: start, to: l.tick(), frames: []*effFrame{fr}})
 		}
 	}
+}
+
+// loopExitsIn reports whether node breaks or continues out of the block it
+// is in (not counting blocks and functions within it), and whether it
+// continues.
+func loopExitsIn(node Node) (exits, continues bool) {
+	node.Walk(func(n Node) bool {
+		switch n.(type) {
+		case *Break:
+			exits = true
+		case *Continue:
+			exits, continues = true, true
+		case *BlockArg, *FunDecl:
+			return n == node
+		}
+		return true
+	})
+	return
+}
+
+type rescueKey struct{}
+
+// withinRescue marks ctx as inferring a `rescue` operand, up to the
+// function boundary (outsideRescue).
+func withinRescue(ctx context.Context) context.Context {
+	return context.WithValue(ctx, rescueKey{}, true)
+}
+
+func outsideRescue(ctx context.Context) context.Context {
+	if inRescue(ctx) {
+		return context.WithValue(ctx, rescueKey{}, false)
+	}
+	return ctx
+}
+
+func inRescue(ctx context.Context) bool {
+	in, _ := ctx.Value(rescueKey{}).(bool)
+	return in
 }
 
 // endBlockSkips undoes the skips a block body made for its breaks and
@@ -198,6 +280,18 @@ func (l *narrowLog) noteCall(ctx context.Context, callee *Effect, node Node) {
 		if !callee.block {
 			for t := range callee.nullTargets {
 				l.writes = append(l.writes, narrowWrite{at: l.tick(), target: t, call: true, frame: frame, node: node})
+			}
+			// Its reads of outer refinements happen here too.
+			for _, r := range callee.narrowReads {
+				for fr := frame; fr != nil; fr = fr.parent {
+					if fr.field {
+						continue
+					}
+					if fr.logStart < r.n.pos {
+						break
+					}
+					fr.reads = append(fr.reads, r)
+				}
 			}
 		}
 		for p := range callee.params {

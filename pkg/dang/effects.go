@@ -64,6 +64,8 @@ type Effect struct {
 	// may assign null (narrowlog.go).
 	block       bool
 	nullTargets map[effTarget]bool
+	// narrowReads are a closure's reads of refinements made outside it.
+	narrowReads []narrowRead
 
 	// effParam: the function owning the parameter, and why it must be bound
 	// to a pure function: because it escapes, or because it is called inside
@@ -92,6 +94,7 @@ func (e *Effect) reset() *Effect {
 	e.params = nil
 	e.nonLocal = nil
 	e.nullTargets = nil
+	e.narrowReads = nil
 	return e
 }
 
