@@ -1,0 +1,4 @@
+# A decode result has no type until it is given one, so it can't be used as
+# an Int! (this used to type-check and fail at runtime).
+let n = JSON.decode("1")
+n + 1

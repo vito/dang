@@ -115,10 +115,44 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 			return coerceSubs, nil
 		}
 	}
+	if assignableDecoded(have, want) {
+		return hm.NewSubs(), nil
+	}
 	if diag := diagnoseAssignment(have, want); diag != nil {
 		return nil, withUnionProvenance(diag, have, want)
 	}
 	return nil, withUnionProvenance(err, have, want)
+}
+
+// assignableDecoded reports whether a value of type have may flow into want
+// because it carries codec-decoded data (DecodedType) that the boundary's
+// Coerce will materialize: have is Decoded, or a list/map of it, where want
+// has the same list/map shape. A Decoded leaf may enter any type, nullability
+// included — materializeDecoded checks the data (null included) against it
+// and raises when it does not fit. Every other part of have must already fit
+// want, which is why only Decoded itself may cross into a non-null slot.
+func assignableDecoded(have, want hm.Type) bool {
+	switch h := have.(type) {
+	case DecodedType:
+		return true
+	case hm.NonNullType:
+		if w, ok := want.(hm.NonNullType); ok {
+			return assignableDecoded(h.Type, w.Type)
+		}
+		return assignableDecoded(h.Type, want)
+	case ListType:
+		switch w := want.(type) {
+		case ListType:
+			return assignableDecoded(h.Type, w.Type)
+		case GraphQLListType:
+			return assignableDecoded(h.Type, w.Type)
+		}
+	case MapType:
+		if w, ok := want.(MapType); ok {
+			return assignableDecoded(h.Type, w.Type)
+		}
+	}
+	return false
 }
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may

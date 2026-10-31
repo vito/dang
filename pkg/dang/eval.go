@@ -1571,7 +1571,7 @@ type DeferredValue struct {
 var _ Value = DeferredValue{}
 
 func (d DeferredValue) Type() hm.Type {
-	return hm.TypeVariable('d')
+	return DecodedType{}
 }
 
 func (d DeferredValue) String() string {

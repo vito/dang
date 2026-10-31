@@ -1,0 +1,6 @@
+# A decode result has no type until it is given one, so it can't be used as
+# a condition (this used to type-check and fail at runtime).
+let ok = YAML.decode("true")
+if (ok) {
+  print("yes")
+}

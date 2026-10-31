@@ -20,6 +20,7 @@ let settings: Settings! = TOML.decode("count = 1")
 ```
 
 - parsing is type-driven: the expected type guides decoding. The type comes from a `::` cast ([#nullability]), an annotation, or the parameter/return type at the call site (`JSON.decode(...) :: Status!`, `let x: Summary! = JSON.decode(...)`, `f(d: String!): Summary! { JSON.decode(d) }`)
+- until it gets there, the result has the opaque type `Decoded`: it can be stored, passed on, or returned, but not used as anything else, so `JSON.decode("1") + 1` is a type error — give it a type first (`(JSON.decode("1") :: Int!) + 1`)
 - works for primitives, lists, maps (`Map[T]`, from an object; decoded maps get sorted keys), records, custom types ([#objects]), enums ([#enums-scalars])
 - unknown/extra fields in the input are ignored, not errors
 - YAML anchors, aliases, and `<<` merge keys are resolved before decoding; a mapping's own keys win over merged ones, and earlier mappings in a `<<: [*a, *b]` sequence win over later ones
