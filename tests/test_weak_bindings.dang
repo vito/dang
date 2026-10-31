@@ -66,10 +66,12 @@ assert { withRecord == [1] }
 # a type's field defaulting to an empty list
 type Bag {
   let items = []
+
   add(x: String!): Bag! {
     items += [x]
     self
   }
+
   all: [String!]! { items }
 }
 

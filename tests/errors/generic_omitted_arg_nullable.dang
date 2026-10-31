@@ -1,5 +1,9 @@
-# An omitted argument is null, so `id()` may be null whatever `a` is.
+# An omitted argument is null, so `id` (auto-called) or `second(1)` may be
+# null whatever `a` is.
 id(v: a): a { v }
 
-let n: Int! = id()
-print(toString(n + 1))
+let n: Int! = id
+
+second(x: Int!, v: a): a { v }
+
+let m: Int! = second(1)

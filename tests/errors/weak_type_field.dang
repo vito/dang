@@ -2,9 +2,11 @@
 # uses pins it first: `add` stores Ints, so `strings` can't promise Strings.
 type Bag {
   let items = []
+
   add(x: Int!): Bag! {
     items += [x]
     self
   }
+
   strings: [String!]! { items }
 }
