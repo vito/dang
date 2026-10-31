@@ -1,0 +1,13 @@
+# A name declared both as a variable and as a function in the same scope:
+# functions bind before computed variables, as inference orders them, so the
+# function wins.
+
+one(): Int! { 1 }
+
+let chosen = &one
+
+chosen(): Int! { 2 }
+
+assert("the function declaration wins") { chosen == 2 }
+
+print("duplicate function binding test passed!")
