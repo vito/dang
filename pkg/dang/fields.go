@@ -1407,6 +1407,7 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 		// Add the constructor to the evaluation environment
 		scope.Bind(c.Name.Name, constructor, c.Visibility)
+		c.Inferred.SetConstructor(constructor)
 
 		// Evaluate static members (self { } blocks) into the type's statics
 		// namespace. Bound after the constructor so a static may reference the
