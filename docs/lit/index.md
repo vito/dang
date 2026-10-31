@@ -163,7 +163,7 @@ See [#mutation] for more details.
 """
 `if` but implemented with blocks.
 """
-when(condition: Boolean!, &body: a): a {
+when(condition: Boolean!, &body: a!): a {
   if (condition) {
     # body is a zero-arity function, so it gets auto-called
     # like any other field
