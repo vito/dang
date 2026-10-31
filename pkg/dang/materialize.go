@@ -228,8 +228,8 @@ func assignableDecoded(have, want hm.Type) bool {
 	return false
 }
 
-// containsDecoded reports whether t carries DecodedType, on its own or as the
-// element of a list or map.
+// containsDecoded reports whether t carries DecodedType, on its own or within
+// a list, map, union, or anonymous record's fields.
 func containsDecoded(t hm.Type) bool {
 	switch v := t.(type) {
 	case DecodedType:
@@ -244,6 +244,16 @@ func containsDecoded(t hm.Type) bool {
 		for _, option := range v.Options {
 			if containsDecoded(option) {
 				return true
+			}
+		}
+	case *Type:
+		// Anonymous records ({{...}}) compare structurally, field by field;
+		// named types compare by identity, never reaching their fields' data.
+		if v.Kind == ObjectKind && v.Named == "" {
+			for _, field := range v.AsRecord().Fields {
+				if ft, mono := field.Value.Type(); mono && containsDecoded(ft) {
+					return true
+				}
 			}
 		}
 	}
@@ -391,7 +401,18 @@ func bestUnionMatch(have *Type, want *hm.UnionType) (*Type, *Type, []string, boo
 // and interface-vs-interface contexts).
 func diagnoseModule(have, want *Type) []string {
 	var issues []string
-	for name, wantScheme := range want.Bindings(PublicVisibility) {
+	wantFields := want.Bindings(PublicVisibility)
+	if want.Named == "" && have.Named == "" {
+		// Anonymous records' fields are not public bindings; compare them all.
+		wantFields = func(yield func(string, *hm.Scheme) bool) {
+			for _, field := range want.AsRecord().Fields {
+				if !yield(field.Key, field.Value) {
+					return
+				}
+			}
+		}
+	}
+	for name, wantScheme := range wantFields {
 		wantType, _ := wantScheme.Type()
 		haveScheme, found := have.LocalSchemeOf(name)
 		if !found {
@@ -600,7 +621,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 	}
 
 	switch target.(type) {
-	case hm.TypeVariable, hm.NullableTypeVariable:
+	case hm.TypeVariable, hm.NullableTypeVariable, DecodedType:
 		return DeferredValue{Raw: raw, Codec: codec}, nil
 	}
 
