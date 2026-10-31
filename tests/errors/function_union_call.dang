@@ -1,0 +1,10 @@
+# Two functions whose parameters are named differently don't merge into one
+# function type: `h(x: 1)` would leave `g`'s `y` unbound.
+
+f(x: Int!): Int! { x }
+
+g(y: Int!): Int! { y + 1 }
+
+let c = true
+let h = if (c) { &f } else { &g }
+print(h(1))

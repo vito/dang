@@ -141,9 +141,26 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			c.SetInferredType(t)
 			return t, nil
 		default:
+			if union, ok := fun.(*hm.UnionType); ok && allFunctionTypes(union.Options) {
+				// Function types only merge when one fits the other, parameter
+				// names included, since calls may name arguments.
+				return nil, fmt.Errorf("cannot call a value that may be any of the functions %s: their signatures differ (parameter names count, since calls may name arguments)", fun)
+			}
 			return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 		}
 	})
+}
+
+func allFunctionTypes(ts []hm.Type) bool {
+	for _, t := range ts {
+		if nn, ok := t.(hm.NonNullType); ok {
+			t = nn.Type
+		}
+		if _, ok := t.(*hm.FunctionType); !ok {
+			return false
+		}
+	}
+	return len(ts) > 0
 }
 
 // nullableCalleeError reports a call of a function value that may be null.
