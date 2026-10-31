@@ -1,0 +1,11 @@
+[1m[31mError:[0m default [Int!]! doesn't fit every type the caller may pick for [a]!: cannot use [Int!]! as [a]!
+  [2m[34m--> errors/generic_default_not_generic.dang:4:23[0m
+ [2m    |[0m
+ [2m  2 | # the result goes: `let s: [String!]! = withDefault` would hold [1]. So a[0m
+ [2m  3 | # default must fit every type the caller may pick.[0m
+ [2m[34m[1m  4 | [0mwithDefault(v: [a]! = [1]): [a]! { v }
+[2m                             [31m^^^[0m
+ [2m  5 | [0m
+ [2m  6 | let s: [String!]! = withDefault[0m
+ [2m    |[0m
+

@@ -262,6 +262,30 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 	return skolem, unskolem
 }
 
+// checkGenericDefault checks the default of the parameter named name, if it
+// has one, against its type in the body, rigid: a caller who leaves the
+// argument out still picks the function's type variables (from the other
+// arguments, or from where the result goes), so the default must be a value
+// of every type they might pick. `v: a = 1` would make `let s: String! = f`
+// a String! holding 1.
+func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type) error {
+	for _, p := range params {
+		if p.Name.Name != name || p.defaultType == nil {
+			continue
+		}
+		if len(rigid.FreeTypeVar()) == 0 {
+			return nil
+		}
+		if _, err := assignableForValue(p.defaultType, rigid, p.Value); err != nil {
+			return NewInferError(
+				fmt.Errorf("default %s doesn't fit every type the caller may pick for %s: %w", p.defaultType, rigid, err),
+				p.Value,
+			)
+		}
+	}
+	return nil
+}
+
 // inferFunctionType provides shared type inference logic for functions
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// A method runs against its receiver: its type body's field-default
@@ -351,7 +375,11 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 				scheme = arg.Value
 			}
 			if t, ok := scheme.Type(); ok {
-				newEnv.Add(arg.Key, hm.NewScheme(nil, t.Apply(skolem).(hm.Type)))
+				rigid := t.Apply(skolem).(hm.Type)
+				newEnv.Add(arg.Key, hm.NewScheme(nil, rigid))
+				if err := checkGenericDefault(f.Args, arg.Key, rigid); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if blockType != nil {
