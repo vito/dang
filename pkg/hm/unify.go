@@ -59,7 +59,12 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 		if nn, ok := have.(NonNullType); ok && varOf(nn.Type) == wantTV {
 			return NewSubs(), nil
 		}
-		return bindVar(wantTV, have)
+		subs, err := bindVar(wantTV, have)
+		if _, ok := err.(UnificationError); ok {
+			// bindVar reports the variable as the value; it is the target.
+			return nil, UnificationError{have, want}
+		}
+		return subs, err
 	}
 
 	// Try Type.Eq first (simplest check)
