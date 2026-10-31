@@ -1,0 +1,34 @@
+# An interface's or union's name is a runtime value (its namespace), but not
+# an instance: no type pattern on the type matches it.
+
+interface Named {
+  name: String!
+}
+
+type Foo implements Named {
+  name: String! = "foo"
+}
+
+union Pet = Foo
+
+let flag = true
+
+let named = if (flag) { Named } else { Foo }
+
+let pet = if (flag) { Pet } else { Foo }
+
+assert { Named != null }
+assert { Pet != null }
+
+let namedMatch = case (named) {
+  n: Named => n.name
+  else => "namespace"
+}
+
+let petMatch = case (pet) {
+  p: Pet => "pet"
+  else => "namespace"
+}
+
+assert { namedMatch == "namespace" }
+assert { petMatch == "namespace" }

@@ -2261,8 +2261,10 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 
 func (i *InterfaceDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
-	// Just register the interface module in the environment
-	interfaceModule := NewObject(i.Inferred)
+	// Just register the interface module in the environment. It is the
+	// interface's namespace, typed as its meta-type (see Hoist), so no type
+	// pattern on the interface matches it.
+	interfaceModule := NewObject(i.Inferred.MetaType())
 	scope.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
@@ -2417,8 +2419,10 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 }
 
 func (u *UnionDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	// Unions are pure type declarations - register the union module
-	unionModule := NewObject(u.Inferred)
+	// Unions are pure type declarations - register the union module, the
+	// union's namespace, typed as its meta-type (see Hoist), so no type
+	// pattern matches it.
+	unionModule := NewObject(u.Inferred.MetaType())
 	scope.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }
