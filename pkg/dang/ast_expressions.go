@@ -960,7 +960,25 @@ func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool 
 // selections and are unaffected.
 func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) error {
 	recType, ok := rec.(*Type)
-	if !ok || recType.Visibility(name) != PrivateVisibility {
+	if !ok {
+		return nil
+	}
+	if recType.IsMeta() {
+		// A type's name held as a value (`let ns = Label; ns.secret`), or
+		// `self` in a static: its members are the type's statics, private
+		// to the module declaring the type.
+		owner := recType.InstanceType()
+		if owner.StaticVisibility(name) != PrivateVisibility {
+			return nil
+		}
+		if home := owner.HomeModule(); home != nil {
+			if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
+				return fmt.Errorf("%q is a private static of %s and cannot be accessed from another module", name, owner.Named)
+			}
+		}
+		return nil
+	}
+	if recType.Visibility(name) != PrivateVisibility {
 		return nil
 	}
 	if home := recType.HomeModule(); home != nil {

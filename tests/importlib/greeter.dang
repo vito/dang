@@ -23,3 +23,12 @@ let salutation = "Hello"
 
 # Public top-level value: reachable qualified (Lib.answer) and unqualified.
 answer: Int! = 42
+
+# A scalar whose name is its statics namespace: `sep` is public, `secret`
+# private to this module — see errors/import_dang_private_static.
+scalar LibTag {
+  self {
+    sep: String! = "-"
+    let secret: String! = "s3cret"
+  }
+}
