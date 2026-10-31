@@ -1,0 +1,11 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign (b: Int!, a: String!): String! to (a: Int!, b: String!): String!: cannot use (b: Int!, a: String!): String! as (a: Int!, b: String!): String!
+  [2m[34m--> errors/function_ref_param_names.dang:14:1[0m
+ [2m    |[0m
+ [2m 12 | [0m
+ [2m 13 | let h = Host[0m
+ [2m[34m[1m 14 | [0mh.hook = &f
+[2m       [31m^^^^^^^^^^^[0m
+ [2m 15 | print(h.fire)[0m
+ [2m 16 | [0m
+ [2m    |[0m
+

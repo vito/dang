@@ -505,6 +505,25 @@ func (t *RecordType) Supertypes() []hm.Type {
 	return nil
 }
 
+var _ hm.Labelled = (*RecordType)(nil)
+
+// SameLabels reports whether other is a record with the same keys in the
+// same order. Records mostly appear as function parameter lists, where
+// callers may name any argument, so a function of one parameter list only
+// stands in for another when every parameter is called the same.
+func (t *RecordType) SameLabels(other hm.Type) bool {
+	ot, ok := other.(*RecordType)
+	if !ok || len(ot.Fields) != len(t.Fields) {
+		return false
+	}
+	for i, f := range t.Fields {
+		if f.Key != ot.Fields[i].Key {
+			return false
+		}
+	}
+	return true
+}
+
 func (t *RecordType) Format(f fmt.State, c rune) {
 	if t.Named != "" {
 		_, _ = fmt.Fprint(f, t.Named)

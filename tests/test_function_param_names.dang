@@ -1,0 +1,48 @@
+# Callers may name a function's arguments, so parameter names are part of
+# a function's type, and calls bind arguments by the names of the type they
+# were checked against.
+
+# A block takes on the parameter names of the signature it's passed for:
+# callers naming its argument reach it whatever the block calls it.
+myFun(&block(x: Int!): Int!): Int! { block(x: 42) }
+
+assert { myFun { y => y + 1 } == 43 }
+assert { myFun { _ + 1 } == 43 }
+
+# Stored blocks keep the signature's names too.
+type Holder {
+  let saved(x: Int!): Int! { x }
+
+  store(&cb(x: Int!): Int!): Holder! {
+    self.saved = cb
+    self
+  }
+
+  call: Int! { saved(x: 1) }
+}
+
+assert { Holder.store { n => n * 10 }.call == 10 }
+
+# Expected parameters a block leaves out don't shadow outer bindings named
+# like them.
+pairUp(&f(item: Int!, index: Int!): Int!): Int! { f(item: 5, index: 1) }
+
+let index = 100
+
+assert { pairUp { item => item + index } == 105 }
+
+# An object's method only has to match an interface's parameters by name, in
+# any order. Positional arguments follow the interface's order.
+interface I {
+  m(a: Int!, b: String!): String!
+}
+
+type T implements I {
+  m(b: String!, a: Int!): String! { b + toString(a) }
+}
+
+let i: I! = T
+
+assert { i.m(a: 1, b: "x") == "x1" }
+assert { i.m(1, "x") == "x1" }
+assert { T.m("x", 1) == "x1" }

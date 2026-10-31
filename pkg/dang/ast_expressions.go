@@ -396,10 +396,12 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 
 	// Set expected parameter types on the block arg
 	c.BlockArg.ExpectedParamTypes = make([]hm.Type, len(expectedArgRecord.Fields))
+	c.BlockArg.ExpectedParamNames = make([]string, len(expectedArgRecord.Fields))
 	for i := range expectedArgRecord.Fields {
 		expectedField := expectedArgRecord.Fields[i]
 		expectedType, _ := expectedField.Value.Type()
 		c.BlockArg.ExpectedParamTypes[i] = expectedType
+		c.BlockArg.ExpectedParamNames[i] = expectedField.Key
 	}
 
 	// Set expected return type on the block arg
@@ -642,11 +644,18 @@ func (c *FunCall) validateArgumentOrder() error {
 // handlePositionalArgument processes a positional argument
 func (c *FunCall) handlePositionalArgument(arg Keyed[Node], val Value, argValues map[string]Value,
 	positionallySet map[string]bool, paramNames []string, positionalIndex *int) error {
-	if *positionalIndex >= len(paramNames) {
+	if *positionalIndex >= len(paramNames) && arg.Key == "" {
 		return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
 			*positionalIndex+1, len(paramNames))
 	}
-	paramName := paramNames[*positionalIndex]
+	// Inference resolved the position against the callee's static type
+	// (see inferFunctionType). Prefer that name: the value called may order
+	// its parameters differently, like an object's method called through an
+	// interface, which only has to match the interface's parameters by name.
+	paramName := arg.Key
+	if paramName == "" {
+		paramName = paramNames[*positionalIndex]
+	}
 	if _, exists := argValues[paramName]; exists {
 		return fmt.Errorf("argument %q specified both positionally and by name", paramName)
 	}
@@ -3532,12 +3541,23 @@ type BlockArg struct {
 	// Set by FunCall.Infer() before calling BlockArg.Infer()
 	ExpectedParamTypes []hm.Type
 
+	// ExpectedParamNames are the parameter names of the function signature
+	// the block is passed for, index-aligned with ExpectedParamTypes. The
+	// block's type takes them on, so callers may name its arguments as the
+	// signature does, whatever the block calls them locally. Nil keeps the
+	// block's own names.
+	ExpectedParamNames []string
+
 	// ExpectedReturnType is the return type expected by the function signature.
 	// Set by FunCall.Infer() before calling BlockArg.Infer()
 	ExpectedReturnType hm.Type
 
 	// Inferred is the final inferred function type
 	Inferred *hm.FunctionType
+
+	// LocalNames are the names the body binds each parameter of Inferred
+	// to, index-aligned with its argument record.
+	LocalNames []string
 
 	// InferredScope is the environment with parameters in scope
 	InferredScope TypeScope
@@ -3634,6 +3654,14 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Add user-provided parameters to environment with expected types
 		argSchemes := []Keyed[*hm.Scheme]{}
+		localNames := []string{}
+		// paramKey is the name callers know parameter i by.
+		paramKey := func(i int, local string) string {
+			if i < len(b.ExpectedParamNames) && b.ExpectedParamNames[i] != "" {
+				return b.ExpectedParamNames[i]
+			}
+			return local
+		}
 		for i, arg := range b.Args {
 			var paramType hm.Type
 			if i < len(b.ExpectedParamTypes) && b.ExpectedParamTypes[i] != nil {
@@ -3647,9 +3675,10 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			// Add parameter to environment
 			newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramType))
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
-				Key:   arg.Name.Name,
+				Key:   paramKey(i, arg.Name.Name),
 				Value: hm.NewScheme(nil, paramType),
 			})
+			localNames = append(localNames, arg.Name.Name)
 		}
 
 		// The implicit `_` parameter consumes the first expected parameter slot.
@@ -3663,9 +3692,10 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			}
 			newEnv.Add("_", hm.NewScheme(nil, paramType))
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
-				Key:   "_",
+				Key:   paramKey(0, "_"),
 				Value: hm.NewScheme(nil, paramType),
 			})
+			localNames = append(localNames, "_")
 			consumed = 1
 		}
 
@@ -3673,12 +3703,14 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// but NOT to the environment (they will be ignored by the block)
 		for i := consumed; i < len(b.ExpectedParamTypes); i++ {
 			paramType := b.ExpectedParamTypes[i]
-			// Generate a parameter name for the type signature
-			paramName := fmt.Sprintf("_unused%d", i)
+			// Bind it under a placeholder, not the signature's name, so it
+			// doesn't shadow an outer binding the body uses.
+			localName := fmt.Sprintf("_unused%d", i)
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
-				Key:   paramName,
+				Key:   paramKey(i, localName),
 				Value: hm.NewScheme(nil, paramType),
 			})
+			localNames = append(localNames, localName)
 		}
 
 		// Infer the body with parameters in scope. A block invocation target makes
@@ -3765,6 +3797,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Build the function type
 		b.Inferred = hm.NewFnType(NewRecordType("", argSchemes...), bodyType)
+		b.LocalNames = localNames
 		b.Inferred.SetEffect(b.effect)
 		t := b.Inferred
 		b.SetInferredType(t)
@@ -3792,6 +3825,7 @@ func (b *BlockArg) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		return FunctionValue{
 			Args:                argNames,
+			LocalArgs:           b.LocalNames,
 			Body:                b.BodyNode,
 			Closure:             scope,
 			FnType:              b.Inferred,

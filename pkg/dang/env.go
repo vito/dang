@@ -1562,10 +1562,22 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	case ifaceBlock == nil:
 		return fmt.Errorf("field %q: object takes a block argument %s but interface does not",
 			fieldName, objectBlock)
+	case !sameParamNames(ifaceBlock, objectBlock):
+		// Callers may name a block's arguments, so they must agree.
+		return fmt.Errorf("field %q: block argument type %s names its parameters differently from interface block type %s",
+			fieldName, objectBlock, ifaceBlock)
 	case !hm.IsSubtypeOf(ifaceBlock, objectBlock):
 		return fmt.Errorf("field %q: block argument type %s is not compatible with interface block type %s (contravariance required)",
 			fieldName, objectBlock, ifaceBlock)
 	}
 
 	return nil
+}
+
+// sameParamNames reports whether two function types name their parameters
+// alike, in the same order.
+func sameParamNames(a, b *hm.FunctionType) bool {
+	aArgs, aOk := a.Arg().(*RecordType)
+	bArgs, bOk := b.Arg().(*RecordType)
+	return aOk && bOk && aArgs.SameLabels(bArgs)
 }
