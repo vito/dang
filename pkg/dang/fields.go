@@ -1072,9 +1072,11 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	// Infer body forms (excluding new() which is handled separately). Field
-	// defaults are scoped like constructor parameter defaults; methods leave
-	// that scope again (see withTypeBody).
+	// Infer body forms (excluding new() which is handled separately).
+	// Field defaults are scoped like constructor parameter defaults; methods
+	// leave that scope again (see withTypeBody). All of the type's code is
+	// sealed: it can't write, or call anything that writes, outside it.
+	ctx = withTypeBodyEffFrame(ctx, object, inferTypeScope)
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
