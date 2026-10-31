@@ -1776,10 +1776,11 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	// function instead (added in pass 1 below); a builtin scalar (JSON, ...)
 	// doubles as its namespace and is always present, so it binds non-null —
 	// otherwise member access like JSON.encode would inherit the binding's
-	// nullability and weaken String! to String.
+	// nullability and weaken String! to String. Any other scalar's name is
+	// its namespace (statics), not a value of the scalar.
 	newDecl := findNewConstructorIn(s.Value)
 	if newDecl == nil {
-		scalarScheme := hm.NewScheme(nil, scalarType)
+		scalarScheme := hm.NewScheme(nil, typeNameValueType(scalarType))
 		if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
 			scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
 		}
