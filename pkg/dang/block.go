@@ -118,8 +118,11 @@ func classifyForms(forms []Node) ClassifiedForms {
 		case *FieldDecl:
 			if isConstantValue(f.Value) {
 				classified.Constants = append(classified.Constants, f)
-			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
-				// Treat FieldDecl with function bodies as functions for proper hoisting
+			} else if f.funDecl() != nil {
+				// Treat FieldDecl with function bodies as functions for proper
+				// hoisting. Inference wraps a typed field's value in a Coerce, so
+				// look through it: evaluation must classify the forms as
+				// inference did.
 				classified.Functions = append(classified.Functions, f)
 			} else {
 				classified.Variables = append(classified.Variables, f)
