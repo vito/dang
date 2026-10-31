@@ -216,6 +216,12 @@ func (FormatSuite) TestVisibilityFormatting(ctx context.Context, t *testctx.T) {
 			input:    "type T {\n  let a: Int! { 2 }\n}",
 			expected: "type T {\n  let a: Int! { 2 }\n}\n",
 		},
+		{
+			// A body-less signature keeps its block parameter's `&` syntax.
+			name:     "interface method block param",
+			input:    "interface I {\n  visit(x: Int!, &f(a: Int!): String!): String!\n  run(&g: Int!): Int!\n}",
+			expected: "interface I {\n  visit(x: Int!, &f(a: Int!): String!): String!\n  run(&g: Int!): Int!\n}\n",
+		},
 	}
 
 	for _, tt := range tests {
