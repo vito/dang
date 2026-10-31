@@ -318,7 +318,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// Writes and calls in the body accumulate into the function's effect. A
 	// method or constructor owns its receiver: its `self` writes are forks.
 	// Argument defaults are evaluated by the call too, so they count as well.
-	effCtx, _ := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
+	effCtx, effFr := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
 
 	// Process arguments using shared logic. Defaults are evaluated at function
 	// call time, so they must not inherit the caller's return/break/continue targets.
@@ -423,6 +423,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
+	exitNarrowBody(bodyCtx, effFr)
 
 	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
 	if err != nil {
@@ -607,8 +608,14 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
-		// A location is not a function value escaping.
-		targetType, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, r.Target), env, fresh, r.Target)
+		// A location is not a function value escaping. A plain assignment's
+		// target is not a read either: a narrowed name gets the type it is
+		// declared with, which is what it may be assigned.
+		targetCtx := withAllowedFn(ctx, r.Target)
+		if r.Modifier == "=" {
+			targetCtx = withAssignTarget(targetCtx, r.Target)
+		}
+		targetType, err := inferNodeWithoutAutoCall(targetCtx, env, fresh, r.Target)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
@@ -641,6 +648,8 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
 			r.Value = wrapCoerce(r.Value, targetType, materializePathForNode(r.Target))
+			// A possibly-null value ends any narrowing of the target.
+			noteAssignment(ctx, env, r.Target, valueType)
 			return targetType, nil
 		case "+":
 			// `x += v` reads x as an operand, so a nullable target is a

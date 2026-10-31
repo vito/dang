@@ -1,0 +1,21 @@
+# A stored block may run after a narrowed name it reads is set to null.
+type Host {
+  let saved(x: Int!): Int! { x }
+
+  store(&cb(x: Int!): Int!): Host! {
+    self.saved = cb
+    self
+  }
+
+  call(x: Int!): Int! { saved(x) }
+}
+
+run(a: Int): Int! {
+  let x = a
+  let h = Host
+  if (x != null) {
+    h = h.store { y => x + y }
+  }
+  x = null
+  h.call(1)
+}

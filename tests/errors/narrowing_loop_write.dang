@@ -1,0 +1,11 @@
+# A block may run again: a narrowing made outside it doesn't hold inside it if
+# the block itself may set the name to null.
+sumAll(xs: [Int!]!, start: Int): Int! {
+  let total = start
+  if (total == null) { return 0 }
+  xs.each { x =>
+    total = total + x
+    if (x > 2) { total = null }
+  }
+  0
+}

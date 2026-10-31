@@ -314,7 +314,18 @@ reported with the deferred ones without failing the expression's type.
 
 Gotchas:
 - Flow-sensitive narrowing re-adds a name to a clone frame; `Type.narrowed`
-  marks those so writes resolve to the real declaration.
+  marks those so writes resolve to the real declaration, and
+  `Type.narrowings` keeps the refinement itself (its binding, unrefined type
+  and log tick). A refinement holds until something may null its binding:
+  the solver's `narrowLog` (narrowing.go) records, in inference order, nullable
+  assignments (`noteAssignment`, including `self.x` for bare `x`), calls of
+  closures that write it (from `absorbCall`, via the effect's targets) and, in
+  function bodies, calls of function parameters (which may run top-level
+  script code). `Symbol.Infer` reads through `readNarrowed`, which falls back to
+  the unrefined type once invalidated. Closures (block args, nested functions)
+  record their reads of outer refinements on their `effFrame`;
+  `exitNarrowBody` checks them against the body's own writes (a re-run) and
+  `solve` against later writes for nested functions and escaping blocks.
 - `Coerce` wraps field values after inference; look through it
   (`FieldDecl.funDecl`) when you need the `FunDecl`.
 - Effects attach to fresh function types only (`attachEffects` on

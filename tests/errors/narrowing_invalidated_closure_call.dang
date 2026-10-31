@@ -1,0 +1,9 @@
+# Calling a closure that assigns a narrowed name ends its narrowing, even when
+# the closure was written before the null check.
+next(a: Int): Int! {
+  let x = a
+  let clear: Int { x = null; 0 }
+  if (x == null) { return 0 }
+  clear
+  x + 1
+}

@@ -78,6 +78,11 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
   ```
 - The right operand of `and` sees the left's truthy narrowing, and of `or` the left's falsy one, so guards work inline: `x != null and x > 0`, `x == null or x > 0`.
 
+### Reassigning a narrowed name
+- A narrowed name may be assigned anything its declared type allows (`x = x.next`). A non-null value keeps it narrowed; a possibly-null one ends the narrowing until the next check.
+- So do `self.x = v` (for the bare field `x`), calling a closure that assigns `x`, and, inside a function, calling a block parameter (for top-level bindings).
+- A block or nested function can't rely on an outer check of `x` if it may run again or later after `x` is set to null (the block assigns `x` null itself, or `x` is set to null after a nested function or stored block reading it is created): compile error. Check inside it, or bind the checked value to a local.
+
 ### Limitations (the surprising gaps)
 - Narrowing is **intra-procedural** — calling a function doesn't carry narrowed types across.
 - **`and`-guard does NOT narrow**: `if (x == null and y == null) { raise … }` tells us only that *at least one* is non-null afterward, so neither narrows.

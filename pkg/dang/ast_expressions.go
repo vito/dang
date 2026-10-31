@@ -799,6 +799,9 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 		t, _ := scheme.Type()
+		// A refinement the read can't trust gives way to the declared type,
+		// which, for a mutable binding, is pinned to what it is now.
+		t = readNarrowed(ctx, env, s.Name, s, t)
 		t = hm.ResolveWeak(t)
 		if s.AutoCall {
 			var err error
@@ -3016,14 +3019,14 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		// Apply flow-sensitive narrowings to each branch based on the condition.
 		facts := analyzeCondition(c.Condition, env)
 
-		thenEnv := withNarrowings(env, facts.Truthy)
+		thenEnv := withNarrowings(ctx, env, facts.Truthy)
 		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		if c.Else != nil {
-			elseEnv := withNarrowings(env, facts.Falsy)
+			elseEnv := withNarrowings(ctx, env, facts.Falsy)
 			elseType, err := c.Else.Infer(ctx, elseEnv, fresh)
 			if err != nil {
 				return nil, err
@@ -3653,6 +3656,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
 		}
+		exitNarrowBody(bodyCtx, fr)
 
 		// Continue values are block-local results. Plain returns inside a block arg
 		// are non-local and are checked against the enclosing function instead.
