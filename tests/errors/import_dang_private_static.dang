@@ -1,0 +1,10 @@
+# `secret` is a private static of LibTag, a scalar of the Lib module. Its
+# name held as a value is the statics namespace, which keeps the statics'
+# visibility: reaching `secret` through it from another module is rejected.
+import Lib
+
+let tags = Lib.LibTag
+
+assert { tags.sep == "-" }
+
+print(tags.secret)
