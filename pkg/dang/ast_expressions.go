@@ -3485,6 +3485,9 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
 		}
+		if err != nil && assignableDecoded(exprType, hintType) {
+			subs, err = hm.NewSubs(), nil
+		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 		}

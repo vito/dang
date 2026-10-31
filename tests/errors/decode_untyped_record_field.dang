@@ -1,0 +1,3 @@
+# Record literal fields are not materialized, so decoded data can't fill a
+# typed record field through one: the field would keep the raw data.
+let r: {{count: Int!}}! = {{count: JSON.decode("\"oops\"")}}
