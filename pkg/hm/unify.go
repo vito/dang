@@ -125,6 +125,9 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 			if len(haveTypes) != len(wantTypes) {
 				return nil, UnificationError{have, want}
 			}
+			if labelled, ok := have.(Labelled); ok && !labelled.SameLabels(want) {
+				return nil, UnificationError{have, want}
+			}
 
 			var subs = NewSubs()
 			for i, comp1 := range haveTypes {
@@ -173,6 +176,14 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 	}
 
 	return nil, UnificationError{have, want}
+}
+
+// Labelled is implemented by composite types whose components are labelled,
+// such as records. Component-wise unification only pairs two such types
+// when SameLabels holds: components are unified by position, and positions
+// only line up when the labels do.
+type Labelled interface {
+	SameLabels(other Type) bool
 }
 
 // assignableFunction reports whether a function of type have can be used

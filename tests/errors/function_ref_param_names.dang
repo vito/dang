@@ -1,0 +1,15 @@
+# Callers name a function's arguments by its type, so a function can only
+# stand in for another whose parameters are named alike: calling `hook(a: 1,
+# b: "x")` on `f` would bind its `a` to "x".
+
+type Host {
+  hook(a: Int!, b: String!): String! { b }
+
+  fire: String! { hook(a: 1, b: "x") }
+}
+
+f(b: Int!, a: String!): String! { a + "!" }
+
+let h = Host
+h.hook = &f
+print(h.fire)

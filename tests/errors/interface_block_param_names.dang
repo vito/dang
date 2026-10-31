@@ -1,0 +1,14 @@
+# Callers may name a block's arguments, so an object's method must name its
+# block's parameters as the interface does: callers going through Visitor
+# pass blocks taking `d`.
+
+interface Visitor {
+  visit(&f(d: Int!): Int!): Int!
+}
+
+type W implements Visitor {
+  visit(&f(a: Int!): Int!): Int! { f(a: 1) }
+}
+
+let v: Visitor! = W
+print(v.visit { q => q + 1 })

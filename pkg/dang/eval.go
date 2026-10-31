@@ -1813,6 +1813,11 @@ func (m MapValue) MarshalJSON() ([]byte, error) {
 // FunctionValue represents a function value
 type FunctionValue struct {
 	Args           []string
+	// LocalArgs, when set, are the names the body binds each of Args to
+	// (index-aligned). A block takes on the parameter names of the
+	// signature it was passed for, so callers can name its arguments,
+	// while its body keeps its own names for them.
+	LocalArgs      []string
 	Body           Node
 	Closure        ValueScope
 	FnType         *hm.FunctionType
@@ -1982,7 +1987,11 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 
 func (f FunctionValue) BindArgs(ctx context.Context, fnScope ValueScope, args map[string]Value) error {
 	// Bind arguments to the function environment
-	for _, argName := range f.Args {
+	for i, argName := range f.Args {
+		local := argName
+		if i < len(f.LocalArgs) {
+			local = f.LocalArgs[i]
+		}
 		if val, exists := args[argName]; exists {
 			// Handle null values with defaults
 			if _, isNull := val.(NullValue); isNull {
@@ -1992,12 +2001,12 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnScope ValueScope, args ma
 					if err != nil {
 						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 					}
-					fnScope.Bind(argName, defaultVal, PrivateVisibility)
+					fnScope.Bind(local, defaultVal, PrivateVisibility)
 				} else {
-					fnScope.Bind(argName, val, PrivateVisibility)
+					fnScope.Bind(local, val, PrivateVisibility)
 				}
 			} else {
-				fnScope.Bind(argName, val, PrivateVisibility)
+				fnScope.Bind(local, val, PrivateVisibility)
 			}
 		} else if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
 			// Use default value when argument not provided.
@@ -2006,9 +2015,9 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnScope ValueScope, args ma
 			if err != nil {
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
-			fnScope.Bind(argName, defaultVal, PrivateVisibility)
+			fnScope.Bind(local, defaultVal, PrivateVisibility)
 		} else {
-			fnScope.Bind(argName, NullValue{}, PrivateVisibility)
+			fnScope.Bind(local, NullValue{}, PrivateVisibility)
 		}
 	}
 
