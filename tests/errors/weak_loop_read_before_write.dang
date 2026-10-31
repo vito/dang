@@ -1,0 +1,13 @@
+# A block runs again after it writes: on the second iteration, `t` would be
+# the [1] the first one stored, so reading `xs` as strings and then storing
+# Ints in it is an error.
+f: Int! {
+  let xs = []
+  [1, 2].each { i =>
+    let t: [String!]! = xs
+    xs += [i]
+  }
+  xs.length
+}
+
+print(toString(f))

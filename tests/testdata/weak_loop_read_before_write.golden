@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use [Int!]! as [String!]!
+  [2m[34m--> errors/weak_loop_read_before_write.dang:8:5[0m
+ [2m    |[0m
+ [2m  6 |   [1, 2].each { i =>[0m
+ [2m  7 |     let t: [String!]! = xs[0m
+ [2m[34m[1m  8 | [0m    xs += [i]
+[2m           [31m^^^^^^^^^[0m
+ [2m  9 |   }[0m
+ [2m 10 |   xs.length[0m
+ [2m    |[0m
+

@@ -1,0 +1,9 @@
+# `p` starts out null, and becomes a String once a string is assigned to it:
+# it can't then be returned as an Int.
+next: Int {
+  let p = null
+  p = "str"
+  p
+}
+
+print(toString(next + 1))

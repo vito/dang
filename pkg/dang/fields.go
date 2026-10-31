@@ -26,6 +26,11 @@ type FieldDecl struct {
 	// defaultType is the inferred type of Value, when the field has both a
 	// type and a value: for a function's parameter, its default's type.
 	defaultType hm.Type
+
+	// weakVars maps the type variables of a binding's type to their weak
+	// counterparts, whose cells weakCells keeps alive (see weaken).
+	weakVars  hm.Subs
+	weakCells []*hm.WeakCell
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -137,7 +142,65 @@ func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	return nil
 }
 
+// weaken makes the flexible type variables of a binding's type weak: a
+// binding can be written, so its type is one type, which its uses pin down
+// (see hm.NewWeakVar), not a type for each use. `let xs = []; xs += [1];
+// xs += ["s"]` is then an error, as is reading `xs` as a `[String!]!` after
+// the first write. The same variable is weakened the same way each time,
+// so hoisting and inference agree. Functions are not bindings in this
+// sense: their variables are their generic parameters.
+func (s *FieldDecl) weaken(t hm.Type) hm.Type {
+	if t == nil || s.funDecl() != nil {
+		return t
+	}
+	if _, isFn := s.Value.(*FunDecl); isFn {
+		return t
+	}
+	for tv := range t.FreeTypeVar() {
+		if tv.IsRigid() || tv.IsWeak() {
+			continue
+		}
+		if s.weakVars == nil {
+			s.weakVars = hm.NewSubs()
+		}
+		if _, ok := s.weakVars[tv]; ok {
+			continue
+		}
+		w, cell := hm.NewWeakVar(tv)
+		s.weakVars[tv] = w
+		s.weakCells = append(s.weakCells, cell)
+	}
+	if len(s.weakVars) == 0 {
+		return t
+	}
+	return t.Apply(s.weakVars).(hm.Type)
+}
+
+type paramDeclKey struct{}
+
+// withParamDecl marks ctx as inferring a parameter's declaration (or not):
+// parameters' type variables are their function's generic ones, never weak.
+func withParamDecl(ctx context.Context, param bool) context.Context {
+	if inParamDecl(ctx) == param {
+		return ctx
+	}
+	return context.WithValue(ctx, paramDeclKey{}, param)
+}
+
+func inParamDecl(ctx context.Context) bool {
+	p, _ := ctx.Value(paramDeclKey{}).(bool)
+	return p
+}
+
 func (s *FieldDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
+	t, err := s.unweakenedSignatureType(withParamDecl(ctx, false), env, fresh, allowComputed)
+	if err != nil || t == nil || inParamDecl(ctx) {
+		return t, err
+	}
+	return s.weaken(t), nil
+}
+
+func (s *FieldDecl) unweakenedSignatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	if s.Type_ != nil {
 		fieldType, err := s.Type_.Infer(ctx, env, fresh)
 		if err != nil {
@@ -239,11 +302,17 @@ func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.F
 func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
 
+	isParam := inParamDecl(ctx)
+	ctx = withParamDecl(ctx, false)
+
 	var definedType hm.Type
 	if s.Type_ != nil {
 		definedType, err = s.Type_.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
+		}
+		if !isParam {
+			definedType = s.weaken(definedType)
 		}
 	}
 
@@ -272,11 +341,17 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
 		} else {
 			definedType = inferredType
+			if !isParam {
+				definedType = s.weaken(definedType)
+			}
 		}
 	}
 
 	if definedType == nil {
 		definedType = fresh.Fresh()
+		if !isParam {
+			definedType = s.weaken(definedType)
+		}
 	}
 	// A function field's annotation is built fresh: give it the function's
 	// effect and its parameters' effect variables (see effects.go).
@@ -1135,7 +1210,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 		// Fully infer constructor arguments here so default expressions are
 		// validated during normal inference. Declaration may have recorded the
 		// signature without checking computed defaults.
-		argType, err := arg.Infer(argCtx, newEnv, fresh)
+		argType, err := arg.Infer(withParamDecl(argCtx, true), newEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 		}
@@ -1535,7 +1610,7 @@ func (s *ScalarDecl) inferScalarNew(ctx context.Context, newDecl *NewConstructor
 	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
 	newEnv := env.Clone().(*OverlayTypeScope)
 	arg := newDecl.Args[0]
-	argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+	argType, err := arg.Infer(withParamDecl(constructorCtx, true), newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 	}

@@ -101,8 +101,9 @@ func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.En
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
 	docStrings := make(map[string]string)
+	paramCtx := withParamDecl(ctx, true)
 	for _, arg := range f.Args {
-		finalArgType, err := inferArg(arg, ctx, env, fresh)
+		finalArgType, err := inferArg(arg, paramCtx, env, fresh)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -248,7 +249,7 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 			continue
 		}
 		for tv := range t.FreeTypeVar() {
-			if tv.IsRigid() {
+			if tv.IsRigid() || tv.IsWeak() {
 				continue
 			}
 			if _, seen := skolem.Get(tv); seen {
