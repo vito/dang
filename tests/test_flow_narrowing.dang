@@ -364,3 +364,61 @@ let keepAfterCheck(a: Int): Int! {
 }
 
 assert("stored block after assign-then-check") { keepAfterCheck(1) == 2 }
+
+let keepInBranch(a: Int, b: Int): Int! {
+  let x = a
+  let k = Keeper
+  if (x != null) {
+    k = k.keep { n => x + n }
+  } else {
+    x = b
+  }
+  k.run(1)
+}
+
+assert("stored block and a write in the other branch") {
+  keepInBranch(1, 2) == 2
+}
+
+let keepEach(xs: [Int!]!): Int! {
+  let k = Keeper
+  xs.each { a =>
+    let x: Int = 5
+    x = a
+    if (x != null) {
+      k = k.keep { n => x + n }
+    }
+  }
+  k.run(1)
+}
+
+assert("stored block of a binding fresh each run") { keepEach([1]) == 2 }
+
+let nextUnlessReset(a: Int, reset: Boolean!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  let next: Int! { x + 1 }
+  if (reset) {
+    x = null
+    return 0
+  }
+  next
+}
+
+assert("nested function and a write in a returning branch") {
+  nextUnlessReset(1, false) == 2
+}
+
+let caseArms(a: Int, k: Int!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  case (k) {
+    1 => {
+      x = null
+      0
+    }
+    else => x + 1
+  }
+}
+
+assert("write in another case arm") { caseArms(1, 2) == 2 }

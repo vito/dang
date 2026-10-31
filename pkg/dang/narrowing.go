@@ -331,20 +331,26 @@ func exitNarrowBody(ctx context.Context, fr *effFrame) {
 		}
 	}
 	scope, _ := ctx.Value(narrowScopeKey{}).(*narrowScope)
-	// The outermost body around the closure that may run again: a write
-	// in it made before a check may follow a capture from an earlier run.
-	rerun := 0
-	for f := fr.parent; f != nil; f = f.parent {
-		if f.block || f.parent != nil {
-			rerun = f.logStart
+	// Per read, the outermost body around the closure that may run again
+	// with the same binding: a write in it made before the check may follow
+	// a capture from an earlier run. A body declaring the binding gets a
+	// fresh one each run.
+	reads := make([]narrowRead, len(fr.reads))
+	for i, r := range fr.reads {
+		r.rerun = 0
+		for f := fr.parent; f != nil; f = f.parent {
+			if (f.block || f.parent != nil) && !f.inside(r.n.target.frame) {
+				r.rerun = f.logStart
+			}
 		}
+		reads[i] = r
 	}
 	// Calling the closure (a nested function) reads what it reads, so a
 	// closure calling it captures that too (noteCall).
 	fr.eff.narrowReads = fr.reads
 	log.captures = append(log.captures, narrowCapture{
-		eff: fr.eff, reads: fr.reads, start: fr.logStart, end: end,
-		block: fr.block, parent: fr.parent, scope: scope, rerun: rerun,
+		eff: fr.eff, reads: reads, start: fr.logStart, end: end,
+		block: fr.block, parent: fr.parent, scope: scope,
 	})
 }
 
@@ -385,14 +391,19 @@ func (l *narrowLog) checkCaptures(s *effectSolver, errs *effErrors) {
 					continue
 				}
 				// A function that stays in its scope is called after it is
-				// created and before the scope ends (a loop creates it
-				// anew); a stored one may run any time, but writes before
-				// the check only reach it from an earlier run of a body
-				// around it.
-				if !escapes && (w.at < c.start || (c.scope != nil && c.scope.end != 0 && w.at > c.scope.end)) {
+				// created and before the scope ends or its function returns
+				// (a loop creates it anew); a stored one may run any time,
+				// but writes before the check only reach it from an earlier
+				// run of a body around it.
+				if !escapes && (w.at < c.start || (c.scope != nil && c.scope.end != 0 && w.at > c.scope.end) || l.inReturn(w.at)) {
 					continue
 				}
-				if escapes && w.at < r.n.pos && (c.rerun == 0 || w.at < c.rerun) {
+				if escapes && w.at < r.n.pos && (r.rerun == 0 || w.at < r.rerun) {
+					continue
+				}
+				// A write in another branch than the one creating the
+				// closure doesn't run in the same run of the code around it.
+				if l.exclusiveOf(c.start, w.at) && (r.rerun == 0 || w.at < r.rerun) {
 					continue
 				}
 				if !w.hits(r.n, c.parent) {

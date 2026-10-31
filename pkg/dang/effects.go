@@ -169,6 +169,8 @@ type effFrame struct {
 	reads    []narrowRead
 	// unskips undo skips of writes in branches leaving this block early.
 	unskips []func()
+	// toDang marks a block passed to a Dang-defined function.
+	toDang bool
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {

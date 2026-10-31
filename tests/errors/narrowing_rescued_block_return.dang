@@ -1,0 +1,19 @@
+# A function taking a block may rescue a raise from it, so a write before the
+# block's return still reaches the caller's code.
+boom: Int! { raise "boom" }
+
+safely(&cb: Int!): Int! { cb rescue 0 }
+
+run(a: Int, c: Boolean!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  safely {
+    if (c) {
+      x = null
+      boom
+      return 0
+    }
+    0
+  }
+  x + 1
+}
