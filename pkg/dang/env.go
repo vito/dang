@@ -560,10 +560,15 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			// Add the scalar type as a scheme. A builtin scalar (e.g. an imported
 			// JSON scalar) doubles as its namespace and is always present, so it
 			// binds non-null — otherwise JSON.encode would inherit the binding's
-			// nullability and weaken String! to String.
-			scalarScheme := hm.NewScheme(nil, sub)
+			// nullability and weaken String! to String. Any other scalar's name
+			// is its namespace, not a value of the scalar.
+			var scalarScheme *hm.Scheme
 			if _, isBuiltin := BuiltinScalarModule(t.Name); isBuiltin {
 				scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: sub})
+			} else if subMod, ok := sub.(*Type); ok {
+				scalarScheme = hm.NewScheme(nil, typeNameValueType(subMod))
+			} else {
+				scalarScheme = hm.NewScheme(nil, sub)
 			}
 			env.Add(t.Name, scalarScheme)
 			env.SetVisibility(t.Name, PublicVisibility)
