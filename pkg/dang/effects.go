@@ -57,10 +57,13 @@ type Effect struct {
 	nonLocal Node
 	// createdIn is the frame the closure was created in.
 	createdIn *effFrame
-	// logStart is the narrowing-log tick its body began at, and escaped
-	// whether the closure is stored, returned, or collected (narrowing.go).
-	logStart int
-	escaped  bool
+	// escaped reports whether the closure is stored, returned, or collected
+	// (narrowlog.go).
+	escaped bool
+	// block marks a block argument's effect; nullTargets are the targets it
+	// may assign null (narrowlog.go).
+	block       bool
+	nullTargets map[effTarget]bool
 
 	// effParam: the function owning the parameter, and why it must be bound
 	// to a pure function: because it escapes, or because it is called inside
@@ -88,6 +91,7 @@ func (e *Effect) reset() *Effect {
 	e.targets = nil
 	e.params = nil
 	e.nonLocal = nil
+	e.nullTargets = nil
 	return e
 }
 
@@ -160,6 +164,8 @@ type effFrame struct {
 	// reads of refinements made before it (narrowing.go).
 	logStart int
 	reads    []narrowRead
+	// unskips undo skips of writes in branches leaving this block early.
+	unskips []func()
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {
@@ -201,7 +207,6 @@ func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (con
 	eff.createdIn = fr.parent
 	if log := narrowLogFrom(ctx); log != nil {
 		fr.logStart = log.tick()
-		eff.logStart = fr.logStart
 	}
 	if own := envFrame(env); own != nil {
 		fr.owns = append(fr.owns, own)
@@ -265,7 +270,7 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 		return
 	}
 	if log := narrowLogFrom(ctx); log != nil {
-		log.noteCall(callee, node)
+		log.noteCall(ctx, callee, node)
 	}
 	checkFieldCall(ctx, callee, node, name)
 	fr := bodyFrame(ctx)
@@ -288,6 +293,15 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 			if _, ok := fr.eff.targets[t]; !ok {
 				fr.eff.targets[t] = w
 			}
+		}
+		for t := range callee.nullTargets {
+			if fr.inside(t.frame) {
+				continue
+			}
+			if fr.eff.nullTargets == nil {
+				fr.eff.nullTargets = map[effTarget]bool{}
+			}
+			fr.eff.nullTargets[t] = true
 		}
 		for p := range callee.params {
 			if p.owner != fr.eff {

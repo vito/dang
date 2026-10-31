@@ -80,7 +80,7 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
 
 ### Reassigning a narrowed name
 - A narrowed name may be assigned anything its declared type allows (`x = x.next`). A non-null value keeps it narrowed; a possibly-null one ends the narrowing until the next check.
-- So do `self.x = v` (for the bare field `x`), calling a closure that assigns `x`, and, inside a function, calling a block parameter (for top-level bindings).
+- So do `self.x = v` (for the bare field `x`), calling a closure that assigns `x` null, and calling a block parameter (for anything declared outside the function taking it). Writes in the other branch of the same `if`, in a branch that returns (or breaks/continues, for the rest of the loop body), or in an uncalled nested function don't count.
 - A block or nested function can't rely on an outer check of `x` if it may run again or later after `x` is set to null (the block assigns `x` null itself, or `x` is set to null after a nested function or stored block reading it is created): compile error. Check inside it, or bind the checked value to a local.
 
 ### Limitations (the surprising gaps)

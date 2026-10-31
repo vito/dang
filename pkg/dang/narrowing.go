@@ -20,6 +20,9 @@ type Narrowing struct {
 	declared hm.Type
 	topLevel bool
 	pos      int
+	// check is the null comparison the refinement comes from: it holds from
+	// the tick the comparison was inferred at.
+	check Node
 }
 
 // ConditionFacts captures the type refinements that hold along each
@@ -50,9 +53,9 @@ func analyzeCondition(cond Node, env hm.Env) ConditionFacts {
 		inner := analyzeCondition(c.Expr, env)
 		return ConditionFacts{Truthy: inner.Falsy, Falsy: inner.Truthy}
 	case *Equality:
-		return equalityFacts(c, env, true)
+		return equalityFacts(c, c.Left, c.Right, env, true)
 	case *Inequality:
-		return equalityFacts(&Equality{Left: c.Left, Right: c.Right, Loc: c.Loc}, env, false)
+		return equalityFacts(c, c.Left, c.Right, env, false)
 	case *LogicalAnd:
 		left := analyzeCondition(c.Left, env)
 		right := analyzeCondition(c.Right, env)
@@ -74,9 +77,9 @@ func analyzeCondition(cond Node, env hm.Env) ConditionFacts {
 }
 
 // equalityFacts builds the truthy/falsy facts for an equality (or, when
-// negate=true, inequality) comparison between a symbol and null.
-func equalityFacts(eq *Equality, env hm.Env, isEquality bool) ConditionFacts {
-	sym := nullCheckSymbol(eq.Left, eq.Right)
+// isEquality=false, inequality) comparison check between a symbol and null.
+func equalityFacts(check, left, right Node, env hm.Env, isEquality bool) ConditionFacts {
+	sym := nullCheckSymbol(left, right)
 	if sym == "" {
 		return ConditionFacts{}
 	}
@@ -87,12 +90,12 @@ func equalityFacts(eq *Equality, env hm.Env, isEquality bool) ConditionFacts {
 	if isEquality {
 		// x == null: truthy says x is null (leave nullable), falsy says x is non-null
 		return ConditionFacts{
-			Falsy: []Narrowing{{Symbol: sym, Type: nonNull}},
+			Falsy: []Narrowing{{Symbol: sym, Type: nonNull, check: check}},
 		}
 	}
 	// x != null: truthy says x is non-null, falsy says x is null
 	return ConditionFacts{
-		Truthy: []Narrowing{{Symbol: sym, Type: nonNull}},
+		Truthy: []Narrowing{{Symbol: sym, Type: nonNull, check: check}},
 	}
 }
 
@@ -155,7 +158,13 @@ func applyNarrowings(ctx context.Context, env hm.Env, narrowings []Narrowing) {
 			applied.declared, _ = scheme.Type()
 		}
 		if log != nil {
-			applied.pos = log.tick()
+			// A refinement holds from its null check on: writes made after
+			// it, even within the same condition, end it.
+			if at, ok := log.checks[n.check]; ok && n.check != nil {
+				applied.pos = at
+			} else {
+				applied.pos = log.tick()
+			}
 			if frame := resolveBinding(env, n.Symbol); frame != nil {
 				applied.target = effTarget{frame: frame, name: n.Symbol}
 				applied.topLevel = inFunctionBody(ctx) && isTopLevelFrame(frame, topLevelFrameFrom(ctx))
@@ -214,120 +223,6 @@ func activeNarrowing(env hm.Env, name string) *Narrowing {
 	return nil
 }
 
-// Invalidating narrowings.
-//
-// A refinement holds until its binding may have been assigned null. Writes
-// that do so are logged in inference order, which within a function body is
-// source order: an assignment of a possibly-null value (`x = null`, also
-// `self.x = null` for a narrowed bare field `x`); a call of a closure that
-// writes the binding (its effect's targets); and, inside a function body, a
-// call of a function parameter, which may run top-level script code and so
-// write any top-level binding. A read of a narrowed name after such a write
-// sees the binding's unrefined type (Symbol.Infer).
-//
-// Source order is not run order for a closure (a block argument or nested
-// function), which may run again, or later. So a closure's reads of a
-// refinement made outside it are checked once it is inferred: against the
-// writes in its own body, which a later run would see (a loop), and, when the
-// closure escapes (it is stored, returned, or passed where it may be), against
-// the writes anywhere else, after which it may run.
-
-// narrowWrite is a logged write that may set a binding to null.
-type narrowWrite struct {
-	at     int
-	target effTarget
-	// topLevel: a call that may write any top-level binding.
-	topLevel bool
-	// since is, for a call of a closure, the tick its body began at: the
-	// writes it makes directly are logged from there on. -1 otherwise.
-	since int
-	node  Node
-}
-
-// narrowRead is a read of a refinement made outside the closure reading it.
-type narrowRead struct {
-	n    *Narrowing
-	node Node
-}
-
-type narrowCapture struct {
-	eff        *Effect
-	reads      []narrowRead
-	start, end int
-	// block: a block argument, which runs during the call it is passed to
-	// unless it escapes. A nested function can be called any time later.
-	block bool
-}
-
-type narrowLog struct {
-	clock    int
-	writes   []narrowWrite
-	captures []narrowCapture
-	errs     []narrowError
-}
-
-type narrowError struct {
-	node Node
-	msg  string
-}
-
-func narrowLogFrom(ctx context.Context) *narrowLog {
-	if s, ok := ctx.Value(effSolverKey{}).(*effectSolver); ok {
-		return &s.narrow
-	}
-	return nil
-}
-
-func (l *narrowLog) tick() int {
-	l.clock++
-	return l.clock
-}
-
-// noteWrite logs a direct assignment of a possibly-null value to target.
-func (l *narrowLog) noteWrite(target effTarget, node Node) {
-	l.writes = append(l.writes, narrowWrite{at: l.tick(), target: target, since: -1, node: node})
-}
-
-// noteCall logs the writes made by calling (or passing) a function with
-// effect callee.
-func (l *narrowLog) noteCall(callee *Effect, node Node) {
-	switch callee.kind {
-	case effParam:
-		l.writes = append(l.writes, narrowWrite{at: l.tick(), topLevel: true, since: -1, node: node})
-	case effClosure:
-		for t := range callee.targets {
-			l.writes = append(l.writes, narrowWrite{at: l.tick(), target: t, since: callee.logStart, node: node})
-		}
-		if len(callee.params) > 0 {
-			l.writes = append(l.writes, narrowWrite{at: l.tick(), topLevel: true, since: callee.logStart, node: node})
-		}
-	}
-}
-
-// hits reports whether w may null n's binding, counting a closure call only
-// if the closure's own writes are not logged from tick from on.
-func (w narrowWrite) hits(n *Narrowing, from int) bool {
-	if w.topLevel {
-		if !n.topLevel {
-			return false
-		}
-	} else if n.target.frame == nil || w.target != n.target {
-		return false
-	}
-	return w.since < 0 || w.since < from
-}
-
-// invalidating returns the first write in the ticks (from, to) that may null
-// n's binding.
-func (l *narrowLog) invalidating(n *Narrowing, from, to int) (narrowWrite, bool) {
-	for _, w := range l.writes {
-		if w.at > from && w.at < to && w.hits(n, from) {
-			return w, true
-		}
-	}
-	return narrowWrite{}, false
-}
-
 type assignTargetKey struct{}
 
 // withAssignTarget marks node as the target of a plain assignment.
@@ -362,7 +257,15 @@ func noteAssignment(ctx context.Context, env hm.Env, target Node, valueType hm.T
 	if frame == nil {
 		return
 	}
-	log.noteWrite(effTarget{frame: frame, name: name}, target)
+	t := effTarget{frame: frame, name: name}
+	// A closure assigning null to a binding outside it nulls it when called.
+	if fr := bodyFrame(ctx); fr != nil && !fr.inside(frame) {
+		if fr.eff.nullTargets == nil {
+			fr.eff.nullTargets = map[effTarget]bool{}
+		}
+		fr.eff.nullTargets[t] = true
+	}
+	log.writes = append(log.writes, narrowWrite{at: log.tick(), target: t, frame: effFrameFrom(ctx), node: target})
 }
 
 // readNarrowed returns the type a read (at node) of name gets: its refined
@@ -384,12 +287,15 @@ func readNarrowed(ctx context.Context, env hm.Env, name string, node Node, t hm.
 	if log == nil {
 		return t
 	}
-	if _, invalid := log.invalidating(n, n.pos, log.clock+1); invalid {
-		return n.declared
+	reader := effFrameFrom(ctx)
+	for _, w := range log.writes {
+		if w.at > n.pos && !log.excluded(w.at) && w.hits(n, reader) {
+			return n.declared
+		}
 	}
 	// Record the read with every enclosing closure the refinement was made
 	// outside of.
-	for fr := effFrameFrom(ctx); fr != nil; fr = fr.parent {
+	for fr := reader; fr != nil; fr = fr.parent {
 		if fr.field {
 			continue
 		}
@@ -403,7 +309,7 @@ func readNarrowed(ctx context.Context, env hm.Env, name string, node Node, t hm.
 
 // exitNarrowBody checks a closure body's reads of outer refinements against
 // the writes in the body, once it has been inferred, and keeps them to check
-// against the writes elsewhere if the closure escapes.
+// against the writes elsewhere (see checkCaptures).
 func exitNarrowBody(ctx context.Context, fr *effFrame) {
 	log := narrowLogFrom(ctx)
 	if log == nil || fr == nil || len(fr.reads) == 0 {
@@ -415,13 +321,20 @@ func exitNarrowBody(ctx context.Context, fr *effFrame) {
 		what = "block"
 	}
 	for _, r := range fr.reads {
-		if w, ok := log.invalidating(r.n, fr.logStart, end); ok {
-			log.errs = append(log.errs, narrowError{node: r.node, msg: fmt.Sprintf(
-				"`%s` is checked for null outside this %s, but the %s may set it to null (%s), so it may be null here when the %s runs again; check it inside the %s",
-				r.n.Symbol, what, what, writeDesc(w), what, what)})
+		for _, w := range log.writes {
+			if w.at > fr.logStart && w.at < end && w.hits(r.n, fr) {
+				log.errs = append(log.errs, narrowError{node: r.node, msg: fmt.Sprintf(
+					"`%s` is checked for null outside this %s, but the %s may set it to null (%s), so it may be null here when the %s runs again; check it inside the %s",
+					r.n.Symbol, what, what, writeDesc(w), what, what)})
+				break
+			}
 		}
 	}
-	log.captures = append(log.captures, narrowCapture{eff: fr.eff, reads: fr.reads, start: fr.logStart, end: end, block: fr.block})
+	scope, _ := ctx.Value(narrowScopeKey{}).(*narrowScope)
+	log.captures = append(log.captures, narrowCapture{
+		eff: fr.eff, reads: fr.reads, start: fr.logStart, end: end,
+		block: fr.block, parent: fr.parent, scope: scope,
+	})
 }
 
 func writeDesc(w narrowWrite) string {
@@ -429,10 +342,10 @@ func writeDesc(w narrowWrite) string {
 	if loc := w.node.GetSourceLocation(); loc != nil {
 		where = fmt.Sprintf(" at line %d", loc.Line)
 	}
-	if w.topLevel {
-		return "by calling a function parameter" + where + ", which may run top-level code"
-	}
-	if w.since >= 0 {
+	switch {
+	case w.wild:
+		return "by calling a function parameter" + where + ", which may run its caller's code"
+	case w.call:
 		return "by calling a function that assigns it" + where
 	}
 	return "by assigning it" + where
@@ -440,7 +353,8 @@ func writeDesc(w narrowWrite) string {
 
 // checkCaptures reports closures that read an outer refinement whose binding
 // may be set to null outside them, and that may run after that: a nested
-// function, which can be called later, or an escaping block.
+// function, which can be called later in its scope, or an escaping closure,
+// which can run any time.
 func (l *narrowLog) checkCaptures(s *effectSolver, errs *effErrors) {
 	for _, e := range l.errs {
 		errs.add(e.node, e.msg)
@@ -460,12 +374,12 @@ func (l *narrowLog) checkCaptures(s *effectSolver, errs *effErrors) {
 					continue
 				}
 				// A function that stays in its scope is called after it is
-				// created, before a loop could create it anew; a stored one
-				// may run any time.
-				if !escapes && w.at < c.start {
+				// created and before the scope ends (a loop creates it
+				// anew); a stored one may run any time.
+				if !escapes && (w.at < c.start || (c.scope != nil && c.scope.end != 0 && w.at > c.scope.end)) {
 					continue
 				}
-				if !w.hits(r.n, c.start) {
+				if !w.hits(r.n, c.parent) {
 					continue
 				}
 				errs.add(r.node, fmt.Sprintf(

@@ -425,6 +425,10 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		newEnv := env.Clone()
 
+		// Nested functions declared here can only be called until the block
+		// ends (narrowlog.go).
+		ctx, endScope := withNarrowScope(ctx)
+		defer endScope()
 		// A block written directly in a `{{ }}` field declares its bindings
 		// inside that field, even when the field's own scope is not an
 		// ancestor of its environment (a selected field's arguments are

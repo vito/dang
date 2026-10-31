@@ -1,0 +1,16 @@
+# Calling a block parameter runs the caller's block, which may reassign
+# anything declared outside the function owning the parameter, such as a
+# local of the enclosing function.
+f(x: Int): [Int!]! {
+  let g(&b: Boolean!): [Int!]! {
+    if (x == null) { return [] }
+    b
+    [x]
+  }
+  g {
+    x = null
+    true
+  }
+}
+
+print(f(1).map { v => v * 2 })

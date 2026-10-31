@@ -3013,24 +3013,32 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		}
 
 		if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-			return nil, NewInferError(notBooleanError("condition", condType), c.Condition)
+			return nil, NewInferError(notBooleanError("condition", condType, c.Condition), c.Condition)
 		}
 
 		// Apply flow-sensitive narrowings to each branch based on the condition.
 		facts := analyzeCondition(c.Condition, env)
 
 		thenEnv := withNarrowings(ctx, env, facts.Truthy)
+		thenStart := enterBranch(ctx)
 		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
+		// Writes in a branch that returns never reach what follows.
+		skipBranch(ctx, c.Then, thenStart)
 
 		if c.Else != nil {
 			elseEnv := withNarrowings(ctx, env, facts.Falsy)
+			// The else branch can't see the then branch's writes.
+			unskip := skipWrites(ctx, thenStart)
+			elseStart := enterBranch(ctx)
 			elseType, err := c.Else.Infer(ctx, elseEnv, fresh)
+			unskip()
 			if err != nil {
 				return nil, err
 			}
+			skipBranch(ctx, c.Else, elseStart)
 
 			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
 			if err != nil {
@@ -3647,12 +3655,14 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// receives the block leaves the block.
 		if b.effect == nil {
 			b.effect = newClosureEffect("block")
+			b.effect.block = true
 		}
 		var fr *effFrame
 		bodyCtx, fr = withEffFrame(bodyCtx, b.effect.reset(), newEnv, nil)
 		fr.block = true
 		fr.entryBreak = currentInferBreakTarget(ctx)
 		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
+		endBlockSkips(fr)
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
 		}
