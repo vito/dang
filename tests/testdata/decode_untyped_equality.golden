@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot compare decoded data (Decoded) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T)`
+  [2m[34m--> errors/decode_untyped_equality.dang:4:10[0m
+ [2m    |[0m
+ [2m  2 | # never equals the value it decodes to.[0m
+ [2m  3 | let flag = JSON.decode("true")[0m
+ [2m[34m[1m  4 | [0massert { flag == true }
+[2m                [31m^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

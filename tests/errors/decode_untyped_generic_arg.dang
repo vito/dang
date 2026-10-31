@@ -1,0 +1,6 @@
+# Passing decoded data to a generic parameter would leave the type variable
+# unbound, so the result could be used as anything: cast it first.
+ident(x: a!): a! { x }
+
+let v = ident(JSON.decode("\"s\""))
+v + 1

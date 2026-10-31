@@ -239,13 +239,15 @@ func (t MapType) Supertypes() []hm.Type {
 // DecodedType is the static type of a codec decode result (JSON.decode and
 // friends): data whose shape is only known at runtime, carried as a
 // DeferredValue until it reaches an expected type. It is deliberately opaque —
-// it unifies only with itself and type variables, so operators, conditions,
-// selections and equality reject it — and it may cross into any type only at
-// a materializing boundary (a Coerce: annotations, arguments, returns, `::`),
-// where assignableDecoded admits it and materializeValue converts the data or
-// raises. Typing decode results as a bare type variable instead made them
-// usable as anything without materialization, so `JSON.decode("1") + 1`
-// type-checked and then failed at runtime.
+// it unifies only with itself and type variables, so operators, conditions
+// and selections reject it, and equality does too (checkDecodedComparison,
+// since it is otherwise defined across all types) — and it may cross into any
+// fully known type only at a materializing boundary (a Coerce: annotations,
+// arguments, returns, `::`), where assignableDecoded admits it and
+// materializeValue converts the data or raises. Typing decode results as a
+// bare type variable instead made them usable as anything without
+// materialization, so `JSON.decode("1") + 1` type-checked and then failed at
+// runtime.
 type DecodedType struct{}
 
 var _ hm.Type = DecodedType{}

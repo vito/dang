@@ -199,10 +199,15 @@ func isNullNode(n Node) bool {
 // included — materializeDecoded checks the data (null included) against it
 // and raises when it does not fit. Every other part of have must already fit
 // want, which is why only Decoded itself may cross into a non-null slot.
+//
+// want must be fully known: admitting Decoded into a type variable (say the
+// `a!` of `ident(x: a!): a!`) would leave the variable unbound, so the call's
+// result could then be used as anything. (A bare variable never gets here:
+// plain unification binds it to Decoded first.)
 func assignableDecoded(have, want hm.Type) bool {
 	switch h := have.(type) {
 	case DecodedType:
-		return true
+		return len(want.FreeTypeVar()) == 0
 	case hm.NonNullType:
 		if w, ok := want.(hm.NonNullType); ok {
 			return assignableDecoded(h.Type, w.Type)
@@ -218,6 +223,28 @@ func assignableDecoded(have, want hm.Type) bool {
 	case MapType:
 		if w, ok := want.(MapType); ok {
 			return assignableDecoded(h.Type, w.Type)
+		}
+	}
+	return false
+}
+
+// containsDecoded reports whether t carries DecodedType, on its own or as the
+// element of a list or map.
+func containsDecoded(t hm.Type) bool {
+	switch v := t.(type) {
+	case DecodedType:
+		return true
+	case hm.NonNullType:
+		return containsDecoded(v.Type)
+	case ListType:
+		return containsDecoded(v.Type)
+	case MapType:
+		return containsDecoded(v.Type)
+	case *hm.UnionType:
+		for _, option := range v.Options {
+			if containsDecoded(option) {
+				return true
+			}
 		}
 	}
 	return false

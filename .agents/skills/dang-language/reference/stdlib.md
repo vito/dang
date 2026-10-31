@@ -157,7 +157,7 @@ let s = JSON.decode(...) :: Status!
 f(d: String!): Summary! { JSON.decode(d) }
 let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a table
 ```
-- Until it reaches an expected type, a decode result has the opaque type `Decoded`: it can be stored, passed, and returned, but `JSON.decode("1") + 1`, `if (JSON.decode("true"))`, and `.field` on it are type errors — cast first.
+- Until it reaches an expected type, a decode result has the opaque type `Decoded`: it can be stored, passed, and returned, but `JSON.decode("1") + 1`, `JSON.decode("1") == 1`, `if (JSON.decode("true"))`, and `.field` on it are type errors — cast first. Joins with typed values too: `(JSON.decode(s) :: Int!) rescue 0`.
 - Works for primitives, lists, maps (`Map[T]`, from an object), records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
 - YAML anchors/aliases and `<<` merge keys are resolved; a mapping's own keys beat merged ones, and earlier entries of `<<: [*a, *b]` beat later ones.
