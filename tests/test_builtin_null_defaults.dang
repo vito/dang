@@ -1,0 +1,16 @@
+# An explicit null for an optional builtin argument uses the argument's
+# default, like user-defined functions do, rather than a zero value.
+let none: Int = null
+
+assert { "a-b-c".replace("-", "_", count: null) == "a_b_c" }
+assert { "a-b-c".replace("-", "_", count: none) == "a_b_c" }
+assert { "a,b,c".split(",", limit: null) == ["a", "b", "c"] }
+
+assert { [1, 2, 3].takeFirst(null) == [1] }
+assert { [1, 2, 3].takeLast(none) == [3] }
+assert { [1, 2, 3].dropFirst(null) == [2, 3] }
+assert { [1, 2, 3].dropLast(null) == [1, 2] }
+
+assert { "a1b2".replaceMatches(`\d`, "#", count: null) == "a#b#" }
+assert { "a b".rewriteMatches(`\w`, count: none) { m => m.string.toUpper } == "A B" }
+assert { "a1b2c".splitMatches(`\d`, limit: null) == ["a", "b", "c"] }

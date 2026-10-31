@@ -854,12 +854,19 @@ func addBuiltinFunctions(scope ValueScope) {
 	}, PublicVisibility)
 }
 
-// applyDefaults fills in default values for missing arguments
+// applyDefaults fills in default values for arguments that are missing or
+// passed as an explicit null, matching user-defined functions: a null
+// argument means "use the default", never the implementation's zero value.
 func applyDefaults(args map[string]Value, def BuiltinDef) map[string]Value {
 	result := make(map[string]Value)
 	maps.Copy(result, args)
 	for _, param := range def.ParamTypes {
-		if _, ok := result[param.Name]; !ok && param.DefaultValue != nil {
+		if param.DefaultValue == nil {
+			continue
+		}
+		if val, ok := result[param.Name]; !ok {
+			result[param.Name] = param.DefaultValue
+		} else if _, isNull := val.(NullValue); isNull {
 			result[param.Name] = param.DefaultValue
 		}
 	}
