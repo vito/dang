@@ -3437,10 +3437,11 @@ func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget,
 			breakType = breakType.Apply(subs).(hm.Type)
 		}
 		if br.HasValue {
-			retType = hm.NewUnionTypeWithSources(
-				[]hm.Type{retType, breakType},
-				[]any{nil, armOrigin("break value", br.Loc)},
-			)
+			// Merge when the break value fits the call's own result (or
+			// that result is still an open variable, like loop's, which
+			// only ever materializes through breaks); widen to a union,
+			// citing the break, when it doesn't.
+			retType = mergeControlResultTypesTagged(retType, nil, breakType, armOrigin("break value", br.Loc))
 		} else {
 			retType = mergeControlResultTypes(retType, breakType)
 		}
