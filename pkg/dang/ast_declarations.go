@@ -310,7 +310,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
-	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
+	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(outsideRescue(ctx)))
 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(TypeScope)

@@ -322,7 +322,7 @@ func exitNarrowBody(ctx context.Context, fr *effFrame) {
 	}
 	for _, r := range fr.reads {
 		for _, w := range log.writes {
-			if w.at > fr.logStart && w.at < end && w.hits(r.n, fr) {
+			if w.at > fr.logStart && w.at < end && w.hits(r.n, fr) && !log.rerunSkips(w.at, fr) {
 				log.errs = append(log.errs, narrowError{node: r.node, msg: fmt.Sprintf(
 					"`%s` is checked for null outside this %s, but the %s may set it to null (%s), so it may be null here when the %s runs again; check it inside the %s",
 					r.n.Symbol, what, what, writeDesc(w), what, what)})
@@ -331,9 +331,20 @@ func exitNarrowBody(ctx context.Context, fr *effFrame) {
 		}
 	}
 	scope, _ := ctx.Value(narrowScopeKey{}).(*narrowScope)
+	// The outermost body around the closure that may run again: a write
+	// in it made before a check may follow a capture from an earlier run.
+	rerun := 0
+	for f := fr.parent; f != nil; f = f.parent {
+		if f.block || f.parent != nil {
+			rerun = f.logStart
+		}
+	}
+	// Calling the closure (a nested function) reads what it reads, so a
+	// closure calling it captures that too (noteCall).
+	fr.eff.narrowReads = fr.reads
 	log.captures = append(log.captures, narrowCapture{
 		eff: fr.eff, reads: fr.reads, start: fr.logStart, end: end,
-		block: fr.block, parent: fr.parent, scope: scope,
+		block: fr.block, parent: fr.parent, scope: scope, rerun: rerun,
 	})
 }
 
@@ -375,8 +386,13 @@ func (l *narrowLog) checkCaptures(s *effectSolver, errs *effErrors) {
 				}
 				// A function that stays in its scope is called after it is
 				// created and before the scope ends (a loop creates it
-				// anew); a stored one may run any time.
+				// anew); a stored one may run any time, but writes before
+				// the check only reach it from an earlier run of a body
+				// around it.
 				if !escapes && (w.at < c.start || (c.scope != nil && c.scope.end != 0 && w.at > c.scope.end)) {
+					continue
+				}
+				if escapes && w.at < r.n.pos && (c.rerun == 0 || w.at < c.rerun) {
 					continue
 				}
 				if !w.hits(r.n, c.parent) {
