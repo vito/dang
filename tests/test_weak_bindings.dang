@@ -44,6 +44,32 @@ lastEven: Int {
 
 assert { lastEven == 4 }
 
+# narrowing sees the type a write pinned
+afterWrite: Int! {
+  let p = null
+  p = 1
+  if (p != null) { p + 1 } else { 0 }
+}
+
+assert { afterWrite == 2 }
+
+# a local of a generic function may hold its `a`
+orRaise(c: Boolean!, v: a): a {
+  let r = null
+  if (c) {
+    r = v
+  }
+  if (r == null) {
+    raise "nothing"
+  }
+  r
+}
+
+assert { orRaise(true, 3) == 3 }
+
+# reduce's accumulator has one type across iterations
+assert { [1, 2, 3].reduce([]) { acc, x => acc + [x * 2] } == [2, 4, 6] }
+
 # reading pins the type too, so later writes must agree
 sumFirst: Int! {
   let xs = []

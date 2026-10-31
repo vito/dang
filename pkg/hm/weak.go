@@ -1,6 +1,7 @@
 package hm
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,9 @@ const weakBit = 1 << 61
 // WeakCell holds what a weak variable has been bound to.
 type WeakCell struct {
 	bound atomic.Pointer[Type]
+	// scope is the rigid variables in scope where the variable's binding
+	// was declared: the only ones it may be bound to mention.
+	scope TypeVarSet
 	// children are the cells of weak variables made for flexible variables
 	// in this cell's binding; they live as long as it does.
 	mu       sync.Mutex
@@ -42,20 +46,47 @@ var weakCells sync.Map // TypeVariable -> weak.Pointer[WeakCell]
 // needs resolving.
 var weakVars atomic.Int64
 
-// NewWeakVar returns a new weak variable named like tv, and its cell. The
-// caller must keep the cell alive as long as types mention the variable.
-func NewWeakVar(tv TypeVariable) (TypeVariable, *WeakCell) {
+// NewWeakVar returns a new weak variable named like tv, and its cell. scope
+// lists the rigid variables in scope where the binding it belongs to is
+// declared (a generic function's own `a`, for a `let` in its body); it may
+// be bound to types mentioning those, but no other rigid variable, which
+// would escape the function it stands for. The caller must keep the cell
+// alive as long as types mention the variable.
+func NewWeakVar(tv TypeVariable, scope TypeVarSet) (TypeVariable, *WeakCell) {
 	w := Freshen(tv) | weakBit
-	cell := &WeakCell{}
+	cell := &WeakCell{scope: scope}
 	weakCells.Store(w, weak.Make(cell))
 	runtime.AddCleanup(cell, func(w TypeVariable) { weakCells.Delete(w) }, w)
 	weakVars.Add(1)
 	return w, cell
 }
 
+// EscapeError reports a rigid variable bound into a weak variable declared
+// outside the generic function the rigid one belongs to.
+type EscapeError struct {
+	Rigid TypeVariable
+	Type  Type
+}
+
+func (e EscapeError) Error() string {
+	return fmt.Sprintf("cannot use %s here: %s is a type its generic function's caller picks, and this binding is declared outside that function", e.Type, e.Rigid)
+}
+
 // IsWeak reports whether tv is a weak type variable.
 func (tv TypeVariable) IsWeak() bool {
 	return tv&weakBit != 0
+}
+
+// WeakCells returns the cells of the weak variables in t, for whoever keeps
+// t to keep alive with it.
+func WeakCells(t Type) []*WeakCell {
+	var cells []*WeakCell
+	for tv := range t.FreeTypeVar() {
+		if c := tv.cell(); c != nil {
+			cells = append(cells, c)
+		}
+	}
+	return cells
 }
 
 func (tv TypeVariable) cell() *WeakCell {
@@ -144,11 +175,17 @@ func mentionsBoundWeak(t Type) bool {
 // producing it succeeded. Assignable and MergeTypes commit their own; a
 // caller composing substitutions itself commits the result. A binding
 // mentioning flexible variables weakens them too: they become part of the
-// binding's one type.
-func CommitWeak(subs Subs) {
+// binding's one type. It fails, binding nothing, when a binding would let a
+// rigid variable escape (see NewWeakVar).
+func CommitWeak(subs Subs) error {
 	if weakVars.Load() == 0 {
-		return
+		return nil
 	}
+	type binding struct {
+		cell *WeakCell
+		t    Type
+	}
+	var bindings []binding
 	for tv, t := range subs {
 		if !tv.IsWeak() {
 			continue
@@ -161,20 +198,52 @@ func CommitWeak(subs Subs) {
 		if varOf(t) == tv {
 			continue
 		}
+		cell.mu.Lock()
+		scope := cell.scope
+		cell.mu.Unlock()
+		for fv := range t.FreeTypeVar() {
+			if fv.IsRigid() && !scope.Contains(fv) {
+				return EscapeError{Rigid: fv, Type: t}
+			}
+		}
+		bindings = append(bindings, binding{cell, t})
+	}
+	for _, b := range bindings {
+		cell, t := b.cell, b.t
 		weakened := NewSubs()
 		for fv := range t.FreeTypeVar() {
-			if fv.IsRigid() || fv.IsWeak() {
-				continue
+			switch {
+			case fv.IsRigid():
+			case fv.IsWeak():
+				// It is now part of this binding too, so it may mention
+				// only what both may.
+				if other := fv.cell(); other != nil && other != cell {
+					other.mu.Lock()
+					other.scope = intersect(other.scope, cell.scope)
+					other.mu.Unlock()
+				}
+			default:
+				cell.mu.Lock()
+				w, child := NewWeakVar(fv, cell.scope)
+				cell.children = append(cell.children, child)
+				cell.mu.Unlock()
+				weakened.Add(fv, w)
 			}
-			w, child := NewWeakVar(fv)
-			cell.mu.Lock()
-			cell.children = append(cell.children, child)
-			cell.mu.Unlock()
-			weakened.Add(fv, w)
 		}
 		if len(weakened) > 0 {
 			t = t.Apply(weakened).(Type)
 		}
 		cell.bound.CompareAndSwap(nil, &t)
 	}
+	return nil
+}
+
+func intersect(a, b TypeVarSet) TypeVarSet {
+	out := TypeVarSet{}
+	for tv := range a {
+		if b.Contains(tv) {
+			out.Add(tv)
+		}
+	}
+	return out
 }

@@ -34,3 +34,9 @@ id(v: a): a { v }
 
 assert { id == null }
 assert { id(1) == 1 }
+
+# so null is a default for a bare `a`
+opt(v: a = null): a { v }
+
+assert { opt == null }
+assert { opt(1) == 1 }

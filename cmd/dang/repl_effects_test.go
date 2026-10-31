@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -116,4 +117,21 @@ func TestReplRedefinesGenericBindings(t *testing.T) {
 		_, err := s.enter(entry)
 		require.NoError(t, err, entry)
 	}
+}
+
+// A binding's type, pinned by a use in one entry, stays pinned in later ones,
+// after the earlier entries' syntax is gone.
+func TestReplKeepsPinnedBindingTypes(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let xs = []")
+	require.NoError(t, err)
+	_, err = s.enter("xs += [1]")
+	require.NoError(t, err)
+	runtime.GC()
+	runtime.GC()
+	_, err = s.enter("let strs: [String!]! = xs")
+	require.ErrorContains(t, err, "cannot use [Int!]! as [String!]!")
+	v, err := s.enter("xs")
+	require.NoError(t, err)
+	require.Equal(t, "[1]", dang.Repr(v))
 }

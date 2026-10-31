@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use [Int!]! as [String!]!
+  [2m[34m--> errors/weak_reduce_accumulator.dang:5:3[0m
+ [2m    |[0m
+ [2m  3 | let r = [1, 2].reduce([]) { acc, x =>[0m
+ [2m  4 |   let z: [String!]! = acc[0m
+ [2m[34m[1m  5 | [0m  acc + [x]
+[2m         [31m^^^^^^^^^[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

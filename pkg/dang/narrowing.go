@@ -110,14 +110,9 @@ func nonNullType(env hm.Env, sym string) (hm.Type, bool) {
 	if !mono {
 		return nil, false
 	}
-	if _, isNonNull := t.(hm.NonNullType); isNonNull {
-		return t, true
-	}
-	// a? (a possibly-null a) narrows to a!, not a?!.
-	if ntv, ok := t.(hm.NullableTypeVariable); ok {
-		t = ntv.TypeVariable
-	}
-	return hm.NonNullType{Type: t}, true
+	// A binding pinned since it was declared narrows from what it is now,
+	// and a? (a possibly-null a) narrows to a!, not a?!.
+	return hm.NonNull(hm.ResolveWeak(t)), true
 }
 
 // applyNarrowings installs the given refinements on env in place. Each

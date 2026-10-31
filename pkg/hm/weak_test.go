@@ -9,7 +9,7 @@ func TestWeakVariablesBindOnce(t *testing.T) {
 	intType := NonNullType{Type: simpleType("Int")}
 	strType := NonNullType{Type: simpleType("String")}
 
-	w, cell := NewWeakVar(TypeVariable('a'))
+	w, cell := NewWeakVar(TypeVariable('a'), nil)
 	defer runtime.KeepAlive(cell)
 	if !w.IsWeak() || w.IsRigid() {
 		t.Fatalf("%v should be weak and not rigid", w)
@@ -50,7 +50,7 @@ func TestWeakVariablesBindOnce(t *testing.T) {
 func TestWeakVariableThroughNullableView(t *testing.T) {
 	intType := simpleType("Int")
 
-	w, cell := NewWeakVar(TypeVariable('a'))
+	w, cell := NewWeakVar(TypeVariable('a'), nil)
 	defer runtime.KeepAlive(cell)
 
 	// `let n: Int = xs[0]`, with xs: [w]!: w? fits Int, so w is Int!.
@@ -63,7 +63,7 @@ func TestWeakVariableThroughNullableView(t *testing.T) {
 }
 
 func TestWeakVariableWeakensFlexibleParts(t *testing.T) {
-	w, cell := NewWeakVar(TypeVariable('a'))
+	w, cell := NewWeakVar(TypeVariable('a'), nil)
 	defer runtime.KeepAlive(cell)
 
 	// w := [b]! with a flexible b: b becomes weak too, so the next
@@ -77,6 +77,39 @@ func TestWeakVariableWeakensFlexibleParts(t *testing.T) {
 	}
 	if _, err := Assignable(listOf(NonNullType{Type: simpleType("String")}), w); err == nil {
 		t.Fatalf("w is %s, which holds no String!", w)
+	}
+}
+
+// A weak variable may hold only the rigid variables in scope where its
+// binding was declared: a generic function's own `a`, for a `let` in its
+// body, but no `a` for a field, which outlives every method call.
+func TestWeakVariablesKeepRigidOnesInScope(t *testing.T) {
+	a := Rigid(TypeVariable('a'))
+
+	local, localCell := NewWeakVar(TypeVariable('a'), NewTypeVarSet(a))
+	defer runtime.KeepAlive(localCell)
+	if _, err := Assignable(a, local); err != nil {
+		t.Fatalf("a local of a's function may hold an a: %v", err)
+	}
+
+	field, fieldCell := NewWeakVar(TypeVariable('b'), nil)
+	defer runtime.KeepAlive(fieldCell)
+	if _, err := Assignable(listOf(a), field); err == nil {
+		t.Fatalf("a field held an a: %s", field)
+	}
+	if _, ok := field.weakBinding(); ok {
+		t.Fatal("a refused binding was committed")
+	}
+
+	// Through another weak variable: binding the field to the local's
+	// (still unbound) variable narrows what the local may hold.
+	other, otherCell := NewWeakVar(TypeVariable('c'), NewTypeVarSet(a))
+	defer runtime.KeepAlive(otherCell)
+	if _, err := Assignable(listOf(other), field); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Assignable(a, other); err == nil {
+		t.Fatal("an a reached a field through a local")
 	}
 }
 
