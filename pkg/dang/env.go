@@ -1319,7 +1319,11 @@ func (t *Type) Eq(other hm.Type) bool {
 	}
 	if otherMod.Named != "" {
 		// Named types are nominal: a record of the same shape isn't one.
-		return false
+		// Input objects are the exception: plain data with no identity
+		// (no `case`, no methods), so a record of their shape is one.
+		if otherMod.Kind != InputKind {
+			return false
+		}
 	}
 	// Unnamed modules (anonymous record-like modules) use structural equality
 	// up to a renaming of their variables: two `{{xs: []}}`s, or a `{{x: []}}`

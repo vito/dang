@@ -5,3 +5,8 @@ let sorted = sortedUsers(sort: UserSort(field: UserSortField.NAME, direction: So
 
 assert { sorted[0].name == "Jane Smith" }
 assert { sorted[1].name == "John Doe" }
+
+# A record of an input object's shape is one: input objects are plain data.
+let sortedByRecord = sortedUsers(sort: {{field: UserSortField.NAME, direction: SortDirection.DESC}}).{{name}}
+
+assert { sortedByRecord[0].name == "Jane Smith" }
