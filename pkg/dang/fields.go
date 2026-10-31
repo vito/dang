@@ -1008,8 +1008,11 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 
 func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Field defaults and methods run on behalf of an instance, never as
-	// top-level script code.
-	ctx = withFunctionBody(ctx)
+	// top-level script code. They run whenever the object is built, which
+	// may be after the code declaring the type has returned, so a type body
+	// is a control-flow boundary: `return`/`break`/`continue` in a field
+	// default can't reach an enclosing function or loop.
+	ctx = withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")

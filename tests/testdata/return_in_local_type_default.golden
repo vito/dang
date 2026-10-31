@@ -1,0 +1,11 @@
+[1m[31mError:[0m return outside of function
+  [2m[34m--> errors/return_in_local_type_default.dang:5:19[0m
+ [2m    |[0m
+ [2m  3 | describe: String! {[0m
+ [2m  4 |   type Label {[0m
+ [2m[34m[1m  5 | [0m    width: Int! = return "early"
+[2m                         [31m^^^^^^^^^^^^^^[0m
+ [2m  6 |   }[0m
+ [2m  7 |   toString(Label.width)[0m
+ [2m    |[0m
+
