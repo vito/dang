@@ -1,0 +1,11 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign (a: Dog!): String! to (a: Animal!): String!: cannot use (a: Dog!): String! as (a: Animal!): String!
+  [2m[34m--> errors/function_ref_param_contravariance.dang:29:1[0m
+ [2m    |[0m
+ [2m 27 | [0m
+ [2m 28 | let h = Host[0m
+ [2m[34m[1m 29 | [0mh.hook = &dogOnly
+[2m       [31m^^^^^^^^^^^^^^^^^[0m
+ [2m 30 | print(h.fire)[0m
+ [2m 31 | [0m
+ [2m    |[0m
+

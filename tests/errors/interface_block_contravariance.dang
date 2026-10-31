@@ -1,0 +1,28 @@
+# An object's method must accept every block the interface's callers may
+# pass. Callers of Visitor.visit pass a block that handles Dogs, so an
+# implementation that calls its block with any Animal doesn't conform.
+
+interface Animal {
+  name: String!
+}
+
+type Dog implements Animal {
+  name: String!
+
+  bark: String! { "woof" }
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+interface Visitor {
+  visit(&f(d: Dog!): String!): String!
+}
+
+type W implements Visitor {
+  visit(&f(d: Animal!): String!): String! { f(Cat("x")) }
+}
+
+let v: Visitor! = W
+print(v.visit { d => d.bark })

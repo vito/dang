@@ -1,0 +1,30 @@
+# A function stored where a function of another type is expected must accept
+# every argument that type promises its callers: parameters are
+# contravariant. `hook` is called with any Animal, so a function that only
+# handles Dogs can't take its place.
+
+interface Animal {
+  name: String!
+}
+
+type Dog implements Animal {
+  name: String!
+
+  bark: String! { "woof" }
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+type Host {
+  hook(a: Animal!): String! { a.name }
+
+  fire: String! { hook(Cat("kitty")) }
+}
+
+dogOnly(a: Dog!): String! { a.bark }
+
+let h = Host
+h.hook = &dogOnly
+print(h.fire)

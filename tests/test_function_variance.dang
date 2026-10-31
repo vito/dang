@@ -1,0 +1,42 @@
+# Function types are contravariant in their parameters and block, and
+# covariant in their result.
+
+interface Animal {
+  name: String!
+}
+
+type Dog implements Animal {
+  name: String!
+
+  bark: String! { "woof" }
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+type Host {
+  hook(d: Dog!): Animal! { d }
+
+  fire: String! { hook(Dog("rex")).name }
+}
+
+# Accepts more than hook promises to pass, returns more than it promises.
+anyAnimal(d: Animal!): Dog! { Dog(d.name + "!") }
+
+let h = Host
+h.hook = &anyAnimal
+assert { h.fire == "rex!" }
+
+# An implementation may call its block with something more specific than
+# the interface promises the block.
+interface Visitor {
+  visit(&f(a: Animal!): String!): String!
+}
+
+type DogVisitor implements Visitor {
+  visit(&f(a: Dog!): String!): String! { f(Dog("fido")) }
+}
+
+let v: Visitor! = DogVisitor
+assert { v.visit { a => a.name } == "fido" }
