@@ -2230,6 +2230,13 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 			missingFields = append(missingFields, field)
 			continue
 		}
+		if parentMod.Visibility(field) == PublicVisibility && child.Visibility(field) == PrivateVisibility {
+			// A child value widens to the parent, which reads the field.
+			return WrapInferError(
+				fmt.Errorf("field %q of interface %s is private (`let`), but interface %s makes it public", field, child, parentMod),
+				parentSym,
+			)
+		}
 		parentFieldType, _ := fieldScheme.Type()
 		childFieldType, _ := childScheme.Type()
 		if err := validateFieldImplementation(field, parentFieldType, childFieldType, parentMod.String(), child.String()); err != nil {

@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "name" of interface Child is private (`let`), but interface Parent makes it public
+  [2m[34m--> errors/interface_extension_private_field.dang:8:28[0m
+ [2m    |[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0minterface Child implements Parent {
+[2m                                  [31m^^^^^^[0m
+ [2m  9 |   let name: String![0m
+ [2m 10 | }[0m
+ [2m    |[0m
+
