@@ -1172,7 +1172,7 @@ func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeS
 			missingFields = append(missingFields, field)
 			continue
 		}
-		if objectMod.Visibility(field) == PrivateVisibility {
+		if ifaceMod.Visibility(field) == PublicVisibility && objectMod.Visibility(field) == PrivateVisibility {
 			// Anyone holding the interface may read the field.
 			return WrapInferError(
 				fmt.Errorf("field %q of %s is private (`let`), but interface %s makes it public", field, objectMod, ifaceMod),
