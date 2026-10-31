@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use [Int!]! as [String!]!
+  [2m[34m--> errors/weak_field_pinned_by_interface.dang:11:1[0m
+ [2m    |[0m
+ [2m  9 | [0m
+ [2m 10 | let b = Bag[0m
+ [2m[34m[1m 11 | [0mb.items += [1]
+[2m       [31m^^^^^^^^^^^^^^[0m
+ [2m 12 | [0m
+ [2m    |[0m
+

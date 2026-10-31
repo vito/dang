@@ -1440,8 +1440,10 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	// If interface field is not a function, object field must match exactly
 	if !ifaceIsFn {
 		if !objectIsFn {
-			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOf(objectFieldType, ifaceFieldType) {
+			// Both are non-function types - check covariance. A stored
+			// field's type is pinned by conforming: reading it through the
+			// interface is a use like any other.
+			if _, err := hm.Assignable(objectFieldType, ifaceFieldType); err != nil {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, objectFieldType, ifaceFieldType)
 			}
@@ -1463,8 +1465,9 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	if isZeroArgFn && !objectIsFn {
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
-		// Compare the return type with the object field type
-		if !hm.IsSubtypeOf(objectFieldType, ifaceRetType) {
+		// Compare the return type with the object field type, pinning the
+		// field's type as above.
+		if _, err := hm.Assignable(objectFieldType, ifaceRetType); err != nil {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, objectFieldType, ifaceRetType)
 		}

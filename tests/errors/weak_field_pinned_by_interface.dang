@@ -1,0 +1,11 @@
+# Implementing Strs pins `items` as a [String!]!, so Ints can't go in.
+interface Strs {
+  items: [String!]!
+}
+
+type Bag implements Strs {
+  items: [a]! = []
+}
+
+let b = Bag
+b.items += [1]

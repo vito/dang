@@ -30,9 +30,8 @@ type FunctionBase struct {
 	EffectName string
 	effects    *fnEffects
 
-	// paramsAreFields marks an implicit constructor, whose parameters are
-	// its type's fields: their types are the fields' (weak) types, not the
-	// generic parameters of a function.
+	// paramsAreFields marks a constructor, whose parameters have one type
+	// each (a field's, for the implicit one), not a generic function's.
 	paramsAreFields bool
 }
 
