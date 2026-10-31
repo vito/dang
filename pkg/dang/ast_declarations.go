@@ -29,6 +29,11 @@ type FunctionBase struct {
 	// EffectName names the function in effect diagnostics.
 	EffectName string
 	effects    *fnEffects
+
+	// paramsAreFields marks an implicit constructor, whose parameters are
+	// its type's fields: their types are the fields' (weak) types, not the
+	// generic parameters of a function.
+	paramsAreFields bool
 }
 
 // fnEffects holds a function's effect and the effect variables of its
@@ -101,7 +106,7 @@ func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.En
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
 	docStrings := make(map[string]string)
-	paramCtx := withParamDecl(ctx, true)
+	paramCtx := withParamDecl(ctx, !f.paramsAreFields)
 	for _, arg := range f.Args {
 		finalArgType, err := inferArg(arg, paramCtx, env, fresh)
 		if err != nil {

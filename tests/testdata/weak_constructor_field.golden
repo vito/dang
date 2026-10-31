@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use String! as Int!
+  [2m[34m--> errors/weak_constructor_field.dang:8:20[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | let ints = Cell(1)[0m
+ [2m[34m[1m  8 | [0mlet n: Int! = Cell("s").v + 1
+[2m                          [31m^^^[0m
+ [2m  9 | [0m
+ [2m    |[0m
+
