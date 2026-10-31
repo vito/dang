@@ -185,6 +185,19 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		}
 	}
 
+	// An omitted argument is null or its default; see omittedParamSubs.
+	if omittedSubs := c.omittedArgSubs(argRecord, argMapping); omittedSubs != nil {
+		if argSubs == nil {
+			argSubs = omittedSubs
+		} else if argSubs, err = argSubs.Compose(omittedSubs); err != nil {
+			return nil, NewInferError(err, c)
+		}
+	}
+
+	// Required arguments are those of the signature, before the arguments'
+	// substitutions: a defaulted `y: a = x` isn't required once a := Int!.
+	signature := ft
+
 	// Apply argument substitutions to the function type before inferring the
 	// block arg, so that type variables resolved from arguments (like 'b' from
 	// reduce's initial arg) are concrete in the block's expected param types.
@@ -210,7 +223,7 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 
 	// Check that all required arguments are provided
-	err = c.validateRequiredArgumentsInInfer(ft)
+	err = c.validateRequiredArgumentsInInfer(signature)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +279,13 @@ func autoCallInstantiated(t hm.Type) (hm.Type, bool, error) {
 		return ret, called, err
 	}
 	if ft, ok := t.(*hm.FunctionType); ok {
-		return instantiateCallee(ft).Ret(false), true, nil
+		ft = instantiateCallee(ft)
+		if rec, ok := ft.Arg().(*RecordType); ok {
+			if subs := omittedParamSubs(rec, nil); subs != nil {
+				ft = ft.Apply(subs).(*hm.FunctionType)
+			}
+		}
+		return ft.Ret(false), true, nil
 	}
 	return ret, called, nil
 }
@@ -318,6 +337,42 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	}
 
 	return subs, nil
+}
+
+// omittedArgSubs makes nullable each flexible variable that types a
+// parameter the call leaves out.
+func (c *FunCall) omittedArgSubs(rec *RecordType, argMapping map[int]string) hm.Subs {
+	provided := map[string]bool{}
+	for i, arg := range c.Args {
+		provided[c.getArgumentKey(arg, argMapping, i)] = true
+	}
+	return omittedParamSubs(rec, provided)
+}
+
+// omittedParamSubs makes nullable each flexible variable that types a
+// parameter in rec not provided: the parameter is then null (or its default,
+// which fits any type the call picks). Without it, `id(v: a): a` called as
+// `id()` would hand null to any a the result is put to, Int! included.
+func omittedParamSubs(rec *RecordType, provided map[string]bool) hm.Subs {
+	var subs hm.Subs
+	for _, field := range rec.Fields {
+		if provided[field.Key] {
+			continue
+		}
+		t, ok := field.Value.Type()
+		if !ok {
+			continue
+		}
+		tv, ok := t.(hm.TypeVariable)
+		if !ok || tv.IsRigid() {
+			continue
+		}
+		if subs == nil {
+			subs = hm.NewSubs()
+		}
+		subs.Add(tv, hm.NullableTypeVariable{TypeVariable: hm.Freshen(tv)})
+	}
+	return subs
 }
 
 // getArgumentKey determines the argument key for positional or named arguments

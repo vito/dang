@@ -1,0 +1,5 @@
+# An omitted argument is null, so `id()` may be null whatever `a` is.
+id(v: a): a { v }
+
+let n: Int! = id()
+print(toString(n + 1))

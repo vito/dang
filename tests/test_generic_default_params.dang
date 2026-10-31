@@ -17,3 +17,20 @@ assert { echo("s") == "s" }
 maybeLabel(v: a, label: String = "default"): String { label }
 
 assert { maybeLabel(1) == "default" }
+
+# a default fitting every `a`, e.g. an earlier argument or an empty list
+both(x: a, y: a = x): [a]! { [x, y] }
+
+assert { both(1) == [1, 1] }
+assert { both(1, 2) == [1, 2] }
+
+orEmpty(xs: [a]! = []): [a]! { xs }
+
+assert { orEmpty == [] }
+assert { orEmpty([1]) == [1] }
+
+# an omitted argument is null
+id(v: a): a { v }
+
+assert { id == null }
+assert { id(1) == 1 }
