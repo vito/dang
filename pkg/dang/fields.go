@@ -1221,9 +1221,11 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
-		// The implicit constructor's parameters are the type's fields,
-		// with the fields' types.
-		paramsAreFields: c.findNewConstructor() == nil,
+		// A type isn't generic, so neither is its constructor: the implicit
+		// one's parameters are the type's fields, with the fields' types,
+		// and an explicit new()'s have one type each too, which a field
+		// they're stored in shares.
+		paramsAreFields: true,
 	}
 	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 	argEnv := env.Clone()
@@ -1284,7 +1286,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 		// Fully infer constructor arguments here so default expressions are
 		// validated during normal inference. Declaration may have recorded the
 		// signature without checking computed defaults.
-		argType, err := arg.Infer(withParamDecl(argCtx, true), newEnv, fresh)
+		argType, err := arg.Infer(argCtx, newEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 		}
