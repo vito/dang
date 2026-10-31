@@ -4,6 +4,7 @@ package gqlserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -345,6 +346,42 @@ func (r *queryResolver) ParseJSON(ctx context.Context, data string) (string, err
 // AddBigInt is the resolver for the addBigInt field.
 func (r *queryResolver) AddBigInt(ctx context.Context, a string, b string) (string, error) {
 	return fmt.Sprintf("%s+%s", a, b), nil
+}
+
+// OpaqueNumber is the resolver for the opaqueNumber field.
+func (r *queryResolver) OpaqueNumber(ctx context.Context) (any, error) {
+	return 42, nil
+}
+
+// OpaqueObject is the resolver for the opaqueObject field.
+func (r *queryResolver) OpaqueObject(ctx context.Context) (any, error) {
+	return map[string]any{"name": "dang", "tags": []any{"a", "b"}, "size": 1.5}, nil
+}
+
+// OpaqueFlag is the resolver for the opaqueFlag field.
+func (r *queryResolver) OpaqueFlag(ctx context.Context) (any, error) {
+	return true, nil
+}
+
+// OpaqueString is the resolver for the opaqueString field.
+func (r *queryResolver) OpaqueString(ctx context.Context) (any, error) {
+	return "plain", nil
+}
+
+// OpaqueList is the resolver for the opaqueList field.
+func (r *queryResolver) OpaqueList(ctx context.Context) ([]any, error) {
+	return []any{1, "two", false}, nil
+}
+
+// DescribeOpaque is the resolver for the describeOpaque field.
+func (r *queryResolver) DescribeOpaque(ctx context.Context, value any) (string, error) {
+	// Report the value as JSON, so a string comes back quoted and anything
+	// else as itself: what Dang sent is visible exactly.
+	out, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 // FetchURLNullable is the resolver for the fetchURLNullable field.

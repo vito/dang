@@ -61,6 +61,7 @@ scalar JSON
 - list merging is pure / invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!` (the plain literal doesn't widen to `ID!`)
 - runtime materialization only supports `String -> custom scalar`; e.g. `42 :: URL!` is a type error (`Int!` vs `URL!`)
 - scalars from GraphQL responses flow naturally; no cast needed
+- a GraphQL scalar whose value isn't a string (a number, object, list or boolean) keeps that JSON value: passed back as an argument it is sent unchanged, and wherever a String is expected (degrading, interpolation, `toString`) it reads as its JSON text, e.g. `42` or `{"a":1}`
 
 ### Treating scalars as opaque
 

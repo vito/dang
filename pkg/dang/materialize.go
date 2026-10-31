@@ -659,6 +659,15 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			return EnumValue{Val: s, EnumType: mod}, nil
 		case ScalarKind:
 			s, ok := raw.(string)
+			if !ok && mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil {
+				// A GraphQL scalar's value may be any JSON (see
+				// graphQLResultToValue), so its encoded form decodes back.
+				encoded, err := json.Marshal(raw)
+				if err != nil {
+					return nil, materializeDeferredError(path, "encoding %s value: %s", mod.Name(), err)
+				}
+				return ScalarValue{Val: string(encoded), ScalarType: mod, Encoded: true}, nil
+			}
 			if !ok {
 				return nil, materializeDeferredError(path, "expected string for scalar %s, got %s", mod.Name(), decodedKind(raw))
 			}
