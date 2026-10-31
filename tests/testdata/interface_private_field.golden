@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "name" of Secret is private (`let`), but interface Named makes it public
+  [2m[34m--> errors/interface_private_field.dang:8:24[0m
+ [2m    |[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0mtype Secret implements Named {
+[2m                              [31m^^^^^[0m
+ [2m  9 |   let name: String! = "hidden"[0m
+ [2m 10 | }[0m
+ [2m    |[0m
+
