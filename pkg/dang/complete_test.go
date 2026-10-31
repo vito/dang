@@ -92,6 +92,46 @@ func TestMembersOfBuiltinTypes(t *testing.T) {
 			t.Errorf("got %v, want [myField]", completions)
 		}
 	})
+
+	t.Run("enum namespace and values", func(t *testing.T) {
+		enum := NewType("Color", EnumKind)
+		for _, v := range []string{"RED", "GREEN"} {
+			enum.Add(v, hm.NewScheme(nil, hm.NonNullType{Type: enum}))
+			enum.SetVisibility(v, PublicVisibility)
+		}
+		ns := enumNamespaceType(enum)
+
+		names := map[string]bool{}
+		for _, c := range MembersOf(ns, "") {
+			names[c.Label] = true
+		}
+		if !names["RED"] || !names["GREEN"] {
+			t.Errorf("expected the enum's values on its namespace, got %v", names)
+		}
+		if got := MembersOf(hm.NonNullType{Type: enum}, ""); len(got) != 0 {
+			t.Errorf("an enum value has no members, got %v", got)
+		}
+	})
+}
+
+func TestTypeNameBindingsAreTypeDefs(t *testing.T) {
+	enum := NewType("Color", EnumKind)
+	iface := NewType("Named", InterfaceKind)
+	scope := NewType("", ObjectKind)
+	scope.Add("Color", hm.NewScheme(nil, enumNamespaceType(enum)))
+	scope.SetVisibility("Color", PublicVisibility)
+	scope.Add("Named", hm.NewScheme(nil, typeNameValueType(iface)))
+	scope.SetVisibility("Named", PublicVisibility)
+
+	for _, name := range []string{"Color", "Named"} {
+		scheme, _ := scope.SchemeOf(name)
+		if !IsTypeDefBinding(scheme) {
+			t.Errorf("%s: expected a type definition binding", name)
+		}
+	}
+	if got := completeLexical(scope, "Co"); len(got) != 0 {
+		t.Errorf("type names aren't offered as expressions, got %v", got)
+	}
 }
 
 func TestArgsOf(t *testing.T) {
