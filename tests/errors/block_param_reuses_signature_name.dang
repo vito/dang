@@ -1,0 +1,7 @@
+# A block's parameters take on the names of the signature it's passed for,
+# by position. Reusing one of those names in another position would make
+# `f(a: 1, b: 2)` bind this block's `b` to 1, so it's rejected.
+
+two(&f(a: Int!, b: Int!): Int!): Int! { f(a: 1, b: 2) }
+
+print(two { b, a => b * 10 + a })
