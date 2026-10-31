@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Pet! as Pet!: Pet here is the type itself, not a value of that type
+  [2m[34m--> errors/union_name_as_instance.dang:21:16[0m
+ [2m    |[0m
+ [2m 19 | }[0m
+ [2m 20 | [0m
+ [2m[34m[1m 21 | [0mprint(describe(Pet))
+[2m                      [31m^^^[0m
+ [2m 22 | [0m
+ [2m    |[0m
+
