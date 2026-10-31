@@ -150,8 +150,10 @@ func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 // (see hm.NewWeakVar), not a type for each use. `let xs = []; xs += [1];
 // xs += ["s"]` is then an error, as is reading `xs` as a `[String!]!` after
 // the first write. The same variable is weakened the same way each time,
-// so hoisting and inference agree. Functions are not bindings in this
-// sense: their variables are their generic parameters.
+// so hoisting and inference agree. A function declared here isn't a binding
+// in this sense (its variables are its generic parameters), but a function
+// value held in one is: `let g = &id` holds one instantiation of id, since
+// `g = &intOnly` could replace it.
 func (s *FieldDecl) weaken(ctx context.Context, t hm.Type) hm.Type {
 	if t == nil || s.funDecl() != nil {
 		return t
@@ -216,9 +218,16 @@ func inParamDecl(ctx context.Context) bool {
 	return p
 }
 
+// isInterfaceField reports whether fields declared in env are an
+// interface's.
+func isInterfaceField(env hm.Env) bool {
+	frame, ok := envFrame(env).(*Type)
+	return ok && frame.Kind == InterfaceKind
+}
+
 func (s *FieldDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	t, err := s.unweakenedSignatureType(withParamDecl(ctx, false), env, fresh, allowComputed)
-	if err != nil || t == nil || inParamDecl(ctx) {
+	if err != nil || t == nil || inParamDecl(ctx) || isInterfaceField(env) {
 		return t, err
 	}
 	t = s.weaken(ctx, t)
@@ -354,7 +363,10 @@ func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.F
 func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
 
-	isParam := inParamDecl(ctx)
+	// A parameter's variables are its function's generic ones, and an
+	// interface's field is a contract each implementation meets in its own
+	// type: neither is a binding that holds one type.
+	isParam := inParamDecl(ctx) || isInterfaceField(env)
 	ctx = withParamDecl(ctx, false)
 
 	var definedType hm.Type
@@ -1241,6 +1253,7 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(params)
 
 	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: objectType})
 	if blockParam != nil {

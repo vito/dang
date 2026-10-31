@@ -135,3 +135,20 @@ func TestReplKeepsPinnedBindingTypes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "[1]", dang.Repr(v))
 }
+
+// A binding's variable bound to another entry's (a block call's here) keeps
+// that one alive, so it can still be pinned after the entry is gone.
+func TestReplKeepsLinkedWeakVariables(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let xs = []")
+	require.NoError(t, err)
+	_, err = s.enter("[[]].each { y => let z = y + xs }")
+	require.NoError(t, err)
+	runtime.GC()
+	runtime.GC()
+	runtime.GC()
+	_, err = s.enter("xs += [1]")
+	require.NoError(t, err)
+	_, err = s.enter(`xs += ["s"]`)
+	require.ErrorContains(t, err, "cannot use [String!]! as [Int!]!")
+}
