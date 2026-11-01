@@ -1,4 +1,4 @@
-[1m[31mError:[0m condition must be Boolean, got Decoded
+[1m[31mError:[0m condition must be Boolean!, got Decoded
   [2m[34m--> errors/decode_untyped_condition.dang:4:5[0m
  [2m    |[0m
  [2m  2 | # a condition (this used to type-check and fail at runtime).[0m
