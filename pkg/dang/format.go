@@ -2048,6 +2048,8 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 		}
 		f.formatCallArgs(c.Args, multiline, closingLine)
 		f.write(")")
+	} else if emptyCallParens(c) {
+		f.write("()")
 	}
 
 	// Block arg
@@ -2055,6 +2057,17 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 		f.write(" ")
 		f.formatBlockArg(c.BlockArg)
 	}
+}
+
+// emptyCallParens reports whether a call without arguments must keep its
+// parentheses: `f!()` calls the asserted function, while `f!` would assert
+// what auto-calling `f` returns.
+func emptyCallParens(c *FunCall) bool {
+	if c.BlockArg != nil {
+		return false
+	}
+	_, isAssert := c.Fun.(*NonNullAssert)
+	return isAssert
 }
 
 func (f *Formatter) formatFunCallInline(c *FunCall) {
@@ -2066,6 +2079,8 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 		f.write("(")
 		f.formatCallArgs(c.Args, false, 0)
 		f.write(")")
+	} else if emptyCallParens(c) {
+		f.write("()")
 	}
 	if c.BlockArg != nil {
 		f.write(" ")
