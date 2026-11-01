@@ -1,0 +1,4 @@
+# `+=` stores the sum, so the sum must fit the target: Int! + Float! is a
+# Float!, which an Int! binding can't hold
+let count = 1
+count += 0.5

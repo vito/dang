@@ -851,6 +851,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		// which, for a mutable binding, is pinned to what it is now.
 		t = readNarrowed(ctx, env, s.Name, s, t)
 		t = hm.ResolveWeak(t)
+		noteTopRead(ctx, env, s.Name, s, t)
 		if s.AutoCall {
 			var err error
 			var called bool
@@ -1047,6 +1048,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							if !mono {
 								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
 							}
+							noteTopCall(ctx, effectOf(t), d.Field.Name, d)
 							if d.AutoCall {
 								var err error
 								t, _, err = autoCallInstantiated(t)
@@ -1231,6 +1233,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if !mono {
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
 		}
+		noteTopCall(ctx, effectOf(t), d.Field.Name, d)
 		if d.AutoCall {
 			var err error
 			var called bool
@@ -3489,6 +3492,9 @@ func mergeControlResultTypes(current hm.Type, next hm.Type) hm.Type {
 }
 
 func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget, subs hm.Subs, fresh hm.Fresher) hm.Type {
+	// retSrc cites the break a merged result came from, once a break value
+	// has bound an open result (loop's), so a later widening still names it.
+	var retSrc any
 	for _, br := range collectBreakStatements(body, target) {
 		breakType := breakValueType(br)
 		if breakType == nil {
@@ -3498,10 +3504,18 @@ func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget,
 			breakType = breakType.Apply(subs).(hm.Type)
 		}
 		if br.HasValue {
-			retType = hm.NewUnionTypeWithSources(
-				[]hm.Type{retType, breakType},
-				[]any{nil, armOrigin("break value", br.Loc)},
-			)
+			// Merge when the break value fits the call's own result (or
+			// that result is still an open variable, like loop's, which
+			// only ever materializes through breaks); widen to a union,
+			// citing the break, when it doesn't.
+			_, open := retType.(hm.TypeVariable)
+			src := armOrigin("break value", br.Loc)
+			retType = mergeControlResultTypesTagged(retType, retSrc, breakType, src)
+			if open {
+				retSrc = src
+			} else {
+				retSrc = nil
+			}
 		} else {
 			retType = mergeControlResultTypes(retType, breakType)
 		}

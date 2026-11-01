@@ -236,6 +236,39 @@ func TestLiterateEffectChecks(t *testing.T) {
 	}
 }
 
+// A snippet redefining a function runs the new body, as the checker types
+// it, and a redefinition earlier code can't take is rejected.
+func TestLiterateRedefinitions(t *testing.T) {
+	sess := literateSessionFor(&booklit.Section{Path: "redefinitions.md"})
+	eval := func(src string) (string, error) {
+		t.Helper()
+		_, value, err := literateEval(src, sess)
+		return value, err
+	}
+	must := func(src, want string) {
+		t.Helper()
+		if v, err := eval(src); err != nil || v != want {
+			t.Fatalf("%s = %q, %v; want %q", src, v, err, want)
+		}
+	}
+
+	must("double(x: Int!): Int! { x * 2 }", "")
+	must("double(4)", "8")
+	must("double(count: Int): Int { count }", "")
+	must("double(4)", "4")
+
+	must("let n = 1", "")
+	must("let n = 2", "")
+	must("n", "2")
+
+	must("half(x: Int!): Int! { x / 2 }", "")
+	must("quarter(x: Int!): Int! { half(half(x)) }", "")
+	if _, err := eval("half(x: Int!): Int { null }"); err == nil || !strings.Contains(err.Error(), "`quarter`, declared earlier, still uses it") {
+		t.Errorf("incompatible redefinition: err = %v", err)
+	}
+	must("quarter(8)", "2")
+}
+
 // Booklit's dev server re-loads the whole book on every page request,
 // concurrently across requests, and Dang scopes are not safe for concurrent
 // use — so each load must get its own sessions. Each goroutine here simulates

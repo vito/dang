@@ -1,0 +1,8 @@
+# A type declared in a function is built whenever it's constructed, maybe
+# after the function returned, so its field defaults can't return from it
+describe: String! {
+  type Label {
+    width: Int! = return "early"
+  }
+  toString(Label.width)
+}

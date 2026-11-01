@@ -49,7 +49,21 @@ func Infer(ctx context.Context, env hm.Env, expr hm.Expression, hoist bool) (*hm
 // InferFormsWithPhases, it runs the effect checks that need the whole input
 // inferred first (escaping and `{{ }}` requirements on block parameters).
 func InferTopLevel(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return InferFormsWithPhases(withTopLevelFrame(ctx, env), forms, env, fresh)
+	// An entry may redefine what earlier ones declared (session.go).
+	entry, err := beginSessionEntry(forms, env)
+	if err != nil {
+		return nil, err
+	}
+	t, err := InferFormsWithPhases(withTopLevelFrame(ctx, env), forms, env, fresh)
+	if err == nil {
+		err = entry.finish()
+	}
+	if err != nil {
+		entry.rollback()
+		return nil, err
+	}
+	entry.record(forms)
+	return t, nil
 }
 
 type inferer struct {

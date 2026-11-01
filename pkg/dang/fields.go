@@ -34,6 +34,25 @@ type FieldDecl struct {
 	// declaredType is the (weakened) type a declaration pass gave a field
 	// without an annotation, which Infer keeps.
 	declaredType hm.Type
+
+	// rebind is set during inference when the declaration replaces a binding
+	// already in its own frame: an unqualified import of the same name, or,
+	// in an interactive session, the same name declared by an earlier entry.
+	// Evaluation must then bind over the existing value, as inference
+	// resolved the name.
+	rebind bool
+}
+
+// noteImportShadow records whether this declaration shadows an unqualified
+// import bound in env's own frame (see rebind).
+func (s *FieldDecl) noteImportShadow(env hm.Env) {
+	e, ok := env.(TypeScope)
+	if !ok {
+		return
+	}
+	if _, defined := e.LocalSchemeOf(s.Name.Name); defined && localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
+		s.rebind = true
+	}
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -81,6 +100,7 @@ func (s *FieldDecl) funDecl() *FunDecl {
 }
 
 func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	s.noteImportShadow(env)
 	// If the field value is a hoister (e.g. wraps a FunDecl), delegate while
 	// preserving the field's name and metadata. This is the signature boundary:
 	// function bodies are not inferred, but callers can see the function type.
@@ -307,6 +327,7 @@ func (s *FieldDecl) inferDirectives(ctx context.Context, env hm.Env, fresh hm.Fr
 }
 
 func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	s.noteImportShadow(env)
 	fieldType, err := s.signatureType(ctx, env, fresh, false)
 	if err != nil {
 		return nil, err
@@ -334,6 +355,7 @@ func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh
 }
 
 func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	s.noteImportShadow(env)
 	fieldType, err := s.signatureType(ctx, env, fresh, true)
 	if err != nil {
 		return nil, err
@@ -438,8 +460,10 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	}
 
 	if e, ok := env.(TypeScope); ok {
+		// An unqualified import in the same frame is shadowed, not redefined.
+		s.noteImportShadow(env)
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
-		if defined {
+		if defined && !s.rebind && !localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
 			curT, curMono := cur.Type()
 			if !curMono {
 				return nil, fmt.Errorf("FieldDecl.Infer: TODO: type is not monomorphic")
@@ -510,7 +534,7 @@ func (s *FieldDecl) Publish(scope ValueScope, val Value) {
 
 func (s *FieldDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		if val, defined := scope.LookupLocal(s.Name.Name); defined {
+		if val, defined := scope.LookupLocal(s.Name.Name); defined && !s.rebind {
 			// Already defined (e.g. through constructor). The value reached us
 			// through a Coerce-wrapped argument so it is already materialized;
 			// don't re-evaluate or re-bind it.
@@ -858,7 +882,22 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	meta := instanceType.MetaType()
 	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	// Statics are sealed like the rest of the type's code, in a frame of
+	// their own: their locals are scoped to the meta-type.
+	typeFr := effFrameFrom(ctx)
+	keepReads := 0
+	if typeFr != nil {
+		keepReads = len(typeFr.reads)
+	}
+	ctx = withTypeBodyEffFrame(ctx, instanceType, meta, metaScope)
 	_, err := InferFormsWithPhases(withStaticsBody(ctx, meta), forms, metaScope, fresh)
+	// Static fields are computed once, as the declaration runs, so their
+	// reads of outer null narrowings are ordinary reads, not the type's
+	// deferred code (see ObjectDecl.Infer); static methods are checked in
+	// their own frames.
+	if typeFr != nil && typeFr.sealed == instanceType && len(typeFr.reads) > keepReads {
+		typeFr.reads = typeFr.reads[:keepReads]
+	}
 	return err
 }
 
@@ -1008,8 +1047,11 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 
 func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Field defaults and methods run on behalf of an instance, never as
-	// top-level script code.
-	ctx = withFunctionBody(ctx)
+	// top-level script code. They run whenever the object is built, which
+	// may be after the code declaring the type has returned, so a type body
+	// is a control-flow boundary: `return`/`break`/`continue` in a field
+	// default can't reach an enclosing function or loop.
+	ctx = withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
@@ -1069,9 +1111,16 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	// Infer body forms (excluding new() which is handled separately). Field
-	// defaults are scoped like constructor parameter defaults; methods leave
-	// that scope again (see withTypeBody).
+	// Infer body forms (excluding new() which is handled separately).
+	// Field defaults are scoped like constructor parameter defaults; methods
+	// leave that scope again (see withTypeBody). All of the type's code is
+	// sealed: it can't write, or call anything that writes, outside it.
+	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
+	typeFr := effFrameFrom(ctx)
+	if c.ctorFn != nil {
+		// Constructing runs the field defaults.
+		noteTypeBody(ctx, c.ctorFn.fnEffects().latent, typeFr.eff)
+	}
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
@@ -1097,6 +1146,10 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	if newDecl != nil {
 		newBodyErr = c.inferNewConstructor(ctx, newDecl, inferTypeScope, fresh)
 	}
+	// The type's code (field defaults, new(), methods, statics) runs when
+	// its values are made and used, not here: check its reads of outer
+	// null narrowings like a nested function's.
+	exitNarrowBody(ctx, typeFr)
 
 	// Validate interface implementations after fields have been inferred
 	if len(c.Implements) > 0 {
@@ -1841,6 +1894,10 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 }
 
 func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Like a type body (see ObjectDecl.Infer), a scalar body runs when the
+	// scalar is used, not where it is declared: `return`/`break`/`continue`
+	// in it can't reach an enclosing function or loop.
+	ctx = contextWithInferFunctionControlBoundary(ctx)
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
@@ -1881,6 +1938,9 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	}
 	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
 
+	// Like an object type's, a scalar's code is sealed (see ObjectDecl.Infer).
+	ctx = withTypeBodyEffFrame(ctx, scalarType, scalarType, inferTypeScope)
+	typeFr := effFrameFrom(ctx)
 	if _, err := InferFormsWithPhases(ctx, formsWithoutNew(s.Value), inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
@@ -1895,6 +1955,8 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			return nil, err
 		}
 	}
+	// Check the scalar's reads of outer null narrowings (see ObjectDecl.Infer).
+	exitNarrowBody(ctx, typeFr)
 
 	return scalarType, nil
 }

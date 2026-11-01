@@ -1,0 +1,13 @@
+# Only a name or a field path can be assigned: a call's result has no
+# binding to copy the write into
+type Point {
+  x: Int!
+
+  moved(dx: Int!): Point! {
+    x += dx
+    self
+  }
+}
+
+let p = Point(1)
+p.moved(2).x = 5

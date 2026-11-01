@@ -368,6 +368,321 @@ func TestRunDirTopLevelImmutableAcrossFiles(t *testing.T) {
 	require.ErrorContains(t, err, "b.dang")
 }
 
+// A type declared in a function body is a value like any other: it can be
+// stored, returned and used concurrently, so its methods, constructor and
+// field defaults may not write (or call anything writing) outside the type.
+func TestLocalTypesSealed(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "method writing an enclosing local",
+			src: `
+				interface Bumper { bump: Int! }
+				make: Bumper! {
+					let n = 0
+					type T implements Bumper { bump: Int! { n += 1; n } }
+					T
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside T",
+		},
+		{
+			name: "field default writing an enclosing local",
+			src: `
+				run: Int! {
+					let n = 0
+					type T { a: Int! = { n = 5; 1 } }
+					T.a + n
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside T",
+		},
+		{
+			name: "constructor writing an enclosing local",
+			src: `
+				run: Int! {
+					let n = 0
+					type T { a: Int! = 1; new { n += 1; self } }
+					T.a + n
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside T",
+		},
+		{
+			name: "method calling an impure enclosing closure",
+			src: `
+				run: Int! {
+					let n = 0
+					bump: Int! { n += 1; n }
+					type T { go: Int! { bump } }
+					T.go
+				}
+			`,
+			want: "`bump` writes `n`, which is declared outside T",
+		},
+		{
+			name: "method passing an impure block to a builtin",
+			src: `
+				run: Int! {
+					let n = 0
+					type T { go: Int! { [1, 2].each { x => n += x }; 0 } }
+					T.go
+				}
+			`,
+			want: "this block writes `n`, which is declared outside T",
+		},
+		{
+			name: "method calling an enclosing block parameter",
+			src: `
+				wrap(&cb: Int!): Int! {
+					type T { go: Int! { cb } }
+					T.go
+				}
+				run: Int! {
+					let k = 0
+					wrap { k += 1; k }
+				}
+			`,
+			want: "`T.go` calls `cb`, and T's methods, constructor and field defaults run wherever its values are used",
+		},
+		{
+			name: "method passing an enclosing pure block parameter",
+			src: `
+				wrap(&cb: Int!): Int! {
+					type T { go: Int! { cb } }
+					T.go
+				}
+				run: Int! { wrap { 1 } }
+			`,
+		},
+		{
+			name: "statics writing their own locals",
+			src: `
+				type T {
+					a: Int! = 1
+					self { total: Int! = { let k = 0; [1, 2].each { x => k += x }; k += 1; k } }
+				}
+				run: Int! {
+					type U { self { total: Int! = { let k = 0; k += 1; k } } }
+					T.total + U.total
+				}
+			`,
+		},
+		{
+			name: "local scalar method writing an enclosing local",
+			src: `
+				run: String! {
+					let n = 0
+					scalar S { bump: Int! { n += 1; n } }
+					"a"
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside S",
+		},
+		{
+			name: "own state, reads and nested closures are fine",
+			src: `
+				run: Int! {
+					let k = 2
+					scale(x: Int!): Int! { x * k }
+					type T {
+						total: Int! = 0
+						add(x: Int!): T! {
+							let local = 0
+							bump: Int! { local += 1; total += scale(x); local }
+							[1, 2].each { y => bump }
+							self
+						}
+					}
+					T.add(1).total
+				}
+			`,
+		},
+	})
+}
+
+// A top-level declaration is forced on first read, wherever that is; one
+// whose initializer writes top-level state must not be forced from a `{{ }}`
+// field, where it would run concurrently with other fields.
+func TestTopLevelInitializersInFields(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "forward reference from a field",
+			src: `
+				let total = 0
+				let r = {{ p: a, q: b }}
+				let a = { total += 1; 1 }
+				let b = { total += 1; 2 }
+			`,
+			want: "`a` is declared after `r`, so reading it here runs its initializer, which may write `total`",
+		},
+		{
+			name: "write through a block the initializer runs",
+			src: `
+				let total = 0
+				let r = {{ p: a }}
+				let a = { [1, 2].each { x => total += x }; 1 }
+			`,
+			want: "`a` is declared after `r`",
+		},
+		{
+			name: "forcing a declaration that writes",
+			src: `
+				let total = 0
+				let r = {{ p: c }}
+				let c = a + 1
+				let a = { total += 1; 1 }
+			`,
+			want: "`c` is declared after `r`, so reading it here runs its initializer, which may write `total`",
+		},
+		{
+			name: "field in a function body",
+			src: `
+				let total = 0
+				let a = { total += 1; 1 }
+				g: Int! { {{ p: a }}.p }
+			`,
+			want: "reading `a` here may run its initializer, which may write `total`",
+		},
+		{
+			name: "field calling functions that read later declarations",
+			src: `
+				let total = 0
+				let r = {{ p: readA, q: readB }}
+				readA: Int! { a }
+				readB: Int! { helper }
+				helper: Int! { b }
+				let a = { total += 1; 1 }
+				let b = { total += 1; 2 }
+			`,
+			want: "`readB` reads `b` (through `helper`), which is declared after `r`, so calling it here runs `b`'s initializer, which may write `total`",
+		},
+		{
+			name: "field calling a method that reads a later declaration",
+			src: `
+				let total = 0
+				type T { get: Int! { a } }
+				let r = {{ p: T.get }}
+				let a: Int! = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `T.get`), which is declared after `r`",
+		},
+		{
+			name: "earlier declarations, pure ones, and statements are fine",
+			src: `
+				let total = 0
+				let a = { total += 1; 1 }
+				let r = {{ p: a, q: later }}
+				let later = 5
+				let s = {{ p: a }}
+				print({{ p: a, q: later }})
+			`,
+		},
+	})
+}
+
+// Top-level declarations all run before top-level statements, so a statement
+// can't write what a later declaration reads: the declaration would see the
+// value from before the write.
+func TestTopLevelStatementOrder(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "assignment before a declaration reading it",
+			src: `
+				let p = null
+				p = 1
+				let s = p
+			`,
+			want: "top-level declarations run before top-level statements, so `s` (line 4) reads `p` before this statement writes it",
+		},
+		{
+			name: "assignment after a top-level guard",
+			// The guard narrows the statements after it, which are
+			// inferred in a narrowed clone of the module scope; the order
+			// check must still see them as top-level statements.
+			src: `
+				let p: Int = 1
+				if (p == null) { raise "missing" }
+				p = 5
+				let s = p
+			`,
+			want: "so `s` (line 5) reads `p` before this statement writes it",
+		},
+		{
+			name: "block writing before a declaration reading it",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				let s2 = sum
+			`,
+			want: "so `s2` (line 4) reads `sum` before this statement writes it",
+		},
+		{
+			name: "declaration calling a function that reads the binding",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				let s2 = getSum
+				getSum: Int! { viaHelper }
+				viaHelper: Int! { sum }
+			`,
+			want: "so `s2` (line 4) reads `sum` (through `viaHelper`) before this statement writes it",
+		},
+		{
+			name: "declaration constructing a type whose defaults read the binding",
+			src: `
+				let sum = 0
+				sum = 6
+				type Box { v: Int! = sum }
+				let s3 = Box.v
+			`,
+			want: "so `s3` (line 5) reads `sum` (through `Box`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a stored ref that reads the binding",
+			src: `
+				let sum = 0
+				getSum: Int! { sum }
+				let g = &getSum
+				sum = 5
+				let v = g()
+			`,
+			want: "so `v` (line 6) reads `sum` (through `getSum`) before this statement writes it",
+		},
+		{
+			name: "storing a ref is fine",
+			src: `
+				let sum = 0
+				getSum: Int! { sum }
+				let g = &getSum
+				sum = 5
+				print(g())
+			`,
+		},
+		{
+			name: "constructing a type whose methods read the binding is fine",
+			src: `
+				let sum = 0
+				sum = 6
+				type Box { v: Int! = 1; get: Int! { sum } }
+				let b = Box
+				print(b.get)
+			`,
+		},
+		{
+			name: "statements reading, and declarations before the write, are fine",
+			src: `
+				let total = 0
+				let start = total
+				[1, 2, 3].each { x => total += x }
+				print(total)
+				total = 10
+				print([start, total])
+				let doubled = { let t = 0; [1, 2].each { x => t += x * 2 }; t }
+			`,
+		},
+	})
+}
+
 // InferFormsWithPhases called directly (embedders, tests) is an entry point
 // too: the deferred checks run, so an escaping block with a non-local return
 // can never reach evaluation, where nothing would catch it.

@@ -1,0 +1,10 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign Float! to Int!: cannot use Float! as Int!
+  [2m[34m--> errors/compound_assign_widens_target.dang:4:1[0m
+ [2m    |[0m
+ [2m  2 | # Float!, which an Int! binding can't hold[0m
+ [2m  3 | let count = 1[0m
+ [2m[34m[1m  4 | [0mcount += 0.5
+[2m       [31m^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

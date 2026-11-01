@@ -1,0 +1,10 @@
+# A scalar declared in a function is used whenever its values are, maybe
+# after the function returned, so its statics can't return from it
+describe: String! {
+  scalar Tag {
+    self {
+      width: Int! = return "early"
+    }
+  }
+  toString(Tag.width)
+}

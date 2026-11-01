@@ -171,6 +171,12 @@ type effFrame struct {
 	unskips []func()
 	// toDang marks a block passed to a Dang-defined function.
 	toDang bool
+	// sealed is set for the code of a type: its methods and constructor, and
+	// its body (field defaults, statics). That code runs wherever the type's
+	// values go — they can be stored, returned and used concurrently — so it
+	// may not write, or call anything that writes, outside the type, and an
+	// outer parameter it calls must be pure.
+	sealed *Type
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {
@@ -218,8 +224,40 @@ func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (con
 	}
 	if self != nil {
 		fr.owns = append(fr.owns, self)
+		fr.sealed = self
 	}
 	return context.WithValue(ctx, effFrameKey{}, fr), fr
+}
+
+// withTypeBodyEffFrame enters a body of type object whose bindings are
+// declared in frame (the type itself, or its meta-type for statics; env is
+// the body scope): field defaults and statics run when the type is used, not
+// where it is declared, so they are sealed like its methods.
+func withTypeBodyEffFrame(ctx context.Context, object, frame *Type, env hm.Env) context.Context {
+	ctx, fr := withEffFrame(ctx, newClosureEffect(object.Named), env, frame)
+	fr.sealed = object
+	return ctx
+}
+
+// sealedWhy explains, for messages, why a type's code can't reach outside it.
+func sealedWhy(t *Type) string {
+	return fmt.Sprintf("%s's methods, constructor and field defaults run wherever its values are used, maybe after this scope is gone or concurrently", t.Named)
+}
+
+// scalarBodyType returns the scalar when env is a scalar's body scope, i.e.
+// when a function declared directly in env is one of its methods. Its
+// receiver is a value, not a frame to own, but its code is sealed like an
+// object type's: scalar values go anywhere too.
+func scalarBodyType(env hm.Env) *Type {
+	ov, ok := env.(*OverlayTypeScope)
+	if !ok {
+		return nil
+	}
+	t, ok := ov.primary.(*Type)
+	if !ok || t.Parent != nil || t.Kind != ScalarKind {
+		return nil
+	}
+	return t
 }
 
 // methodSelfFrame returns the receiver type when env is a type body scope,
@@ -254,9 +292,21 @@ func selfTypeFrame(env hm.Env) TypeScope {
 // absorbWrite records a write to target in the innermost function body, and
 // checks it against enclosing `{{ }}` fields.
 func absorbWrite(ctx context.Context, target effTarget, node Node) {
-	checkFieldWrite(ctx, target, node)
+	fieldReported := checkFieldWrite(ctx, target, node)
 	fr := bodyFrame(ctx)
-	if fr == nil || fr.inside(target.frame) {
+	if fr == nil {
+		noteTopWrite(ctx, target, node)
+		return
+	}
+	if fr.inside(target.frame) {
+		return
+	}
+	if fr.sealed != nil {
+		if !fieldReported {
+			_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
+				"cannot assign to `%s`: it is declared outside %s, and %s; return the new value instead",
+				target.name, fr.sealed.Named, sealedWhy(fr.sealed)), node))
+		}
 		return
 	}
 	if fr.eff.targets == nil {
@@ -280,16 +330,34 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 	checkFieldCall(ctx, callee, node, name)
 	fr := bodyFrame(ctx)
 	if fr == nil {
+		if callee.kind == effClosure {
+			targets := make([]effTarget, 0, len(callee.targets))
+			for t := range callee.targets {
+				targets = append(targets, t)
+			}
+			sort.Slice(targets, func(i, j int) bool { return targets[i].name < targets[j].name })
+			for _, t := range targets {
+				noteTopWrite(ctx, t, node)
+			}
+		}
 		return
 	}
 	switch callee.kind {
 	case effParam:
 		if callee.owner != fr.eff {
 			fr.eff.addParam(callee)
+			if fr.sealed != nil {
+				requirePure(callee, false, fmt.Sprintf("`%s` calls `%s`, and %s", fr.eff.name, callee.name, sealedWhy(fr.sealed)))
+			}
 		}
 	case effClosure:
+		var escaping []effTarget
 		for t, w := range callee.targets {
 			if fr.inside(t.frame) {
+				continue
+			}
+			if fr.sealed != nil {
+				escaping = append(escaping, t)
 				continue
 			}
 			if fr.eff.targets == nil {
@@ -308,12 +376,36 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 			}
 			fr.eff.nullTargets[t] = true
 		}
+		if len(escaping) > 0 {
+			reportSealedCall(ctx, fr.sealed, callee, escaping, node, name)
+		}
 		for p := range callee.params {
 			if p.owner != fr.eff {
 				fr.eff.addParam(p)
+				if fr.sealed != nil {
+					requirePure(p, false, fmt.Sprintf("`%s` calls `%s`, which calls `%s`, and %s", fr.eff.name, name, p.name, sealedWhy(fr.sealed)))
+				}
 			}
 		}
 	}
+}
+
+// reportSealedCall reports a call (at node) from a sealed type's code to a
+// closure writing escaping, bindings declared outside the type.
+func reportSealedCall(ctx context.Context, sealed *Type, callee *Effect, escaping []effTarget, node Node, name string) {
+	sort.Slice(escaping, func(i, j int) bool { return escaping[i].name < escaping[j].name })
+	t := escaping[0]
+	subject, self := "`"+name+"`", name
+	if _, isBlock := node.(*BlockArg); isBlock {
+		subject, self = "this block", callee.name
+	}
+	writes := fmt.Sprintf("writes `%s`", t.name)
+	if w := callee.targets[t]; w != "" && w != self {
+		writes = fmt.Sprintf("writes `%s` (via `%s`)", t.name, w)
+	}
+	_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
+		"%s %s, which is declared outside %s, and %s",
+		subject, writes, sealed.Named, sealedWhy(sealed)), node))
 }
 
 func (e *Effect) addParam(p *Effect) {
@@ -439,6 +531,8 @@ type effectSolver struct {
 	errs []error
 	// narrow logs what may invalidate null narrowings (narrowing.go).
 	narrow narrowLog
+	// top tracks top-level declarations' initialization (toplevel_order.go).
+	top topOrder
 }
 
 // escapes reports whether closure eff is bound to a parameter that escapes.
@@ -535,6 +629,7 @@ func (s *effectSolver) solve() []error {
 		}
 	}
 	s.narrow.checkCaptures(s, errs)
+	s.top.check(errs)
 	return errs.errs
 }
 

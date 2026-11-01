@@ -77,3 +77,16 @@ loop {
   }
 }
 assert { inner_total == 6 } # 3 inner iterations x 2 outer
+
+# a loop's result is just its break values: an unannotated one is usable as
+# their type, not a union with the loop's own (never produced) result
+let hundred = loop { break 100 }
+let next = hundred + 1
+let checked: Int! = next
+assert { checked == 101 }
+
+# a block-taking call's own result and its break values merge when they fit
+twice(&body(x: Int!): Int!): Int! { body(1) + body(2) }
+
+let stopped = twice { x => break 7 }
+assert { stopped + 1 == 8 }
