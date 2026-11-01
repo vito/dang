@@ -25,7 +25,7 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 - `.hasPrefix(prefix: String!) -> Boolean!`, `.hasSuffix(suffix: String!) -> Boolean!`
 - `.trim(cutset: String!)`, `.trimLeft(cutset)`, `.trimRight(cutset)`, `.trimSpace`
 - `.trimPrefix(prefix)`, `.trimSuffix(suffix)`
-- `.padLeft(width: Int!)`, `.padRight(width)`, `.center(width)` — space-padded; no-op if already ≥ width
+- `.padLeft(width: Int!)`, `.padRight(width)`, `.center(width)` — space-padded to `width` characters (Unicode code points, like `.length`); no-op if already ≥ width; `center` puts an odd extra space on the right
 - `.split(separator: String!, limit: Int = 0) -> [String!]!` — empty separator splits into characters; `limit` caps parts (last keeps remainder)
 - `.replace(old: String!, new: String!, count: Int = -1) -> String!` — `count = -1` replaces all; empty `old` inserts between characters
 

@@ -296,61 +296,64 @@ func registerStdlib() {
 
 	// String.padRight method: padRight(width: Int!) -> String!
 	Method(StringType, "padRight").
-		Doc("pads the string with spaces on the right to reach the specified width").
-		Example(`"hi".padRight(5) + "|"`).
+		Doc("pads the string with spaces on the right to reach the specified width, counted in characters (Unicode code points)").
+		Example(`"hé".padRight(5) + "|"`).
 		Params("width", NonNull(IntType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			width := args.GetInt("width")
+			count := utf8.RuneCountInString(str)
 
 			// If the string is already at or longer than the target width, return as-is
-			if len(str) >= width {
+			if count >= width {
 				return ToValue(str)
 			}
 
 			// Pad with spaces to reach the target width
-			padded := str + strings.Repeat(" ", width-len(str))
+			padded := str + strings.Repeat(" ", width-count)
 			return ToValue(padded)
 		})
 
 	// String.padLeft method: padLeft(width: Int!) -> String!
 	Method(StringType, "padLeft").
-		Doc("pads the string with spaces on the left to reach the specified width").
-		Example(`"hi".padLeft(5) + "|"`).
+		Doc("pads the string with spaces on the left to reach the specified width, counted in characters (Unicode code points)").
+		Example(`"hé".padLeft(5) + "|"`).
 		Params("width", NonNull(IntType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			width := args.GetInt("width")
+			count := utf8.RuneCountInString(str)
 
 			// If the string is already at or longer than the target width, return as-is
-			if len(str) >= width {
+			if count >= width {
 				return ToValue(str)
 			}
 
 			// Pad with spaces to reach the target width
-			padded := strings.Repeat(" ", width-len(str)) + str
+			padded := strings.Repeat(" ", width-count) + str
 			return ToValue(padded)
 		})
 
 	// String.center method: center(width: Int!) -> String!
 	Method(StringType, "center").
-		Doc("centers the string within the specified width by padding with spaces on both sides").
-		Example(`"hi".center(6) + "|"`).
+		Doc("centers the string within the specified width, counted in characters (Unicode code points), by padding with spaces on both sides; an odd remainder goes on the right").
+		Example(`"hé".center(7) + "|"`).
 		Params("width", NonNull(IntType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			width := args.GetInt("width")
+			count := utf8.RuneCountInString(str)
 
 			// If the string is already at or longer than the target width, return as-is
-			if len(str) >= width {
+			if count >= width {
 				return ToValue(str)
 			}
 
 			// Calculate padding needed
-			totalPad := width - len(str)
+			totalPad := width - count
 			leftPad := totalPad / 2
 			rightPad := totalPad - leftPad
 
