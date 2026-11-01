@@ -1,0 +1,36 @@
+# A null check at the top level of a script narrows the top-level statements
+# after it. Declarations (`let` included) run before every statement, so they
+# never see it (tests/errors/narrowing_toplevel_declaration.dang).
+
+let optional(n: Int): Int { n }
+
+let limit = optional(3)
+
+if (limit == null) {
+  raise "no limit"
+}
+
+assert { limit + 1 == 4 }
+
+let seen: [Int!]! = []
+
+seen = seen + [limit]
+
+assert { seen == [3] }
+
+# A write ends it until the next check.
+limit = optional(null)
+
+assert { (limit ?? 0) == 0 }
+
+if (limit != null) {
+  raise "limit is null"
+}
+
+limit = optional(5)
+
+if (limit == null) {
+  raise "no limit"
+}
+
+assert { limit * 2 == 10 }
