@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -536,16 +537,38 @@ func divisionEval(leftVal, rightVal Value) (Value, error) {
 }
 
 func moduloEval(leftVal, rightVal Value) (Value, error) {
-	switch l := leftVal.(type) {
+	// Like the other arithmetic operators, a Float operand makes the result
+	// a Float: Go's math.Mod, which takes the sign of the dividend.
+	var l, r float64
+	switch lv := leftVal.(type) {
 	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
-			if r.Val == 0 {
+		switch rv := rightVal.(type) {
+		case IntValue:
+			if rv.Val == 0 {
 				return nil, fmt.Errorf("modulo by zero")
 			}
-			return IntValue{Val: l.Val % r.Val}, nil
+			return IntValue{Val: lv.Val % rv.Val}, nil
+		case FloatValue:
+			l, r = float64(lv.Val), rv.Val
+		default:
+			return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
 		}
+	case FloatValue:
+		switch rv := rightVal.(type) {
+		case IntValue:
+			l, r = lv.Val, float64(rv.Val)
+		case FloatValue:
+			l, r = lv.Val, rv.Val
+		default:
+			return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
+		}
+	default:
+		return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
 	}
-	return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
+	if r == 0 {
+		return nil, fmt.Errorf("modulo by zero")
+	}
+	return FloatValue{Val: math.Mod(l, r)}, nil
 }
 
 func inequalityEval(leftVal, rightVal Value) (Value, error) {

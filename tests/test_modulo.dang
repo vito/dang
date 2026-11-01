@@ -2,3 +2,18 @@ assert { (10 % 3) == 1 }
 assert { (15 % 4) == 3 }
 assert { (8 % 2) == 0 }
 assert { ((17 % 5) % 3) == 2 }
+
+# A Float operand makes the result a Float, as with the other arithmetic
+# operators; the remainder takes the sign of the dividend.
+let floatMod: Float! = 7.5 % 2
+let mixedMod: Float! = 7 % 2.5
+assert { floatMod == 1.5 }
+assert { 7.5 % 2.0 == 1.5 }
+assert { mixedMod == 2.0 }
+assert { -7.5 % 2 == -1.5 }
+assert { 7.5 % -2 == 1.5 }
+
+let byZero = { 7.5 % 0 } rescue {
+  e: Error => e.message
+}
+assert { byZero == "modulo by zero" }

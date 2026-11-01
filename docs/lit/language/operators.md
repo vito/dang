@@ -27,7 +27,7 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 ## Arithmetic
 
 - `+ - * /` on `Int` and `Float` (mixed `Int`/`Float` operands widen to `Float`, e.g. `1 * 2.0` ⇒ `2.0`)
-- `%` is `Int`-only
+- `%` works like the others: `Int % Int` is an `Int`, and a `Float` operand makes it a `Float` (`7.5 % 2` is `1.5`; the remainder takes the dividend's sign)
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`)
 - `+` overloads on `String!` (concat) and lists (concat); `- * / %` are numeric-only
 - operands must be **non-null**: operators don't propagate null the way field access does, so a nullable operand is a static type error — `xs[0] + 1` reports "operator addition is not defined for nullable type Int". Hand the operator a non-null value with `!` (`xs[0]! + 1`), `??` (`(xs[0] ?? 0) + 1`), or a null check ([#flow-typing])
