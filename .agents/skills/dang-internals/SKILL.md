@@ -265,7 +265,10 @@ with "must be pure" reasons once discovered).
    initialized, or from a function body (`toplevel_order.go`). And since all
    top-level declarations run before any top-level statement, a statement
    can't write a binding that a declaration after it reads (it would see the
-   value from before the write).
+   value from before the write). Reads count through the functions, methods
+   and constructors a declaration or field references, transitively: they're
+   recorded during inference and checked by the solver over that fixed point
+   (a stored `&ref` passes its reads to whoever reads the declaration).
 2. **Impure closures can't escape.** A block, nested function, or `&ref` to
    one whose effect writes a binding it doesn't declare may appear only as a
    callee or as an argument for a function-typed parameter. Escape detection

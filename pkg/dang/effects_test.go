@@ -544,6 +544,29 @@ func TestTopLevelInitializersInFields(t *testing.T) {
 			want: "reading `a` here may run its initializer, which may write `total`",
 		},
 		{
+			name: "field calling functions that read later declarations",
+			src: `
+				let total = 0
+				let r = {{ p: readA, q: readB }}
+				readA: Int! { a }
+				readB: Int! { helper }
+				helper: Int! { b }
+				let a = { total += 1; 1 }
+				let b = { total += 1; 2 }
+			`,
+			want: "`readB` reads `b` (through `helper`), which is declared after `r`, so calling it here runs `b`'s initializer, which may write `total`",
+		},
+		{
+			name: "field calling a method that reads a later declaration",
+			src: `
+				let total = 0
+				type T { get: Int! { a } }
+				let r = {{ p: T.get }}
+				let a: Int! = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `T.get`), which is declared after `r`",
+		},
+		{
 			name: "earlier declarations, pure ones, and statements are fine",
 			src: `
 				let total = 0
@@ -579,6 +602,58 @@ func TestTopLevelStatementOrder(t *testing.T) {
 				let s2 = sum
 			`,
 			want: "so `s2` (line 4) reads `sum` before this statement writes it",
+		},
+		{
+			name: "declaration calling a function that reads the binding",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				let s2 = getSum
+				getSum: Int! { viaHelper }
+				viaHelper: Int! { sum }
+			`,
+			want: "so `s2` (line 4) reads `sum` (through `viaHelper`) before this statement writes it",
+		},
+		{
+			name: "declaration constructing a type whose defaults read the binding",
+			src: `
+				let sum = 0
+				sum = 6
+				type Box { v: Int! = sum }
+				let s3 = Box.v
+			`,
+			want: "so `s3` (line 5) reads `sum` (through `Box`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a stored ref that reads the binding",
+			src: `
+				let sum = 0
+				getSum: Int! { sum }
+				let g = &getSum
+				sum = 5
+				let v = g()
+			`,
+			want: "so `v` (line 6) reads `sum` (through `getSum`) before this statement writes it",
+		},
+		{
+			name: "storing a ref is fine",
+			src: `
+				let sum = 0
+				getSum: Int! { sum }
+				let g = &getSum
+				sum = 5
+				print(g())
+			`,
+		},
+		{
+			name: "constructing a type whose methods read the binding is fine",
+			src: `
+				let sum = 0
+				sum = 6
+				type Box { v: Int! = 1; get: Int! { sum } }
+				let b = Box
+				print(b.get)
+			`,
 		},
 		{
 			name: "statements reading, and declarations before the write, are fine",

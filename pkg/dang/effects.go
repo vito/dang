@@ -629,6 +629,7 @@ func (s *effectSolver) solve() []error {
 		}
 	}
 	s.narrow.checkCaptures(s, errs)
+	s.top.check(errs)
 	return errs.errs
 }
 

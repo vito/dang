@@ -1080,6 +1080,10 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// leave that scope again (see withTypeBody). All of the type's code is
 	// sealed: it can't write, or call anything that writes, outside it.
 	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
+	if c.ctorFn != nil {
+		// Constructing runs the field defaults.
+		noteTypeBody(ctx, c.ctorFn.fnEffects().latent, effFrameFrom(ctx).eff)
+	}
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
