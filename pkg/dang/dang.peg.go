@@ -6421,7 +6421,7 @@ var g = &grammar{
 													pos:  position{line: 966, col: 93, offset: 31486},
 													name: "NonZeroDecimalDigit",
 												},
-												&oneOrMoreExpr{
+												&zeroOrMoreExpr{
 													pos: position{line: 966, col: 113, offset: 31506},
 													expr: &ruleRefExpr{
 														pos:  position{line: 966, col: 113, offset: 31506},

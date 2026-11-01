@@ -5,6 +5,13 @@ let e = 2.71828
 let scientific = 1.5e10
 let negative_exp = 2.5e-3
 
+# Exponent-only floats, with any number of mantissa digits
+assert { 1e5 == 100000.0 }
+assert { 10e5 == 1000000.0 }
+assert { 0e0 == 0.0 }
+assert { 5E-1 == 0.5 }
+assert { 1e+2 == 100.0 }
+
 assert { pi > 3.0 }
 assert { pi < 4.0 }
 assert { e > 2.0 }
