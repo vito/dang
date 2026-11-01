@@ -16,7 +16,7 @@
 
 ## `String!` methods
 
-> See [#strings]. Note: `.length`/`.isEmpty` are **list-only** — there is no String length/isEmpty builtin.
+> See [#strings]. `.length` counts characters (Unicode code points), not bytes.
 
 > Regex methods take a `Regexp!` pattern. Backtick template strings auto-coerce to the `Regexp` scalar, so a pattern is usually written as `` `\d+` `` (Go `regexp/syntax`).
 

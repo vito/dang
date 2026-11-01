@@ -18,8 +18,7 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 
 ## `String!` methods
 
-Strings have **no** `.length` / `.isEmpty` — those are list/map-only. Use the predicates below.
-
+- `.length -> Int!` — number of characters (Unicode code points, not bytes): `"héllo".length == 5`; `.isEmpty -> Boolean!`
 - `.toUpper -> String!`, `.toLower -> String!`
 - `.toBase64 -> String!` — standard padded base64 of the string's bytes; `.fromBase64 -> String!` — decode standard padded base64 (raises on invalid input)
 - `.contains(substring: String!) -> Boolean!`
