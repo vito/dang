@@ -336,30 +336,42 @@ Gotchas:
   `FunTypeNode` results and freshly built signatures); never `SetEffect` a
   shared type — use `WithEffect` for a copy.
 
-## Subtyping via `Module.Eq`
+## Subtyping via `Supertypes` and `hm.Assignable`
 
-Subtyping is folded into Hindley-Milner unification by making `Module.Eq`
-**asymmetric**:
+`Type.Eq` is plain equality: named types compare by pointer, anonymous
+records structurally — and only against other anonymous records (or a
+GraphQL input object, which is plain data). A record of a named type's
+shape is *not* that type. Subtyping lives in `hm.Assignable`
+(`hm/unify.go`): after `Eq` fails it walks `have.Supertypes()`, which for
+an object returns the interfaces it implements and the unions it belongs to
+(and for an interface, its parent interfaces). So a `User` passes where a
+`Node` is expected, never the reverse. When adding a subtyping
+relationship, the *more specific* type lists the more general one among its
+`Supertypes()`.
 
-```go
-// User.Eq(Node) == true  (User implements Node)
-// Node.Eq(User) == false
-if otherMod.Kind == InterfaceKind && t.ImplementsInterface(otherMod) {
-    return true
-}
-```
+Function types are checked by `assignableFunction`: contravariant in the
+argument record and the block, covariant in the result, without value-level
+coercions, and every pair rechecked under the composed substitution (a
+variable bound on both sides of the arrow must fit both). Parameter names
+are part of a function type: records unify component-wise only when their
+keys match in order (`hm.Labelled`, `RecordType.SameLabels`), because calls
+may name arguments and arguments bind by name (a positional argument binds
+by the name inference resolved against the callee's static type). A block
+takes on the names of the signature it's passed for (`BlockArg`
+`ExpectedParamNames`, bound to its own names through
+`FunctionValue.LocalArgs`).
 
-This is intentional — you can pass a `User` where a `Node` is expected
-(accessing only `Node` fields is safe), but not the reverse. `Supertypes()`
-returns both interfaces and unions for the same reason: it's the hook for
-`Assignable` in `hm/unify.go`.
+A type's *name* used as a value is typed as its meta-type
+(`Type.MetaType()`, `typeNameValueType`/`enumNamespaceType`), never as an
+instance: interfaces, unions and custom scalars without `new()` (whose meta
+holds their statics), and enums (whose meta holds copies of their values
+and `values`; an enum value itself has no members). The meta-type prints as
+the type's name, so diagnostics say which is meant; completion/hover look
+through it with `InstanceType()`. Create meta-types while the declaring
+scope is private to one goroutine; at eval use `namespaceModuleOf`, which
+never creates one.
 
-When adding a new subtyping relationship, the asymmetry direction matters:
-the *more specific* type's `Eq` should return true against the *more
-general* type, not vice versa.
-
-Because `Type.Eq` is asymmetric (and its anonymous branch duck-types
-structurally), runtime value equality must **not** route through it.
+Runtime value equality must **not** route through `Type.Eq`.
 `objectsEqual` (`ast.go`, behind `valuesEqual`'s `*Object` case, used by
 `==`/`case`/`contains`/`uniq`) instead gates on the module directly: both
 anonymous → structural `AsRecord().Eq`; either named → **pointer** comparison

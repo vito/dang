@@ -173,6 +173,7 @@ greet(someNullableString)  # falls back to "world" when the value is null
 - needed for assignment to a function-typed field, passing as an arg, etc.
 - combined with `.method` selection: `&user.greet`
 - a captured ref must still satisfy the target's block-parameter signature
+- stored where another function type is expected (a function-typed field), a function must accept every argument that type promises (parameters are contravariant, results covariant) and name its parameters the same, in the same order: callers name arguments by the target's signature. Blocks are the exception: a block takes on the parameter names of the signature it's passed for
 - a method ref is lexical: wherever it is stored or called from, it runs against the `self` where it was written, never the caller's — see [#lexical-scope]
 - inside a method, `&helper` and `&self.helper` read `self` when called, so they see field writes made after the ref was taken; a ref through any other receiver (`&r.helper`) holds that value, since values are immutable
 - a ref to a closure that writes outside itself can be called or passed as an argument, but not stored or returned — see [#impure-closures]. Named functions and methods only write their own copy of `self`, so refs to them can go anywhere
