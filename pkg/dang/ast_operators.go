@@ -1099,6 +1099,12 @@ type NonNullAssert struct {
 	InferredTypeHolder
 	Expr Node
 	Loc  *SourceLocation
+
+	// Callee is set by the parser for `f!(args)`: the operand is the
+	// function being called, so it isn't auto-called (even when the
+	// function it holds at runtime takes no required arguments, as one
+	// accepting more than its static type may) and doesn't escape.
+	Callee bool
 }
 
 var _ Node = (*NonNullAssert)(nil)
@@ -1106,7 +1112,13 @@ var _ Evaluator = (*NonNullAssert)(nil)
 
 func (n *NonNullAssert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(n, func() (hm.Type, error) {
-		t, err := n.Expr.Infer(ctx, env, fresh)
+		var t hm.Type
+		var err error
+		if n.Callee {
+			t, err = inferNodeWithoutAutoCall(withAllowedFn(ctx, unwrapGrouped(n.Expr)), env, fresh, n.Expr)
+		} else {
+			t, err = n.Expr.Infer(ctx, env, fresh)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1134,7 +1146,13 @@ func (n *NonNullAssert) GetSourceLocation() *SourceLocation { return n.Loc }
 
 func (n *NonNullAssert) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, n, func() (Value, error) {
-		val, err := EvalNode(ctx, scope, n.Expr)
+		var val Value
+		var err error
+		if n.Callee {
+			val, err = evalNodeWithoutAutoCall(ctx, scope, n.Expr)
+		} else {
+			val, err = EvalNode(ctx, scope, n.Expr)
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -71,3 +71,31 @@ let zeroAt(i: Int!): Int {
 
 assert { zeroAt(0) == 42 }
 assert { zeroAt(3) == null }
+
+# A binding that starts out null and may be given a function holds a
+# possibly-null function (its type is pinned by the write), and a write of a
+# function accepting more (a nullable parameter) fits it.
+let n(x: Int): Int! { x ?? 0 }
+
+let weakGuarded(flag: Boolean!): Int! {
+  let g = null
+  if (flag) { g = &a }
+  if (g != null) { g(x: 8) } else { -1 }
+}
+
+assert { weakGuarded(true) == 8 }
+assert { weakGuarded(false) == -1 }
+
+let weakWidened(flag: Boolean!, y: Int!): Int! {
+  let g = null
+  g = &a
+  if (flag) { g = &n }
+  g!(x: y)
+}
+
+assert { weakWidened(true, 3) == 3 }
+assert { weakWidened(false, 3) == 3 }
+
+# `f!(args)` calls the function: it isn't auto-called first, even when it
+# takes no required arguments.
+assert { [&n][0]!(x: 5) == 5 }
