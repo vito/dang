@@ -875,8 +875,17 @@ func inferFunctionBodiesPhaseResilient(ctx context.Context, functions []Node, en
 
 func inferNonDeclarationsPhaseResilient(ctx context.Context, nonDeclarations []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	var lastT hm.Type
+	// Top-level statements run in source order after every declaration, so
+	// a guard narrows the statements after it, and never a declaration
+	// (`let` included), which ran before it. The narrowings go in a clone:
+	// the module frame is shared with declarations, sibling files and later
+	// REPL prompts.
+	stmtEnv := env
 	for _, form := range nonDeclarations {
-		t, err := form.Infer(ctx, env, fresh)
+		t, err := form.Infer(ctx, stmtEnv, fresh)
+		if cond, ok := form.(*Conditional); ok && err == nil {
+			stmtEnv = withNarrowings(ctx, stmtEnv, conditionalExitNarrowings(cond, stmtEnv))
+		}
 		if err != nil {
 			errs.Add(err)
 			// Non-declarations don't need fallback types

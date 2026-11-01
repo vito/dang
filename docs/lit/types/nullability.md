@@ -86,6 +86,7 @@ loop {
 - `else if` chains: the parser wraps `else if` in a Block, so the outer guard's falsy facts still apply afterward
 - sequential guards accumulate: each narrows independently as forms are processed in order
 - inside a `loop` / `.each` block, a guard that `break`s or `continue`s narrows the rest of that iteration (`if (x == null) { break }` → `x` is `T!` after)
+- at the top level of a script, a guard narrows the top-level statements after it, but not declarations: every `let` and function runs before the first statement, so `if (x == null) { raise "missing" }` then `let y: Int! = x` is still an error
 
 ### Reassigning a narrowed name
 

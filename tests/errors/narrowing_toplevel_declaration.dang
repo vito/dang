@@ -1,0 +1,12 @@
+# Top-level declarations run before every top-level statement, so a guard
+# statement doesn't narrow a declaration after it: `doubled` is computed before
+# the check runs.
+let optional(n: Int): Int { n }
+
+let limit = optional(null)
+
+if (limit == null) {
+  raise "no limit"
+}
+
+let doubled: Int! = limit * 2

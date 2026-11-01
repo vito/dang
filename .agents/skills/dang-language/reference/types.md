@@ -66,6 +66,7 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
 - Code after a diverging guard sees the narrowed type for the rest of the enclosing scope.
 - `else if` chains: the outer guard's falsy facts still apply afterward.
 - Sequential guards accumulate, each narrowing independently in order.
+- At script top level, a guard narrows the later top-level *statements* only: declarations (`let`, functions) all run before the first statement, so `if (x == null) { raise … }; let y: Int! = x` is still an error.
 
 ### Compound conditions
 - Guard with `or`: entering the diverging branch means *both* checks failed, so **both** narrow afterward:

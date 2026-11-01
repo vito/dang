@@ -1,0 +1,10 @@
+[1m[31mError:[0m operator addition is not defined for nullable type Int: check it for null first, supply a default with ??, or assert it with !
+  [2m[34m--> errors/narrowing_toplevel_reassigned.dang:12:7[0m
+ [2m    |[0m
+ [2m 10 | limit = optional(null)[0m
+ [2m 11 | [0m
+ [2m[34m[1m 12 | [0mprint(limit + 1)
+[2m             [31m^^^^^[0m
+ [2m 13 | [0m
+ [2m    |[0m
+
