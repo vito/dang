@@ -1,4 +1,5 @@
 \use-plugin{dang}
+\literate-fences
 
 # Getting started {#getting-started}
 
@@ -19,7 +20,9 @@ message(who: String!): String! {
 print(message("world"))
 ```
 
-- `dang hello.dang` to run
+Save it as `hello.dang` and run `dang hello.dang`. The block above ran when
+these docs were built: `print` wrote the line, and `=> null` is the value
+`print` returns.
 
 No install needed to get a feel for it — this REPL runs Dang in your browser.
 State carries across entries, so define something and use it on the next line:
@@ -28,9 +31,10 @@ State carries across entries, so define something and use it on the next line:
 let greeting = "world"
 }}}
 
-> Note: the browser REPL runs the core language only — no GraphQL imports, so
-> `GitHub`, `Dagger`, and friends aren't available here. Install the CLI for
-> those.
+> Note: the browser REPL has one GraphQL import, the small bundled `Demo`
+> schema used throughout these docs (try `import Demo`, then
+> `primaryUser.name`). `GitHub`, `Dagger`, and friends aren't available here.
+> Install the CLI for those.
 
 ## A first GraphQL call
 
@@ -73,7 +77,7 @@ modules.
 $ dagger init --sdk=dang
 ```
 
-```dang
+```dang-static
 type Greeter {
   message(target: String!): String! {
     container
