@@ -56,6 +56,7 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 ### Function references: `&fn`
 - `&` yields the function itself without calling it: `&greet`, `&user.greet`.
 - Needed to assign to a function-typed field, pass as an arg, etc. Re-reads its closure each call. A captured ref must still satisfy the target's block-parameter signature.
+- A function stored where another function type is expected must accept everything that type's callers pass (parameters contravariant, result covariant) and name its parameters the same, in the same order — callers name arguments by the target's signature. A block takes on the parameter names of the signature it's passed for; naming a block parameter like a *different* parameter of that signature is an error.
 - A method ref is **lexically bound**: wherever it is stored or called from (even another object's methods), it runs against the `self` where the ref was written, never the caller's.
 - Inside a method, `&helper` and `&self.helper` read `self` **when called**, so they see field writes the method makes after taking the ref (`let f = &helper; n += 5; f(1)` sees the new `n`). A ref through any other receiver (`&r.helper`, with `let r = self` or any other value) holds that value: values are immutable, so later writes (which fork `self`, or rebind `r`) don't reach it.
 - A ref to a closure that writes outer state (a nested function or block writing the enclosing method's locals or `self`) can only be called or passed as an argument — storing, returning, or collecting it is a compile error. Refs to named functions and methods are always storable (see "Compile-time rules"). A field default can't take a ref to the type's own methods at all (see "Field defaults").
@@ -244,7 +245,7 @@ Named functions, methods, and stored callbacks are always pure under rules 1–2
 
 ## Interfaces and unions
 
-Map 1:1 to their GraphQL counterparts. The interface/union type itself is also a runtime value (`Named != null`). Both discriminate with `case` (see control-flow.md) and, for GraphQL values, with inline fragments (see graphql.md).
+Map 1:1 to their GraphQL counterparts. The interface/union type itself is also a runtime value (`Named != null`) — its namespace, not an instance: it can't be passed for one and no type pattern matches it (likewise an enum's or custom scalar's name is its namespace, and an enum *value* has no members: `Color.RED.GREEN` is an error). Both discriminate with `case` (see control-flow.md) and, for GraphQL values, with inline fragments (see graphql.md).
 
 ### Interfaces
 ```dang
@@ -254,11 +255,13 @@ type Book implements Named & Serializable { ... }   # implements A & B for multi
 ```
 - A type implementing an interface must provide all interface fields. A method field also satisfies an interface field.
 - Missing field → `object X is missing \`f(): T\`, required by interface I`. Incompatible type → `field "f": type ... is not compatible with interface type ...`.
+- A `let` member can't implement a public interface field (anyone holding the interface reads it); nor can a child interface redeclare a parent's public field with `let`.
 - Interface inheritance: `interface User implements Named { email: String! }` — the child must re-declare (cover) every parent field with compatible types. A child-interface value widens to the parent (and lists: `[User!]!` → `[Named!]!`).
 
 ### Variance (interface implementation)
 - **Return types** covariant (may be more specific): interface `getData: String` (nullable) can be implemented as `getData: String!`. Weakening is rejected: `return type String is not compatible with interface return type String! (covariance required)`.
 - **Argument types** contravariant (may be more general): accept nullable where the interface wants non-null. Extra *optional* args allowed.
+- **Block arguments** too: the impl's block parameter must accept any block the interface's callers pass, with the same parameter names.
 - **List elements** covariant in nullability and type: `[String!]` satisfies `[String]`; `[Dog!]` satisfies `[Animal!]`.
 - **Scalar fields** invariant: `id: String!` does not satisfy `id: ID!`.
 
