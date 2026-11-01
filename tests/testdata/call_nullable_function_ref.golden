@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot call r: it may be null (((x: Int!): Int!)?); check it for null first (`if (r != null) { … }`), or assert it with ! (`r!(…)`)
+  [2m[34m--> errors/call_nullable_function_ref.dang:9:3[0m
+ [2m    |[0m
+ [2m  7 | let run(h: Hooks): Int! {[0m
+ [2m  8 |   let r = &h.hook[0m
+ [2m[34m[1m  9 | [0m  r(1)
+[2m         [31m^[0m
+ [2m 10 | }[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

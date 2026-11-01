@@ -71,7 +71,7 @@ let gauge = Gauge(bonus: 100)
 assert { gauge.doubled == 4 and gauge.scale == 2 }
 assert { gauge.total == 5 }
 assert { gauge.shadowed == 6 }
-assert { gauge.g(2) == 4 and gauge.fs[0](3) == 6 }
+assert { gauge.g(2) == 4 and gauge.fs[0]!(3) == 6 }
 assert { gauge.plain.saved(1) == 2 }
 assert { gauge.other.saved(5) == 6 }
 assert { gauge.fromNew.saved(0) == 101 }

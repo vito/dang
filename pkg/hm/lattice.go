@@ -90,6 +90,7 @@ func mergeTypes(current, next Type) (Type, Subs, error) {
 				merged = mergedNonNull.Type
 			}
 		}
+		merged = keepNullableFn(merged, resolvedNext)
 		return merged, subs, nil
 	}
 
@@ -101,6 +102,7 @@ func mergeTypes(current, next Type) (Type, Subs, error) {
 				merged = mergedNonNull.Type
 			}
 		}
+		merged = keepNullableFn(merged, resolvedCurrent)
 		return merged, subs, nil
 	}
 
@@ -109,6 +111,18 @@ func mergeTypes(current, next Type) (Type, Subs, error) {
 	}
 
 	return nil, nil, UnificationError{Have: next, Want: current}
+}
+
+// keepNullableFn keeps a merge of a function with a possibly-null function
+// (or null) nullable: the function is assignable to it, but the merge is not
+// a callable function.
+func keepNullableFn(merged, other Type) Type {
+	if fn, ok := merged.(*FunctionType); ok {
+		if _, nullable := other.(NullableFunctionType); nullable {
+			return NullableFunctionType{Fn: fn}
+		}
+	}
+	return merged
 }
 
 func buildSupertypeSet(t Type) map[Type]bool {

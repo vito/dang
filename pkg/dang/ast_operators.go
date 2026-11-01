@@ -1112,7 +1112,8 @@ func (n *NonNullAssert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		}
 
 		// Strip the outer nullability. If the type is already non-null the
-		// assertion is a no-op and we keep the type as-is.
+		// assertion is a no-op and we keep the type as-is. A function value
+		// is non-null as is; a possibly-null one asserts to it (hm.NonNull).
 		result := hm.NonNull(t)
 		n.SetInferredType(result)
 		return result, nil
@@ -1158,6 +1159,9 @@ type FunctionRef struct {
 	InferredTypeHolder
 	Expr Node
 	Loc  *SourceLocation
+
+	// nullable is set by Infer when the referenced function may be null.
+	nullable bool
 }
 
 var _ Node = (*FunctionRef)(nil)
@@ -1172,7 +1176,10 @@ func (f *FunctionRef) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			return nil, err
 		}
 
-		if _, ok := t.(*hm.FunctionType); !ok {
+		// A function read through a nullable receiver (`&t.foo`) is a
+		// possibly-null function: the reference is null when t is.
+		_, f.nullable = t.(hm.NullableFunctionType)
+		if _, ok := t.(*hm.FunctionType); !ok && !f.nullable {
 			return nil, NewInferError(fmt.Errorf("& requires a function, got %s", t.Name()), f.Expr)
 		}
 		if !allowed {
@@ -1205,6 +1212,9 @@ func (f *FunctionRef) Eval(ctx context.Context, scope ValueScope) (Value, error)
 			return nil, err
 		}
 
+		if _, isNull := val.(NullValue); isNull && f.nullable {
+			return val, nil
+		}
 		if _, ok := val.(Callable); !ok {
 			return nil, fmt.Errorf("& requires a function, got %T", val)
 		}

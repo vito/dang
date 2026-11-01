@@ -1,0 +1,73 @@
+# Function values may be null too: an element of a list of functions, a method
+# taken off a nullable value, an `if` without `else`. A possibly-null function
+# can be called once it's checked for null, asserted with !, or defaulted
+# with ??.
+
+let a(x: Int!): Int! { x }
+
+let b(x: Int!): Int! { x * 2 }
+
+let zero: Int! { 42 }
+
+type Hooks {
+  hook(x: Int!): Int! { x + 100 }
+}
+
+let checked(i: Int!): Int! {
+  let g = [&a, &b][i]
+  if (g != null) { g(x: 3) } else { 0 }
+}
+
+assert { checked(1) == 6 }
+assert { checked(5) == 0 }
+
+let asserted(i: Int!): Int! {
+  let fs = [&a]
+  fs[i]!(x: 4)
+}
+
+assert { asserted(0) == 4 }
+assert { [&a][0]!(x: 1) == 1 }
+
+let assertFailed = { asserted(3) } rescue {
+  e: Error => e.message
+}
+assert { assertFailed == "non-null assertion failed: value is null" }
+
+let defaulted(i: Int!): Int! {
+  let g = [&a][i] ?? &b
+  g(x: 5)
+}
+
+assert { defaulted(3) == 10 }
+
+let guarded(flag: Boolean!): Int! {
+  let g = if (flag) { &a }
+  if (g == null) { return -1 }
+  g(x: 7)
+}
+
+assert { guarded(true) == 7 }
+assert { guarded(false) == -1 }
+
+# A method taken off a nullable value is null when the value is; calling it
+# through the value still propagates the null.
+let hookOf(h: Hooks): Int {
+  let r = &h.hook
+  if (r != null) { r(1) } else { null }
+}
+
+assert { hookOf(null) == null }
+assert { hookOf(Hooks) == 101 }
+
+let noHooks: Hooks = null
+assert { noHooks.hook(1) == null }
+
+# A possibly-null zero-arity function reads as its possibly-null result.
+let zeroAt(i: Int!): Int {
+  let g = [&zero][i]
+  g
+}
+
+assert { zeroAt(0) == 42 }
+assert { zeroAt(3) == null }
