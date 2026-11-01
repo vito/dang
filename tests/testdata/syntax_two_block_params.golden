@@ -1,0 +1,10 @@
+[1m[31mError:[0m syntax error: function can only have one block parameter
+  [2m[34m--> errors/syntax_two_block_params.dang:2:23[0m
+ [2m    |[0m
+ [2m  1 | type Repeater {[0m
+ [2m[34m[1m  2 | [0m  pub twice(&a: Int!, &b: Int!): Int! { 1 }
+[2m                             [31m^^^^^^^^[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

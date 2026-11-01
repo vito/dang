@@ -42,8 +42,8 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 // location and a human-readable message when the PEG parser fails. If
 // tree-sitter can't improve the error, the original error is returned.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
-	if litErr, ok := literalSourceError(pegErr, filename, source); ok {
-		return litErr
+	if rejected, ok := rejectedSourceError(pegErr, filename, source); ok {
+		return rejected
 	}
 
 	tsMu.Lock()

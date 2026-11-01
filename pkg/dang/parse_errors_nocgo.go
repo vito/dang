@@ -28,12 +28,12 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 	return result, nil
 }
 
-// EnhanceParseError reports an invalid literal with its source location.
-// Otherwise it returns the original error as-is, since tree-sitter is not
-// available without CGo.
+// EnhanceParseError reports syntax a grammar action rejected with its source
+// location. Otherwise it returns the original error as-is, since tree-sitter
+// is not available without CGo.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
-	if litErr, ok := literalSourceError(pegErr, filename, source); ok {
-		return litErr
+	if rejected, ok := rejectedSourceError(pegErr, filename, source); ok {
+		return rejected
 	}
 	return pegErr
 }

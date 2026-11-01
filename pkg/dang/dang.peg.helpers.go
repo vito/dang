@@ -32,45 +32,45 @@ func (p *parserError) ParseErrorLocation() *SourceLocation {
 }
 
 // Unwrap exposes the error an action returned or panicked with, so errors.As
-// finds a literalError through the parser's error list.
+// finds a rejectedSyntax through the parser's error list.
 func (p *parserError) Unwrap() error {
 	return p.Inner
 }
 
-// literalError is a literal the grammar matched but that has no value, like
-// an integer too large for an Int.
-type literalError struct {
+// rejectedSyntax is source the grammar matched but that is still invalid,
+// like an integer too large for an Int or a second block parameter.
+type rejectedSyntax struct {
 	msg string
 	loc *SourceLocation
 }
 
-func (e *literalError) Error() string { return e.msg }
+func (e *rejectedSyntax) Error() string { return e.msg }
 
-// invalidLiteral aborts the parse with a literalError at the literal.
+// reject aborts the parse with a rejectedSyntax at loc.
 //
 // It panics, which pigeon turns into a parse error, rather than returning the
 // error from the action: pigeon rolls its error list back when a left-recursive
-// rule enclosing the literal backtracks, so a returned error can be lost and
+// rule enclosing the action backtracks, so a returned error can be lost and
 // the parse "succeed" with a bogus value (and returning a nil node instead
-// crashes the rule that uses it). No valid program contains such a literal,
-// so stopping is always right.
-func (c *current) invalidLiteral(msg string) {
-	panic(&literalError{msg: msg, loc: c.Loc()})
+// crashes the rule that uses it). Call it only for text no valid program
+// contains, so stopping is always right.
+func (c *current) reject(loc *SourceLocation, msg string) {
+	panic(&rejectedSyntax{msg: msg, loc: loc})
 }
 
-// literalSourceError renders a literalError from a parse error as a
+// rejectedSourceError renders a rejectedSyntax from a parse error as a
 // SourceError with its snippet. It takes precedence over tree-sitter's
-// diagnosis, which sees nothing wrong with such a literal.
-func literalSourceError(pegErr error, filename string, source []byte) (*SourceError, bool) {
-	var litErr *literalError
-	if !errors.As(pegErr, &litErr) {
+// diagnosis, which sees nothing wrong with such source.
+func rejectedSourceError(pegErr error, filename string, source []byte) (*SourceError, bool) {
+	var rejected *rejectedSyntax
+	if !errors.As(pegErr, &rejected) {
 		return nil, false
 	}
-	loc := *litErr.loc
+	loc := *rejected.loc
 	if loc.Filename == "" {
 		loc.Filename = filename
 	}
-	return NewSourceError(fmt.Errorf("syntax error: %s", litErr.msg), &loc, string(source)), true
+	return NewSourceError(fmt.Errorf("syntax error: %s", rejected.msg), &loc, string(source)), true
 }
 
 func (c current) Loc() *SourceLocation {

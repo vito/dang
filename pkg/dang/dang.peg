@@ -405,7 +405,7 @@ NewConstructorDecl <- NewToken _ args:ArgTypes _ block:Block {
   for _, arg := range allArgs {
     if arg.IsBlockParam {
       if blockParam != nil {
-        return nil, fmt.Errorf("constructor can only have one block parameter")
+        c.reject(arg.Loc, "constructor can only have one block parameter")
       }
       blockParam = arg
     } else {
@@ -507,7 +507,7 @@ TypeAndArgsAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { r
   for _, arg := range allArgs {
     if arg.IsBlockParam {
       if blockParam != nil {
-        return nil, fmt.Errorf("function can only have one block parameter")
+        c.reject(arg.Loc, "function can only have one block parameter")
       }
       blockParam = arg
     } else {
@@ -966,7 +966,7 @@ Literal <- Float / Int / Boolean / TripleQuoteString / String / Template / Null 
 Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit+) Exponent)) {
   value, err := strconv.ParseFloat(string(c.text), 64)
   if err != nil {
-    c.invalidLiteral("float literal out of range")
+    c.reject(c.Loc(), "float literal out of range")
   }
   return &Float{
     Value: value,
@@ -978,7 +978,7 @@ Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?
 Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   value, err := strconv.ParseInt(string(c.text), 10, 64)
   if err != nil {
-    c.invalidLiteral("integer literal out of range")
+    c.reject(c.Loc(), "integer literal out of range")
   }
   return &Int{
     Value: value,
@@ -1018,7 +1018,7 @@ String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken 
   value, err := strconv.Unquote(string(c.text))
   if err != nil {
     // The grammar admits escapes that encode no character, like \777.
-    c.invalidLiteral("invalid escape sequence in string literal")
+    c.reject(c.Loc(), "invalid escape sequence in string literal")
   }
   return &String{
     Value: value,
