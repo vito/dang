@@ -1,8 +1,12 @@
 \use-plugin{dang}
+\literate-fences
 
 # Grammar notes {#grammar}
 
 > Meta: not a full BNF — the source of truth is `pkg/dang/dang.peg`. This page captures the user-visible regularities so people don't have to read PEG.
+
+> The `dang` examples on this page are live: the docs build runs them and
+> bakes in the results. The grammar sketches are plain text.
 
 ## Source of truth
 
@@ -41,6 +45,13 @@ RescueClause := (Symbol ':' TypeName | 'else') '=>' Form
 
 - `rescue` sits between `??` and `or`: it binds tighter than `??` and looser than `or`, so `x rescue null ?? "default"` is `(x rescue null) ?? "default"` (see [#errors])
 
+```dang
+(JSON.decode("null") :: Int) rescue null ?? -1
+```
+
+Read the other way, as `… rescue (null ?? -1)`, this would be `null`: the
+decode succeeds, so the fallback never applies.
+
 ## Type syntax
 
 > `Type` dispatches to one of these; non-null is a suffix `!` wrapping any inner type. See [#nullability].
@@ -57,6 +68,20 @@ TypeVariable := [a-z]                           # single lowercase letter
 
 > `[a]` is shorthand for `List[a]`. `Map[a]` is a string-keyed map of `a` values
 > (only the built-in `List` and `Map` accept type arguments today).
+
+Each form in use:
+
+```dang
+import Demo
+
+let grid: List[[Int!]!]! = [[1, 2], [3]]
+let tags: Map[[String!]!]! = ["fruit": ["apple"], "veg": []]
+let origin: {{x: Int!, y: Int!}}! = {{x: 0, y: 0}}
+let viewer: Demo.User = null
+pick(first: a, second: a): a { first }
+
+[grid.length, tags["fruit"]!.length, origin.x, pick(1, 2)]
+```
 
 ## Lexical
 
