@@ -34,6 +34,7 @@
 
 - `nullable.field` is nullable even if `field: T!`
 - chains short-circuit: `a.b.c` is null if any link is null
+- function values can be null too: an element of a list of functions (`fs[0]`), a method taken off a nullable value (`&h.hook`), an `if` without `else`. Such a value can't be called until it's checked for null (`if (f != null) { f(1) }`), asserted (`fs[0]!(1)`), or defaulted (`fs[0] ?? &fallback`). Calling a method through a nullable value (`h.hook(1)`) still propagates the null
 - operators are the exception: arithmetic and ordering comparisons need non-null operands, so `xs[0] + 1` is a type error rather than `null` (see [#operators])
 - recovers via `??` (see [#operators]) or flow narrowing (next section)
 

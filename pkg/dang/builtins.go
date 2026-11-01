@@ -815,18 +815,10 @@ func NonNull(t hm.Type) hm.Type {
 	return hm.NonNullType{Type: t}
 }
 
-// Nullable returns the nullable form of a type.
+// Nullable returns the nullable form of a type. A function type's is
+// hm.NullableFunctionType, which can't be called until narrowed.
 func Nullable(t hm.Type) hm.Type {
-	switch typ := t.(type) {
-	case hm.NullableTypeVariable:
-		return typ
-	case hm.NonNullType:
-		return typ.Type
-	case hm.TypeVariable:
-		return hm.NullableTypeVariable{TypeVariable: typ}
-	default:
-		return t
-	}
+	return hm.MakeNullable(t)
 }
 
 // ListOf creates a list type

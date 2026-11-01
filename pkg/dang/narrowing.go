@@ -137,6 +137,10 @@ func nonNullType(env hm.Env, sym string) (hm.Type, bool) {
 	// A binding pinned since it was declared narrows from what it is now,
 	// and a? (a possibly-null a) narrows to a!, not a?!.
 	t = hm.ResolveWeak(t)
+	// A possibly-null function value narrows to the callable function.
+	if nfn, ok := t.(hm.NullableFunctionType); ok {
+		return nfn.Fn, true
+	}
 	if _, isFn := unwrapNonNull(t).(*hm.FunctionType); isFn {
 		return nil, false
 	}

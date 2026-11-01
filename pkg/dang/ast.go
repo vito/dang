@@ -62,6 +62,16 @@ const (
 
 // autoCallFnType returns the type that should be used for zero-arity function auto-calling
 func autoCallFnType(t hm.Type) (hm.Type, bool, error) {
+	// A bare reference to a possibly-null zero-arity function calls it when
+	// it isn't null (isAutoCallableFn), so it reads as its possibly-null
+	// result.
+	if nfn, ok := t.(hm.NullableFunctionType); ok {
+		ret, called, err := autoCallFnType(nfn.Fn)
+		if err != nil || !called {
+			return t, false, err
+		}
+		return Nullable(ret), true, nil
+	}
 	// Check if this is a zero-arity function and return its return type.
 	// A bare reference auto-calls, and a block parameter is required, so a
 	// bare reference to a block-taking function is the same error as calling

@@ -1,0 +1,5 @@
+# Indexing a list of functions may yield null, so the element can't be called
+# without a null check or an assertion.
+let a(x: Int!): Int! { x }
+
+print([&a][5](x: 1))

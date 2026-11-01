@@ -111,6 +111,17 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			return nil, err
 		}
 
+		// A function read through a nullable receiver (`t.foo(...)`) calls
+		// through null propagation: the call is null when t is. Any other
+		// possibly-null function can't be called.
+		if nfn, ok := fun.(hm.NullableFunctionType); ok {
+			if sel, isSel := c.Fun.(*Select); isSel && sel.NullableReceiver {
+				fun = nfn.Fn
+			} else {
+				return nil, NewInferError(nullableCalleeError(c.Fun, nfn), c.Fun)
+			}
+		}
+
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
 			absorbCall(ctx, effectOf(ft), c, calleeNameOf(c.Fun))
@@ -150,6 +161,16 @@ func allFunctionTypes(ts []hm.Type) bool {
 		}
 	}
 	return len(ts) > 0
+}
+
+// nullableCalleeError reports a call of a function value that may be null.
+func nullableCalleeError(callee Node, t hm.NullableFunctionType) error {
+	name := strings.TrimSpace(Format(callee))
+	advice := "bind it to a local with let and check that for null, or assert it with ! (`…!(…)`)"
+	if _, isSym := unwrapGrouped(callee).(*Symbol); isSym {
+		advice = fmt.Sprintf("check it for null first (`if (%s != null) { … }`), or assert it with ! (`%s!(…)`)", name, name)
+	}
+	return fmt.Errorf("cannot call %s: it may be null (%s); %s", name, t, advice)
 }
 
 // inferFunctionType handles type inference for FunctionType calls
@@ -1228,12 +1249,11 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 		// If receiver was nullable, make result nullable too
 		if isNullable {
-			// Remove any existing NonNullType wrapper from the field type
-			if nnType, ok := t.(hm.NonNullType); ok {
-				d.SetInferredType(nnType.Type)
-				return nnType.Type, nil
-			}
-			// Field type is already nullable, return as-is
+			// Remove any existing NonNullType wrapper from the field type. A
+			// method read off a nullable receiver is a possibly-null function:
+			// a call through the receiver propagates the null (FunCall), but
+			// the function itself can't be called once it's taken (`&t.foo`).
+			t = Nullable(t)
 			d.SetInferredType(t)
 			return t, nil
 		}
@@ -3453,9 +3473,11 @@ func collectContinueStatements(root Node, target *InferControlTarget) []*Continu
 func nullableControlResultType(t hm.Type) hm.Type {
 	switch typ := t.(type) {
 	case hm.NonNullType:
-		return typ.Type
+		return Nullable(typ)
 	case hm.TypeVariable:
 		return hm.NullableTypeVariable{TypeVariable: typ}
+	case *hm.FunctionType:
+		return Nullable(typ)
 	default:
 		return t
 	}

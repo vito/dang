@@ -90,12 +90,20 @@ Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLi
 // Postfix `!` asserts that the operand is non-null, narrowing its type from
 // `T` to `T!` and raising at runtime if the value turns out to be null. The
 // `!'='` lookahead keeps `a != b` and `a!=b` parsing as inequality rather
-// than `(a!) ...`.
-NonNullAssert <- expr:Term BangToken !'=' {
-  return &NonNullAssert{
+// than `(a!) ...`. An asserted function value can be called: `fs[0]!(x: 1)`.
+NonNullAssert <- expr:Term BangToken !'=' args:ArgValues? {
+  assert := &NonNullAssert{
     Expr: expr.(Node),
     Loc: c.Loc(),
-  }, nil
+  }
+  if args != nil {
+    return &FunCall{
+      Fun: assert,
+      Args: Record(args.([]Keyed[Node])),
+      Loc: c.Loc(),
+    }, nil
+  }
+  return assert, nil
 }
 
 UnaryExpr <- '!' _ expr:Term {
