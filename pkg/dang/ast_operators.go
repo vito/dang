@@ -1300,7 +1300,12 @@ func (f *FunctionRef) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
 		// The reference itself is checked here, so its operand is not.
 		allowed := fnAllowedAt(ctx, f)
-		t, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, f.Expr), env, fresh, f.Expr)
+		exprCtx := withAllowedFn(ctx, f.Expr)
+		if !allowed {
+			// Stored, not called: see toplevel_order.go.
+			exprCtx = withStoredRef(exprCtx, f.Expr)
+		}
+		t, err := inferNodeWithoutAutoCall(exprCtx, env, fresh, f.Expr)
 		if err != nil {
 			return nil, err
 		}
