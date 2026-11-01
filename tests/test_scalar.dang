@@ -8,8 +8,8 @@ let timestampValue = now
 let urlValue = homepage
 
 # Scalar values should have proper types
-assert { timestampValue == ("2024-01-15T10:30:00Z" :: Test.Timestamp!) }
-assert { urlValue == ("https://dang-lang.dev" :: Test.URL!) }
+assert { timestampValue == "2024-01-15T10:30:00Z" }
+assert { urlValue == "https://dang-lang.dev" }
 
 # Test that scalars can be compared
 assert { timestampValue == timestampValue }

@@ -59,8 +59,8 @@ Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `
 `Path` is a slash-separated path **scalar, normalized on construction**: every
 way a Path comes to exist runs `path.Clean`-style normalization, so an
 un-clean Path cannot exist (there is no `.clean`) and equality is semantic —
-`Path("a//b/./c") == Path("a/b/c")` (comparing a Path with a plain String
-doesn't type-check; build a Path from it). Path is
+`Path("a//b/./c") == Path("a/b/c")`, and `Path("a//b") == "a/b"` (a string
+literal converts to the Path, normalized). Path is
 defined in Dang itself, using the scalar-body syntax — see types.md.
 
 Ways in: the `Path(s)` constructor (any String expression); a string

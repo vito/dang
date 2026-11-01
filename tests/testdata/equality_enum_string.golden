@@ -1,10 +1,10 @@
-[1m[31mError:[0m cannot compare Color! with String!: they are unrelated types; compare with the enum value Color.GREEN instead
-  [2m[34m--> errors/equality_enum_string.dang:10:10[0m
+[1m[31mError:[0m cannot compare String! with Color!: they are unrelated types; compare with a Color value, like Color.RED, or cast the string: (name :: Color!)
+  [2m[34m--> errors/equality_enum_string.dang:12:10[0m
  [2m    |[0m
- [2m  8 | let c: Color! = Color.GREEN[0m
- [2m  9 | [0m
- [2m[34m[1m 10 | [0massert { c == "GREEN" }
-[2m                [31m^^^^^^^^^^^^[0m
+ [2m 10 | let name = "GREEN"[0m
  [2m 11 | [0m
+ [2m[34m[1m 12 | [0massert { name != c }
+[2m                [31m^^^^^^^^^[0m
+ [2m 13 | [0m
  [2m    |[0m
 

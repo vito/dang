@@ -1,4 +1,5 @@
-# An enum value never equals a String: compare with the enum's value.
+# A String variable doesn't compare with an enum value: only a literal
+# converts to the enum. Compare with the enum's value, or cast.
 
 enum Color {
   RED
@@ -6,5 +7,6 @@ enum Color {
 }
 
 let c: Color! = Color.GREEN
+let name = "GREEN"
 
-assert { c == "GREEN" }
+assert { name != c }

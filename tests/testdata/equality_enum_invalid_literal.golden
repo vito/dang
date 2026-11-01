@@ -1,0 +1,10 @@
+[1m[31mError:[0m "PURPLE" is not a value of Color; expected one of RED, GREEN
+  [2m[34m--> errors/equality_enum_invalid_literal.dang:10:15[0m
+ [2m    |[0m
+ [2m  8 | let c: Color! = Color.GREEN[0m
+ [2m  9 | [0m
+ [2m[34m[1m 10 | [0massert { c != "PURPLE" }
+[2m                     [31m^^^^^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

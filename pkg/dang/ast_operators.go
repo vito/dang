@@ -110,8 +110,12 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 				}
 			} else if err := checkDecodedComparison(b.Left, lt, b.Right, rt); err != nil {
 				return nil, err
-			} else if err := checkComparable(b.Left, b.Right, lt, rt); err != nil {
-				return nil, err
+			} else {
+				left, right, err := checkComparable(b.Left, b.Right, lt, rt)
+				if err != nil {
+					return nil, err
+				}
+				b.Left, b.Right = left, right
 			}
 			return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", b.Loc}}.Infer(ctx, env, fresh)
 		default:
@@ -301,21 +305,58 @@ func isList(t hm.Type) bool {
 func hasFreeVar(t hm.Type) bool { return len(t.FreeTypeVar()) > 0 }
 
 // checkComparable rejects == and != between operands whose types can never
-// hold equal values (`1 == "1"`, an enum against a String, two unrelated
-// object types): such a comparison is always false (or always true), which
-// is never what was meant. Operands may differ in nullability, be a subtype
-// and its supertype, a union and one of its members, Int and Float (which
-// compare numerically), or anything involving a type variable (`null`,
-// generics).
-func checkComparable(left, right Node, lt, rt hm.Type) error {
+// hold equal values (`1 == "1"`, an enum against a non-literal String, two
+// unrelated object types): such a comparison is always false (or always
+// true), which is never what was meant. Operands may differ in nullability,
+// be a subtype and its supertype, a union and one of its members, Int and
+// Float (which compare numerically), or anything involving a type variable
+// (`null`, generics).
+//
+// A string literal compared with a scalar or enum value converts to it, as
+// it does at every other boundary (arguments, `case` patterns): the returned
+// operands wrap it in that conversion, and an enum literal must name one of
+// the enum's values.
+func checkComparable(left, right Node, lt, rt hm.Type) (Node, Node, error) {
 	if typesComparable(lt, rt) {
-		return nil
+		return left, right, nil
+	}
+	if target, ok := literalComparisonTarget(left, rt); ok {
+		if err := checkEnumLiterals(unwrapGrouped(left), target); err != nil {
+			return nil, nil, err
+		}
+		return wrapCoerce(left, target, ""), right, nil
+	}
+	if target, ok := literalComparisonTarget(right, lt); ok {
+		if err := checkEnumLiterals(unwrapGrouped(right), target); err != nil {
+			return nil, nil, err
+		}
+		return left, wrapCoerce(right, target, ""), nil
 	}
 	err := fmt.Sprintf("cannot compare %s with %s: they are unrelated types", lt, rt)
 	if hint := comparisonHint(left, right, lt, rt); hint != "" {
 		err += "; " + hint
 	}
-	return withUnionProvenance(fmt.Errorf("%s", err), lt, rt)
+	return nil, nil, withUnionProvenance(fmt.Errorf("%s", err), lt, rt)
+}
+
+// literalComparisonTarget reports the type a string literal operand converts
+// to when compared with a value of other's type: a string-backed scalar
+// (custom, ID, JSON, ...) or an enum, non-null.
+func literalComparisonTarget(operand Node, other hm.Type) (hm.Type, bool) {
+	switch unwrapGrouped(operand).(type) {
+	case *String, *Template:
+	default:
+		return nil, false
+	}
+	t, _ := stripNonNull(other)
+	mod, ok := t.(*Type)
+	if !ok || mod.IsMeta() {
+		return nil, false
+	}
+	if mod.Kind == EnumKind || (mod.Kind == ScalarKind && !isPrimitiveScalar(mod)) {
+		return hm.NonNullType{Type: mod}, true
+	}
+	return nil, false
 }
 
 func typesComparable(a, b hm.Type) bool {
@@ -371,7 +412,8 @@ func isAbstractType(t *Type) bool {
 }
 
 // comparisonHint suggests the typed form of a comparison between an enum or
-// scalar and a String.
+// scalar and a non-literal String (a literal converts by itself; see
+// checkComparable).
 func comparisonHint(left, right Node, lt, rt hm.Type) string {
 	for _, side := range []struct {
 		typ      hm.Type
@@ -386,23 +428,15 @@ func comparisonHint(left, right Node, lt, rt hm.Type) string {
 		if ot, _ := stripNonNull(side.otherTyp); ot != StringType {
 			continue
 		}
-		lit, isLit := side.other.(*String)
+		// Quote the operand as written: `(s :: Email!)`.
+		cast := fmt.Sprintf("(%s :: %s!)", strings.TrimSpace(Format(side.other)), mod)
 		switch {
 		case mod.Kind == EnumKind:
-			if isLit && enumHasValue(mod, lit.Value) {
-				return fmt.Sprintf("compare with the enum value %s.%s instead", mod, lit.Value)
-			}
 			if names := enumValueNames(mod); len(names) > 0 {
-				return fmt.Sprintf("compare with a %s value, like %s.%s", mod, mod, names[0])
+				return fmt.Sprintf("compare with a %s value, like %s.%s, or cast the string: %s", mod, mod, names[0], cast)
 			}
 		case mod.Kind == ScalarKind && !isPrimitiveScalar(mod):
-			// Quote the operand as written: `("User:1" :: ID!)`, `(s :: Email!)`.
-			what := "string"
-			switch unwrapGrouped(side.other).(type) {
-			case *String, *Template:
-				what = "literal"
-			}
-			return fmt.Sprintf("cast the %s to compare: (%s :: %s!)", what, strings.TrimSpace(Format(side.other)), mod)
+			return "cast the string to compare: " + cast
 		}
 	}
 	return ""
@@ -775,9 +809,11 @@ func (e *Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			return nil, err
 		}
 		noteCheck(ctx, e)
-		if err := checkComparable(e.Left, e.Right, lt, rt); err != nil {
+		left, right, err := checkComparable(e.Left, e.Right, lt, rt)
+		if err != nil {
 			return nil, err
 		}
+		e.Left, e.Right = left, right
 
 		// Equality always returns a boolean
 		return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", e.Loc}}.Infer(ctx, env, fresh)

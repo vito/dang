@@ -1,9 +1,9 @@
-[1m[31mError:[0m cannot compare Email! with String!: they are unrelated types; cast the string to compare: (s :: Email!)
+[1m[31mError:[0m cannot compare String! with Email!: they are unrelated types; cast the string to compare: (s :: Email!)
   [2m[34m--> errors/equality_scalar_string_variable.dang:9:10[0m
  [2m    |[0m
  [2m  7 | let s = "me@example.com"[0m
  [2m  8 | [0m
- [2m[34m[1m  9 | [0massert { e == s }
+ [2m[34m[1m  9 | [0massert { s != e }
 [2m                [31m^^^^^^[0m
  [2m 10 | [0m
  [2m    |[0m
