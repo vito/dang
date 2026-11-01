@@ -37,7 +37,7 @@
 - Binds only a bare `Term` on the left — wrap compound exprs in parens: `(a + b) :: T!`.
 - `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here. The reverse degrade also works: `myUrl :: String!`, `p :: String!`.
 - Coercion source is limited: only **`String`** values coerce to custom scalars/enums (and custom scalars back to `String`). `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
-- Enum casts checked at **runtime**: `"NOPE" :: Status!` → `invalid enum value`.
+- Enum casts of a string **literal** are checked **statically**: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of …`. A non-literal `String` is checked at **runtime** (`s :: Status!` → `invalid enum value`).
 - Nullable → non-null casts are checked at **runtime**, rejecting null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
 Two uses to keep distinct:
@@ -124,7 +124,7 @@ case (c) {
   else => "?"        # no static exhaustiveness check
 }
 
-"RED" :: Color!      # runtime-validated coercion; "NOPE" :: Status! → invalid enum value "NOPE" for Status
+"RED" :: Color!      # validated coercion; a literal that isn't a value ("NOPE" :: Status!) is a compile error, a non-literal String is checked at runtime
 ```
 
 ## Custom scalars

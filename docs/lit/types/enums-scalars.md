@@ -42,8 +42,9 @@ case (c) {
 
 ### From strings (`::`)
 
-- `"RED" :: Color!` — runtime-validated coercion
-- an invalid value fails at runtime: `"NOPE" :: Status!` → `invalid enum value "NOPE" for Status`
+- `"RED" :: Color!` — coercion, validated against the enum's values
+- a string literal that isn't a value fails to type-check: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of PASSED, FAILED`. The same goes for literals in typed slots, arguments, lists, maps and `case` patterns
+- a non-literal `String` is validated at runtime: `s :: Status!` → `invalid enum value "NOPE" for Status`
 
 ## Custom scalars
 
