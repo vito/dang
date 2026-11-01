@@ -421,16 +421,18 @@ func init() {
 	// Install the builtin scalars (JSON/YAML/TOML) in both namespaces, like the
 	// modules above. They are the ScalarKind static modules registerStdlib just
 	// registered. Each is AddObject'd so `:: JSON` resolves in type position even
-	// without a schema scalar, and Add'd non-null so `JSON.encode`/`.decode`
-	// resolve as a value. A user- or schema-declared scalar of the same name
-	// shadows these and is grafted the identical members (merge, not collide),
-	// so all behave uniformly. See builtins.go: BuiltinScalarModule.
+	// without a schema scalar, and its name is bound to its meta-type, holding
+	// `encode`/`decode` (registerBuiltinTypes), so they resolve on the name but
+	// a JSON value is never mistaken for the namespace. A user- or
+	// schema-declared scalar of the same name shadows these and is grafted the
+	// identical members (merge, not collide), so all behave uniformly. See
+	// builtins.go: BuiltinScalarModule.
 	for _, mod := range StaticModules() {
 		if mod.Kind != ScalarKind {
 			continue
 		}
 		Prelude.AddObject(mod.Named, mod)
-		Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
+		Prelude.Add(mod.Named, hm.NewScheme(nil, typeNameValueType(mod)))
 	}
 
 	// Register builtin function types from the registry
@@ -557,22 +559,18 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			if !found {
 				continue
 			}
-			// Add the scalar type as a scheme. A builtin scalar (e.g. an imported
-			// JSON scalar) doubles as its namespace and is always present, so it
-			// binds non-null — otherwise JSON.encode would inherit the binding's
-			// nullability and weaken String! to String. Any other scalar's name
-			// is its namespace, not a value of the scalar.
+			// Add the scalar type as a scheme. Its name is its namespace (the
+			// meta-type), not a value of the scalar; a builtin scalar's name
+			// (e.g. an imported JSON scalar) also carries Dang's members.
 			var scalarScheme *hm.Scheme
-			if _, isBuiltin := BuiltinScalarModule(t.Name); isBuiltin {
-				scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: sub})
-			} else if subMod, ok := sub.(*Type); ok {
+			if subMod, ok := sub.(*Type); ok {
 				scalarScheme = hm.NewScheme(nil, typeNameValueType(subMod))
 			} else {
 				scalarScheme = hm.NewScheme(nil, sub)
 			}
 			env.Add(t.Name, scalarScheme)
 			env.SetVisibility(t.Name, PublicVisibility)
-			// Staple Dang's members onto the scalar so it doubles as the namespace.
+			// Staple Dang's members onto the scalar's namespace.
 			if scalarMod, ok := sub.(*Type); ok {
 				attachBuiltinSchemes(scalarMod)
 			}
@@ -1057,12 +1055,18 @@ func registerBuiltinTypes() {
 		})
 	}
 
-	// Register all static method types on their host modules
+	// Register all static method types on their host modules. A builtin
+	// scalar's (JSON, ...) go on its meta-type, the type of its name: its
+	// values are plain strings, with no such members.
 	for _, hostModule := range StaticModules() {
+		target := hostModule
+		if hostModule.Kind == ScalarKind {
+			target = hostModule.MetaType()
+		}
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
-			hostModule.Add(def.Name, hm.NewScheme(nil, fnType))
-			hostModule.SetVisibility(def.Name, PublicVisibility)
+			target.Add(def.Name, hm.NewScheme(nil, fnType))
+			target.SetVisibility(def.Name, PublicVisibility)
 		})
 	}
 }

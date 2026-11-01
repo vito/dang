@@ -1777,17 +1777,13 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 
 	// The scalar's value binding. A scalar with new() binds its constructor
-	// function instead (added in pass 1 below); a builtin scalar (JSON, ...)
-	// doubles as its namespace and is always present, so it binds non-null —
-	// otherwise member access like JSON.encode would inherit the binding's
-	// nullability and weaken String! to String. Any other scalar's name is
-	// its namespace (statics), not a value of the scalar.
+	// function instead (added in pass 1 below). Otherwise the name is the
+	// scalar's namespace, typed as its meta-type: it holds the scalar's
+	// statics, and for a builtin scalar's name (JSON, ...) Dang's members
+	// (attachBuiltinSchemes). It is not a value of the scalar.
 	newDecl := findNewConstructorIn(s.Value)
 	if newDecl == nil {
 		scalarScheme := hm.NewScheme(nil, typeNameValueType(scalarType))
-		if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
-			scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
-		}
 		env.Add(s.Name.Name, scalarScheme)
 		mod.SetVisibility(s.Name.Name, s.Visibility)
 	}
@@ -1978,12 +1974,12 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		}
 		// The name is typed as the scalar's meta-type, which holds its
 		// statics (see Hoist), so as a value it is the statics namespace:
-		// `let ns = Tag; ns.sep` reads it.
+		// `let ns = Tag; ns.sep` reads it. A builtin scalar's members ride
+		// along.
 		if statics := s.Inferred.Statics(); statics != nil {
-			if _, isBuiltin := BuiltinScalarModule(s.Name.Name); !isBuiltin {
-				scope.Bind(s.Name.Name, statics, s.Visibility)
-				return statics, nil
-			}
+			attachBuiltinMethods(statics, s.Inferred)
+			scope.Bind(s.Name.Name, statics, s.Visibility)
+			return statics, nil
 		}
 		return scalarModule, nil
 	})
