@@ -1193,11 +1193,14 @@ func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeS
 	var missingFields []string
 	// Check that all interface fields are present in the object
 	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
-		if isReservedInterfaceField(field, fieldScheme) {
-			continue
-		}
 		objectFieldScheme, objectHasField := objectMod.SchemeOf(field)
 		if !objectHasField {
+			// The runtime supplies a reserved field (Dagger's `id: ID!`)
+			// for implementers that don't declare it; one that does is
+			// checked like any other field.
+			if isReservedInterfaceField(field, fieldScheme) {
+				continue
+			}
 			missingFields = append(missingFields, field)
 			continue
 		}
@@ -2260,11 +2263,13 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 
 	var missingFields []string
 	for field, fieldScheme := range parentMod.Bindings(PrivateVisibility) {
-		if isReservedInterfaceField(field, fieldScheme) {
-			continue
-		}
 		childScheme, has := child.SchemeOf(field)
 		if !has {
+			// A reserved field the runtime supplies may be left out; one
+			// that's declared is checked like any other field.
+			if isReservedInterfaceField(field, fieldScheme) {
+				continue
+			}
 			missingFields = append(missingFields, field)
 			continue
 		}
