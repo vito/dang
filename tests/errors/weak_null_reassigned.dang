@@ -6,4 +6,4 @@ next: Int {
   p
 }
 
-print(toString(next + 1))
+print(toString((next ?? 0) + 1))
