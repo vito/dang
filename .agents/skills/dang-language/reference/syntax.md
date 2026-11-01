@@ -101,7 +101,7 @@ greet(
 - Unary/postfix (levels 9–10) bind tighter than every binary operator. `&expr`, `!expr`, `-expr`, `.field`, `[i]`, `(args)` all bind as `Term`.
 
 ### Arithmetic
-- `+ - * /` on `Int`/`Float` (mixed promotes to `Float`). `%` is `Int`-only.
+- `+ - * / %` on `Int`/`Float` (mixed promotes to `Float`). Float `%` is Go's `math.Mod`: the remainder takes the dividend's sign (`-7.5 % 2 == -1.5`).
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`).
 - `+` overloads on `String!` (concat) and lists (concat). Operands must be **non-null** (a nullable one is a type error — `!`, `??`, or null-check it first); the result is non-null.
 
