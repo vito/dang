@@ -120,8 +120,7 @@ UserSort(field: UserSortField.NAME, direction: SortDirection.DESC)   # into inpu
 
 case (c) {
   Color.RED => "stop"
-  Color.GREEN => "go"
-  else => "?"        # no static exhaustiveness check
+  Color.GREEN => "go"  # every member named: exhaustive, String! (no else needed; a nullable c also needs `null =>`)
 }
 
 "RED" :: Color!      # validated coercion; a literal that isn't a value ("NOPE" :: Status!) is a compile error, a non-literal String is checked at runtime

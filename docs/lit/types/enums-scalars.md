@@ -38,7 +38,7 @@ case (c) {
 }
 ```
 
-- value patterns are the qualified members; use `else` for a catch-all (no static exhaustiveness check)
+- value patterns are the qualified members (or string literals); naming every member is exhaustive, so the result needs no `else` and stays non-null (a nullable operand also needs a `null` pattern). Otherwise use `else` for a catch-all
 
 ### From strings (`::`)
 

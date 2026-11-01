@@ -271,7 +271,7 @@ union Pet = Cat | Dog
 ```
 - Members must be **object types** (no scalars/interfaces/enums) → `union member X must be an object type, got enum`. Flat unions only.
 - Members must exist; only members may be matched in `case` (`type X is not a member of union Pet`).
-- A `case` with type patterns covering every member is exhaustive (no `else` needed, non-null result); missing members still type-checks, but an unmatched value yields `null`, so the result type is nullable. Add `else => ...` to keep it non-null.
+- A `case` with type patterns covering every member is exhaustive (no `else` needed, non-null result; a nullable operand also needs `null =>`); missing members still type-checks, but an unmatched value yields `null`, so the result type is nullable. Add `else => ...` to keep it non-null.
 
 ### Comparison
 | | what it is | members | discriminate with |
