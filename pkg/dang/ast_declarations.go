@@ -1593,7 +1593,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 
 		if typeScope, ok := env.(TypeScope); ok {
-			installImportedTypeScope(typeScope, i.Name.Name, i.inferred)
+			installImportedTypeScope(typeScope, i.Name.Name, i.inferred, locallyDeclared(ctx))
 		}
 
 		return NonNull(i.inferred), nil
@@ -1612,14 +1612,14 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		if err != nil {
 			return nil, err
 		}
-		installImportedValueScope(scope, i.Name.Name, importValueScope)
+		installImportedValueScope(scope, i.Name.Name, importValueScope, locallyDeclared(ctx))
 		return importValueScope, nil
 	}
 
 	// Create evaluation environment for the imported schema
 	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
 
-	installImportedValueScope(scope, i.Name.Name, importValueScope)
+	installImportedValueScope(scope, i.Name.Name, importValueScope, locallyDeclared(ctx))
 
 	return importValueScope, nil
 }

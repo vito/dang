@@ -34,6 +34,23 @@ type FieldDecl struct {
 	// declaredType is the (weakened) type a declaration pass gave a field
 	// without an annotation, which Infer keeps.
 	declaredType hm.Type
+
+	// shadowsImport is set during inference when the declaration replaces an
+	// unqualified import of the same name in its own frame: evaluation must
+	// then bind over the imported value, as inference resolved the name.
+	shadowsImport bool
+}
+
+// noteImportShadow records whether this declaration shadows an unqualified
+// import bound in env's own frame (see shadowsImport).
+func (s *FieldDecl) noteImportShadow(env hm.Env) {
+	e, ok := env.(TypeScope)
+	if !ok {
+		return
+	}
+	if _, defined := e.LocalSchemeOf(s.Name.Name); defined && localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
+		s.shadowsImport = true
+	}
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -81,6 +98,7 @@ func (s *FieldDecl) funDecl() *FunDecl {
 }
 
 func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	s.noteImportShadow(env)
 	// If the field value is a hoister (e.g. wraps a FunDecl), delegate while
 	// preserving the field's name and metadata. This is the signature boundary:
 	// function bodies are not inferred, but callers can see the function type.
@@ -307,6 +325,7 @@ func (s *FieldDecl) inferDirectives(ctx context.Context, env hm.Env, fresh hm.Fr
 }
 
 func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	s.noteImportShadow(env)
 	fieldType, err := s.signatureType(ctx, env, fresh, false)
 	if err != nil {
 		return nil, err
@@ -334,6 +353,7 @@ func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh
 }
 
 func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	s.noteImportShadow(env)
 	fieldType, err := s.signatureType(ctx, env, fresh, true)
 	if err != nil {
 		return nil, err
@@ -438,8 +458,10 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	}
 
 	if e, ok := env.(TypeScope); ok {
+		// An unqualified import in the same frame is shadowed, not redefined.
+		s.noteImportShadow(env)
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
-		if defined {
+		if defined && !localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
 			curT, curMono := cur.Type()
 			if !curMono {
 				return nil, fmt.Errorf("FieldDecl.Infer: TODO: type is not monomorphic")
@@ -510,7 +532,7 @@ func (s *FieldDecl) Publish(scope ValueScope, val Value) {
 
 func (s *FieldDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		if val, defined := scope.LookupLocal(s.Name.Name); defined {
+		if val, defined := scope.LookupLocal(s.Name.Name); defined && !s.shadowsImport {
 			// Already defined (e.g. through constructor). The value reached us
 			// through a Coerce-wrapped argument so it is already materialized;
 			// don't re-evaluate or re-bind it.

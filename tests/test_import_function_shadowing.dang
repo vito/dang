@@ -1,0 +1,38 @@
+import Test
+
+# Local declarations shadow unqualified imported root fields, in the checker
+# and at runtime alike: a local function, a local `let`, and a local function
+# whose signature differs from the import's.
+hello(name: String! = "world"): String! { "local hello, " + name }
+
+assert { hello("x") == "local hello, x" }
+assert { hello == "local hello, world" }
+assert { Test.hello(name: "x") != "local hello, x" }
+
+let postTitles = ["local"]
+assert { postTitles == ["local"] }
+
+status(n: Int!): Int! { n * 2 }
+
+assert { status(21) == 42 }
+
+caller: String! { hello("from a function") }
+
+assert { caller == "local hello, from a function" }
+
+# The same inside a block, whichever comes first.
+scoped: String! {
+  import Test
+  hello(name: String!): String! { "scoped " + name }
+  hello("x")
+}
+
+assert { scoped == "scoped x" }
+
+declaredFirst: String! {
+  hello(name: String!): String! { "first " + name }
+  import Test
+  hello("x")
+}
+
+assert { declaredFirst == "first x" }
