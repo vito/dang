@@ -1,0 +1,19 @@
+# A local type's new() runs when a value is made, maybe after a narrowed name
+# it reads is set to null.
+f(a: Int): Int! {
+  let x = a
+  if (x != null) {
+    type T {
+      v: Int! = 0
+
+      new {
+        self.v = x + 1
+        self
+      }
+    }
+    x = null
+    T.v
+  } else {
+    0
+  }
+}

@@ -1104,9 +1104,10 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// leave that scope again (see withTypeBody). All of the type's code is
 	// sealed: it can't write, or call anything that writes, outside it.
 	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
+	typeFr := effFrameFrom(ctx)
 	if c.ctorFn != nil {
 		// Constructing runs the field defaults.
-		noteTypeBody(ctx, c.ctorFn.fnEffects().latent, effFrameFrom(ctx).eff)
+		noteTypeBody(ctx, c.ctorFn.fnEffects().latent, typeFr.eff)
 	}
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
@@ -1133,6 +1134,10 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	if newDecl != nil {
 		newBodyErr = c.inferNewConstructor(ctx, newDecl, inferTypeScope, fresh)
 	}
+	// The type's code (field defaults, new(), methods, statics) runs when
+	// its values are made and used, not here: check its reads of outer
+	// null narrowings like a nested function's.
+	exitNarrowBody(ctx, typeFr)
 
 	// Validate interface implementations after fields have been inferred
 	if len(c.Implements) > 0 {
@@ -1923,6 +1928,7 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	// Like an object type's, a scalar's code is sealed (see ObjectDecl.Infer).
 	ctx = withTypeBodyEffFrame(ctx, scalarType, scalarType, inferTypeScope)
+	typeFr := effFrameFrom(ctx)
 	if _, err := InferFormsWithPhases(ctx, formsWithoutNew(s.Value), inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
@@ -1937,6 +1943,8 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			return nil, err
 		}
 	}
+	// Check the scalar's reads of outer null narrowings (see ObjectDecl.Infer).
+	exitNarrowBody(ctx, typeFr)
 
 	return scalarType, nil
 }
