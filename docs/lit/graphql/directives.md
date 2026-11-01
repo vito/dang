@@ -1,20 +1,28 @@
 \use-plugin{dang}
+\literate-fences
 
 # Directives {#directives}
 
 > Meta: short page. The interesting bit is that Dang directives are real declarations, type-checked, not magic comments — that's the differentiator from most languages with comment-pragmas.
 
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
+
 ## What a directive is
 
 - a typed annotation attachable to a declaration or argument
-- a *real declaration* — type-checked args, locations, defaults — not a comment pragma
+- a *real declaration* — type-checked args and defaults — not a comment pragma
 - declared like GraphQL directives (see [#interop]):
 
 ```dang
 directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | OBJECT
-directive @experimental on FIELD_DEFINITION | ARGUMENT_DEFINITION
+directive @experimental on FIELD_DEFINITION | ARGUMENT_DEFINITION | SCALAR
 directive @auth(role: String!) on FIELD_DEFINITION
 directive @cache(ttl: Int! = 300, key: String) on FIELD_DEFINITION
+directive @check on FIELD_DEFINITION
 ```
 
 - a directive with no args omits the `()`
@@ -24,6 +32,7 @@ directive @cache(ttl: Int! = 300, key: String) on FIELD_DEFINITION
 
 - `FIELD_DEFINITION`, `OBJECT`, `ARGUMENT_DEFINITION`, `INTERFACE`, `UNION`, `ENUM`, ... (mirror GraphQL)
 - `|`-separated when a directive applies in multiple positions
+- the list says where a directive belongs, but Dang doesn't check it yet: applying one somewhere else is not an error
 
 ## Applying
 
@@ -31,25 +40,61 @@ directive @cache(ttl: Int! = 300, key: String) on FIELD_DEFINITION
 type Person @deprecated(reason: "use NewPerson") {
   name: String! @deprecated
   email: String! @cache(ttl: 60)
+  greet(who: String! @experimental): String! { `hi, ${who}` }
 }
+
+Person("Ada", "ada@example.com").greet("Grace")
 ```
 
 - suffix form attaches to the field or type: `name: String! @deprecated`
 - prefix form on its own, before the declaration: `@check validated: String! { ... }`
 - both forms apply to types, scalars (`scalar Tag @experimental`), fields, and function/field arguments (`process(user: Person! @experimental)`)
-- multiple prefix directives go on separate lines; prefix and suffix on the same declaration are both collected:
+
+Multiple prefix directives go on separate lines, and prefix and suffix
+directives on the same declaration are all collected. A directive has no
+effect on what the field does:
 
 ```dang
 @check
+@experimental
 mixedField: String! @cache(ttl: 120) { "mixed" }
+
+mixedField
+```
+
+Using a directive that isn't declared is an error:
+
+```dang-failure
+type Account { id: String! @audited }
 ```
 
 ## Arguments
 
-- named: `@cache(ttl: 60, key: "user")`
-- positional shorthand: `@cache(60, key: "user")` — positionals fill args in order
-- positional args must come *before* named ones; `@cache(key: "x", 60)` → `positional arguments must come before named arguments`
-- defaults from the declaration apply when an arg is omitted
+Arguments are named, or positional in declaration order, and the
+declaration's defaults fill in what's left out:
+
+```dang
+type Session {
+  token: String! @cache(ttl: 60, key: "user")
+  user: String! @cache(60, key: "user")
+  role: String! @cache
+}
+```
+
+Arguments are checked like a function call's: required ones must be given,
+types must match, and positional arguments come *before* named ones:
+
+```dang-failure
+type Admin { panel: String! @auth }
+```
+
+```dang-failure
+type Admin { panel: String! @auth(role: 3) }
+```
+
+```dang-failure
+type Admin { panel: String! @cache(key: "x", 60) }
+```
 
 ## Qualified access
 
@@ -59,8 +104,8 @@ mixedField: String! @cache(ttl: 120) { "mixed" }
 
 ## Common built-ins
 
-- `@defaultPath(path: ...)` — provides a default for a `Directory!` field
-- `@ignorePatterns(patterns: [...])` — filtering metadata
+- `@defaultPath(path: ...)` — provides a default for a `Directory!` field (Dagger)
+- `@ignorePatterns(patterns: [...])` — filtering metadata (Dagger)
 - `@JSON.field(name:, omitNull:, omitEmpty:)` / `@JSON.ignore` (and `@YAML.*`, `@TOML.*`) — control how a field serializes (see [#json-yaml])
 - `@example(code: String!)` — attaches a runnable example to a declaration, read by doc tooling (the stdlib reference builds its live REPLs from these). Idiomatically the code is a language-tagged fenced template, so editors highlight it as Dang:
 
@@ -72,6 +117,8 @@ doubles a number
 double(21)
 ```)
 double(n: Int!): Int! { n * 2 }
+
+double(21)
 ````
 
 - plus every directive imported from connected schemas (see [#modules] for import/qualification)
