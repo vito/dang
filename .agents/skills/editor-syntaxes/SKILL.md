@@ -69,21 +69,20 @@ editing the Zed query. New capture names also need a case in `captureClass`
 in `pkg/dang/highlight_common.go` (kept in lockstep with
 `docs/go/highlight.go`).
 
-## Stale-parser gotcha (cgo build cache)
+## Stale-parser guard (cgo build cache)
 
 `pkg/dang/danglang` binds the generated parser by `#include`-ing
 `treesitter/src/parser.c` across package directories, and Go's build cache
-does **not** track that file. After `./hack/generate` regenerates the
-grammar, cached builds keep linking the *old* parser; the first symptom is
-the embedded highlight query failing to compile ("Invalid node type
-<new_token>") and the REPL silently rendering plain text
-(`TestHighlightCodeStylesAndPreservesText` fails). Force one rebuild:
+does **not** track that file. So the treesitter `go generate` step (run by
+`./hack/generate`) ends by writing `pkg/dang/danglang/sources_digest.go`, a
+hash of the included C sources: it changes the package, so Go rebuilds the
+binding. The treesitter generate/stale check fails if it's out of date.
 
-```bash
-go test -a ./pkg/dang/ -run TestHighlight
-```
-
-(`-a` recomputes the cache entry; subsequent normal builds are fine.)
+Running `tree-sitter generate` by hand skips the stamp, and cached builds
+then keep linking the *old* parser; the first symptom is the embedded
+highlight query failing to compile ("Invalid node type <new_token>") and the
+REPL silently rendering plain text (`TestHighlightCodeStylesAndPreservesText`
+fails). Re-run the treesitter `go generate` to fix it.
 
 ## Checklist
 
@@ -95,8 +94,8 @@ follows its "adding a keyword" checklist for the grammar and tests):
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`
 3. [ ] Update `editors/vscode/syntaxes/dang.tmLanguage.json`
 4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`
-5. [ ] Force-rebuild the cgo parser binding (see gotcha above)
-6. [ ] Add/refresh `treesitter/test/corpus/` and `editors/highlights/corpus/`
+   (and `sources_digest.go`, so the cgo parser binding is rebuilt)
+5. [ ] Add/refresh `treesitter/test/corpus/` and `editors/highlights/corpus/`
        cases for the new construct (`tree-sitter test --update`,
        `go test ./editors/ -run TestNeovimHighlights -update`)
-7. [ ] Commit submodules, then parent repo
+6. [ ] Commit submodules, then parent repo
