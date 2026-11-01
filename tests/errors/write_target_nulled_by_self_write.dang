@@ -1,0 +1,19 @@
+# The value of a write through a narrowed bare field may null the field
+# (here through a block expression writing `self.cur`), before the path is
+# walked.
+type Box {
+  n: Int! = 0
+}
+
+type Holder {
+  cur: Box = Box
+
+  reset: Holder! {
+    if (cur == null) { return self }
+    cur.n = {
+      self.cur = null
+      3
+    }
+    self
+  }
+}
