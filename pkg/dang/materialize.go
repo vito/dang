@@ -317,7 +317,7 @@ func diagnoseAssignment(have, want hm.Type) error {
 			// Records unify only with records of the very same field types.
 			return fmt.Errorf("cannot use %s as %s: record fields must have exactly the same types", have, want)
 		case haveMod.Named == "" && wantMod.Kind == InputKind:
-			return fmt.Errorf("cannot use %s as %s: a record must have exactly the input's fields", have, want)
+			return fmt.Errorf("cannot use %s as %s: a record's fields and their types must match the input's exactly, nullability included", have, want)
 		case haveMod.Named == "":
 			// Named types are nominal; a record never stands in for one.
 			return fmt.Errorf("cannot use %s as %s: a record can't stand in for %s, even with the same fields",
