@@ -81,12 +81,12 @@ interchangeable. The formatter strips trailing commas.
 
 ### Numbers
 
-`Int!` literals are decimal, signed 64-bit. `Float!` literals need a digit
-on both sides of the `.`, and may have an exponent (`e` or `E`, with an
-optional sign):
+`Int!` literals are decimal, signed 64-bit. A `Float!` literal has a
+fraction (a digit on both sides of the `.`), an exponent (`e` or `E`, with an
+optional sign), or both:
 
 ```dang
-[3.14, 1.5e10, 2.5e-3]
+[3.14, 1e5, 2.5e-3]
 ```
 
 There are no hex, octal, or binary literals:
@@ -113,12 +113,18 @@ let nickname: String = null
 
 The three flavors, side by side:
 
-- **Double-quoted** — `"hello"`: single-line (no raw newline), with escapes: `\a \b \f \n \r \t \v \" \\`, `\ooo` (octal), `\xNN`, `\uNNNN`, `\UNNNNNNNN`
+- **Double-quoted** — `"hello"`: single-line (no raw newline), with escapes: `\a \b \f \n \r \t \v \" \\ \/`, `\ooo` (octal), `\xNN`, `\uNNNN`, `\UNNNNNNNN`
 - **Triple-quoted** — `"""..."""`: multi-line, raw content (escape sequences are NOT processed), dedents by minimum indent; a leading and trailing newline adjacent to the `"""` fences is stripped (so `"""\nhello\n"""` == `"hello"`); the canonical form for docstrings (see Comments above)
 - **Backtick templates** — `` `hello ${name}!` ``: single-line, with `${...}` interpolation
 
 ```dang
 "tab\there, \x41, \u00e9"
+```
+
+`\/` is just `/`, as in JSON:
+
+```dang
+"https:\/\/danglang.org"
 ```
 
 ```dang
