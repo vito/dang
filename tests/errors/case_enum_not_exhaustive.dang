@@ -1,0 +1,16 @@
+# A case missing an enum value can fall through, so its result is nullable;
+# a local named like a value (`RED` below holds GREEN) doesn't count as that
+# value.
+
+enum Color {
+  RED
+  GREEN
+}
+
+let c: Color! = Color.GREEN
+let RED = Color.GREEN
+
+let n: Int! = case (c) {
+  RED => 1
+  Color.GREEN => 2
+}

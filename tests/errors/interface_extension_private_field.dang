@@ -1,0 +1,17 @@
+# A child interface can't make a parent's public field private: a Child
+# widens to a Parent, through which anyone reads `name`.
+
+interface Parent {
+  name: String!
+}
+
+interface Child implements Parent {
+  let name: String!
+}
+
+type Secret implements Child {
+  let name: String! = "hidden"
+}
+
+let p: Parent! = Secret
+print(p.name)

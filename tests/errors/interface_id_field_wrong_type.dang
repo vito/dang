@@ -1,0 +1,11 @@
+# An implementation that declares an interface's `id: ID!` field must give it
+# a compatible type: a String! isn't an ID!. (Only an `id` the implementation
+# leaves out is exempt, for Dagger, whose runtime supplies it.)
+
+interface Thing {
+  id: ID!
+}
+
+type Widget implements Thing {
+  id: String!
+}

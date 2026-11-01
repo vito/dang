@@ -1,0 +1,22 @@
+# Named object types are nominal: a record literal of the same shape isn't
+# a Dog. Accepting it let an exhaustive case over Pet miss at runtime.
+
+type Dog {
+  name: String!
+}
+
+type Cat {
+  meow: String!
+}
+
+union Pet = Dog | Cat
+
+let d: Dog! = {{name: "x"}}
+let p: Pet! = d
+
+let s: String! = case (p) {
+  x: Dog => x.name
+  c: Cat => c.meow
+}
+
+print(s)

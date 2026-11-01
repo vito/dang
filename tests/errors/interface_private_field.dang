@@ -1,0 +1,13 @@
+# A private (`let`) member doesn't implement an interface's field: anyone
+# holding a Named may read `name`.
+
+interface Named {
+  name: String!
+}
+
+type Secret implements Named {
+  let name: String! = "hidden"
+}
+
+let n: Named! = Secret
+print(n.name)

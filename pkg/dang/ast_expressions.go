@@ -141,9 +141,26 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			c.SetInferredType(t)
 			return t, nil
 		default:
+			if union, ok := fun.(*hm.UnionType); ok && allFunctionTypes(union.Options) {
+				// Function types only merge when one fits the other, parameter
+				// names included, since calls may name arguments.
+				return nil, fmt.Errorf("cannot call a value that may be any of the functions %s: their signatures differ (parameter names count, since calls may name arguments)", fun)
+			}
 			return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 		}
 	})
+}
+
+func allFunctionTypes(ts []hm.Type) bool {
+	for _, t := range ts {
+		if nn, ok := t.(hm.NonNullType); ok {
+			t = nn.Type
+		}
+		if _, ok := t.(*hm.FunctionType); !ok {
+			return false
+		}
+	}
+	return len(ts) > 0
 }
 
 // nullableCalleeError reports a call of a function value that may be null.
@@ -396,10 +413,12 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 
 	// Set expected parameter types on the block arg
 	c.BlockArg.ExpectedParamTypes = make([]hm.Type, len(expectedArgRecord.Fields))
+	c.BlockArg.ExpectedParamNames = make([]string, len(expectedArgRecord.Fields))
 	for i := range expectedArgRecord.Fields {
 		expectedField := expectedArgRecord.Fields[i]
 		expectedType, _ := expectedField.Value.Type()
 		c.BlockArg.ExpectedParamTypes[i] = expectedType
+		c.BlockArg.ExpectedParamNames[i] = expectedField.Key
 	}
 
 	// Set expected return type on the block arg
@@ -642,11 +661,18 @@ func (c *FunCall) validateArgumentOrder() error {
 // handlePositionalArgument processes a positional argument
 func (c *FunCall) handlePositionalArgument(arg Keyed[Node], val Value, argValues map[string]Value,
 	positionallySet map[string]bool, paramNames []string, positionalIndex *int) error {
-	if *positionalIndex >= len(paramNames) {
+	if *positionalIndex >= len(paramNames) && arg.Key == "" {
 		return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
 			*positionalIndex+1, len(paramNames))
 	}
-	paramName := paramNames[*positionalIndex]
+	// Inference resolved the position against the callee's static type
+	// (see inferFunctionType). Prefer that name: the value called may order
+	// its parameters differently, like an object's method called through an
+	// interface, which only has to match the interface's parameters by name.
+	paramName := arg.Key
+	if paramName == "" {
+		paramName = paramNames[*positionalIndex]
+	}
 	if _, exists := argValues[paramName]; exists {
 		return fmt.Errorf("argument %q specified both positionally and by name", paramName)
 	}
@@ -951,7 +977,25 @@ func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool 
 // selections and are unaffected.
 func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) error {
 	recType, ok := rec.(*Type)
-	if !ok || recType.Visibility(name) != PrivateVisibility {
+	if !ok {
+		return nil
+	}
+	if recType.IsMeta() {
+		// A type's name held as a value (`let ns = Label; ns.secret`), or
+		// `self` in a static: its members are the type's statics, private
+		// to the module declaring the type.
+		owner := recType.InstanceType()
+		if owner.StaticVisibility(name) != PrivateVisibility {
+			return nil
+		}
+		if home := owner.HomeModule(); home != nil {
+			if cur := moduleScopeFromContext(ctx); cur != nil && home != cur {
+				return fmt.Errorf("%q is a private static of %s and cannot be accessed from another module", name, owner.Named)
+			}
+		}
+		return nil
+	}
+	if recType.Visibility(name) != PrivateVisibility {
 		return nil
 	}
 	if home := recType.HomeModule(); home != nil {
@@ -989,7 +1033,10 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if sym, ok := d.Receiver.(*Symbol); ok {
 			if ts, ok := env.(TypeScope); ok {
 				if named, found := ts.NamedType(sym.Name); found {
-					if owner, ok := named.(*Type); ok {
+					// An enum's meta-type holds its values, which are read off
+					// the enum's namespace value like any field, not from
+					// statics; so do a builtin scalar's members (JSON.encode).
+					if owner, ok := named.(*Type); ok && owner.Kind != EnumKind && !isBuiltinScalarMember(owner, d.Field.Name) {
 						// A public static is reachable as `Type.member`
 						// anywhere; a private (let) static only from within its
 						// declaring module (module-level visibility, matching
@@ -1154,10 +1201,27 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 
 		scheme, found := rec.SchemeOf(d.Field.Name)
+		if mod, ok := rec.(*Type); ok && mod.Kind == EnumKind {
+			// An enum value has no members: the enum's values (and
+			// `values`) belong to its namespace, the enum's name.
+			tv := fresh.Fresh()
+			d.SetInferredType(tv)
+			if found {
+				return tv, fmt.Errorf("a %s value has no field %q; %s belongs to the enum itself (%s.%s)",
+					mod, d.Field.Name, d.Field.Name, mod, d.Field.Name)
+			}
+			return tv, fmt.Errorf("a %s value has no field %q", mod, d.Field.Name)
+		}
 		if !found {
 			// Return a type variable to allow downstream inference to continue
 			tv := fresh.Fresh()
 			d.SetInferredType(tv)
+			if mod, ok := rec.(*Type); ok && mod.IsMeta() {
+				// The meta-type prints as the type's own name; say which.
+				if _, isMember := mod.InstanceType().LocalSchemeOf(d.Field.Name); isMember {
+					return tv, fmt.Errorf("field %q belongs to values of %s, not to %s itself", d.Field.Name, mod, mod)
+				}
+			}
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
 		if err := checkMemberAccessible(ctx, rec, d.Field.Name); err != nil {
@@ -3488,6 +3552,11 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		subs, err := hm.Assignable(exprType, hintType)
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
+			if err == nil {
+				if litErr := checkEnumLiterals(t.Expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
+					return nil, litErr
+				}
+			}
 		}
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil
@@ -3532,12 +3601,23 @@ type BlockArg struct {
 	// Set by FunCall.Infer() before calling BlockArg.Infer()
 	ExpectedParamTypes []hm.Type
 
+	// ExpectedParamNames are the parameter names of the function signature
+	// the block is passed for, index-aligned with ExpectedParamTypes. The
+	// block's type takes them on, so callers may name its arguments as the
+	// signature does, whatever the block calls them locally. Nil keeps the
+	// block's own names.
+	ExpectedParamNames []string
+
 	// ExpectedReturnType is the return type expected by the function signature.
 	// Set by FunCall.Infer() before calling BlockArg.Infer()
 	ExpectedReturnType hm.Type
 
 	// Inferred is the final inferred function type
 	Inferred *hm.FunctionType
+
+	// LocalNames are the names the body binds each parameter of Inferred
+	// to, index-aligned with its argument record.
+	LocalNames []string
 
 	// InferredScope is the environment with parameters in scope
 	InferredScope TypeScope
@@ -3622,6 +3702,22 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			)
 		}
 
+		// A block's parameters take on the signature's names by position
+		// (see paramKey below), so one reusing a signature name in another
+		// position would be reached by callers naming the other parameter.
+		// (len(b.Args) <= len(b.ExpectedParamNames) whenever any are set.)
+		for i, arg := range b.Args {
+			for j, name := range b.ExpectedParamNames {
+				if j != i && name == arg.Name.Name {
+					return nil, NewInferError(
+						fmt.Errorf("block parameter %q takes the signature's %q; %q is a different parameter of the signature, so name this one differently",
+							arg.Name.Name, b.ExpectedParamNames[i], name),
+						arg,
+					)
+				}
+			}
+		}
+
 		// A block with no explicit parameters that references `_` in its body
 		// takes a single implicit parameter named `_` (Kotlin `it`-style). Every
 		// `_` in the block refers to that same single argument; a nested
@@ -3634,6 +3730,14 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Add user-provided parameters to environment with expected types
 		argSchemes := []Keyed[*hm.Scheme]{}
+		localNames := []string{}
+		// paramKey is the name callers know parameter i by.
+		paramKey := func(i int, local string) string {
+			if i < len(b.ExpectedParamNames) && b.ExpectedParamNames[i] != "" {
+				return b.ExpectedParamNames[i]
+			}
+			return local
+		}
 		for i, arg := range b.Args {
 			var paramType hm.Type
 			if i < len(b.ExpectedParamTypes) && b.ExpectedParamTypes[i] != nil {
@@ -3647,9 +3751,10 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			// Add parameter to environment
 			newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramType))
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
-				Key:   arg.Name.Name,
+				Key:   paramKey(i, arg.Name.Name),
 				Value: hm.NewScheme(nil, paramType),
 			})
+			localNames = append(localNames, arg.Name.Name)
 		}
 
 		// The implicit `_` parameter consumes the first expected parameter slot.
@@ -3663,9 +3768,10 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			}
 			newEnv.Add("_", hm.NewScheme(nil, paramType))
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
-				Key:   "_",
+				Key:   paramKey(0, "_"),
 				Value: hm.NewScheme(nil, paramType),
 			})
+			localNames = append(localNames, "_")
 			consumed = 1
 		}
 
@@ -3673,12 +3779,14 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// but NOT to the environment (they will be ignored by the block)
 		for i := consumed; i < len(b.ExpectedParamTypes); i++ {
 			paramType := b.ExpectedParamTypes[i]
-			// Generate a parameter name for the type signature
-			paramName := fmt.Sprintf("_unused%d", i)
+			// Bind it under a placeholder, not the signature's name, so it
+			// doesn't shadow an outer binding the body uses.
+			localName := fmt.Sprintf("_unused%d", i)
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
-				Key:   paramName,
+				Key:   paramKey(i, localName),
 				Value: hm.NewScheme(nil, paramType),
 			})
+			localNames = append(localNames, localName)
 		}
 
 		// Infer the body with parameters in scope. A block invocation target makes
@@ -3765,6 +3873,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Build the function type
 		b.Inferred = hm.NewFnType(NewRecordType("", argSchemes...), bodyType)
+		b.LocalNames = localNames
 		b.Inferred.SetEffect(b.effect)
 		t := b.Inferred
 		b.SetInferredType(t)
@@ -3792,6 +3901,7 @@ func (b *BlockArg) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		return FunctionValue{
 			Args:                argNames,
+			LocalArgs:           b.LocalNames,
 			Body:                b.BodyNode,
 			Closure:             scope,
 			FnType:              b.Inferred,

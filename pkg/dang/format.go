@@ -1390,6 +1390,17 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 				if i > 0 {
 					f.write(", ")
 				}
+				if arg.IsBlockParam {
+					f.write("&")
+					f.write(f.ident(arg.Name.Name))
+					if funType, ok := arg.Type_.(FunTypeNode); ok {
+						f.formatBlockParamType(funType)
+					} else {
+						f.write(": ")
+						f.formatTypeNode(arg.Type_)
+					}
+					continue
+				}
 				f.write(f.ident(arg.Name.Name))
 				f.write(": ")
 				f.formatTypeNode(arg.Type_)

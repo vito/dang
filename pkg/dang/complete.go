@@ -182,6 +182,11 @@ func MembersOf(t hm.Type, partial string) []Completion {
 			return nil
 		}
 	}
+	// An enum value has no members; its enum's values belong to the enum's
+	// name (its meta-type).
+	if mod, ok := module.(*Type); ok && mod.Kind == EnumKind {
+		return nil
+	}
 
 	partialLower := strings.ToLower(partial)
 	var completions []Completion
@@ -276,6 +281,10 @@ func IsTypeDefBinding(scheme *hm.Scheme) bool {
 	mod, ok := t.(*Type)
 	if !ok {
 		return false
+	}
+	// A type's name is bound to its meta-type (its namespace).
+	if mod.IsMeta() {
+		mod = mod.InstanceType()
 	}
 	switch mod.Kind {
 	case ScalarKind, EnumKind, InputKind, InterfaceKind, UnionKind:

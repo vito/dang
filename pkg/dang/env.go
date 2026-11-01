@@ -421,16 +421,18 @@ func init() {
 	// Install the builtin scalars (JSON/YAML/TOML) in both namespaces, like the
 	// modules above. They are the ScalarKind static modules registerStdlib just
 	// registered. Each is AddObject'd so `:: JSON` resolves in type position even
-	// without a schema scalar, and Add'd non-null so `JSON.encode`/`.decode`
-	// resolve as a value. A user- or schema-declared scalar of the same name
-	// shadows these and is grafted the identical members (merge, not collide),
-	// so all behave uniformly. See builtins.go: BuiltinScalarModule.
+	// without a schema scalar, and its name is bound to its meta-type, holding
+	// `encode`/`decode` (registerBuiltinTypes), so they resolve on the name but
+	// a JSON value is never mistaken for the namespace. A user- or
+	// schema-declared scalar of the same name shadows these and is grafted the
+	// identical members (merge, not collide), so all behave uniformly. See
+	// builtins.go: BuiltinScalarModule.
 	for _, mod := range StaticModules() {
 		if mod.Kind != ScalarKind {
 			continue
 		}
 		Prelude.AddObject(mod.Named, mod)
-		Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
+		Prelude.Add(mod.Named, hm.NewScheme(nil, typeNameValueType(mod)))
 	}
 
 	// Register builtin function types from the registry
@@ -536,9 +538,12 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		if t.Kind == introspection.TypeKindEnum {
 			sub, found := schemaTypes[t.Name]
 			if found {
-				// Add the enum type as a scheme that represents the module itself
-				env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
-				env.SetVisibility(t.Name, PublicVisibility)
+				// Bind the enum's namespace; its members are filled in with
+				// the enum's values below.
+				if subMod, ok := sub.(*Type); ok {
+					env.Add(t.Name, hm.NewScheme(nil, typeNameValueType(subMod)))
+					env.SetVisibility(t.Name, PublicVisibility)
+				}
 			}
 		}
 	}
@@ -554,17 +559,18 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			if !found {
 				continue
 			}
-			// Add the scalar type as a scheme. A builtin scalar (e.g. an imported
-			// JSON scalar) doubles as its namespace and is always present, so it
-			// binds non-null — otherwise JSON.encode would inherit the binding's
-			// nullability and weaken String! to String.
-			scalarScheme := hm.NewScheme(nil, sub)
-			if _, isBuiltin := BuiltinScalarModule(t.Name); isBuiltin {
-				scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: sub})
+			// Add the scalar type as a scheme. Its name is its namespace (the
+			// meta-type), not a value of the scalar; a builtin scalar's name
+			// (e.g. an imported JSON scalar) also carries Dang's members.
+			var scalarScheme *hm.Scheme
+			if subMod, ok := sub.(*Type); ok {
+				scalarScheme = hm.NewScheme(nil, typeNameValueType(subMod))
+			} else {
+				scalarScheme = hm.NewScheme(nil, sub)
 			}
 			env.Add(t.Name, scalarScheme)
 			env.SetVisibility(t.Name, PublicVisibility)
-			// Staple Dang's members onto the scalar so it doubles as the namespace.
+			// Staple Dang's members onto the scalar's namespace.
 			if scalarMod, ok := sub.(*Type); ok {
 				attachBuiltinSchemes(scalarMod)
 			}
@@ -576,9 +582,10 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		if t.Kind == introspection.TypeKindInterface {
 			sub, found := schemaTypes[t.Name]
 			if found {
-				// Add the interface type as a scheme that represents the module itself
-				env.Add(t.Name, hm.NewScheme(nil, sub))
-				env.SetVisibility(t.Name, PublicVisibility)
+				if subMod, ok := sub.(*Type); ok {
+					env.Add(t.Name, hm.NewScheme(nil, typeNameValueType(subMod)))
+					env.SetVisibility(t.Name, PublicVisibility)
+				}
 			}
 		}
 	}
@@ -588,9 +595,10 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		if t.Kind == introspection.TypeKindUnion {
 			sub, found := schemaTypes[t.Name]
 			if found {
-				// Add the union type as a scheme that represents the module itself
-				env.Add(t.Name, hm.NewScheme(nil, sub))
-				env.SetVisibility(t.Name, PublicVisibility)
+				if subMod, ok := sub.(*Type); ok {
+					env.Add(t.Name, hm.NewScheme(nil, typeNameValueType(subMod)))
+					env.SetVisibility(t.Name, PublicVisibility)
+				}
 			}
 		}
 	}
@@ -666,6 +674,9 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(install)}))
 			install.Add("values", valuesType)
 			install.SetVisibility("values", PublicVisibility)
+			if enumMod, ok := install.(*Type); ok {
+				enumNamespaceType(enumMod)
+			}
 		}
 
 		for _, f := range t.Fields {
@@ -1044,12 +1055,18 @@ func registerBuiltinTypes() {
 		})
 	}
 
-	// Register all static method types on their host modules
+	// Register all static method types on their host modules. A builtin
+	// scalar's (JSON, ...) go on its meta-type, the type of its name: its
+	// values are plain strings, with no such members.
 	for _, hostModule := range StaticModules() {
+		target := hostModule
+		if hostModule.Kind == ScalarKind {
+			target = hostModule.MetaType()
+		}
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
-			hostModule.Add(def.Name, hm.NewScheme(nil, fnType))
-			hostModule.SetVisibility(def.Name, PublicVisibility)
+			target.Add(def.Name, hm.NewScheme(nil, fnType))
+			target.SetVisibility(def.Name, PublicVisibility)
 		})
 	}
 }
@@ -1095,6 +1112,44 @@ func (e *Type) MetaType() *Type {
 // IsMeta reports whether this type is a meta-type (the type of a type *name*,
 // as opposed to instances of the type).
 func (e *Type) IsMeta() bool { return e.metaOf != nil }
+
+// typeNameValueType is the type of an interface or union name used as a
+// value (`Named != null`): its namespace, the meta-type, which has no
+// members of its own. It is not an instance, so it can't stand in for one
+// and its fields can't be read off it. The meta-type is created here, while
+// the declaring scope is still private to one goroutine.
+func typeNameValueType(t *Type) hm.Type {
+	return hm.NonNullType{Type: t.MetaType()}
+}
+
+// namespaceModuleOf returns the module for the runtime value of a type's
+// name: its meta-type when one was created at type-check time (see
+// typeNameValueType), else the type itself. It never creates a meta-type,
+// so it is safe on types shared between evaluations.
+func namespaceModuleOf(t TypeScope) TypeScope {
+	if mod, ok := t.(*Type); ok && mod.meta != nil {
+		return mod.meta
+	}
+	return t
+}
+
+// enumNamespaceType is the type of an enum's name used as a value: the
+// namespace holding its values (`Color.RED`, `Color.values`), as opposed to
+// an enum value, which has no members. It copies the enum's public members
+// onto its meta-type; call it once they are all declared, while the enum is
+// still private to one goroutine. The enum keeps its own copy, so readers
+// listing an enum's values (hover, imports, validation) see them as before.
+func enumNamespaceType(enum *Type) hm.Type {
+	meta := enum.MetaType()
+	for name, scheme := range enum.Bindings(PublicVisibility) {
+		meta.Add(name, scheme)
+		meta.SetVisibility(name, PublicVisibility)
+		if doc, ok := enum.GetDocString(name); ok {
+			meta.SetDocString(name, doc)
+		}
+	}
+	return hm.NonNullType{Type: meta}
+}
 
 // InstanceType returns the type a meta-type describes, or nil when e is not a
 // meta-type.
@@ -1276,6 +1331,14 @@ func (t *Type) Eq(other hm.Type) bool {
 	if t.Named != "" {
 		// Named modules are only equal if they're the exact same instance (pointer equality)
 		return t == otherMod
+	}
+	if otherMod.Named != "" {
+		// Named types are nominal: a record of the same shape isn't one.
+		// Input objects are the exception: plain data with no identity
+		// (no `case`, no methods), so a record of their shape is one.
+		if otherMod.Kind != InputKind {
+			return false
+		}
 	}
 	// Unnamed modules (anonymous record-like modules) use structural equality
 	// up to a renaming of their variables: two `{{xs: []}}`s, or a `{{x: []}}`
@@ -1552,5 +1615,32 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 		}
 	}
 
+	// The block argument is an argument too: callers going through the
+	// interface pass a block of the interface's block type, which the
+	// object's method then calls as its own block type.
+	ifaceBlock, objectBlock := ifaceFn.Block(), objectFn.Block()
+	switch {
+	case objectBlock == nil:
+		// Any block the interface's callers pass is ignored.
+	case ifaceBlock == nil:
+		return fmt.Errorf("field %q: object takes a block argument %s but interface does not",
+			fieldName, objectBlock)
+	case !sameParamNames(ifaceBlock, objectBlock):
+		// Callers may name a block's arguments, so they must agree.
+		return fmt.Errorf("field %q: block argument type %s names its parameters differently from interface block type %s",
+			fieldName, objectBlock, ifaceBlock)
+	case !hm.IsSubtypeOf(ifaceBlock, objectBlock):
+		return fmt.Errorf("field %q: block argument type %s is not compatible with interface block type %s (contravariance required)",
+			fieldName, objectBlock, ifaceBlock)
+	}
+
 	return nil
+}
+
+// sameParamNames reports whether two function types name their parameters
+// alike, in the same order.
+func sameParamNames(a, b *hm.FunctionType) bool {
+	aArgs, aOk := a.Arg().(*RecordType)
+	bArgs, bOk := b.Arg().(*RecordType)
+	return aOk && bOk && aArgs.SameLabels(bArgs)
 }

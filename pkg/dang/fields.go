@@ -399,7 +399,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 		if definedType != nil {
 			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
-				return nil, NewInferError(err, s.Value)
+				return nil, WrapInferError(err, s.Value)
 			}
 			s.defaultType = inferredType
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
@@ -1164,13 +1164,23 @@ func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeS
 	var missingFields []string
 	// Check that all interface fields are present in the object
 	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
-		if isReservedInterfaceField(field, fieldScheme) {
-			continue
-		}
 		objectFieldScheme, objectHasField := objectMod.SchemeOf(field)
 		if !objectHasField {
+			// The runtime supplies a reserved field (Dagger's `id: ID!`)
+			// for implementers that don't declare it; one that does is
+			// checked like any other field.
+			if isReservedInterfaceField(field, fieldScheme) {
+				continue
+			}
 			missingFields = append(missingFields, field)
 			continue
+		}
+		if ifaceMod.Visibility(field) == PublicVisibility && objectMod.Visibility(field) == PrivateVisibility {
+			// Anyone holding the interface may read the field.
+			return WrapInferError(
+				fmt.Errorf("field %q of %s is private (`let`), but interface %s makes it public", field, objectMod, ifaceMod),
+				ifaceSym,
+			)
 		}
 
 		// Get the types from the schemes
@@ -1207,8 +1217,11 @@ func (c *ObjectDecl) extractConstructorParameters() []*FieldDecl {
 
 	for _, form := range c.Value.Forms {
 		if field, ok := form.(*FieldDecl); ok {
-			// Skip function fields
-			if _, isFun := field.Value.(*FunDecl); isFun {
+			// Skip function fields. Look through the Coerce inference wraps
+			// some of them in: this also runs at eval, after inference, and
+			// must find the same parameters the constructor type was built
+			// from.
+			if field.funDecl() != nil {
 				continue
 			}
 
@@ -1476,16 +1489,20 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		mod.SetDocString(e.Name.Name, e.DocString)
 	}
 
-	// Add the enum module to the environment so it can be referenced
-	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
-	enumScheme := hm.NewScheme(nil, NonNull(enumType))
+	// Add the enum's namespace to the environment so it can be referenced.
+	// Its members are filled in below, in pass 1.
+	enumScheme := hm.NewScheme(nil, typeNameValueType(enumType))
 	env.Add(e.Name.Name, enumScheme)
 	// Carry the declaration's visibility so the enum's value binding is exported
 	// across a module boundary (the eval side binds it with e.Visibility). Without
 	// this it defaults to private and an importer can't reach it unqualified.
 	mod.SetVisibility(e.Name.Name, e.Visibility)
 
-	if pass > 0 {
+	// The values depend on nothing but the enum itself, so declare them
+	// with its name, in pass 0: constants (inferred before pass 1) may
+	// already hand string literals to the enum, which are checked against
+	// its values (checkEnumLiterals). Repeating this in pass 1 is harmless.
+	{
 		// Add each enum value as a field in the enum module
 		for _, value := range e.Values {
 			// Each enum value has the type of the enum itself (not wrapped)
@@ -1499,6 +1516,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(enumType)}))
 		enumType.Add("values", valuesType)
 		enumType.SetVisibility("values", PublicVisibility)
+		enumNamespaceType(enumType)
 	}
 
 	return nil
@@ -1762,16 +1780,13 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 
 	// The scalar's value binding. A scalar with new() binds its constructor
-	// function instead (added in pass 1 below); a builtin scalar (JSON, ...)
-	// doubles as its namespace and is always present, so it binds non-null —
-	// otherwise member access like JSON.encode would inherit the binding's
-	// nullability and weaken String! to String.
+	// function instead (added in pass 1 below). Otherwise the name is the
+	// scalar's namespace, typed as its meta-type: it holds the scalar's
+	// statics, and for a builtin scalar's name (JSON, ...) Dang's members
+	// (attachBuiltinSchemes). It is not a value of the scalar.
 	newDecl := findNewConstructorIn(s.Value)
 	if newDecl == nil {
-		scalarScheme := hm.NewScheme(nil, scalarType)
-		if _, isBuiltin := BuiltinScalarModule(s.Name.Name); isBuiltin {
-			scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
-		}
+		scalarScheme := hm.NewScheme(nil, typeNameValueType(scalarType))
 		env.Add(s.Name.Name, scalarScheme)
 		mod.SetVisibility(s.Name.Name, s.Visibility)
 	}
@@ -1960,6 +1975,15 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		if err := evalScalarStatics(); err != nil {
 			return nil, err
 		}
+		// The name is typed as the scalar's meta-type, which holds its
+		// statics (see Hoist), so as a value it is the statics namespace:
+		// `let ns = Tag; ns.sep` reads it. A builtin scalar's members ride
+		// along.
+		if statics := s.Inferred.Statics(); statics != nil {
+			attachBuiltinMethods(statics, s.Inferred)
+			scope.Bind(s.Name.Name, statics, s.Visibility)
+			return statics, nil
+		}
 		return scalarModule, nil
 	})
 }
@@ -2032,7 +2056,9 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	// Pass 0: Register the interface type.
 	if pass == 0 {
 		// Add the interface type to the environment so it can be referenced.
-		interfaceScheme := hm.NewScheme(nil, iface)
+		// As a value the name is the interface's namespace, never an
+		// instance of it.
+		interfaceScheme := hm.NewScheme(nil, typeNameValueType(iface))
 		env.Add(i.Name.Name, interfaceScheme)
 		// Carry the declaration's visibility so the interface's value binding is
 		// exported across a module boundary (the eval side binds it with
@@ -2199,13 +2225,22 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 
 	var missingFields []string
 	for field, fieldScheme := range parentMod.Bindings(PrivateVisibility) {
-		if isReservedInterfaceField(field, fieldScheme) {
-			continue
-		}
 		childScheme, has := child.SchemeOf(field)
 		if !has {
+			// A reserved field the runtime supplies may be left out; one
+			// that's declared is checked like any other field.
+			if isReservedInterfaceField(field, fieldScheme) {
+				continue
+			}
 			missingFields = append(missingFields, field)
 			continue
+		}
+		if parentMod.Visibility(field) == PublicVisibility && child.Visibility(field) == PrivateVisibility {
+			// A child value widens to the parent, which reads the field.
+			return WrapInferError(
+				fmt.Errorf("field %q of interface %s is private (`let`), but interface %s makes it public", field, child, parentMod),
+				parentSym,
+			)
 		}
 		parentFieldType, _ := fieldScheme.Type()
 		childFieldType, _ := childScheme.Type()
@@ -2231,8 +2266,10 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 
 func (i *InterfaceDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
-	// Just register the interface module in the environment
-	interfaceModule := NewObject(i.Inferred)
+	// Just register the interface module in the environment. It is the
+	// interface's namespace, typed as its meta-type (see Hoist), so no type
+	// pattern on the interface matches it.
+	interfaceModule := NewObject(i.Inferred.MetaType())
 	scope.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
@@ -2295,8 +2332,9 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	}
 
 	if pass == 0 {
-		// Pass 0: Register the union type so it can be referenced.
-		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+		// Pass 0: Register the union type so it can be referenced. As a
+		// value the name is the union's namespace, never an instance of it.
+		env.Add(u.Name.Name, hm.NewScheme(nil, typeNameValueType(unionMod)))
 		// Carry the declaration's visibility so the union's value binding is
 		// exported across a module boundary (the eval side binds it with
 		// u.Visibility); otherwise it defaults to private.
@@ -2386,8 +2424,10 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 }
 
 func (u *UnionDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	// Unions are pure type declarations - register the union module
-	unionModule := NewObject(u.Inferred)
+	// Unions are pure type declarations - register the union module, the
+	// union's namespace, typed as its meta-type (see Hoist), so no type
+	// pattern matches it.
+	unionModule := NewObject(u.Inferred.MetaType())
 	scope.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }

@@ -1,0 +1,18 @@
+# An interface's name used as a value is the interface itself, not one of
+# its instances: it has no `name` to read.
+
+interface Named {
+  name: String!
+}
+
+type Foo implements Named {
+  name: String! = "foo"
+}
+
+greet(n: Named!): String! { "hi " + n.name }
+
+let n = Named
+
+if (n != null) {
+  print(greet(n))
+}

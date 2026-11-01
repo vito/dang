@@ -1,0 +1,11 @@
+[1m[31mError:[0m "MAUVE" is not a value of Color; expected one of RED, GREEN
+  [2m[34m--> errors/case_enum_literal_not_a_value.dang:12:3[0m
+ [2m    |[0m
+ [2m 10 | let r = case (c) {[0m
+ [2m 11 |   "GREEN" => 1[0m
+ [2m[34m[1m 12 | [0m  "MAUVE" => 2
+[2m         [31m^^^^^^^[0m
+ [2m 13 |   else => 3[0m
+ [2m 14 | }[0m
+ [2m    |[0m
+

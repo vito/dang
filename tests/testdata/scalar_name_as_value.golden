@@ -1,0 +1,10 @@
+[1m[31mError:[0m field "domain" belongs to values of Email, not to Email itself
+  [2m[34m--> errors/scalar_name_as_value.dang:10:7[0m
+ [2m    |[0m
+ [2m  8 | let e: Email! = "me@example.com"[0m
+ [2m  9 | print(e.domain)[0m
+ [2m[34m[1m 10 | [0mprint(Email.domain)
+[2m             [31m^^^^^^^^^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

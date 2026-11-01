@@ -1,0 +1,10 @@
+[1m[31mError:[0m "secret" is a private static of LibTag and cannot be accessed from another module
+  [2m[34m--> errors/import_dang_private_static.dang:10:7[0m
+ [2m    |[0m
+ [2m  8 | assert { tags.sep == "-" }[0m
+ [2m  9 | [0m
+ [2m[34m[1m 10 | [0mprint(tags.secret)
+[2m             [31m^^^^^^^^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

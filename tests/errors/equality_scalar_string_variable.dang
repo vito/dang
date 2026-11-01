@@ -1,0 +1,9 @@
+# A String variable doesn't compare with a scalar value directly: cast it to
+# the scalar, like anywhere else a String flows into one.
+
+scalar Email
+
+let e: Email! = "me@example.com"
+let s = "me@example.com"
+
+assert { s != e }

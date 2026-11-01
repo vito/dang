@@ -274,7 +274,7 @@ assert { r == "same" }
 let r = case (favoriteNode) {
   n: Node => n.id
 }
-assert { r == "Post:2" }
+assert { r == ("Post:2" :: ID!) }
 `)
 		require.Equal(t, []string{
 			`query Query {favoriteNode{id}}`,

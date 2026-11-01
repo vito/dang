@@ -51,10 +51,14 @@ let roger = Rabbit("roger")
 assert("same type + differing field are not equal") { jeff != roger }
 assert { (jeff == roger) == false }
 
-# Distinct named types never compare equal, even with the same shape and data
+# Distinct named types never compare equal, even with the same shape and data.
+# `==` between unrelated types doesn't type-check, so reach the runtime
+# comparison through a generic function, whose operands may be anything.
+same(x: a, y: b): Boolean! { x == y }
+
 let jeffHare = Hare("jeffrey")
-assert("distinct named types are not equal") { jeff != jeffHare }
-assert { jeffHare != jeff } # commutative
+assert("distinct named types are not equal") { !same(jeff, jeffHare) }
+assert { !same(jeffHare, jeff) } # commutative
 
 # Two fresh Hats with the same (default) data are equal
 assert { Hat == Hat }
@@ -70,18 +74,18 @@ assert { {{a: 1}} != {{a: 2}} }
 assert { ({{a: 1}} == {{a: 2}}) == false }
 
 # Differing shape: extra field
-assert { {{a: 1}} != {{a: 1, b: 2}} }
+assert { !same({{a: 1}}, {{a: 1, b: 2}}) }
 
 # Differing shape: different field name
-assert { {{a: 1}} != {{b: 1}} }
+assert { !same({{a: 1}}, {{b: 1}}) }
 
 # Nested anonymous records recurse structurally
 assert { {{a: {{b: 1}}}} == {{a: {{b: 1}}}} }
 assert { {{a: {{b: 1}}}} != {{a: {{b: 2}}}} }
 
 # A named type and an anonymous record of the same shape are never equal
-assert { (jeff == {{name: "jeffrey"}}) == false }
-assert { ({{name: "jeffrey"}} == jeff) == false } # commutative
+assert { !same(jeff, {{name: "jeffrey"}}) }
+assert { !same({{name: "jeffrey"}}, jeff) } # commutative
 
 # Recursion through a named-type data field: two Hats holding distinct-but-equal
 # Rabbits are equal; a differing nested field breaks it.

@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -111,6 +112,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		defer func() { noteExclusive(ctx, arms) }()
 		var elseClause *CaseClause
 		var priorPatterns []*CaseClause
+		var valuePatterns []Node
 		var resultType hm.Type
 		// Later clauses run only when the earlier ones didn't match, so they
 		// see the earlier clauses' falsy refinements: after `null =>`, the
@@ -158,9 +160,16 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				// scalar or enum matching the operand's type).
 				_, err = assignableForValue(valueType, exprType, clause.Value)
 				if err != nil {
-					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause.Value)
+					// A literal that names no value of the enum explains
+					// itself, pointing at the literal (checkEnumLiterals).
+					var literalErr *InferError
+					if errors.As(err, &literalErr) {
+						return nil, err
+					}
+					return nil, WrapInferError(fmt.Errorf("case pattern of type %s can't match a %s operand", valueType, exprType), clause.Value)
 				}
 				facts := c.clauseFacts(ctx, env, clause, valueType)
+				valuePatterns = append(valuePatterns, clause.Value)
 				clause.Value = wrapCoerce(clause.Value, exprType, "")
 
 				bodyEnv := withNarrowings(ctx, env, facts.Truthy)
@@ -199,7 +208,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 			)
 		}
 
-		c.exhaustive = hasElse || c.coversAllMembers(exprType)
+		c.exhaustive = hasElse || c.coversOperand(env, exprType, valuePatterns)
 		if !c.exhaustive {
 			// Nothing guarantees a clause matches, so the case can fall
 			// through and evaluate to null.
@@ -210,10 +219,106 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 	})
 }
 
+// coversOperand reports whether the clauses match every possible value of
+// the operand, making an else clause unnecessary: type patterns covering a
+// union's members, value patterns naming every value of an enum (`Color.RED`,
+// an imported bare `RED`, or a literal `"RED"`), or `true` and `false` for a
+// Boolean. A nullable operand also needs a `null` pattern.
+func (c *Case) coversOperand(env hm.Env, exprType hm.Type, values []Node) bool {
+	inner, nullable := exprType, true
+	if nn, ok := exprType.(hm.NonNullType); ok {
+		inner, nullable = nn.Type, false
+	}
+	if _, ok := inner.(*hm.UnionType); ok {
+		// An inline union carries nullability on its options.
+		nullable = false
+	}
+	if nullable && !hasNullPattern(values) {
+		return false
+	}
+	if c.coversAllMembers(inner) {
+		return true
+	}
+	mod, ok := inner.(*Type)
+	if !ok {
+		return false
+	}
+	switch {
+	case mod == BooleanType:
+		seen := map[bool]bool{}
+		for _, v := range values {
+			if b, ok := unwrapGrouped(v).(*Boolean); ok {
+				seen[b.Value] = true
+			}
+		}
+		return seen[true] && seen[false]
+	case mod.Kind == EnumKind && !mod.IsMeta():
+		names := enumValueNames(mod)
+		if len(names) == 0 {
+			return false
+		}
+		seen := map[string]bool{}
+		for _, v := range values {
+			if name, ok := enumPatternValue(env, mod, v); ok {
+				seen[name] = true
+			}
+		}
+		for _, name := range names {
+			if !seen[name] {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func hasNullPattern(values []Node) bool {
+	for _, v := range values {
+		if _, ok := unwrapGrouped(v).(*Null); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// enumPatternValue reports which value of enum a case value pattern names,
+// when that's known statically: `Color.RED` (a member read off the enum's
+// namespace), a bare `RED` bound to the enum's own value (an unqualified
+// import), or a string literal (checked against the values already).
+func enumPatternValue(env hm.Env, enum *Type, v Node) (string, bool) {
+	switch n := unwrapGrouped(v).(type) {
+	case *String:
+		return n.Value, enumHasValue(enum, n.Value)
+	case *Select:
+		holder, ok := n.Receiver.(interface{ GetInferredType() hm.Type })
+		if !ok || holder.GetInferredType() == nil {
+			return "", false
+		}
+		recv := holder.GetInferredType()
+		if nn, ok := recv.(hm.NonNullType); ok {
+			recv = nn.Type
+		}
+		if meta, ok := recv.(*Type); ok && meta.IsMeta() && meta.InstanceType() == enum {
+			return n.Field.Name, enumHasValue(enum, n.Field.Name)
+		}
+	case *Symbol:
+		// Only the enum's own binding, not a variable that happens to be
+		// named like a value: the scheme is shared with the enum's table.
+		own, ok := enum.LocalSchemeOf(n.Name)
+		if !ok {
+			return "", false
+		}
+		if bound, ok := env.SchemeOf(n.Name); ok && bound == own {
+			return n.Name, enumHasValue(enum, n.Name)
+		}
+	}
+	return "", false
+}
+
 // coversAllMembers reports whether the type pattern clauses cover every
-// possible value of the operand type, making an else clause unnecessary.
-// Only a non-null operand qualifies: a nullable operand can be null, which
-// no type pattern matches.
+// possible non-null value of the operand type (its nullability is handled by
+// coversOperand).
 func (c *Case) coversAllMembers(exprType hm.Type) bool {
 	var patterns []*Type
 	for _, clause := range c.Clauses {
@@ -226,16 +331,9 @@ func (c *Case) coversAllMembers(exprType hm.Type) bool {
 	}
 
 	switch t := exprType.(type) {
-	case hm.NonNullType:
-		switch inner := t.Type.(type) {
-		case *Type:
-			return moduleCoveredBy(inner, patterns)
-		case *hm.UnionType:
-			return inlineUnionCoveredBy(inner, patterns)
-		}
+	case *Type:
+		return moduleCoveredBy(t, patterns)
 	case *hm.UnionType:
-		// An inline union carries nullability on its options, not on the
-		// union itself, so a bare union of non-null options can't be null.
 		return inlineUnionCoveredBy(t, patterns)
 	}
 	return false

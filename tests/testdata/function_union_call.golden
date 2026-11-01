@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot call a value that may be any of the functions (x: Int!): Int! | (y: Int!): Int!: their signatures differ (parameter names count, since calls may name arguments)
+  [2m[34m--> errors/function_union_call.dang:10:7[0m
+ [2m    |[0m
+ [2m  8 | let c = true[0m
+ [2m  9 | let h = if (c) { &f } else { &g }[0m
+ [2m[34m[1m 10 | [0mprint(h(1))
+[2m             [31m^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

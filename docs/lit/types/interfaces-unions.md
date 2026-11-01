@@ -6,7 +6,7 @@
 
 - interfaces and unions map 1:1 to their GraphQL counterparts; a schema's interfaces/unions are available as [#nullability] values
 - both are discriminated with `case` (see [#control-flow]) and, for GraphQL values, with inline fragments (see [#interop])
-- the interface/union type itself is also a runtime value (`Named != null`, `Pet != null`)
+- the interface/union type itself is also a runtime value (`Named != null`, `Pet != null`): its namespace, not an instance, so it can't be passed for one and no type pattern matches it
 
 ## Interfaces
 
@@ -33,6 +33,7 @@ type Person implements Named {
 - the built-in `Error` interface (see [#errors]) is an ordinary interface; user error types implement it
 - missing a required field → `object X is missing \`f(): T\`, required by interface I`
 - a field whose type doesn't satisfy the interface → `field "f": type ... is not compatible with interface type ...`
+- an interface's fields are readable by anyone holding the interface, so a `let` member can't implement a public interface field (nor can a child interface redeclare a parent's public field with `let`)
 
 ### Interface inheritance
 
@@ -49,6 +50,7 @@ interface Post implements Named & Timestamped { title: String! }
 
 - **return types** may be more specific (covariant): an interface field `getData: String` (nullable) can be implemented as `getData: String!` (non-null). Weakening (`String!` → `String`) is rejected: `return type String is not compatible with interface return type String! (covariance required)`
 - **argument types** may be more general (contravariant): can accept nullable where the interface wants non-null (e.g. interface `process(input: String!)`, impl `process(input: String)`). Extra *optional* args are also allowed.
+- **block arguments** are arguments too: the implementation's block parameter must accept every block the interface's callers may pass, naming its parameters as the interface's does. An implementation may call its block with something more specific than the interface promises the block, not more general
 - **list elements** are covariant in both nullability and type: `[String!]` satisfies `[String]`, and `[Dog!]` satisfies `[Animal!]`
 - **scalar fields** are invariant — `id: String!` does not satisfy `id: ID!` (distinct scalar types; see [#enums-scalars])
 
@@ -103,7 +105,7 @@ case (pet) {
 }
 ```
 
-- covering every member is exhaustive: no `else` needed, and the result stays non-null
+- covering every member is exhaustive: no `else` needed, and the result stays non-null (a nullable operand also needs a `null =>` pattern)
 - a `case` missing some members still type-checks, but a value that matches no arm yields `null`, so the case's type is nullable
 - add `else => ...` as a catch-all to cover unmatched members and keep the result non-null
 - GraphQL union values match their concrete type, the same way as interface values (see above), at the cost of the same one small query

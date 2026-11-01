@@ -1,0 +1,7 @@
+# `==` and `!=` only compare values that could be equal. An Int and a String
+# never are, so the comparison would always be false.
+
+let n = 42
+let s = "42"
+
+assert { n != s }

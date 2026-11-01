@@ -37,7 +37,7 @@
 - Binds only a bare `Term` on the left — wrap compound exprs in parens: `(a + b) :: T!`.
 - `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here. The reverse degrade also works: `myUrl :: String!`, `p :: String!`.
 - Coercion source is limited: only **`String`** values coerce to custom scalars/enums (and custom scalars back to `String`). `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
-- Enum casts checked at **runtime**: `"NOPE" :: Status!` → `invalid enum value`.
+- Enum casts of a string **literal** are checked **statically**: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of …`. A non-literal `String` is checked at **runtime** (`s :: Status!` → `invalid enum value`).
 - Nullable → non-null casts are checked at **runtime**, rejecting null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
 Two uses to keep distinct:
@@ -120,11 +120,10 @@ UserSort(field: UserSortField.NAME, direction: SortDirection.DESC)   # into inpu
 
 case (c) {
   Color.RED => "stop"
-  Color.GREEN => "go"
-  else => "?"        # no static exhaustiveness check
+  Color.GREEN => "go"  # every member named: exhaustive, String! (no else needed; a nullable c also needs `null =>`)
 }
 
-"RED" :: Color!      # runtime-validated coercion; "NOPE" :: Status! → invalid enum value "NOPE" for Status
+"RED" :: Color!      # validated coercion; a literal that isn't a value ("NOPE" :: Status!) is a compile error, a non-literal String is checked at runtime
 ```
 
 ## Custom scalars
@@ -139,7 +138,7 @@ scalar JSON
 - Runtime materialization supports `String -> custom scalar` and `custom scalar -> String` only (`42 :: URL!` is a type error).
 - Scalars from GraphQL responses flow naturally; no cast needed.
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
-- Equality, comparison against plain strings, list membership, records/lists all work: a custom scalar `==` a `String` compares the underlying strings (`urlValue == "https://…"`).
+- Equality, list membership, records/lists all work between values of the same scalar. A string *literal* converts to the scalar (`urlValue == "https://…"`); a non-literal `String` needs a cast (`urlValue == (s :: URL!)` or `(urlValue :: String!) == s`).
 - The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.
 
 ### Scalar bodies: methods and the `new()` hook

@@ -38,12 +38,14 @@ case (c) {
 }
 ```
 
-- value patterns are the qualified members; use `else` for a catch-all (no static exhaustiveness check)
+- value patterns are the qualified members (or string literals); naming every member is exhaustive, so the result needs no `else` and stays non-null (a nullable operand also needs a `null` pattern). Otherwise use `else` for a catch-all
 
 ### From strings (`::`)
 
-- `"RED" :: Color!` — runtime-validated coercion
-- an invalid value fails at runtime: `"NOPE" :: Status!` → `invalid enum value "NOPE" for Status`
+- `"RED" :: Color!` — coercion, validated against the enum's values
+- a string literal that isn't a value fails to type-check: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of PASSED, FAILED`. The same goes for literals in typed slots, arguments, lists, maps and `case` patterns
+- a non-literal `String` is validated at runtime: `s :: Status!` → `invalid enum value "NOPE" for Status`
+- a literal compared with an enum value converts the same way: `c == "GREEN"` is true for `Color.GREEN` (and `c == "PURPLE"` doesn't type-check), though `c == Color.GREEN` reads clearer; a non-literal `String` needs the cast
 
 ## Custom scalars
 
@@ -85,7 +87,8 @@ let s: String! = u
 shout(msg: String!): String! { msg.toUpper }
 shout(u)                        # degrades into the String! argument → "HTTPS://EXAMPLE.COM/A"
 
-u == "https://example.com/a"    # compares by underlying string → true
+u == "https://example.com/a"    # a string literal converts to URL → true
+u == (s :: URL!)                # a non-literal String needs a cast
 `link: ${u}`                    # interpolation / toString yield the bare string
 (u :: String!).toUpper          # a String *method* needs a String receiver: degrade first
 ```

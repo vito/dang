@@ -11,9 +11,10 @@ assert { "a" <= "a" }
 assert { "abc" < "abd" }
 assert { ("z" < "a") == false }
 
-# Equality is defined across all types, including mismatched ones, and simply
-# reports inequality rather than failing to type-check.
+# Equality compares values of related types: the same type, Int with Float
+# (numerically), a subtype with its supertype. Operands of unrelated types
+# are rejected (see errors/equality_unrelated_types.dang).
 assert { (1 == 1) }
 assert { ("a" == "a") }
-assert { (1 == "a") == false }
-assert { 1 != "a" }
+assert { 1 == 1.0 }
+assert { 2 != 2.5 }

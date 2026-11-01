@@ -278,6 +278,10 @@ type DocArg struct {
 // ClassifyTypeScope determines the ItemKind for a module/env based on its Kind.
 func ClassifyTypeScope(env dang.TypeScope) ItemKind {
 	if mod, ok := env.(*dang.Type); ok {
+		// A type's name is bound to its meta-type (its namespace).
+		if mod.IsMeta() {
+			mod = mod.InstanceType()
+		}
 		switch mod.Kind {
 		case dang.EnumKind:
 			return KindEnum

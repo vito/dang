@@ -34,7 +34,7 @@ let s = Slug("  Hello World  ")
 let str: String! = s
 assert { str == "hello-world" }
 assert { s == Slug("hello-world") }
-assert { s == "hello-world" }
+assert { (s :: String!) == "hello-world" }
 assert { s.words == ["hello", "world"] }
 assert { s.first == "hello" }
 assert { s.shouty == "HELLO+WORLD" }
@@ -42,7 +42,7 @@ assert { s.withSuffix("x") == Slug("hello-world-x") }
 
 # the hook runs at literal materialization: typed slots, defaults, args, returns
 let lit: Slug! = "FOO Bar"
-assert { lit == "foo-bar" }
+assert { (lit :: String!) == "foo-bar" }
 
 describe(slug: Slug! = "Default Slug"): String! { slug :: String! }
 
@@ -51,11 +51,11 @@ assert { describe("With Arg") == "with-arg" }
 
 mk: Slug! { "  Computed " }
 
-assert { mk == "computed" }
+assert { (mk :: String!) == "computed" }
 
 # the hook runs at :: casts of non-literal Strings
 let raw = "Cast Me"
-assert { (raw :: Slug!) == "cast-me" }
+assert { ((raw :: Slug!) :: String!) == "cast-me" }
 
 # the hook runs at codec decode
 type Post {
@@ -90,7 +90,7 @@ scalar Upper {
 }
 
 let fine: Upper! = "FINE"
-assert { fine == "FINE" }
+assert { (fine :: String!) == "FINE" }
 let bad = Upper("nope") rescue null
 assert { bad == null }
 

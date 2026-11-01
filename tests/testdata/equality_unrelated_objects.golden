@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot compare Rabbit! with Hare!: they are unrelated types
+  [2m[34m--> errors/equality_unrelated_objects.dang:11:10[0m
+ [2m    |[0m
+ [2m  9 | }[0m
+ [2m 10 | [0m
+ [2m[34m[1m 11 | [0massert { Rabbit("jeffrey") != Hare("jeffrey") }
+[2m                [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 12 | [0m
+ [2m    |[0m
+

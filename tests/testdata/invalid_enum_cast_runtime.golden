@@ -1,0 +1,10 @@
+[1m[31mError:[0m invalid enum value "NOPE" for Status
+  [2m[34m--> errors/invalid_enum_cast_runtime.dang:5:11[0m
+ [2m    |[0m
+ [2m  3 | # Casting a string that isn't a literal to an enum is checked at runtime.[0m
+ [2m  4 | let raw = "NOPE"[0m
+ [2m[34m[1m  5 | [0mlet bad = raw :: Status!
+[2m                 [31m^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

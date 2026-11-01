@@ -1,0 +1,10 @@
+# A scalar's name is its namespace, not one of its values: `Email.domain`
+# would call the method with the namespace as `self`.
+
+scalar Email {
+  domain: String! { toString(self).split("@")[1] ?? "" }
+}
+
+let e: Email! = "me@example.com"
+print(e.domain)
+print(Email.domain)

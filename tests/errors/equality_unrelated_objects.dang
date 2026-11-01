@@ -1,0 +1,11 @@
+# Distinct named types never compare equal, whatever their shape.
+
+type Rabbit {
+  name: String!
+}
+
+type Hare {
+  name: String!
+}
+
+assert { Rabbit("jeffrey") != Hare("jeffrey") }

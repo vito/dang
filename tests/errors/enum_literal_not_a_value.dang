@@ -1,0 +1,11 @@
+# A string literal handed to an enum is checked against the enum's values
+# when it type-checks, rather than failing when it's materialized.
+
+enum Color {
+  RED
+  GREEN
+}
+
+let ok: Color! = "RED"
+
+let c: Color! = "PURPLE"

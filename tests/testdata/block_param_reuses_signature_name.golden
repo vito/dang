@@ -1,0 +1,10 @@
+[1m[31mError:[0m block parameter "b" takes the signature's "a"; "b" is a different parameter of the signature, so name this one differently
+  [2m[34m--> errors/block_param_reuses_signature_name.dang:7:13[0m
+ [2m    |[0m
+ [2m  5 | two(&f(a: Int!, b: Int!): Int!): Int! { f(a: 1, b: 2) }[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0mprint(two { b, a => b * 10 + a })
+[2m                   [31m^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+
