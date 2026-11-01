@@ -13,7 +13,7 @@ import "context"
 // names the forms beside it declare, and it leaves them alone: the local
 // declaration always wins, in both. (A declaration after an import in a plain
 // block, inferred and evaluated in source order, replaces it; see
-// FieldDecl.shadowsImport.)
+// FieldDecl.rebind.)
 
 type localDeclsKey struct{}
 

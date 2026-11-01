@@ -152,3 +152,52 @@ func TestReplKeepsLinkedWeakVariables(t *testing.T) {
 	_, err = s.enter(`xs += ["s"]`)
 	require.ErrorContains(t, err, "cannot use [String!]! as [Int!]!")
 }
+
+// Redefining a declaration in a later entry rebinds it: calls run the new
+// body, as the checker types them.
+func TestReplRedefinitions(t *testing.T) {
+	s := newTestReplSession(t)
+	mustEnter := func(input string) dang.Value {
+		t.Helper()
+		v, err := s.enter(input)
+		require.NoError(t, err)
+		return v
+	}
+
+	mustEnter("double(x: Int!): Int! { x * 2 }")
+	require.Equal(t, "8", dang.Repr(mustEnter("double(4)")))
+	mustEnter("double(count: Int): Int { count }")
+	require.Equal(t, "4", dang.Repr(mustEnter("double(4)")))
+
+	mustEnter("let n = 1")
+	mustEnter("let n = 2")
+	require.Equal(t, "2", dang.Repr(mustEnter("n")))
+	mustEnter(`let n = "two"`)
+	require.Equal(t, `"two"`, dang.Repr(mustEnter("n")))
+
+	mustEnter("type P { x: Int! = 1; get: Int! { x } }")
+	require.Equal(t, "1", dang.Repr(mustEnter("P.get")))
+	mustEnter(`type P { y: String! = "y"; get: String! { y + "!" } }`)
+	require.Equal(t, `"y!"`, dang.Repr(mustEnter("P.get")))
+	require.Equal(t, `"y"`, dang.Repr(mustEnter("P.y")))
+	_, err := s.enter("P.x")
+	require.ErrorContains(t, err, `field "x" not found`)
+
+	// Earlier functions call the new definition too, so it must fit where
+	// the old one did, unless they are redefined along with it.
+	mustEnter("half(x: Int!): Int! { x / 2 }")
+	mustEnter("quarter(x: Int!): Int! { half(half(x)) }")
+	_, err = s.enter("half(x: Int!): Int { null }")
+	require.ErrorContains(t, err, "redefining `half` changes its type from (x: Int!): Int! to (x: Int!): Int, but `quarter`, declared earlier, still uses it")
+	require.Equal(t, "2", dang.Repr(mustEnter("quarter(8)")))
+	mustEnter("half(x: Int!): Int! { x / 2 + 1 }")
+	require.Equal(t, "3", dang.Repr(mustEnter("quarter(8)")))
+	mustEnter("half(x: Int!): Int { null }\nquarter(x: Int!): Int { x }")
+	require.Equal(t, "8", dang.Repr(mustEnter("quarter(8)")))
+
+	mustEnter("type Box { v: Int! = 1 }")
+	mustEnter("unbox: Int! { Box.v }")
+	_, err = s.enter(`type Box { w: String! = "w" }`)
+	require.ErrorContains(t, err, "redefining type `Box` would leave `unbox` using the old one")
+	require.Equal(t, "1", dang.Repr(mustEnter("unbox")))
+}

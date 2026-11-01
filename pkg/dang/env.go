@@ -214,6 +214,10 @@ type Type struct {
 	// types have weak variables, and so their cells (see keepWeakCells).
 	weakDecls map[*FieldDecl]struct{}
 
+	// session is set on the top-level frame of an interactive session (see
+	// session.go): which later entries' redefinitions earlier code depends on.
+	session *sessionState
+
 	// Scalar-body runtime hooks: Dang-defined methods and the new()
 	// materialization hook for scalars declared with a body. Written once by
 	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).
