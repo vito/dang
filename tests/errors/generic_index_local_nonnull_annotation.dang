@@ -1,0 +1,8 @@
+# Indexing `[a!]` gives a possibly-null `a` unless the signature writes `a!`
+# (making `a` stand for nullable types only): here `a` may be an Int!.
+g(v: a): a {
+  let xs: [a!]! = []
+  xs[0]
+}
+
+print(toString(g(1) + 1))

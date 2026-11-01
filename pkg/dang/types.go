@@ -549,6 +549,33 @@ func scopedTypeVars(ctx context.Context) hm.Subs {
 	return s
 }
 
+type nullableOnlyVarsKey struct{}
+
+// withNullableOnlyVars records the rigid variables a generic function's
+// signature (sig, already skolemized) writes `a!`. Such a variable stands for
+// nullable types only (see instantiateCallee), so in the body a bare `a` may
+// already be null; any other rigid `a` may stand for a non-null type.
+func withNullableOnlyVars(ctx context.Context, sig []hm.Type) context.Context {
+	outer := nullableOnlyVars(ctx)
+	vars := hm.TypeVarSet{}
+	for tv := range outer {
+		vars.Add(tv)
+	}
+	for _, t := range sig {
+		for tv := range hm.NonNullVars(t) {
+			if tv.IsRigid() {
+				vars.Add(tv)
+			}
+		}
+	}
+	return context.WithValue(ctx, nullableOnlyVarsKey{}, vars)
+}
+
+func nullableOnlyVars(ctx context.Context) hm.TypeVarSet {
+	s, _ := ctx.Value(nullableOnlyVarsKey{}).(hm.TypeVarSet)
+	return s
+}
+
 type ObjectTypeField struct {
 	Key  string
 	Type TypeNode

@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared a, inferred a?: cannot use a possibly-null value as a: callers may pick a non-null type for a; assert it with `xs[0]!`, fall back with `xs[0] ?? other` where `other` is itself an a, or bind it with `let` and check it for null first
+  [2m[34m--> errors/generic_index_local_nonnull_annotation.dang:3:12[0m
+ [2m    |[0m
+ [2m  1 | # Indexing `[a!]` gives a possibly-null `a` unless the signature writes `a!`[0m
+ [2m  2 | # (making `a` stand for nullable types only): here `a` may be an Int!.[0m
+ [2m[34m[1m  3 | [0mg(v: a): a {
+[2m                  [31m^[0m
+ [2m  4 |   let xs: [a!]! = [][0m
+ [2m  5 |   xs[0][0m
+ [2m    |[0m
+
