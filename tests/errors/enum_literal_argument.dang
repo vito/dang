@@ -1,0 +1,14 @@
+# String literals for an enum must name one of its values, inside lists and
+# function arguments too.
+
+enum Color {
+  RED
+  GREEN
+}
+
+paint(c: Color!): String! { toString(c) }
+
+let xs: [Color!]! = ["GREEN", "RED"]
+
+print(paint("RED"))
+print(paint("BLUE"))

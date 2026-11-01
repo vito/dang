@@ -112,6 +112,9 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 	}
 	if isLiteralExpr(value) || containsDegradableScalar(have) {
 		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
+			if err := checkEnumLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
+				return nil, err
+			}
 			return coerceSubs, nil
 		}
 	}
@@ -258,6 +261,64 @@ func containsDecoded(t hm.Type) bool {
 		}
 	}
 	return false
+}
+
+// checkEnumLiterals rejects a string literal handed to an enum slot that
+// names none of the enum's values. Its value is known statically, so there
+// is no need to wait for materialization to fail at runtime. It follows
+// the literal through lists, maps and a block's tail; anything else (a
+// template, a union slot) is left to runtime validation.
+func checkEnumLiterals(value Node, want hm.Type) error {
+	switch t := want.(type) {
+	case hm.NonNullType:
+		return checkEnumLiterals(value, t.Type)
+	case ListType:
+		if l, ok := value.(*List); ok {
+			for _, el := range l.Elements {
+				if err := checkEnumLiterals(el, t.Type); err != nil {
+					return err
+				}
+			}
+		}
+	case MapType:
+		if m, ok := value.(*MapLiteral); ok {
+			for _, entry := range m.Entries {
+				if err := checkEnumLiterals(entry.Value, t.Type); err != nil {
+					return err
+				}
+			}
+		}
+	case *Type:
+		if t.Kind != EnumKind {
+			return nil
+		}
+		switch v := value.(type) {
+		case *String:
+			if !enumHasValue(t, v.Value) {
+				return NewInferError(
+					fmt.Errorf("%q is not a value of %s; expected one of %s",
+						v.Value, t, strings.Join(enumValueNames(t), ", ")),
+					v,
+				)
+			}
+		case *Block:
+			if len(v.Forms) > 0 {
+				return checkEnumLiterals(v.Forms[len(v.Forms)-1], want)
+			}
+		}
+	}
+	return nil
+}
+
+// enumValueNames lists an enum's values in declaration order.
+func enumValueNames(enum *Type) []string {
+	var names []string
+	for name := range enum.Bindings(PublicVisibility) {
+		if enumHasValue(enum, name) {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may

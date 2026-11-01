@@ -3552,6 +3552,11 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		subs, err := hm.Assignable(exprType, hintType)
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
+			if err == nil {
+				if litErr := checkEnumLiterals(t.Expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
+					return nil, litErr
+				}
+			}
 		}
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil

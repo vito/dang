@@ -1,0 +1,10 @@
+[1m[31mError:[0m "BLUE" is not a value of Color; expected one of RED, GREEN
+  [2m[34m--> errors/enum_literal_argument.dang:14:13[0m
+ [2m    |[0m
+ [2m 12 | [0m
+ [2m 13 | print(paint("RED"))[0m
+ [2m[34m[1m 14 | [0mprint(paint("BLUE"))
+[2m                   [31m^^^^^^[0m
+ [2m 15 | [0m
+ [2m    |[0m
+
