@@ -251,8 +251,9 @@ with "must be pure" reasons once discovered).
    `self` writes fork per call like an instance method's. Consequence: **named
    functions and methods never write shared state** — their only writes are
    locals and their own `self` fork (methods/constructors own their receiver
-   frame, `methodSelfFrame`). For a type declared inside a function body that
-   takes one more rule: its code (methods, `new()`, field defaults, statics)
+   frame, `methodSelfFrame`). For a type (object or scalar) declared inside a
+   function body that takes one more rule: its code (methods, `new()`, field
+   defaults, statics)
    is **sealed** (`effFrame.sealed`, `withTypeBodyEffFrame`) — it can't write
    or call anything writing outside the type, and an outer block param it
    calls must be pure — since its values can be stored, returned and used

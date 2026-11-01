@@ -69,7 +69,9 @@ func declaredWithin(ctx context.Context, field *effFrame, target TypeScope) bool
 	return field.inside(target)
 }
 
-func checkFieldWrite(ctx context.Context, target effTarget, node Node) {
+// checkFieldWrite reports a write to target from inside a `{{ }}` field that
+// target is declared outside of, and returns whether it did.
+func checkFieldWrite(ctx context.Context, target effTarget, node Node) bool {
 	reported := false
 	enclosingFields(ctx, func(field *effFrame) {
 		if reported || declaredWithin(ctx, field, target.frame) {
@@ -79,6 +81,7 @@ func checkFieldWrite(ctx context.Context, target effTarget, node Node) {
 		_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
 			"%s; this assignment writes `%s`, which is declared outside the field", concurrentFields, target.name), node))
 	})
+	return reported
 }
 
 func checkFieldCall(ctx context.Context, callee *Effect, node Node, name string) {

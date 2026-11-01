@@ -858,6 +858,9 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	meta := instanceType.MetaType()
 	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	// Statics are sealed like the rest of the type's code, in a frame of
+	// their own: their locals are scoped to the meta-type.
+	ctx = withTypeBodyEffFrame(ctx, instanceType, meta, metaScope)
 	_, err := InferFormsWithPhases(withStaticsBody(ctx, meta), forms, metaScope, fresh)
 	return err
 }
@@ -1076,7 +1079,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Field defaults are scoped like constructor parameter defaults; methods
 	// leave that scope again (see withTypeBody). All of the type's code is
 	// sealed: it can't write, or call anything that writes, outside it.
-	ctx = withTypeBodyEffFrame(ctx, object, inferTypeScope)
+	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
@@ -1883,6 +1886,8 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	}
 	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
 
+	// Like an object type's, a scalar's code is sealed (see ObjectDecl.Infer).
+	ctx = withTypeBodyEffFrame(ctx, scalarType, scalarType, inferTypeScope)
 	if _, err := InferFormsWithPhases(ctx, formsWithoutNew(s.Value), inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
