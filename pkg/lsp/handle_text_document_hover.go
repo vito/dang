@@ -218,6 +218,11 @@ func typeDetailSuffix(t hm.Type) string {
 	if !ok {
 		return ""
 	}
+	// A type's name as a value (e.g. a union's) has its meta-type: describe
+	// the type it names.
+	if mod.IsMeta() {
+		mod = mod.InstanceType()
+	}
 
 	switch mod.Kind {
 	case dang.UnionKind:

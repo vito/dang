@@ -576,9 +576,10 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		if t.Kind == introspection.TypeKindInterface {
 			sub, found := schemaTypes[t.Name]
 			if found {
-				// Add the interface type as a scheme that represents the module itself
-				env.Add(t.Name, hm.NewScheme(nil, sub))
-				env.SetVisibility(t.Name, PublicVisibility)
+				if subMod, ok := sub.(*Type); ok {
+					env.Add(t.Name, hm.NewScheme(nil, typeNameValueType(subMod)))
+					env.SetVisibility(t.Name, PublicVisibility)
+				}
 			}
 		}
 	}
@@ -588,9 +589,10 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		if t.Kind == introspection.TypeKindUnion {
 			sub, found := schemaTypes[t.Name]
 			if found {
-				// Add the union type as a scheme that represents the module itself
-				env.Add(t.Name, hm.NewScheme(nil, sub))
-				env.SetVisibility(t.Name, PublicVisibility)
+				if subMod, ok := sub.(*Type); ok {
+					env.Add(t.Name, hm.NewScheme(nil, typeNameValueType(subMod)))
+					env.SetVisibility(t.Name, PublicVisibility)
+				}
 			}
 		}
 	}
@@ -1095,6 +1097,15 @@ func (e *Type) MetaType() *Type {
 // IsMeta reports whether this type is a meta-type (the type of a type *name*,
 // as opposed to instances of the type).
 func (e *Type) IsMeta() bool { return e.metaOf != nil }
+
+// typeNameValueType is the type of an interface or union name used as a
+// value (`Named != null`): its namespace, the meta-type, which has no
+// members of its own. It is not an instance, so it can't stand in for one
+// and its fields can't be read off it. The meta-type is created here, while
+// the declaring scope is still private to one goroutine.
+func typeNameValueType(t *Type) hm.Type {
+	return hm.NonNullType{Type: t.MetaType()}
+}
 
 // InstanceType returns the type a meta-type describes, or nil when e is not a
 // meta-type.

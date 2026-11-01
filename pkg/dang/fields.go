@@ -2042,7 +2042,9 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	// Pass 0: Register the interface type.
 	if pass == 0 {
 		// Add the interface type to the environment so it can be referenced.
-		interfaceScheme := hm.NewScheme(nil, iface)
+		// As a value the name is the interface's namespace, never an
+		// instance of it.
+		interfaceScheme := hm.NewScheme(nil, typeNameValueType(iface))
 		env.Add(i.Name.Name, interfaceScheme)
 		// Carry the declaration's visibility so the interface's value binding is
 		// exported across a module boundary (the eval side binds it with
@@ -2305,8 +2307,9 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	}
 
 	if pass == 0 {
-		// Pass 0: Register the union type so it can be referenced.
-		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+		// Pass 0: Register the union type so it can be referenced. As a
+		// value the name is the union's namespace, never an instance of it.
+		env.Add(u.Name.Name, hm.NewScheme(nil, typeNameValueType(unionMod)))
 		// Carry the declaration's visibility so the union's value binding is
 		// exported across a module boundary (the eval side binds it with
 		// u.Visibility); otherwise it defaults to private.

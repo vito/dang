@@ -1,0 +1,21 @@
+# A union's name used as a value is the union itself, not one of its
+# members.
+
+type Dog {
+  name: String!
+}
+
+type Cat {
+  name: String!
+}
+
+union Pet = Dog | Cat
+
+describe(p: Pet!): String! {
+  case (p) {
+    d: Dog => d.name
+    c: Cat => c.name
+  }
+}
+
+print(describe(Pet))

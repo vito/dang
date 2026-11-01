@@ -235,6 +235,15 @@ func diagnoseAssignment(have, want hm.Type) error {
 			return fmt.Errorf("cannot use a possibly-null value as %s: callers may pick a non-null type for %s", want, want)
 		}
 	}
+	haveBase := have
+	if nn, ok := haveBase.(hm.NonNullType); ok {
+		haveBase = nn.Type
+	}
+	if meta, ok := haveBase.(*Type); ok && meta.IsMeta() {
+		// Both print as the type's name, so say which is which.
+		return fmt.Errorf("cannot use %s as %s: %s here is the type itself, not a value of that type",
+			have, want, meta.Named)
+	}
 	haveMod, wantMod, issues, ok := walkAssignment(have, want)
 	if !ok {
 		return nil
