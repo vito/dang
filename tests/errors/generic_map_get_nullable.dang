@@ -1,0 +1,5 @@
+# `map.get` may miss, so its result is a possibly-null `a`, which a generic
+# function's `a` isn't: the error says how to make it one.
+fold(m: Map[a], acc: a, &fn(acc: a, v: a): a): a {
+  fn(acc, m.get("k"))
+}

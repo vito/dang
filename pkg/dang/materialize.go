@@ -107,10 +107,78 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 			return coerceSubs, nil
 		}
 	}
+	if nullErr := nullIntoRigid(have, want, value); nullErr != nil {
+		return nil, nullErr
+	}
 	if diag := diagnoseAssignment(have, want); diag != nil {
 		return nil, withUnionProvenance(diag, have, want)
 	}
 	return nil, withUnionProvenance(err, have, want)
+}
+
+// nullableRigidError reports a possibly-null value (an index, `map.get`, a
+// nullable local) where a generic function's own `a` is wanted, with the
+// ways to make it one.
+type nullableRigidError struct {
+	want hm.Type
+	hint string
+}
+
+func (e *nullableRigidError) Error() string {
+	return fmt.Sprintf("cannot use a possibly-null value as %s: callers may pick a non-null type for %s; %s", e.want, e.want, e.hint)
+}
+
+// nullIntoRigid returns a nullableRigidError when have is a possibly-null
+// form of a rigid want, or nil.
+func nullIntoRigid(have, want hm.Type, value Node) error {
+	wantTV, ok := want.(hm.TypeVariable)
+	if !ok || !wantTV.IsRigid() {
+		return nil
+	}
+	if _, nullable := have.(hm.NullableTypeVariable); !nullable {
+		return nil
+	}
+	expr := ""
+	if value != nil {
+		// A function body is checked as a whole; its value is its last form.
+		for {
+			b, ok := unwrapGrouped(value).(*Block)
+			if !ok || len(b.Forms) == 0 {
+				break
+			}
+			value = b.Forms[len(b.Forms)-1]
+		}
+		expr = strings.TrimSpace(Format(unwrapGrouped(value)))
+		if strings.Contains(expr, "\n") || strings.Contains(expr, "/*") || len(expr) > 40 {
+			expr = ""
+		}
+	}
+	fallback := fmt.Sprintf("where `other` is itself an %s", want)
+	var hint string
+	switch {
+	case isNullNode(value):
+		hint = fmt.Sprintf("pass a value of type %s instead", want)
+	case expr == "":
+		hint = fmt.Sprintf("assert it non-null with `!`, fall back with `?? other` %s, or bind it with `let` and check it for null first", fallback)
+	case isSymbolNode(value):
+		hint = fmt.Sprintf("check it for null first (`if (%s == null) { raise ... }`), assert it with `%s!`, or fall back with `%s ?? other` %s", expr, expr, expr, fallback)
+	default:
+		hint = fmt.Sprintf("assert it with `%s!`, fall back with `%s ?? other` %s, or bind it with `let` and check it for null first", expr, expr, fallback)
+	}
+	return &nullableRigidError{want: want, hint: hint}
+}
+
+func isSymbolNode(n Node) bool {
+	_, ok := unwrapGrouped(n).(*Symbol)
+	return ok
+}
+
+func isNullNode(n Node) bool {
+	if n == nil {
+		return false
+	}
+	_, ok := unwrapGrouped(n).(*Null)
+	return ok
 }
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may
@@ -149,11 +217,6 @@ func containsDegradableScalar(t hm.Type) bool {
 // object/interface types. Returns nil when no enrichment applies and the
 // caller should use the bare unification error.
 func diagnoseAssignment(have, want hm.Type) error {
-	if wantTV, ok := want.(hm.TypeVariable); ok && wantTV.IsRigid() {
-		if _, nullable := have.(hm.NullableTypeVariable); nullable {
-			return fmt.Errorf("cannot use a possibly-null value as %s: callers may pick a non-null type for %s", want, want)
-		}
-	}
 	haveMod, wantMod, issues, ok := walkAssignment(have, want)
 	if !ok {
 		return nil

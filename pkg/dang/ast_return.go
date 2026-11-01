@@ -144,10 +144,12 @@ func returnValueType(ret *Return) hm.Type {
 }
 
 // returnMismatch reports a returned type that doesn't fit the declared one,
-// keeping the cause when it is a generic type escaping into a binding.
+// keeping the cause when it is a generic type escaping into a binding, or a
+// possibly-null value for a generic one (which says how to fix it).
 func returnMismatch(declared, inferred hm.Type, cause error) error {
 	var escape hm.EscapeError
-	if errors.As(cause, &escape) {
+	var nullable *nullableRigidError
+	if errors.As(cause, &escape) || errors.As(cause, &nullable) {
 		return fmt.Errorf("return type mismatch: declared %s, inferred %s: %w", declared, inferred, cause)
 	}
 	return fmt.Errorf("return type mismatch: declared %s, inferred %s", declared, inferred)

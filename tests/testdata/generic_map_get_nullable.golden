@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use a possibly-null value as a: callers may pick a non-null type for a; assert it with `m.get("k")!`, fall back with `m.get("k") ?? other` where `other` is itself an a, or bind it with `let` and check it for null first
+  [2m[34m--> errors/generic_map_get_nullable.dang:4:11[0m
+ [2m    |[0m
+ [2m  2 | # function's `a` isn't: the error says how to make it one.[0m
+ [2m  3 | fold(m: Map[a], acc: a, &fn(acc: a, v: a): a): a {[0m
+ [2m[34m[1m  4 | [0m  fn(acc, m.get("k"))
+[2m                 [31m^^^^^^^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

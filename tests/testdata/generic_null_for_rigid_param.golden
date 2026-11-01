@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use a possibly-null value as a: callers may pick a non-null type for a
+[1m[31mError:[0m cannot use a possibly-null value as a: callers may pick a non-null type for a; pass a value of type a instead
   [2m[34m--> errors/generic_null_for_rigid_param.dang:3:26[0m
  [2m    |[0m
  [2m  1 | # Inside a generic function, `a` may stand for a non-null type the caller[0m
