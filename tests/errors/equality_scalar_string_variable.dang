@@ -6,4 +6,4 @@ scalar Email
 let e: Email! = "me@example.com"
 let s = "me@example.com"
 
-assert { e == s }
+assert { s != e }

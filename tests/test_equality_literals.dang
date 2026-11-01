@@ -1,0 +1,45 @@
+# A string literal compared with a scalar or enum value converts to it, as
+# it does for arguments and `case` patterns, on either side of == and !=.
+# A String variable needs a cast (see errors/equality_*).
+
+import Test
+
+enum Color {
+  RED
+  GREEN
+}
+
+scalar Email
+
+let c: Color! = Color.GREEN
+let e: Email! = "me@example.com"
+
+# Enums: the literal names a value of the enum (Color.GREEN reads clearer).
+assert { c == "GREEN" }
+assert { "GREEN" == c }
+assert { c != "RED" }
+assert { "RED" != c }
+
+let maybe: Color = null
+
+assert { maybe != "RED" }
+
+# String-backed scalars compare by the converted value.
+assert { e == "me@example.com" }
+assert { "me@example.com" == e }
+assert { e != "you@example.com" }
+assert { node(id: "User:1").id == "User:1" }
+assert { homepage == `https://dang-lang.dev` }
+
+let empty = "null" :: JSON!
+
+assert { empty == "null" }
+
+# A scalar with a new() hook normalizes the literal like any other.
+assert { Path("a//b") == "a/b" }
+
+# Casts still work, and so does comparing with the enum's value.
+let name = "GREEN"
+
+assert { c == (name :: Color!) }
+assert { c == Color.GREEN }

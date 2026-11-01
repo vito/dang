@@ -1,8 +1,0 @@
-# A string literal doesn't compare with a scalar value directly: cast it to
-# the scalar, which says what's being compared.
-
-scalar Email
-
-let e: Email! = "me@example.com"
-
-assert { e == "me@example.com" }

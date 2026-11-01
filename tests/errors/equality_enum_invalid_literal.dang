@@ -1,0 +1,10 @@
+# A string literal compared with an enum value must name one of its values.
+
+enum Color {
+  RED
+  GREEN
+}
+
+let c: Color! = Color.GREEN
+
+assert { c != "PURPLE" }

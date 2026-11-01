@@ -45,6 +45,7 @@ case (c) {
 - `"RED" :: Color!` — coercion, validated against the enum's values
 - a string literal that isn't a value fails to type-check: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of PASSED, FAILED`. The same goes for literals in typed slots, arguments, lists, maps and `case` patterns
 - a non-literal `String` is validated at runtime: `s :: Status!` → `invalid enum value "NOPE" for Status`
+- a literal compared with an enum value converts the same way: `c == "GREEN"` is true for `Color.GREEN` (and `c == "PURPLE"` doesn't type-check), though `c == Color.GREEN` reads clearer; a non-literal `String` needs the cast
 
 ## Custom scalars
 
@@ -86,8 +87,8 @@ let s: String! = u
 shout(msg: String!): String! { msg.toUpper }
 shout(u)                        # degrades into the String! argument → "HTTPS://EXAMPLE.COM/A"
 
-s == "https://example.com/a"    # compare as strings once degraded → true
-u == ("https://example.com/a" :: URL!)   # or as URLs; `u == "..."` itself doesn't type-check
+u == "https://example.com/a"    # a string literal converts to URL → true
+u == (s :: URL!)                # a non-literal String needs a cast
 `link: ${u}`                    # interpolation / toString yield the bare string
 (u :: String!).toUpper          # a String *method* needs a String receiver: degrade first
 ```
