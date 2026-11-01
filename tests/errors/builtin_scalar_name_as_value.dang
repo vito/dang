@@ -1,0 +1,8 @@
+# A builtin scalar's name is its namespace, holding `encode` and `decode`,
+# not a JSON value.
+
+let j = JSON.encode({{a: 1}})
+
+describe(x: JSON!): String! { toString(x) }
+
+print(describe(JSON))

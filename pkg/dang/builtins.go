@@ -695,10 +695,11 @@ func BuiltinScalarModule(name string) (*Type, bool) {
 }
 
 // attachBuiltinSchemes staples the type schemes of every member Dang registers
-// for a scalar of this name onto scalarType, so `Name.member` type-checks
-// whether Name resolves to the builtin scalar or to a same-named scalar a schema
-// or user declared. No-op for non-scalars and names Dang ships no API for;
-// idempotent (skips members the scalar already declares).
+// for a scalar of this name onto scalarType's meta-type, the type of its name,
+// so `Name.member` type-checks whether Name resolves to the builtin scalar or
+// to a same-named scalar a schema or user declared. Values of the scalar don't
+// get them: they're plain strings. No-op for non-scalars and names Dang ships
+// no API for; idempotent (skips members the namespace already declares).
 func attachBuiltinSchemes(scalarType *Type) {
 	if scalarType == nil || scalarType.Kind != ScalarKind {
 		return
@@ -707,14 +708,15 @@ func attachBuiltinSchemes(scalarType *Type) {
 	if !ok {
 		return
 	}
+	meta := scalarType.MetaType()
 	ForEachStaticMethod(host, func(def BuiltinDef) {
-		if _, exists := scalarType.LocalSchemeOf(def.Name); exists {
+		if _, exists := meta.LocalSchemeOf(def.Name); exists {
 			return
 		}
-		scalarType.Add(def.Name, hm.NewScheme(nil, createFunctionTypeFromDef(def)))
-		scalarType.SetVisibility(def.Name, PublicVisibility)
+		meta.Add(def.Name, hm.NewScheme(nil, createFunctionTypeFromDef(def)))
+		meta.SetVisibility(def.Name, PublicVisibility)
 		if def.Doc != "" {
-			scalarType.SetDocString(def.Name, def.Doc)
+			meta.SetDocString(def.Name, def.Doc)
 		}
 	})
 	// Graft the builtin scalar's directives (e.g. @JSON.field / @JSON.ignore)
@@ -726,6 +728,26 @@ func attachBuiltinSchemes(scalarType *Type) {
 		}
 		scalarType.AddDirective(name, decl)
 	}
+}
+
+// isBuiltinScalarMember reports whether name is one of the members Dang
+// staples onto a scalar of t's name (attachBuiltinSchemes). Those are read off
+// the namespace value at runtime (attachBuiltinMethods), not from statics.
+func isBuiltinScalarMember(t *Type, name string) bool {
+	if t.Kind != ScalarKind {
+		return false
+	}
+	host, ok := BuiltinScalarModule(t.Named)
+	if !ok {
+		return false
+	}
+	found := false
+	ForEachStaticMethod(host, func(def BuiltinDef) {
+		if def.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 // attachBuiltinMethods binds the implementations of every member Dang registers
