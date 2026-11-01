@@ -1,51 +1,143 @@
 \use-plugin{dang}
+\literate-fences
 
 # Enums and scalars {#enums-scalars}
 
 > Meta: split this 50/50 — both feel obvious on the page but trip people up in real code (enum literal vs. string, scalar coercion timing).
 
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
+
 ## Enums
 
 ### Declaration
+
+An enum lists its members as bare `CAPS` names:
 
 ```dang
 enum Color { RED GREEN BLUE }
 ```
 
-- members are bare `CAPS` identifiers, separated by whitespace/newlines — NOT commas (`RED, GREEN` is a syntax error)
+Members are separated by spaces or newlines, not commas:
+
+```dang-failure
+enum Size { SMALL, LARGE }
+```
 
 ### Values
 
-- accessed as `Color.RED` — always qualified by the enum name
-- the bare value (`RED`) is NOT in scope; an enum value is a field on the enum module (see [#modules]), not a top-level binding — `RED` alone → `"RED" not found`, including inside `case`
-- `Color.values` returns `[Color!]!` — all members (a real list: supports `.length`, `.contains`, indexing)
-- equality compares by value; values of different enums / different members are not equal
+A value is written with its enum's name, as `Color.RED`. An enum
+value is a field on the enum (see [#modules]), not a top-level name, so a
+bare `RED` isn't in scope, even inside `case`. (Enums imported from a schema
+are the exception, below.)
+
+```dang-failure
+RED
+```
+
+`Color.values` lists every member, as a real `[Color!]!`:
+
+```dang
+Color.values
+```
+
+Two values of the same enum are equal when they're the same member. Values
+of different enums can't be compared, even when the member names match:
+
+```dang
+enum Signal { RED AMBER GREEN }
+
+Color.RED == Color.RED
+```
+
+```dang-failure
+Color.RED == Signal.RED
+```
 
 ### As function arguments
 
+An enum is an ordinary parameter type. A string literal naming a member
+works too, and is checked before the script runs:
+
 ```dang
-usersByStatus(status: Status.ACTIVE)
+paint(c: Color!): String! { `painted ${c}` }
+
+[paint(Color.GREEN), paint("BLUE")]
 ```
 
-- also flows into input objects: `UserSort(field: UserSortField.NAME, direction: SortDirection.DESC)`
+```dang-failure
+paint("PURPLE")
+```
+
+Enums from a schema work the same way, including inside input objects. With
+the bundled `Demo` schema (see [#interop]):
+
+```dang
+import Demo
+
+usersByStatus(status: Status.ACTIVE).{{ name }}.map { _.name }
+```
+
+An imported enum's values are also in scope bare, as long as no other
+import uses the same name (see [#modules]):
+
+```dang
+usersByStatus(status: PENDING).{{ name }}.map { _.name }
+```
+
+```dang
+let byNameDesc = UserSort(field: UserSortField.NAME, direction: SortDirection.DESC)
+
+sortedUsers(sort: byNameDesc).{{ name }}.map { _.name }
+```
 
 ### In `case`
 
+Value patterns are the qualified members:
+
 ```dang
-case (c) {
-  Color.RED => "stop"
-  Color.GREEN => "go"
+action(c: Color!): String! {
+  case (c) {
+    Color.RED => "stop"
+    Color.GREEN => "go"
+    else => "wait"
+  }
+}
+
+[action(Color.RED), action(Color.BLUE)]
+```
+
+There is no exhaustiveness check for enums. Without an `else`, the result
+is nullable, even when the clauses name every member:
+
+```dang-failure
+named(c: Color!): String! {
+  case (c) {
+    Color.RED => "red"
+    Color.GREEN => "green"
+    Color.BLUE => "blue"
+  }
 }
 ```
 
-- value patterns are the qualified members (or string literals); naming every member is exhaustive, so the result needs no `else` and stays non-null (a nullable operand also needs a `null` pattern). Otherwise use `else` for a catch-all
-
 ### From strings (`::`)
 
-- `"RED" :: Color!` — coercion, validated against the enum's values
-- a string literal that isn't a value fails to type-check: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of PASSED, FAILED`. The same goes for literals in typed slots, arguments, lists, maps and `case` patterns
-- a non-literal `String` is validated at runtime: `s :: Status!` → `invalid enum value "NOPE" for Status`
-- a literal compared with an enum value converts the same way: `c == "GREEN"` is true for `Color.GREEN` (and `c == "PURPLE"` doesn't type-check), though `c == Color.GREEN` reads clearer; a non-literal `String` needs the cast
+A string that isn't a literal becomes an enum value with a `::` cast. The
+cast checks the string when it runs:
+
+```dang
+let favorite = "GREEN"
+
+favorite :: Color!
+```
+
+```dang-failure
+let wanted = "PURPLE"
+wanted :: Color!
+```
 
 ## Custom scalars
 
@@ -53,97 +145,207 @@ case (c) {
 
 ```dang
 scalar Email
-scalar JSON
+scalar Semver
 ```
+
+A custom scalar is a string with its own type. An `Email!` and a `String!`
+are different types.
 
 ### Coercion
 
-- *literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list and map literals, returns). This covers string literals, list literals, map literals, and backtick templates — even templates with `${...}` interpolations.
-- a *non-literal* String (a variable or `a + b`) does NOT auto-coerce — it needs an explicit `::` cast: `fetchURL(url: myUrl :: URL!)`, `(base + domain) :: URL!`. Without it: `cannot use String! as URL!`.
-- list merging is pure / invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!` (the plain literal doesn't widen to `ID!`)
-- runtime materialization only supports `String -> custom scalar`; e.g. `42 :: URL!` is a type error (`Int!` vs `URL!`)
-- scalars from GraphQL responses flow naturally; no cast needed
-- a GraphQL scalar whose value isn't a string (a number, object, list or boolean) keeps that JSON value: passed back as an argument it is sent unchanged, and wherever a String is expected (degrading, interpolation, `toString`) it reads as its JSON text, e.g. `42` or `{"a":1}`
+A *literal* converts to a compatible scalar wherever a value is handed over:
+call arguments, typed slots, list and map literals, and return values. That
+covers string literals, list and map literals, and templates, even ones with
+`${...}` inside:
+
+```dang
+sendTo(to: Email!): String! { `mail for ${to}` }
+
+let name = "grace"
+
+[sendTo("ada@example.com"), sendTo(`${name}@example.com`)]
+```
+
+A string that isn't a literal, such as a variable or `a + b`, doesn't
+convert:
+
+```dang
+let address = "ada@example.com"
+```
+
+```dang-failure
+sendTo(address)
+```
+
+It needs an explicit `::` cast:
+
+```dang
+sendTo(address :: Email!)
+```
+
+List literals don't convert their elements to match each other, so a plain
+string doesn't join a list of `Email!`s:
+
+```dang-failure
+["ada@example.com" :: Email!, "grace@example.com"]
+```
+
+Only a `String` converts to a scalar. `42 :: Email!` is a type error:
+
+```dang-failure
+42 :: Email!
+```
+
+Scalars from GraphQL responses need no cast. Demo's `homepage` is a `URL!`,
+and `fetchURL` takes one:
+
+```dang
+fetchURL(url: homepage)
+```
+
+A GraphQL scalar whose value isn't a string (a number, object, list or
+boolean) keeps that JSON value. Passed back as an argument, it is sent
+unchanged. Where a `String` is expected (degrading, interpolation,
+`toString`), it reads as its JSON text:
+
+```dang
+[describeOpaque(value: opaqueNumber), `object: ${opaqueObject}`]
+```
 
 ### Treating scalars as opaque
 
-- equality, comparison, list membership, use in records/lists all work
-- no string operations unless first cast back to `String`
+Scalars support equality and list membership, and can go in records and
+lists. They have no string methods and no ordering:
+
+```dang
+let ada: Email! = "ada@example.com"
+
+[ada == ("ada@example.com" :: Email!), [ada].contains(ada)]
+```
+
+```dang-failure
+ada.toUpper
+```
 
 > Meta: the `::` rule is the durable contract — literals are a convenience, non-literal values always go through an explicit cast.
 
 ### Degrading to `String`
 
+A scalar value turns back into a `String!` wherever a value is handed over:
+typed slots, call arguments, return values, reassignment, `::`, and
+`case`-clause values. It's a string underneath:
+
 ```dang
-scalar URL
-
-let u: URL! = "https://example.com/a"
-
-# a scalar value degrades to String! at value-handoff boundaries — typed slots,
-# call args, returns, reassignment, ::, case-clause values — since it is a
-# string underneath
-let s: String! = u
+let plain: String! = ada
 
 shout(msg: String!): String! { msg.toUpper }
-shout(u)                        # degrades into the String! argument → "HTTPS://EXAMPLE.COM/A"
 
-u == "https://example.com/a"    # a string literal converts to URL → true
-u == (s :: URL!)                # a non-literal String needs a cast
-`link: ${u}`                    # interpolation / toString yield the bare string
-(u :: String!).toUpper          # a String *method* needs a String receiver: degrade first
+[plain, shout(ada), `to: ${ada}`]
+```
+
+A string literal compared with a scalar converts to it, like a literal
+argument. A `String` held in a variable doesn't; cast it first:
+
+```dang
+[ada == "ada@example.com", ada == (plain :: Email!)]
+```
+
+```dang-failure
+ada == plain
+```
+
+A `String` *method* needs a `String` receiver, so degrade first:
+
+```dang
+(ada :: String!).toUpper
 ```
 
 ## Scalar bodies {#scalar-bodies}
 
+A scalar can have a body. Its `new()` hook takes the raw string and returns
+the canonical one. It runs every time a value is made: a string literal in
+a `Slug!` slot, a `:: Slug!` cast, a codec decode, and the `Slug(...)`
+constructor that declaring `new()` adds:
+
 ```dang
 scalar Slug {
-  # new() runs at every materialization — a string literal in a Slug! slot, a
-  # `:: Slug!` cast, codec decode, and the derived Slug(...) constructor — and
-  # returns the canonical underlying String!, which the runtime wraps back up
   new(raw: String!) {
     raw.trimSpace.toLower.replace(" ", "-")
   }
 
-  # members are methods only (a scalar holds no state beyond its string); inside
-  # one, `self` is the scalar value — degrade it to String! via a slot or cast
   words: [String!]! { (self :: String!).split("-") }
-  first: String! { self.words[0] ?? "" }   # bare sibling call re-dispatches on self
+  first: String! { words[0] ?? "" }
 }
 
-# the scalar's name doubles as a constructor for any String expression
-Slug("  Hello World  ")             # Slug("hello-world")
-Slug("A b") == Slug("a-b")          # true — normalization makes equality semantic
-Slug("one two three").words         # ["one", "two", "three"]
-Slug("one two three").first         # "one"
+Slug("  Hello World  ")
 ```
+
+Since every value goes through `new()`, equality compares the normalized
+strings:
+
+```dang
+Slug("A b") == Slug("a-b")
+```
+
+Members must be methods: a scalar holds nothing but its string. Inside a
+method, `self` is the scalar value, and sibling methods can be called bare:
+
+```dang
+Slug("one two three").first
+```
+
+```dang-failure
+scalar Version { major: Int! = 1 }
+```
+
+A `raise` in the hook rejects a bad value, and `rescue` can recover from it
+at the spot where the value was made:
 
 ```dang
 scalar Upper {
-  # a raise in the hook makes a bad value recoverable at the offending slot
   new(raw: String!) {
     if (raw != raw.toUpper) { raise `not upper: ${raw}` }
     raw
   }
 
-  # a self { } block adds statics, reached as Upper.member (see Static members)
   self {
     of(s: String!): Upper! { Upper(s.toUpper) }
   }
 }
 
-let ok: Upper! = "HELLO"            # Upper("HELLO")
-Upper("nope") rescue "rejected"     # "rejected" — construction is recoverable
-Upper.of("mixed Case")             # Upper("MIXED CASE")
+Upper("nope") rescue { e: Error => e.message }
 ```
 
-- a scalar's `self { }` block declares statics exactly like a `type`'s (see [#static-members])
+A scalar's `self { }` block declares statics exactly like a `type`'s (see
+[#static-members]):
+
+```dang
+Upper.of("mixed Case")
+```
 
 ## Built-in scalars
 
 - `Int!`, `Float!`, `String!`, `Boolean!`, `ID!` (see [#nullability])
-- `ID!` is its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop) — but string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`)
 - `Path!` and `Regexp!` are scalars carrying their own methods and a construction hook — `Path` normalizes on construction, `Regexp` compiles its pattern. `Path` is declared in the prelude with a scalar body (see [#scalar-bodies]); full method signatures for both are in [#stdlib]
+
+`ID!` is its own scalar, not a `String` alias. String literals still
+convert into `ID!` slots, but a `String!` value doesn't:
+
+```dang
+let key: ID! = "abc"
+let text = "abc"
+```
+
+```dang-failure
+let other: ID! = text
+```
+
+`Path` normalizes as it's made:
+
+```dang
+"src/../docs/./index.md" :: Path!
+```
 
 > Meta: scalar fields are invariant across interface implementation — `id: String!` does not satisfy `id: ID!`. Cross-ref the variance rules in [#interfaces-unions].
 
-> See also: enum values and custom scalars declared in an imported schema are reached through the module name (see [#modules]); GraphQL representations are covered in [#interop].
+> See also: enum values and custom scalars declared in an imported schema are reachable through the module name (`Demo.Status.ACTIVE`), unqualified (`Status.ACTIVE`), or, for enum values, bare when no other import uses the name (see [#modules]); GraphQL representations are covered in [#interop].
