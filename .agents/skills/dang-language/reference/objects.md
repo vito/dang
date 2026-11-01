@@ -195,8 +195,8 @@ fullName: String! { firstName + " " + lastName }
 - A defaulted-value member (`computedField: String! = config.name + "_computed"`) is computed once at construction; a `{ body }` computed field is re-evaluated per access.
 
 ### Equality (`==` / `!=`)
-- **Anonymous records** (`{{…}}` literals and `.{{…}}` selections) compare by **value**: equal when they have the same fields and every field is equal. `{{a: 1}} == {{a: 1}}` is `true`; `{{a: 1}} == {{a: 2}}` and `{{a: 1}} == {{a: 1, b: 2}}` are `false`. Nested records recurse.
-- **Named-type objects** compare by **type identity, then stored fields**: equal only when both sides are the same named type *and* every data field is equal. `Rabbit("x") == Rabbit("x")` is `true`; `Rabbit("x") == Rabbit("y")` is `false`. Distinct named types never match (`Rabbit == Hare` is `false`, even with identical shape), and a named object never equals an anonymous record of the same shape.
+- **Anonymous records** (`{{…}}` literals and `.{{…}}` selections) compare by **value**: equal when they have the same fields and every field is equal. `{{a: 1}} == {{a: 1}}` is `true`; `{{a: 1}} == {{a: 2}}` is `false`; records of different shapes (`{{a: 1}} == {{a: 1, b: 2}}`) don't type-check. Nested records recurse.
+- **Named-type objects** compare by **type identity, then stored fields**: equal only when both sides are the same named type *and* every data field is equal. `Rabbit("x") == Rabbit("x")` is `true`; `Rabbit("x") == Rabbit("y")` is `false`. Distinct named types (`Rabbit == Hare`), or a named object and an anonymous record, don't type-check against each other.
 - **Computed members are ignored** — a `{ body }` field is behavior, not stored state (re-evaluated per access), so it never participates in equality.
 - **GraphQL object handles** compare by **reference identity** (the query that produced them), not structurally — see `graphql.md`. A `.{{ }}` selection, though, materializes an anonymous record and compares by value.
 

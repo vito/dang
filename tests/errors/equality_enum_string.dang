@@ -1,0 +1,10 @@
+# An enum value never equals a String: compare with the enum's value.
+
+enum Color {
+  RED
+  GREEN
+}
+
+let c: Color! = Color.GREEN
+
+assert { c == "GREEN" }

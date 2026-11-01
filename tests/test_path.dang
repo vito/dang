@@ -14,9 +14,9 @@ assert { p.string == "a/c" }
 assert { Path("").string == "." }
 assert { Path("/../x").string == "/x" }
 
-# Normalization makes equality semantic, including against plain strings.
+# Normalization makes equality semantic.
 assert { Path("a//b/./c") == Path("a/b/c") }
-assert { Path("a//b") == "a/b" }
+assert { Path("a//b") == Path("a/b") }
 
 # =============================================================================
 # Literals coerce into Path-typed slots (params, defaults, returns)

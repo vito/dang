@@ -151,7 +151,7 @@ lightFor(m: Map[Light!]!, key: String!): Light { m[key] }
 
 assert { lightFor(["go": "GREEN"], "go") == Light.GREEN }
 let labels: Map[Label!]! = ["a": "first"]
-assert { labels["a"] == "first" }
+assert { labels["a"] == ("first" :: Label!) }
 
 # custom scalar values degrade to String in a Map[String!] slot
 let label: Label! = "tagged"

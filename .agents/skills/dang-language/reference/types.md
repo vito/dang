@@ -138,7 +138,7 @@ scalar JSON
 - Runtime materialization supports `String -> custom scalar` and `custom scalar -> String` only (`42 :: URL!` is a type error).
 - Scalars from GraphQL responses flow naturally; no cast needed.
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
-- Equality, comparison against plain strings, list membership, records/lists all work: a custom scalar `==` a `String` compares the underlying strings (`urlValue == "https://…"`).
+- Equality, list membership, records/lists all work between values of the same scalar. Against a `String`, `==` doesn't type-check: cast one side (`urlValue == ("https://…" :: URL!)` or `(urlValue :: String!) == s`).
 - The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.
 
 ### Scalar bodies: methods and the `new()` hook

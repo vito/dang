@@ -83,7 +83,7 @@ assert { user(id: found!.id).name == "Jane Smith" }
 # Nullable interface fields resolve too
 assert { node(id: "nope") == null }
 assert { node(id: "User:1") != null }
-assert { node(id: "User:1").id == "User:1" }
+assert { node(id: "User:1").id == ("User:1" :: ID!) }
 
 # ...as their concrete type, so type patterns match
 let kind(n: Node): String! {

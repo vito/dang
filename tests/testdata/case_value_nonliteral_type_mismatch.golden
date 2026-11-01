@@ -1,4 +1,4 @@
-[1m[31mError:[0m Case.Infer: clause 0 value type mismatch: Test.URL! != String!
+[1m[31mError:[0m case pattern of type String! can't match a Test.URL! operand
   [2m[34m--> errors/case_value_nonliteral_type_mismatch.dang:9:3[0m
  [2m    |[0m
  [2m  7 | [0m

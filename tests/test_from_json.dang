@@ -33,7 +33,7 @@ let direct = "FAILED" :: Status!
 assert { direct == Status.FAILED }
 
 let scalar: CustomScalar! = JSON.decode("\"hello\"")
-assert { scalar == "hello" }
+assert { scalar == ("hello" :: CustomScalar!) }
 
 let summary: Summary! = JSON.decode("""
 {

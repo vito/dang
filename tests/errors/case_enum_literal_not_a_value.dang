@@ -1,0 +1,14 @@
+# A case pattern literal for an enum must name one of its values.
+
+enum Color {
+  RED
+  GREEN
+}
+
+let c: Color! = Color.GREEN
+
+let r = case (c) {
+  "GREEN" => 1
+  "MAUVE" => 2
+  else => 3
+}
