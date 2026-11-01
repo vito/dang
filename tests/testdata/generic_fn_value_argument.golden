@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use _a? as Int!
+  [2m[34m--> errors/generic_fn_value_argument.dang:8:15[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | let g = id(&first)[0m
+ [2m[34m[1m  8 | [0mlet n: Int! = g([])
+[2m                     [31m^^^^^[0m
+ [2m  9 | [0m
+ [2m    |[0m
+

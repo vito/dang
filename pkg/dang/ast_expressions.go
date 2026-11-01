@@ -311,6 +311,34 @@ func instantiateCallee(ft *hm.FunctionType) *hm.FunctionType {
 	return ft.Apply(subs).(*hm.FunctionType)
 }
 
+// fnValueType gives a function taken as a value (`&first`, a bare `first`
+// or `T.m` not called) a type that keeps what instantiateCallee keeps for
+// a call: a variable its signature writes `a!` stands for nullable types
+// only, so its bare occurrences are nullable, `a?`. Otherwise `let f =
+// &first` with `first(xs: [a!]!): a` would give `f([])` an `a` some use
+// could take for an Int!. Rigid variables are the enclosing body's own,
+// already nullable-only by its callers; weak ones are pinned as they are.
+func fnValueType(t hm.Type) hm.Type {
+	ft, ok := t.(*hm.FunctionType)
+	if !ok {
+		return t
+	}
+	var subs hm.Subs
+	for tv := range hm.NonNullVars(ft) {
+		if tv.IsRigid() || tv.IsWeak() {
+			continue
+		}
+		if subs == nil {
+			subs = hm.NewSubs()
+		}
+		subs.Add(tv, hm.Nullable(tv))
+	}
+	if subs == nil {
+		return t
+	}
+	return ft.Apply(subs).(*hm.FunctionType)
+}
+
 // freshenSubs maps each flexible variable in tvs to a new one of its name.
 // Weak variables, the unknown parts of a mutable binding's type, have one
 // identity everywhere.
@@ -821,6 +849,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				return nil, err
 			}
 		}
+		t = fnValueType(t)
 		s.SetInferredType(t)
 		return t, nil
 	})
@@ -958,6 +987,15 @@ func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) erro
 }
 
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t, err := d.infer(ctx, env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	// A method taken as a value keeps its `a!` meaning (see fnValueType).
+	return fnValueType(t), nil
+}
+
+func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Every Select has a receiver: bare names are Symbols.
 		if d.Receiver == nil {

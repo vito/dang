@@ -1,0 +1,6 @@
+# A function value put in a list keeps what its `a!` means: `a` is nullable,
+# so calling it from the list gives no Int!s.
+first(xs: [a!]!): a { xs[0] }
+
+let fs = [&first]
+let ns: [Int!]! = fs.map { g => g([]) }

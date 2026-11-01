@@ -38,3 +38,10 @@ nonNull(x: a!): a! { x }
 
 let three: Int! = nonNull(3)
 assert { three == 3 }
+
+# taken as a value, a function keeps that meaning
+let firstRef = &firstOfNonNull
+let fromRef: Int = firstRef([5])
+assert { fromRef == 5 }
+assert { firstRef([]) == null }
+assert { [&firstOfNonNull].map { g => g([6]) } == [6] }
