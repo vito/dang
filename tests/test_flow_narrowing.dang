@@ -422,3 +422,41 @@ let caseArms(a: Int, k: Int!): Int! {
 }
 
 assert("write in another case arm") { caseArms(1, 2) == 2 }
+
+# `case` clauses narrow like guards: a later clause runs only when the
+# earlier ones didn't match.
+let caseOnValue(a: Int): Int! {
+  let x = a
+  case (x) {
+    null => 0
+    1 => x + 10
+    else => x + 1
+  }
+}
+
+assert("case operand after a null clause") {
+  caseOnValue(null) == 0 and caseOnValue(1) == 11 and caseOnValue(5) == 6
+}
+
+let caseMatched(a: Int): Int! {
+  case (a) {
+    2 => a * 3
+    else => 0
+  }
+}
+
+assert("case operand matching a non-null value") {
+  caseMatched(2) == 6 and caseMatched(null) == 0
+}
+
+let caseConditions(a: Int): Int! {
+  case {
+    a == null => 0
+    a > 3 => a * 2
+    else => a + 1
+  }
+}
+
+assert("case conditions") {
+  caseConditions(null) == 0 and caseConditions(5) == 10 and caseConditions(1) == 2
+}

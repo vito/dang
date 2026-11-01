@@ -87,6 +87,7 @@ loop {
 - sequential guards accumulate: each narrows independently as forms are processed in order
 - inside a `loop` / `.each` block, a guard that `break`s or `continue`s narrows the rest of that iteration (`if (x == null) { break }` → `x` is `T!` after)
 - at the top level of a script, a guard narrows the top-level statements after it, but not declarations: every `let` and function runs before the first statement, so `if (x == null) { raise "missing" }` then `let y: Int! = x` is still an error
+- `case` clauses narrow too: a clause runs only when the clauses before it didn't match, so after `null => …` the operand (a bare name) is `T!`, and after `x == null => …` in a `case` without an operand, `x` is. A clause matching a non-null value (`1 => …`) narrows the operand in its own body
 
 ### Reassigning a narrowed name
 

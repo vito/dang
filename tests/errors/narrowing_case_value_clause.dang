@@ -1,0 +1,9 @@
+# A `case` clause for a non-null value says nothing about the clauses after
+# it: the operand may still be null there.
+next(a: Int): Int! {
+  let x = a
+  case (x) {
+    1 => 0
+    else => x + 1
+  }
+}

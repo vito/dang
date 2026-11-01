@@ -67,6 +67,7 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
 - `else if` chains: the outer guard's falsy facts still apply afterward.
 - Sequential guards accumulate, each narrowing independently in order.
 - At script top level, a guard narrows the later top-level *statements* only: declarations (`let`, functions) all run before the first statement, so `if (x == null) { raise … }; let y: Int! = x` is still an error.
+- `case` clauses narrow like guards: after `null => …`, later clauses see a bare-name operand as `T!`; in an operand-less `case`, later clauses see earlier conditions' falsy facts (`x == null => …` then `x` is `T!`), and each clause body its own condition's truthy facts. A clause matching a non-null value narrows the operand in its body.
 
 ### Compound conditions
 - Guard with `or`: entering the diverging branch means *both* checks failed, so **both** narrow afterward:
