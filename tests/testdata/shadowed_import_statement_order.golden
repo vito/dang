@@ -1,0 +1,11 @@
+[1m[31mError:[0m top-level declarations run before top-level statements, so `seen` (line 7) reads `postTitles` before this statement writes it; write `postTitles` in a declaration instead (e.g. compute it in `seen`'s initializer), or read it in a statement
+  [2m[34m--> errors/shadowed_import_statement_order.dang:6:1[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | let postTitles = ["local"][0m
+ [2m[34m[1m  6 | [0mpostTitles = ["written"]
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  7 | let seen = postTitles[0m
+ [2m  8 | print(seen)[0m
+ [2m    |[0m
+

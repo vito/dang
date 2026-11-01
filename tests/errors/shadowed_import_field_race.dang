@@ -1,0 +1,8 @@
+# A local declaration shadowing an unqualified import is the top-level
+# binding the {{ }} initializer race check sees.
+import Test
+
+let r = {{p: postTitles, q: 1}}
+let postTitles = { total += 1; ["local"] }
+let total = 0
+print(r.p)
