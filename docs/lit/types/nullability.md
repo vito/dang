@@ -130,7 +130,7 @@ if (maybe != null and other != null) {
 - **`and`-guard does NOT narrow**: `if (x == null and y == null) { raise … }` tells us only that *at least one* is non-null afterward, so neither narrows individually
 - **field accesses don't narrow**: a null check on `h.val` does not narrow later `h.val` accesses, because each `.field` access could return a different value. Workaround: bind to a local first — `let v = h.val; if (v == null) { … }`
 - in an `else` branch where the guard checked `== null`, the variable is known *null* (not narrowed to `T!`) — using it as non-null there errors
-- narrowing applies to bare symbols (locals, and bare `self`-field references inside methods, which parse as plain `Symbol`s)
+- narrowing applies to bare symbols (locals, and bare `self`-field references inside methods, which parse as plain `Symbol`s) — but not to a computed member (`text: String { … }`) referenced by its bare name: each read calls it again. Bind it to a local first
 
 When narrowing can't reach the value — a field or call result, or a spot where the checker just can't follow your reasoning — the postfix `!` operator is the explicit escape hatch: `expr!` narrows `T` to `T!` and raises at runtime if the value turns out to be null. See [#operators].
 
@@ -143,7 +143,7 @@ See also [#errors] (`raise`/`rescue` divergence) and [#control-flow] (guards, lo
 - single lowercase letters: `a`, `b`
 - used in generic function signatures
 - inferred at call sites
-- **opaque**: a generic value supports no operations. Inside the body that declares it, a type variable can only be passed through (returned, stored, passed on) or compared with `==`/`!=` — arithmetic and ordering are definition-time errors (`do(&yield: b): b { yield * 2 }` → "operator multiplication is not defined for the generic type b"). Use a concrete type (e.g. `Int`) if the body must operate on the value.
+- **opaque**: a generic value supports no operations. Inside the body that declares it, a type variable can only be passed through (returned, stored, passed on) or compared with `==`/`!=` — arithmetic and ordering are definition-time errors (`do(&yield: b): b { yield * 2 }` → "operator multiplication is not defined for the generic type b"). Use a concrete non-null type (e.g. `Int!`) if the body must operate on the value.
 
 ## Type hints / casts: `::`
 

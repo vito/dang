@@ -1,0 +1,10 @@
+[1m[31mError:[0m operator greater_than is not defined for nullable type Int: supply a default with ??, assert it with !, or bind it to a local with let and check that for null
+  [2m[34m--> errors/operator_nullable_list_method.dang:3:32[0m
+ [2m    |[0m
+ [2m  1 | # Auto-called list methods on a nullable list yield null, so `.length` on a[0m
+ [2m  2 | # nullable list is nullable too.[0m
+ [2m[34m[1m  3 | [0mhasAny(xs: [Int!]): Boolean! { xs.length > 0 }
+[2m                                      [31m^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+
