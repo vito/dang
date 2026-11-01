@@ -57,6 +57,26 @@ Color.RED == Color.RED
 Color.RED == Signal.RED
 ```
 
+A string literal compared with an enum value converts to it, as it does in
+an argument, so it must name a member. `Color.RED` is still the clearer
+spelling:
+
+```dang
+let shade = Color.BLUE
+
+[shade == "BLUE", shade != "RED"]
+```
+
+A `String` held in a variable doesn't convert; cast it with `::` (below):
+
+```dang
+let picked = "BLUE"
+```
+
+```dang-failure
+shade == picked
+```
+
 ### As function arguments
 
 An enum is an ordinary parameter type. A string literal naming a member
@@ -224,7 +244,7 @@ lists. They have no string methods and no ordering:
 ```dang
 let ada: Email! = "ada@example.com"
 
-[ada == ("ada@example.com" :: Email!), [ada].contains(ada)]
+[ada == ada, [ada].contains(ada)]
 ```
 
 ```dang-failure
