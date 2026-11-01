@@ -399,7 +399,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 		if definedType != nil {
 			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
-				return nil, NewInferError(err, s.Value)
+				return nil, WrapInferError(err, s.Value)
 			}
 			s.defaultType = inferredType
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
@@ -1495,7 +1495,11 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	// this it defaults to private and an importer can't reach it unqualified.
 	mod.SetVisibility(e.Name.Name, e.Visibility)
 
-	if pass > 0 {
+	// The values depend on nothing but the enum itself, so declare them
+	// with its name, in pass 0: constants (inferred before pass 1) may
+	// already hand string literals to the enum, which are checked against
+	// its values (checkEnumLiterals). Repeating this in pass 1 is harmless.
+	{
 		// Add each enum value as a field in the enum module
 		for _, value := range e.Values {
 			// Each enum value has the type of the enum itself (not wrapped)

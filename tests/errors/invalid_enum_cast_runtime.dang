@@ -1,0 +1,5 @@
+enum Status { PASSED FAILED }
+
+# Casting a string that isn't a literal to an enum is checked at runtime.
+let raw = "NOPE"
+let bad = raw :: Status!
