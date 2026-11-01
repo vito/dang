@@ -1,0 +1,22 @@
+# A local type's methods run wherever its values go, even after the block
+# declaring it, so a narrowed name they read may be null by then.
+interface G {
+  g: Int!
+}
+
+type U implements G {
+  g: Int! { 0 }
+}
+
+f(x: Int): Int! {
+  let t: G! = if (x != null) {
+    type T implements G {
+      g: Int! { x + 1 }
+    }
+    T
+  } else {
+    U
+  }
+  x = null
+  t.g
+}
