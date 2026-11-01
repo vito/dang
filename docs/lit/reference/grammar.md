@@ -85,7 +85,7 @@ pick(first: a, second: a): a { first }
 
 ## Lexical
 
-- identifiers: `[a-zA-Z_][a-zA-Z0-9_]*` (lowercase-leading = value, uppercase-leading = type), or `$` and one (`RawWordToken`): `$rescue` is the identifier `rescue`, the escape for a name spelled like a reserved word
+- identifiers: `[a-zA-Z_][a-zA-Z0-9_]*` (lowercase-leading = value, uppercase-leading = type)
 - comments: `#` to end of line
 - strings:
   - `"..."` (with escapes), `"""..."""` triple-quoted (docstrings reuse this)
@@ -95,7 +95,7 @@ pick(first: a, second: a): a { first }
 ## Reserved words
 
 - keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `rescue`, `return`, `scalar`, `self`, `true`, `type`, `union` (`try` and `catch` are ordinary identifiers now; legacy `try`/`catch` blocks still parse but warn at type-check — see [#errors])
-- of these, `null` and `rescue` are never identifiers (`WordToken` excludes them); write `$rescue` for a name spelled like one. Where only a name can go (`FieldId`, `KeyValue` keys, `FieldSelection`, object type keys), `rescue` is a name (`ReservedName`)
+- of these, `null` and `rescue` are never identifiers (`WordToken` excludes them). Where only a name can go (`FieldId`, `KeyValue` keys, `FieldSelection`, object type keys), `rescue` is a name (`ReservedName`). Elsewhere, the rarely needed escape `$rescue` (`RawWordToken`) spells the identifier `rescue`; `dang migrate` writes it for names a newer version reserves
 - `pub` is optional — the visibility keyword is parsed but no longer required; declarations are public by default (see [#fields])
 - see [#syntax]
 
