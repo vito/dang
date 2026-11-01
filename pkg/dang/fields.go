@@ -1849,6 +1849,10 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 }
 
 func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Like a type body (see ObjectDecl.Infer), a scalar body runs when the
+	// scalar is used, not where it is declared: `return`/`break`/`continue`
+	// in it can't reach an enclosing function or loop.
+	ctx = contextWithInferFunctionControlBoundary(ctx)
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")

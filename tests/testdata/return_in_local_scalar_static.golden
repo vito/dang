@@ -1,0 +1,11 @@
+[1m[31mError:[0m return outside of function
+  [2m[34m--> errors/return_in_local_scalar_static.dang:6:21[0m
+ [2m    |[0m
+ [2m  4 |   scalar Tag {[0m
+ [2m  5 |     self {[0m
+ [2m[34m[1m  6 | [0m      width: Int! = return "early"
+[2m                           [31m^^^^^^^^^^^^^^[0m
+ [2m  7 |     }[0m
+ [2m  8 |   }[0m
+ [2m    |[0m
+
