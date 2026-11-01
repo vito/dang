@@ -29,7 +29,7 @@ assert { e == "me@example.com" }
 assert { "me@example.com" == e }
 assert { e != "you@example.com" }
 assert { node(id: "User:1").id == "User:1" }
-assert { homepage == `https://dang-lang.dev` }
+assert { homepage == `https://danglang.org` }
 
 let empty = "null" :: JSON!
 

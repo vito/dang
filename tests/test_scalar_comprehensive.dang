@@ -13,7 +13,7 @@ let url = homepage
 
 # Test 3: Value comparison
 assert { ts == ("2024-01-15T10:30:00Z" :: Test.Timestamp!) }
-assert { url == ("https://dang-lang.dev" :: Test.URL!) }
+assert { url == ("https://danglang.org" :: Test.URL!) }
 
 # Test 4: Scalar identity
 assert { ts == ts }

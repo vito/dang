@@ -300,7 +300,7 @@ func (r *queryResolver) Now(ctx context.Context) (string, error) {
 
 // Homepage is the resolver for the homepage field.
 func (r *queryResolver) Homepage(ctx context.Context) (string, error) {
-	return "https://dang-lang.dev", nil
+	return "https://danglang.org", nil
 }
 
 // FetchURL is the resolver for the fetchURL field.
