@@ -1,14 +1,29 @@
 \use-plugin{dang}
+\literate-fences
 
 # Modules and imports {#modules}
 
 > Meta: three audiences, in this order so each can stop reading early — single-file users (next section), directory-module users, then people wiring up `dang.toml`. `import`/shadowing/cycles follow.
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## A single file is a module
 
 - top-level declarations are the module's surface
 - public (the default) is exported, `let` is private (see [#fields])
 - order doesn't matter — declarations are hoisted; forward references work
+
+```dang
+greeting: String! { `${salutation}, ${audience}!` }   # exported
+let salutation = "Hello"                              # private to the module
+let audience = "world"
+
+greeting
+```
 
 ## A directory is also a module
 
@@ -86,19 +101,55 @@ path = "./lib/helpers"
 
 ## `import` declarations
 
+An `import` names one of the `[imports.<Name>]` entries. These docs come with
+one called `Demo`, a small GraphQL schema served in-process (see
+[#interop]); each request it receives is printed as `→ query …`:
+
 ```dang
-import Dagger
-import MyApi
+import Demo
 ```
 
-- exposes both *qualified* (`MyApi.User`) and *unqualified* (`User`) names
-- covers types, root `Query`/`Mutation` functions, interfaces, unions, enums, scalars, and directives (see [#interop])
-- enum *values* become unqualified too: `ACTIVE` (== `Status.ACTIVE`) if no collision (see [#enums-scalars])
+An import exposes both *qualified* (`Demo.User`) and *unqualified* (`User`)
+names. That covers types, root `Query`/`Mutation` functions, interfaces,
+unions, enums, scalars, and directives (see [#interop]):
+
+```dang
+[Demo.primaryUser.name, primaryUser.name]
+```
+
+Enum *values* become unqualified too, when no other import has the same
+name (see [#enums-scalars]):
+
+```dang
+[status == ACTIVE, Demo.Status.ACTIVE == Status.ACTIVE]
+```
+
 - imported directives are usable unqualified: `@customDirective(...)` (see [#directives])
 
 ## Shadowing
 
-- a local `type User { ... }` shadows the imported `User` (qualified `MyApi.User` still works)
+A local declaration shadows an imported name of the same spelling, and the
+qualified name still reaches the import:
+
+```dang
+type User {
+  name: String!
+  origin: String! = "local"
+}
+
+let remote: Demo.User! = Demo.primaryUser
+
+[User("Ada").origin, remote.name]
+```
+
+The two `User`s are different types, so a Demo user doesn't fit the local
+one. Types match by name, not shape: even a local `User` with exactly
+Demo's fields would be rejected.
+
+```dang-failure
+let mine: User! = primaryUser
+```
+
 - a local declaration also *resolves* an otherwise-ambiguous unqualified name (local wins)
 - without a local shadow, an unqualified name provided by two imports is an error: `ambiguous reference to "Status": provided by imports [Other Test]` — must qualify
 - same for unqualified `Mutation` and directives (`ambiguous reference to directive @experimental`)
@@ -106,9 +157,23 @@ import MyApi
 ## Ordering and cycles
 
 - forward references across files work
-- direct circular *variable initializers* are caught statically: `circular module variable initializer: a -> b -> a`
-- cycles hidden behind an auto-called function or constructor default are caught at runtime when the variable is forced: `initialization cycle while evaluating variable "..."`
 - circular *types* (interface-implementing-interface, mutually-referencing types across files) are fine
+
+Direct circular *variable initializers* are caught statically:
+
+```dang-failure
+left: Int! = right
+right: Int! = left
+```
+
+Cycles hidden behind an auto-called function or constructor default are
+caught at runtime, when the variable is first read. Run as a script, this
+reports `initialization cycle while evaluating variable "seed"`:
+
+```dang-static
+seed: Int! = grow
+grow: Int! { seed * 2 }
+```
 
 ## What a module exports
 
