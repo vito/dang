@@ -459,13 +459,6 @@ func (t *Template) Walk(fn func(Node) bool) {
 	}
 }
 
-// Quoted represents a quoted string literal
-type Quoted struct {
-	InferredTypeHolder
-	Quoter string
-	Raw    string
-}
-
 // Boolean represents a boolean literal
 type Boolean struct {
 	InferredTypeHolder

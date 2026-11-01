@@ -2478,10 +2478,6 @@
           "named": true
         },
         {
-          "type": "quoted",
-          "named": true
-        },
-        {
           "type": "self_keyword",
           "named": true
         },
@@ -3277,32 +3273,6 @@
         "types": [
           {
             "type": "id",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "quoted",
-    "named": true,
-    "fields": {
-      "quoter": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "word_token",
-            "named": true
-          }
-        ]
-      },
-      "raw": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "quoted_raw_token",
             "named": true
           }
         ]
@@ -5045,10 +5015,6 @@
   },
   {
     "type": "pub_token",
-    "named": true
-  },
-  {
-    "type": "quoted_raw_token",
     "named": true
   },
   {

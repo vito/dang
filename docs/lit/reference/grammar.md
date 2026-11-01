@@ -65,7 +65,6 @@ TypeVariable := [a-z]                           # single lowercase letter
 - strings:
   - `"..."` (with escapes), `"""..."""` triple-quoted (docstrings reuse this)
   - `` `...` `` backtick templates with `${expr}` interpolation; `\${` escapes a literal `${`. Longer backtick fences (` ``` `) nest. See [#strings].
-  - `%word{...}` quoted/raw form
 - numbers: `Int` decimal; `Float` requires a fraction (`1.0`) or exponent (scientific notation)
 
 ## Reserved words
