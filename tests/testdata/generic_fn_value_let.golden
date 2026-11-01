@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use _a? as Int!
+  [2m[34m--> errors/generic_fn_value_let.dang:6:15[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | let f = &first[0m
+ [2m[34m[1m  6 | [0mlet n: Int! = f([])
+[2m                     [31m^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

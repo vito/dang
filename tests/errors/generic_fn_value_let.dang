@@ -1,0 +1,6 @@
+# A function taken as a value keeps what its `a!` means: `a` is nullable,
+# so `f([])` through `let f = &first` is no Int!, as `first([])` isn't.
+first(xs: [a!]!): a { xs[0] }
+
+let f = &first
+let n: Int! = f([])
