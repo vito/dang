@@ -546,6 +546,7 @@ HeaderField <- docstring:DocString? field:(TypeAndArgsField / TypeOnlyFunField) 
 }
 
 TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+  c.rejectSecondBlockParam(args.([]*FieldDecl), "function")
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{args.([]*FieldDecl), type_.(TypeNode)},
@@ -681,6 +682,7 @@ BlockParamDecl <- AmpersandToken name:Symbol _ args:ArgTypes? _ ColonToken _ ret
   if args != nil {
     argTypes = args.([]*FieldDecl)
   }
+  c.rejectSecondBlockParam(argTypes, "block")
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{argTypes, ret.(TypeNode)},

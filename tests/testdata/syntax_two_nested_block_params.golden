@@ -1,0 +1,9 @@
+[1m[31mError:[0m syntax error: block can only have one block parameter
+  [2m[34m--> errors/syntax_two_nested_block_params.dang:1:26[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mpub apply(&blk(&a: Int!, &b: Int!): Int!): Int! {
+[2m                                [31m^^^^^^^^[0m
+ [2m  2 |   1[0m
+ [2m  3 | }[0m
+ [2m    |[0m
+

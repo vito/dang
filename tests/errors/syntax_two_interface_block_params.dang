@@ -1,0 +1,3 @@
+interface Repeater {
+  twice(&a: Int!, &b: Int!): Int!
+}

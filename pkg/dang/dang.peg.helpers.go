@@ -58,6 +58,22 @@ func (c *current) reject(loc *SourceLocation, msg string) {
 	panic(&rejectedSyntax{msg: msg, loc: loc})
 }
 
+// rejectSecondBlockParam rejects args declaring more than one block
+// parameter, at the second; what names the declaration, as in "function can
+// only have one block parameter".
+func (c *current) rejectSecondBlockParam(args []*FieldDecl, what string) {
+	seen := false
+	for _, arg := range args {
+		if !arg.IsBlockParam {
+			continue
+		}
+		if seen {
+			c.reject(arg.Loc, what+" can only have one block parameter")
+		}
+		seen = true
+	}
+}
+
 // rejectedSourceError renders a rejectedSyntax from a parse error as a
 // SourceError with its snippet. It takes precedence over tree-sitter's
 // diagnosis, which sees nothing wrong with such source.
