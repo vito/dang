@@ -42,4 +42,19 @@ assert { center_exact == "hello" }
 let center_empty = "".center(5)
 assert { center_empty == "     " }
 
+# Widths count characters (Unicode code points), not bytes, like length
+assert { "é".padLeft(3) == "  é" }
+assert { "é".padRight(3) == "é  " }
+assert { "café".padLeft(6) == "  café" }
+assert { "日本".padRight(4) == "日本  " }
+assert { "日本".padLeft(2) == "日本" }
+assert { "é".center(3) == " é " }
+assert { "日本".center(5) == " 日本  " }
+assert { "naïve".padRight(8).length == 8 }
+assert { "naïve".center(9).length == 9 }
+# a string already as wide as the target, in characters, is unchanged even
+# though it has more bytes than that
+assert { "日本語".padLeft(3) == "日本語" }
+assert { "日本語".center(4) == "日本語 " }
+
 print("All String padding tests passed!")

@@ -33,7 +33,7 @@
 
 - `s.trim(charset)`, `s.trimLeft(charset)`, `s.trimRight(charset)`, `s.trimSpace`
 - `s.trimPrefix(p)`, `s.trimSuffix(p)`
-- `s.padLeft(width)`, `s.padRight(width)`, `s.center(width)`
+- `s.padLeft(width)`, `s.padRight(width)`, `s.center(width)` — pad with spaces to `width` characters (code points, like `s.length`); `center` puts an odd extra space on the right
 
 ## Split / replace
 
