@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -394,10 +395,13 @@ func comparisonHint(left, right Node, lt, rt hm.Type) string {
 				return fmt.Sprintf("compare with a %s value, like %s.%s", mod, mod, names[0])
 			}
 		case mod.Kind == ScalarKind && !isPrimitiveScalar(mod):
-			if isLit {
-				return fmt.Sprintf("cast the string to compare: (%q :: %s!)", lit.Value, mod)
+			// Quote the operand as written: `("User:1" :: ID!)`, `(s :: Email!)`.
+			what := "string"
+			switch unwrapGrouped(side.other).(type) {
+			case *String, *Template:
+				what = "literal"
 			}
-			return fmt.Sprintf("cast the string to compare: (... :: %s!)", mod)
+			return fmt.Sprintf("cast the %s to compare: (%s :: %s!)", what, strings.TrimSpace(Format(side.other)), mod)
 		}
 	}
 	return ""
