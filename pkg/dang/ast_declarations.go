@@ -319,6 +319,9 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// method or constructor owns its receiver: its `self` writes are forks.
 	// Argument defaults are evaluated by the call too, so they count as well.
 	effCtx, effFr := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
+	if scalar := scalarBodyType(env); scalar != nil {
+		effFr.sealed = scalar
+	}
 
 	// Process arguments using shared logic. Defaults are evaluated at function
 	// call time, so they must not inherit the caller's return/break/continue targets.

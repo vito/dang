@@ -229,11 +229,12 @@ func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (con
 	return context.WithValue(ctx, effFrameKey{}, fr), fr
 }
 
-// withTypeBodyEffFrame enters the body of type object (env is its body
-// scope): field defaults and statics run when the type is used, not where it
-// is declared, so they are sealed like its methods.
-func withTypeBodyEffFrame(ctx context.Context, object *Type, env hm.Env) context.Context {
-	ctx, fr := withEffFrame(ctx, newClosureEffect(object.Named), env, object)
+// withTypeBodyEffFrame enters a body of type object whose bindings are
+// declared in frame (the type itself, or its meta-type for statics; env is
+// the body scope): field defaults and statics run when the type is used, not
+// where it is declared, so they are sealed like its methods.
+func withTypeBodyEffFrame(ctx context.Context, object, frame *Type, env hm.Env) context.Context {
+	ctx, fr := withEffFrame(ctx, newClosureEffect(object.Named), env, frame)
 	fr.sealed = object
 	return ctx
 }
@@ -241,6 +242,22 @@ func withTypeBodyEffFrame(ctx context.Context, object *Type, env hm.Env) context
 // sealedWhy explains, for messages, why a type's code can't reach outside it.
 func sealedWhy(t *Type) string {
 	return fmt.Sprintf("%s's methods, constructor and field defaults run wherever its values are used, maybe after this scope is gone or concurrently", t.Named)
+}
+
+// scalarBodyType returns the scalar when env is a scalar's body scope, i.e.
+// when a function declared directly in env is one of its methods. Its
+// receiver is a value, not a frame to own, but its code is sealed like an
+// object type's: scalar values go anywhere too.
+func scalarBodyType(env hm.Env) *Type {
+	ov, ok := env.(*OverlayTypeScope)
+	if !ok {
+		return nil
+	}
+	t, ok := ov.primary.(*Type)
+	if !ok || t.Parent != nil || t.Kind != ScalarKind {
+		return nil
+	}
+	return t
 }
 
 // methodSelfFrame returns the receiver type when env is a type body scope,
@@ -275,15 +292,17 @@ func selfTypeFrame(env hm.Env) TypeScope {
 // absorbWrite records a write to target in the innermost function body, and
 // checks it against enclosing `{{ }}` fields.
 func absorbWrite(ctx context.Context, target effTarget, node Node) {
-	checkFieldWrite(ctx, target, node)
+	fieldReported := checkFieldWrite(ctx, target, node)
 	fr := bodyFrame(ctx)
 	if fr == nil || fr.inside(target.frame) {
 		return
 	}
 	if fr.sealed != nil {
-		_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
-			"cannot assign to `%s`: it is declared outside %s, and %s; return the new value instead",
-			target.name, fr.sealed.Named, sealedWhy(fr.sealed)), node))
+		if !fieldReported {
+			_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
+				"cannot assign to `%s`: it is declared outside %s, and %s; return the new value instead",
+				target.name, fr.sealed.Named, sealedWhy(fr.sealed)), node))
+		}
 		return
 	}
 	if fr.eff.targets == nil {

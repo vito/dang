@@ -455,6 +455,30 @@ func TestLocalTypesSealed(t *testing.T) {
 			`,
 		},
 		{
+			name: "statics writing their own locals",
+			src: `
+				type T {
+					a: Int! = 1
+					self { total: Int! = { let k = 0; [1, 2].each { x => k += x }; k += 1; k } }
+				}
+				run: Int! {
+					type U { self { total: Int! = { let k = 0; k += 1; k } } }
+					T.total + U.total
+				}
+			`,
+		},
+		{
+			name: "local scalar method writing an enclosing local",
+			src: `
+				run: String! {
+					let n = 0
+					scalar S { bump: Int! { n += 1; n } }
+					"a"
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside S",
+		},
+		{
 			name: "own state, reads and nested closures are fine",
 			src: `
 				run: Int! {
