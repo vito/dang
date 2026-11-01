@@ -595,6 +595,19 @@ func TestTopLevelStatementOrder(t *testing.T) {
 			want: "top-level declarations run before top-level statements, so `s` (line 4) reads `p` before this statement writes it",
 		},
 		{
+			name: "assignment after a top-level guard",
+			// The guard narrows the statements after it (nulls), which are
+			// inferred in a narrowed clone of the module scope; the order
+			// check must still see them as top-level statements.
+			src: `
+				let p: Int = 1
+				if (p == null) { raise "missing" }
+				p = 5
+				let s = p
+			`,
+			want: "so `s` (line 5) reads `p` before this statement writes it",
+		},
+		{
 			name: "block writing before a declaration reading it",
 			src: `
 				let sum = 0
