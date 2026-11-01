@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/ioctx"
@@ -380,6 +381,30 @@ func registerStdlib() {
 			}
 
 			return ToValue(string(runes[:length]))
+		})
+
+	// String.length method: length -> Int!
+	//
+	// Counts Unicode code points (runes), not bytes, matching truncate, which
+	// measures its length in characters too: "héllo".length is 5, and
+	// s.truncate(s.length) is s.
+	Method(StringType, "length").
+		Doc("returns the number of characters (Unicode code points) in the string").
+		Example(`"héllo".length`).
+		Returns(NonNull(IntType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return IntValue{Val: utf8.RuneCountInString(str)}, nil
+		})
+
+	// String.isEmpty method: isEmpty -> Boolean!
+	Method(StringType, "isEmpty").
+		Doc("returns true if the string has no characters").
+		Example(`"".isEmpty`).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return BoolValue{Val: str == ""}, nil
 		})
 
 	// List.contains method: contains(element: a) -> Boolean!

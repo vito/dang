@@ -83,8 +83,8 @@ Indexing chains, so a list of lists reads positionally:
 [nums.isEmpty, none.isEmpty]
 ```
 
-> `.length` and `.isEmpty` are list methods only — strings do **not** have
-> them; use the string predicates instead (see [#strings]).
+> Strings have `.length` and `.isEmpty` too, counting characters (see
+> [#strings]).
 
 ### Transforming
 

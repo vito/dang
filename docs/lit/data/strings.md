@@ -18,8 +18,8 @@
 
 ## Inspection
 
-> Strings have no `.length` / `.isEmpty` methods — those are list methods ([#collections]). Use the predicates below.
-
+- `s.length` — the number of characters (Unicode code points, not bytes): `"héllo".length` is 5
+- `s.isEmpty`
 - `s.contains(sub)`
 - `s.hasPrefix(p)`
 - `s.hasSuffix(p)`
