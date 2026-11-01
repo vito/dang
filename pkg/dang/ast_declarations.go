@@ -408,6 +408,11 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 			definedRet = definedRet.Apply(skolem).(hm.Type)
 		}
 		effCtx = withScopedTypeVars(effCtx, skolem)
+		rigidSig := make([]hm.Type, len(sigTypes))
+		for i, t := range sigTypes {
+			rigidSig[i] = t.Apply(skolem).(hm.Type)
+		}
+		effCtx = withNullableOnlyVars(effCtx, rigidSig)
 	}
 
 	// Infer return type from function body. A fresh return target lets

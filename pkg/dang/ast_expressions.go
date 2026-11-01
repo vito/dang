@@ -1462,11 +1462,12 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		// Indexing can fail (out of bounds) and the receiver may be null, so
 		// the result is the nullable element type — a nullable type variable
 		// while the element type is still open (even `a!`, which Nullable
-		// unwraps to a bare `a`), so operators can tell. A rigid `a` written
-		// `a!` in a signature already stands only for nullable types (see
-		// hm.NonNullVars), and `a?` would no longer be an `a`.
+		// unwraps to a bare `a`), so operators can tell. A rigid `a` its
+		// generic signature writes `a!` already stands only for nullable
+		// types (withNullableOnlyVars), and `a?` would no longer be an `a`;
+		// any other rigid `a` may stand for a non-null type.
 		resultType := hm.Nullable(elementType)
-		if tv, isVar := resultType.(hm.TypeVariable); isVar && !tv.IsRigid() {
+		if tv, isVar := resultType.(hm.TypeVariable); isVar && !nullableOnlyVars(ctx).Contains(tv) {
 			resultType = hm.NullableTypeVariable{TypeVariable: tv}
 		}
 		i.SetInferredType(resultType)
