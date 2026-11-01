@@ -1,0 +1,11 @@
+[1m[31mError:[0m interface field `items` can't have a type variable (a) in its type [a]!: each implementation would pick its own, so code reading it through Container couldn't know which; use a concrete type
+  [2m[34m--> errors/interface_field_type_variable.dang:6:3[0m
+ [2m    |[0m
+ [2m  4 | # c.items` on Ints).[0m
+ [2m  5 | interface Container {[0m
+ [2m[34m[1m  6 | [0m  items: [a]!
+[2m         [31m^^^^^^^^^^^[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

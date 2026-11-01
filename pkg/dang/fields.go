@@ -2106,6 +2106,10 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 
+		if err := i.checkFieldsConcrete(iface.(*Type)); err != nil {
+			return nil, err
+		}
+
 		i.Inferred = iface.(*Type)
 		i.SetInferredType(iface)
 
@@ -2127,6 +2131,56 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		return iface, nil
 	})
+}
+
+// checkFieldsConcrete rejects an interface field whose type has a type
+// variable, like `items: [a]!`. Each implementation would pick its own
+// type for it, so a reader through the interface couldn't know which, and
+// the variable would unify with anything it is used as: `let s:
+// [String!]! = c.items` on an implementation holding Ints. (Methods are
+// fine: their variables are generic parameters, picked per call.)
+func (i *InterfaceDecl) checkFieldsConcrete(iface *Type) error {
+	errs := &InferenceErrors{}
+	for _, form := range i.Value.Forms {
+		field, ok := form.(*FieldDecl)
+		if !ok {
+			continue
+		}
+		scheme, found := iface.LocalSchemeOf(field.Name.Name)
+		if !found {
+			continue
+		}
+		t, _ := scheme.Type()
+		if fn := fnTypeOf(t); fn != nil {
+			// A zero-arity member is read like a field; one taking
+			// arguments is a method, generic per call.
+			rec, _ := fn.Arg().(*RecordType)
+			if fn.Block() != nil || rec == nil || len(rec.Fields) > 0 {
+				continue
+			}
+			t = fn.Ret(false)
+		}
+		var vars []string
+		for tv := range t.FreeTypeVar() {
+			vars = append(vars, tv.String())
+		}
+		if len(vars) == 0 {
+			continue
+		}
+		sort.Strings(vars)
+		errs.Add(NewInferError(
+			fmt.Errorf("interface field `%s` can't have a type variable (%s) in its type %s: each implementation would pick its own, so code reading it through %s couldn't know which; use a concrete type",
+				field.Name.Name, strings.Join(vars, ", "), t, i.Name.Name),
+			field,
+		))
+	}
+	if errs.HasErrors() {
+		if len(errs.Errors) == 1 {
+			return errs.Errors[0]
+		}
+		return errs
+	}
+	return nil
 }
 
 // validateInterfaceExtension checks that a child interface satisfies every
