@@ -3428,6 +3428,9 @@ func mergeControlResultTypes(current hm.Type, next hm.Type) hm.Type {
 }
 
 func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget, subs hm.Subs, fresh hm.Fresher) hm.Type {
+	// retSrc cites the break a merged result came from, once a break value
+	// has bound an open result (loop's), so a later widening still names it.
+	var retSrc any
 	for _, br := range collectBreakStatements(body, target) {
 		breakType := breakValueType(br)
 		if breakType == nil {
@@ -3441,7 +3444,14 @@ func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget,
 			// that result is still an open variable, like loop's, which
 			// only ever materializes through breaks); widen to a union,
 			// citing the break, when it doesn't.
-			retType = mergeControlResultTypesTagged(retType, nil, breakType, armOrigin("break value", br.Loc))
+			_, open := retType.(hm.TypeVariable)
+			src := armOrigin("break value", br.Loc)
+			retType = mergeControlResultTypesTagged(retType, retSrc, breakType, src)
+			if open {
+				retSrc = src
+			} else {
+				retSrc = nil
+			}
 		} else {
 			retType = mergeControlResultTypes(retType, breakType)
 		}
