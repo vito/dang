@@ -146,6 +146,8 @@ func classifyForms(forms []Node) ClassifiedForms {
 func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	errs := &InferenceErrors{}
 	classified := classifyForms(forms)
+	// Unqualified imports don't claim the names these forms declare.
+	ctx = withLocalDecls(ctx, forms)
 
 	phases := []struct {
 		name string
@@ -197,6 +199,8 @@ func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh
 func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
 	var result Value = NullValue{}
 	classified := classifyForms(forms)
+	// Unqualified imports don't claim the names these forms declare.
+	ctx = withLocalDecls(ctx, forms)
 
 	for _, group := range [][]Node{
 		classified.Imports,
@@ -239,6 +243,8 @@ func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope Va
 func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	errs := &InferenceErrors{}
 	classified := classifyForms(forms)
+	// Unqualified imports don't claim the names these forms declare.
+	ctx = withLocalDecls(ctx, forms)
 
 	// Called outside any entry point (an embedder, a test), this is the
 	// entry point: run the post-inference effect checks here too, so no
@@ -331,6 +337,8 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope
 
 	// Classify forms by their compilation requirements
 	classified := classifyForms(forms)
+	// Unqualified imports don't claim the names these forms declare.
+	ctx = withLocalDecls(ctx, forms)
 
 	// Phase 1: Evaluate imports
 	for _, form := range classified.Imports {
@@ -422,6 +430,7 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, scope V
 var _ hm.Inferer = (*Block)(nil)
 
 func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	ctx = withLocalDecls(ctx, b.Forms)
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		newEnv := env.Clone()
 
@@ -489,6 +498,7 @@ func (b *Block) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	}
 
 	newScope := scope.Derive(false)
+	ctx = withLocalDecls(ctx, forms)
 
 	// Blocks evaluate forms in textual order
 	var result Value = NullValue{}

@@ -4,7 +4,10 @@ import "github.com/vito/dang/v2/pkg/hm"
 
 const importedBindingVisibility = PrivateVisibility
 
-func installImportedTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope) {
+// installImportedTypeScope installs import importName into parentTypeScope.
+// Its unqualified names skip those shadowed reports as locally declared
+// (nil: none; see import_shadowing.go).
+func installImportedTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope, shadowed func(string) bool) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
 	parentTypeScope.AddObject(importName, schemaModule)
@@ -13,35 +16,40 @@ func installImportedTypeScope(parentTypeScope TypeScope, importName string, sche
 	parentTypeScope.SetVisibility(importName, importedBindingVisibility)
 	parentTypeScope.SetValueOrigin(importName, qualifiedOrigin)
 
-	installUnqualifiedImportSymbols(parentTypeScope, schemaModule, importName)
+	installUnqualifiedImportSymbols(parentTypeScope, schemaModule, importName, shadowed)
 }
 
-func installUnqualifiedImportSymbols(parentTypeScope TypeScope, schemaModule TypeScope, importName string) {
-	installUnqualifiedImportValuesForInference(parentTypeScope, schemaModule, importName)
+func installUnqualifiedImportSymbols(parentTypeScope TypeScope, schemaModule TypeScope, importName string, shadowed func(string) bool) {
+	installUnqualifiedImportValuesForInference(parentTypeScope, schemaModule, importName, shadowed)
 
 	if mod, ok := schemaModule.(*OverlayTypeScope); ok {
 		if primaryMod, ok := mod.primary.(*Type); ok {
-			installUnqualifiedImportTypesFromModule(parentTypeScope, primaryMod, importName)
+			installUnqualifiedImportTypesFromModule(parentTypeScope, primaryMod, importName, shadowed)
 			installUnqualifiedImportDirectivesFromModule(parentTypeScope, primaryMod, importName)
 		}
 		return
 	}
 	if mod, ok := schemaModule.(*Type); ok {
-		installUnqualifiedImportTypesFromModule(parentTypeScope, mod, importName)
+		installUnqualifiedImportTypesFromModule(parentTypeScope, mod, importName, shadowed)
 		installUnqualifiedImportDirectivesFromModule(parentTypeScope, mod, importName)
 	}
 }
 
-func installUnqualifiedImportValuesForInference(parentTypeScope TypeScope, schemaModule TypeScope, importName string) {
+func isShadowed(shadowed func(string) bool, name string) bool {
+	return shadowed != nil && shadowed(name)
+}
+
+func installUnqualifiedImportValuesForInference(parentTypeScope TypeScope, schemaModule TypeScope, importName string, shadowed func(string) bool) {
 	origin := ImportedBindingOrigin(importName, false)
 	for name, scheme := range schemaModule.Bindings(PublicVisibility) {
 		if name == importName {
 			continue
 		}
 
-		// An unqualified import never shadows a builtin; it is still
-		// reachable qualified (see installUnqualifiedImportValues).
-		if isBuiltinValueName(name) {
+		// An unqualified import never shadows a builtin, or a declaration
+		// beside it; it is still reachable qualified (see
+		// installUnqualifiedImportValues).
+		if isBuiltinValueName(name) || isShadowed(shadowed, name) {
 			continue
 		}
 
@@ -58,10 +66,10 @@ func installUnqualifiedImportValuesForInference(parentTypeScope TypeScope, schem
 	}
 }
 
-func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Type, importName string) {
+func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Type, importName string, shadowed func(string) bool) {
 	origin := ImportedBindingOrigin(importName, false)
 	for name, object := range mod.objects {
-		if name == importName {
+		if name == importName || isShadowed(shadowed, name) {
 			continue
 		}
 
@@ -76,14 +84,17 @@ func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Typ
 		parentTypeScope.SetTypeOrigin(name, origin)
 
 		if enumMod, ok := object.(*Type); ok && enumMod.Kind == EnumKind {
-			installUnqualifiedImportEnumValuesForInference(parentTypeScope, enumMod, importName)
+			installUnqualifiedImportEnumValuesForInference(parentTypeScope, enumMod, importName, shadowed)
 		}
 	}
 }
 
-func installUnqualifiedImportEnumValuesForInference(parentTypeScope TypeScope, enumMod *Type, importName string) {
+func installUnqualifiedImportEnumValuesForInference(parentTypeScope TypeScope, enumMod *Type, importName string, shadowed func(string) bool) {
 	origin := ImportedBindingOrigin(importName, false)
 	for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
+		if isShadowed(shadowed, enumValName) {
+			continue
+		}
 		if _, exists := parentTypeScope.LocalSchemeOf(enumValName); exists {
 			if localValueBindingIsUnqualifiedImport(parentTypeScope, enumValName) {
 				addValueImportProvider(parentTypeScope, enumValName, importName)
@@ -112,16 +123,16 @@ func installUnqualifiedImportDirectivesFromModule(parentTypeScope TypeScope, mod
 	}
 }
 
-func installImportedValueScope(parentScope ValueScope, importName string, importValueScope ValueScope) {
+func installImportedValueScope(parentScope ValueScope, importName string, importValueScope ValueScope, shadowed func(string) bool) {
 	// Binding origins live on the type environment and are established during
 	// inference. Evaluation only populates runtime values; mutating origins here
 	// can clobber local declarations and races with shared/static type modules.
 	parentScope.Bind(importName, importValueScope, importedBindingVisibility)
 
-	installUnqualifiedImportValues(parentScope, importValueScope, importName)
+	installUnqualifiedImportValues(parentScope, importValueScope, importName, shadowed)
 }
 
-func installUnqualifiedImportValues(parentScope ValueScope, importValueScope ValueScope, importName string) {
+func installUnqualifiedImportValues(parentScope ValueScope, importValueScope ValueScope, importName string, shadowed func(string) bool) {
 	for _, binding := range importValueScope.Bindings(PublicVisibility) {
 		name := binding.Key
 		value := binding.Value
@@ -129,9 +140,9 @@ func installUnqualifiedImportValues(parentScope ValueScope, importValueScope Val
 			continue
 		}
 
-		// An unqualified import never shadows a builtin; it is still
-		// reachable qualified.
-		if _, exists := parentScope.LookupLocal(name); exists || isBuiltinValueName(name) {
+		// An unqualified import never shadows a builtin, or a declaration
+		// beside it; it is still reachable qualified.
+		if _, exists := parentScope.LookupLocal(name); exists || isBuiltinValueName(name) || isShadowed(shadowed, name) {
 			continue
 		}
 
@@ -139,18 +150,18 @@ func installUnqualifiedImportValues(parentScope ValueScope, importValueScope Val
 
 		if enumModuleVal, ok := value.(*Object); ok {
 			if mod, ok := enumModuleVal.Mod.(*Type); ok && mod.Kind == EnumKind {
-				installUnqualifiedImportEnumValues(parentScope, enumModuleVal)
+				installUnqualifiedImportEnumValues(parentScope, enumModuleVal, shadowed)
 			}
 		}
 	}
 }
 
-func installUnqualifiedImportEnumValues(parentScope ValueScope, enumModuleVal *Object) {
+func installUnqualifiedImportEnumValues(parentScope ValueScope, enumModuleVal *Object, shadowed func(string) bool) {
 	for _, enumBinding := range enumModuleVal.Bindings(PublicVisibility) {
 		enumValName := enumBinding.Key
 		enumVal := enumBinding.Value
 
-		if _, exists := parentScope.LookupLocal(enumValName); exists {
+		if _, exists := parentScope.LookupLocal(enumValName); exists || isShadowed(shadowed, enumValName) {
 			continue
 		}
 

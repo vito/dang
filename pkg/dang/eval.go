@@ -525,7 +525,7 @@ func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, Val
 			continue
 		}
 		schemaModule := TypeScopeFromSchema(config.Name, config.Schema)
-		installImportedTypeScope(typeScope, config.Name, schemaModule)
+		installImportedTypeScope(typeScope, config.Name, schemaModule, nil)
 	}
 
 	valueScope := NewValueScope(typeScope)
@@ -539,7 +539,7 @@ func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, Val
 			continue
 		}
 		importValueScope := ValueScopeFromSchema(schemaModule, config.Client, config.Schema)
-		installImportedValueScope(valueScope, config.Name, importValueScope)
+		installImportedValueScope(valueScope, config.Name, importValueScope, nil)
 	}
 
 	return typeScope, valueScope
