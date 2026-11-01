@@ -110,19 +110,6 @@ action(c: Color!): String! {
 [action(Color.RED), action(Color.BLUE)]
 ```
 
-There is no exhaustiveness check for enums. Without an `else`, the result
-is nullable, even when the clauses name every member:
-
-```dang-failure
-named(c: Color!): String! {
-  case (c) {
-    Color.RED => "red"
-    Color.GREEN => "green"
-    Color.BLUE => "blue"
-  }
-}
-```
-
 ### From strings (`::`)
 
 A string that isn't a literal becomes an enum value with a `::` cast. The
@@ -203,10 +190,11 @@ and `fetchURL` takes one:
 fetchURL(url: homepage)
 ```
 
-A GraphQL scalar whose value isn't a string (a number, object, list or
-boolean) keeps that JSON value. Passed back as an argument, it is sent
-unchanged. Where a `String` is expected (degrading, interpolation,
-`toString`), it reads as its JSON text:
+Some APIs define custom scalars (like a `JSON` scalar) whose values are
+numbers, booleans, or even structured JSON. Dang keeps those values as they
+are: passed back as an argument, one is sent unchanged, and where a `String`
+is expected (degrading, interpolation, `toString`) it reads as its JSON
+text. Demo's `Opaque` scalar is one of these:
 
 ```dang
 [describeOpaque(value: opaqueNumber), `object: ${opaqueObject}`]
