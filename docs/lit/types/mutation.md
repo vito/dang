@@ -94,6 +94,18 @@ let tree = Tree(Node(Leaf(42)))
 [tree.bump.node.leaf.c, tree.node.leaf.c]
 ```
 
+Every link of the path has to hold an object to copy. A link that may be null
+is a type error; assert it with `!` to write through it, which raises if it is
+null:
+
+```dang
+type Box { leaf: Leaf }
+
+let box = Box(Leaf(1))
+box.leaf!.c = 2
+box.leaf!.c
+```
+
 A plain variable is simply rebound, and a block can rebind the variables of
 the scope it's written in:
 

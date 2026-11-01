@@ -220,6 +220,7 @@ Foo(42).incr.a == 43          # original Foo(42) untouched
   ```
 - **Within a method, mutations accumulate inside one fork**: `source.each { item => self.items += [item] }; self` builds up a single forked value. Return type is the concrete type name (`Builder!`) — there is no `Self` keyword.
 - **Nested field assignment** `self.a.b.c = x` clones every link on the path, leaving the original tree untouched. Compound forms (`data.a.b.c += 10`) work. Supported but expensive — avoid deep nesting.
+- Every link of the path must be a non-null stored field: a nullable link is a compile error (`cannot assign to a.maybe.x: a.maybe may be null; assert it with !…`). Assert it to write through it: `a.maybe!.x = 4` raises `non-null assertion failed` if `a.maybe` is null. A computed `{ }` member has nothing to store into, so writing through one is a compile error too.
 - **Bare reassignment vs. field mutation**: name resolution at the write site decides the target. A local/arg in scope → `x = value` rebinds it, no fork. A field (not shadowed) → bare `x = value` forks `self`. `self.x = value` always forks and sets the field.
 - No CoW for pure functions (no `self`). Chaining is the natural pattern: `Counter(0).incr.incr.incr.value == 3`.
 

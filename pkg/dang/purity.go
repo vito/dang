@@ -111,14 +111,14 @@ func assignmentRoot(target Node) (name string, isSelf bool, first string, ok boo
 		var node Node = t
 		first = t.Field.Name
 		for {
-			sel, isSel := node.(*Select)
+			sel, isSel := pathLink(node).(*Select)
 			if !isSel {
 				break
 			}
 			first = sel.Field.Name
 			node = sel.Receiver
 		}
-		switch root := node.(type) {
+		switch root := pathLink(node).(type) {
 		case *Symbol:
 			return root.Name, false, first, true
 		case *SelfKeyword:
@@ -169,6 +169,18 @@ func checkStaticWrite(r *Reassignment) error {
 				r,
 			)
 		}
-		node = sel.Receiver
+		node = pathLink(sel.Receiver)
+	}
+}
+
+// pathLink looks through a non-null assertion on a link of a write path:
+// `a.b!.c = v` writes through `a.b`, raising if it is null.
+func pathLink(node Node) Node {
+	for {
+		nn, ok := node.(*NonNullAssert)
+		if !ok {
+			return node
+		}
+		node = nn.Expr
 	}
 }

@@ -630,6 +630,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err := checkStaticWrite(r); err != nil {
 			return nil, err
 		}
+		if err := checkPathLinks(env, r.Target); err != nil {
+			return nil, err
+		}
 		if err := checkTopLevelWrite(ctx, env, r); err != nil {
 			return nil, err
 		}
@@ -697,7 +700,7 @@ func (r *Reassignment) checkInterfaceFieldWrite() error {
 	if !ok {
 		return nil
 	}
-	for ; sel != nil; sel, _ = sel.Receiver.(*Select) {
+	for ; sel != nil; sel, _ = pathLink(sel.Receiver).(*Select) {
 		holder, ok := sel.Receiver.(interface{ GetInferredType() hm.Type })
 		if !ok {
 			continue
@@ -803,7 +806,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, scope ValueSc
 
 func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope, selectNode *Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
-	rootNode, path, err := r.getPath(selectNode)
+	rootNode, path, asserted, err := r.getPath(selectNode)
 	if err != nil {
 		return nil, err
 	}
@@ -845,6 +848,10 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		link := strings.Join(append([]string{rootLabel}, path[:depth]...), ".")
 		target := strings.Join(append([]string{rootLabel}, path...), ".")
 		if _, isNull := v.(NullValue); isNull {
+			// A link asserted with ! raises like any other assertion.
+			if asserted[depth] {
+				return nil, fmt.Errorf("non-null assertion failed: value is null")
+			}
 			return nil, fmt.Errorf("cannot assign to %s: %s is null", target, link)
 		}
 		if _, isFn := v.(FunctionValue); isFn {
@@ -940,56 +947,113 @@ func cowBind(v ValueScope, name string, value Value) {
 }
 
 // checkAssignmentPath rejects a field write whose path doesn't start at a
-// name or `self` (`self.b!.c = 1`, `xs[0].c = 1`, `f().c = 1`): there is no
-// binding to copy the updated value back to.
+// name or `self` (`xs[0].c = 1`, `f().c = 1`): there is no binding to copy
+// the updated value back to. A link of the path may be asserted non-null
+// (`a.b!.c = 1`): the write raises if it is null.
 func checkAssignmentPath(target Node) error {
 	sel, ok := target.(*Select)
 	if !ok {
 		return nil
 	}
 	var node Node = sel
-	var path []string
 	for {
-		s, ok := node.(*Select)
+		s, ok := pathLink(node).(*Select)
 		if !ok {
 			break
 		}
-		path = append([]string{s.Field.Name}, path...)
 		node = s.Receiver
 	}
-	switch root := node.(type) {
+	switch pathLink(node).(type) {
 	case *Symbol, *SelfKeyword:
 		return nil
-	case *NonNullAssert:
-		if checkAssignmentPath(root.Expr) == nil && isAssignable(root.Expr) {
-			expr := strings.TrimSpace(Format(root.Expr))
-			return NewInferError(fmt.Errorf("cannot assign through a non-null assertion: copy the value to a local, assign to that, and assign it back (e.g. `let v = %s; v.%s = ...; %s = v`), or null-check it by its bare name first", expr+"!", strings.Join(path, "."), expr), root)
-		}
 	}
-	return NewInferError(fmt.Errorf("cannot assign to a field of %s: a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that", strings.TrimSpace(Format(node))), node)
+	root := pathLink(node)
+	return NewInferError(fmt.Errorf("cannot assign to a field of %s: a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that", strings.TrimSpace(Format(root))), root)
 }
 
-// isAssignable reports whether node names a place: a name, or a field path
-// from a name or self.
-func isAssignable(node Node) bool {
-	switch n := node.(type) {
+// checkPathLinks rejects a field write through a link that may be null
+// (`a.maybe.x = 4`, which would have nothing to copy and write into) or is a
+// computed member (`a.comp.x = 4`, which has nothing to store into), once
+// the target is inferred. A link asserted with `!` is non-null.
+func checkPathLinks(env hm.Env, target Node) error {
+	sel, ok := target.(*Select)
+	if !ok {
+		return nil
+	}
+	for {
+		recv := sel.Receiver
+		if typed, ok := recv.(interface{ GetInferredType() hm.Type }); ok {
+			if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
+				link := strings.TrimSpace(Format(recv))
+				rest := strings.TrimPrefix(strings.TrimSpace(Format(target)), link)
+				return NewInferError(fmt.Errorf("cannot assign to %s: %s may be null; assert it with ! to raise if it is (`%s!%s = ...`), or check it for null first", strings.TrimSpace(Format(target)), link, link, rest), recv)
+			}
+		}
+		if computedLink(env, pathLink(recv)) {
+			link := strings.TrimSpace(Format(pathLink(recv)))
+			return NewInferError(fmt.Errorf("cannot assign to %s: %s is computed, not a stored field", strings.TrimSpace(Format(target)), link), recv)
+		}
+		next, ok := pathLink(recv).(*Select)
+		if !ok {
+			return nil
+		}
+		sel = next
+	}
+}
+
+// computedLink reports whether a link of a write path is a computed member
+// (a zero-arity function, auto-called on read).
+func computedLink(env hm.Env, link Node) bool {
+	var t hm.Type
+	switch l := link.(type) {
 	case *Symbol:
-		return true
-	case *Select:
-		if _, isSelf := n.Receiver.(*SelfKeyword); isSelf {
-			return true
+		// A type name is a constructor, not a computed member.
+		if ts, ok := env.(TypeScope); ok {
+			if _, isType := ts.NamedType(l.Name); isType {
+				return false
+			}
 		}
-		return isAssignable(n.Receiver)
+		scheme, ok := env.SchemeOf(l.Name)
+		if !ok {
+			return false
+		}
+		t, _ = scheme.Type()
+	case *Select:
+		typed, ok := l.Receiver.(interface{ GetInferredType() hm.Type })
+		if !ok {
+			return false
+		}
+		rt, _ := stripNonNull(typed.GetInferredType())
+		rec, ok := rt.(TypeScope)
+		if !ok {
+			return false
+		}
+		scheme, ok := rec.SchemeOf(l.Field.Name)
+		if !ok {
+			return false
+		}
+		t, _ = scheme.Type()
+	default:
+		return false
 	}
-	return false
+	return fnTypeOf(t) != nil
 }
 
-func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
+// getPath returns a field write's root (a Symbol or self), its field path,
+// and the depths of the links asserted non-null: 0 for the root, i for the
+// value of path[i-1].
+func (r *Reassignment) getPath(selectNode *Select) (Node, []string, map[int]bool, error) {
 	var path []string
+	var assertedAbove []int
 	var currentNode Node = selectNode
 
 	// Traverse down the chain of Select nodes, collecting field names
 	for {
+		if nn, ok := currentNode.(*NonNullAssert); ok {
+			assertedAbove = append(assertedAbove, len(path))
+			currentNode = nn.Expr
+			continue
+		}
 		if s, ok := currentNode.(*Select); ok {
 			path = append([]string{s.Field.Name}, path...)
 			currentNode = s.Receiver
@@ -997,15 +1061,19 @@ func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
 			break
 		}
 	}
+	asserted := map[int]bool{}
+	for _, above := range assertedAbove {
+		asserted[len(path)-above] = true
+	}
 
 	// The final node in the chain should be a Symbol or SelfKeyword (the root object)
 	if _, ok := currentNode.(*Symbol); ok {
-		return currentNode, path, nil
+		return currentNode, path, asserted, nil
 	}
 	if _, ok := currentNode.(*SelfKeyword); ok {
-		return currentNode, path, nil
+		return currentNode, path, asserted, nil
 	}
-	return nil, nil, fmt.Errorf("complex receivers must start with a symbol or self keyword")
+	return nil, nil, nil, fmt.Errorf("complex receivers must start with a symbol or self keyword")
 }
 
 func (r *Reassignment) performAddition(left, right Value, varName string) (Value, error) {
