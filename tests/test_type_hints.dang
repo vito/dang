@@ -48,9 +48,9 @@ let complex_obj = {{user: {{name: "Alice", age: 30}}}} :: {{user: {{name: String
 assert { empty_list == [] }
 assert { number == 42 }
 assert { text == "hello" }
-assert { id_value == "foo" }
-assert { nullable_id == "bar" }
-assert { id_from_string == "baz" }
+assert { id_value == ("foo" :: ID!) }
+assert { nullable_id == ("bar" :: ID!) }
+assert { id_from_string == ("baz" :: ID!) }
 assert { result == 100 }
 assert { sum == 3 }
 assert { concat == "hello world" }

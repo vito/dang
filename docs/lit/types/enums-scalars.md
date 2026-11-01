@@ -85,7 +85,8 @@ let s: String! = u
 shout(msg: String!): String! { msg.toUpper }
 shout(u)                        # degrades into the String! argument → "HTTPS://EXAMPLE.COM/A"
 
-u == "https://example.com/a"    # compares by underlying string → true
+s == "https://example.com/a"    # compare as strings once degraded → true
+u == ("https://example.com/a" :: URL!)   # or as URLs; `u == "..."` itself doesn't type-check
 `link: ${u}`                    # interpolation / toString yield the bare string
 (u :: String!).toUpper          # a String *method* needs a String receiver: degrade first
 ```

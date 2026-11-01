@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -158,7 +159,13 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				// scalar or enum matching the operand's type).
 				_, err = assignableForValue(valueType, exprType, clause.Value)
 				if err != nil {
-					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause.Value)
+					// A literal that names no value of the enum explains
+					// itself, pointing at the literal (checkEnumLiterals).
+					var literalErr *InferError
+					if errors.As(err, &literalErr) {
+						return nil, err
+					}
+					return nil, WrapInferError(fmt.Errorf("case pattern of type %s can't match a %s operand", valueType, exprType), clause.Value)
 				}
 				facts := c.clauseFacts(ctx, env, clause, valueType)
 				clause.Value = wrapCoerce(clause.Value, exprType, "")

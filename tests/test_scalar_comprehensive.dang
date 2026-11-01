@@ -12,16 +12,15 @@ let ts = now
 let url = homepage
 
 # Test 3: Value comparison
-assert { ts == "2024-01-15T10:30:00Z" }
-assert { url == "https://dang-lang.dev" }
+assert { ts == ("2024-01-15T10:30:00Z" :: Test.Timestamp!) }
+assert { url == ("https://dang-lang.dev" :: Test.URL!) }
 
 # Test 4: Scalar identity
 assert { ts == ts }
 assert { url == url }
 
-# Test 5: Inequality
-assert { ts != url }
-assert { ts != "different value" }
+# Test 5: Inequality (comparing a Timestamp with a URL doesn't type-check)
+assert { ts != ("different value" :: Test.Timestamp!) }
 
 # Test 6: Using scalars in records
 let rec = {{timestamp: ts, homepage: url}}

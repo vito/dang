@@ -107,7 +107,7 @@ greet(
 
 ### Comparison
 - `< <= > >=` on numbers (`Int`/`Float`, mixed allowed) or strings (lexicographic); operands must match. Operands must be non-null, like arithmetic.
-- `== !=` are type-safe: mismatched types compare `false`, no coercion (`num == str` is `false`). Work on numbers, strings, bools, null, lists, maps, records. Return `Boolean!`. Records and objects: see objects.md "Equality".
+- `== !=` only compare operands that could be equal: same type (nullability aside), `Int`/`Float` (numerically), subtype/supertype, union/member, `null`. Unrelated types are a static error, no coercion: `1 == "1"`, enum vs `String` (use `c == Color.GREEN`), custom scalar or `ID` vs `String` (cast: `("x" :: ID!)`), unrelated objects. Work on numbers, strings, bools, null, lists, maps, records. Return `Boolean!`. Records and objects: see objects.md "Equality".
 
 ### Logical
 - `and`, `or` short-circuit (keywords, not `&&`/`||`); result `Boolean!`.

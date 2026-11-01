@@ -18,7 +18,7 @@ let jsonResult = parseJSON(data: "{\"key\": \"value\"}")
 assert { jsonResult == "Parsed JSON: {\"key\": \"value\"}" }
 
 let bigIntResult = addBigInt(a: "12345678901234567890", b: "98765432109876543210")
-assert { bigIntResult == "12345678901234567890+98765432109876543210" }
+assert { bigIntResult == ("12345678901234567890+98765432109876543210" :: BigInt!) }
 
 # =============================================================================
 # Test 2: Nullable scalar parameters
@@ -45,7 +45,7 @@ assert { multiResult[2] == "Fetched[2]: https://c.com" }
 # =============================================================================
 
 let urlValue = homepage
-assert { urlValue == "https://dang-lang.dev" }
+assert { urlValue == ("https://dang-lang.dev" :: URL!) }
 
 let fetchedHomepage = fetchURL(url: urlValue)
 assert { fetchedHomepage == "Fetched: https://dang-lang.dev" }
@@ -76,15 +76,15 @@ assert { concatResult == "Fetched: https://concat.com" }
 # =============================================================================
 
 idSlot: ID! = "abc"
-assert { idSlot == "abc" }
+assert { idSlot == ("abc" :: ID!) }
 
 let currentID: ID! = "first"
 currentID = "second"
-assert { currentID == "second" }
+assert { currentID == ("second" :: ID!) }
 
 makeID: ID! { "abc" }
 
-assert { makeID == "abc" }
+assert { makeID == ("abc" :: ID!) }
 
 # =============================================================================
 # Test 8: Mixed scalar and non-scalar arguments

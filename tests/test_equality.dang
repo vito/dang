@@ -8,13 +8,9 @@ let c = 43
 assert { a == b }
 assert { a == 42 }
 assert { b == 42 }
+assert { a != c }
 
-# Different types should not be equal
-let num = 42
-let str = "42"
-let bool_val = true
-
-# Cross-type comparisons should return false
-assert("Number should not equal string") { (num == str) == false }
+# Comparing values of unrelated types (a number and a string) doesn't
+# type-check; see errors/equality_unrelated_types.dang.
 
 print("Equality edge case tests completed")
