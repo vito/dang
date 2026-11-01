@@ -174,7 +174,7 @@ See also [#errors] (`raise`/`rescue` divergence) and [#control-flow] (guards, lo
 - grammar: binds only a bare `Term` on the left, so wrap compound exprs in parens — `(a + b) :: T!` (see [#operators] for precedence)
 - `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`, …), enum (`"PASSED" :: Status!`), and `ID` coercions go here
 - coercion source is limited: only **`String`** values coerce to custom scalars/enums. `42 :: URL!` is rejected **statically** ("type hint mismatch: Int!, but hint expects URL!")
-- enum casts are checked at **runtime**: `"NOPE" :: Status!` → "invalid enum value"
+- enum casts of a string **literal** are checked **statically** against the enum's values: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of …`. Casting a non-literal `String` is checked at **runtime**: `s :: Status!` → "invalid enum value"
 - nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `JSON.decode("null") :: String!` → "null is not allowed for String!"
 
 > Meta: `::` deserves a worked example showing the difference between a type *hint* (narrowing/disambiguation, e.g. `[] :: [String!]!` binding a type variable) and a type *cast* (coercion, e.g. `myUrl :: URL!`). The runtime-assertion behavior for non-null casts is a footgun worth a short callout.
