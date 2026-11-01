@@ -258,6 +258,11 @@ with "must be pure" reasons once discovered).
    or call anything writing outside the type, and an outer block param it
    calls must be pure — since its values can be stored, returned and used
    concurrently like any other.
+   Top-level declarations are lazy fields forced on first read, maybe inside a
+   `{{ }}` field: one whose initializer may write top-level state (directly,
+   through blocks it runs, or by forcing another such declaration) can't be
+   read from a field when it's declared later than the declaration being
+   initialized, or from a function body (`toplevel_order.go`).
 2. **Impure closures can't escape.** A block, nested function, or `&ref` to
    one whose effect writes a binding it doesn't declare may appear only as a
    callee or as an argument for a function-typed parameter. Escape detection

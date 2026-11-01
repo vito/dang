@@ -500,6 +500,63 @@ func TestLocalTypesSealed(t *testing.T) {
 	})
 }
 
+// A top-level declaration is forced on first read, wherever that is; one
+// whose initializer writes top-level state must not be forced from a `{{ }}`
+// field, where it would run concurrently with other fields.
+func TestTopLevelInitializersInFields(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "forward reference from a field",
+			src: `
+				let total = 0
+				let r = {{ p: a, q: b }}
+				let a = { total += 1; 1 }
+				let b = { total += 1; 2 }
+			`,
+			want: "`a` is declared after `r`, so reading it here runs its initializer, which may write `total`",
+		},
+		{
+			name: "write through a block the initializer runs",
+			src: `
+				let total = 0
+				let r = {{ p: a }}
+				let a = { [1, 2].each { x => total += x }; 1 }
+			`,
+			want: "`a` is declared after `r`",
+		},
+		{
+			name: "forcing a declaration that writes",
+			src: `
+				let total = 0
+				let r = {{ p: c }}
+				let c = a + 1
+				let a = { total += 1; 1 }
+			`,
+			want: "`c` is declared after `r`, so reading it here runs its initializer, which may write `total`",
+		},
+		{
+			name: "field in a function body",
+			src: `
+				let total = 0
+				let a = { total += 1; 1 }
+				g: Int! { {{ p: a }}.p }
+			`,
+			want: "reading `a` here may run its initializer, which may write `total`",
+		},
+		{
+			name: "earlier declarations, pure ones, and statements are fine",
+			src: `
+				let total = 0
+				let a = { total += 1; 1 }
+				let r = {{ p: a, q: later }}
+				let later = 5
+				let s = {{ p: a }}
+				print({{ p: a, q: later }})
+			`,
+		},
+	})
+}
+
 // InferFormsWithPhases called directly (embedders, tests) is an entry point
 // too: the deferred checks run, so an escaping block with a non-local return
 // can never reach evaluation, where nothing would catch it.

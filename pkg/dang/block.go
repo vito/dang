@@ -839,10 +839,11 @@ func inferVariablesPhaseResilient(ctx context.Context, variables []Node, env hm.
 		// Can't continue if we can't order dependencies - return critical error
 		return nil, err
 	}
+	declareTopVariables(ctx, env, variables)
 
 	var lastT hm.Type
 	for _, form := range orderedVars {
-		t, err := form.Infer(ctx, env, fresh)
+		t, err := form.Infer(withTopDecl(ctx, env, form), env, fresh)
 		if err != nil {
 			errs.Add(err)
 			assignFallbackType(form, env, fresh)
@@ -882,7 +883,9 @@ func inferNonDeclarationsPhaseResilient(ctx context.Context, nonDeclarations []N
 	// REPL prompts.
 	stmtEnv := env
 	for _, form := range nonDeclarations {
-		t, err := form.Infer(ctx, stmtEnv, fresh)
+		// The order check keys on the module frame itself, not the
+		// narrowed clone.
+		t, err := form.Infer(withTopStatement(ctx, env, form), stmtEnv, fresh)
 		if cond, ok := form.(*Conditional); ok && err == nil {
 			stmtEnv = withNarrowings(ctx, stmtEnv, conditionalExitNarrowings(cond, stmtEnv))
 		}
