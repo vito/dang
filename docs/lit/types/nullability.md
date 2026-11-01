@@ -29,9 +29,8 @@ them before you use them.
 
 ```dang
 let nickname: String = null
-let name: String! = "Ada"
 
-[nickname, name]
+nickname
 ```
 
 A `T!` can go anywhere a `T` is expected, but not the other way around. A
@@ -44,12 +43,6 @@ let display: String! = nickname
 `!` applies to the type just before it, so list types read from the inside
 out: `[String!]!` is a non-null list of non-null strings. A constructor call
 or a record literal always gives a non-null value.
-
-A list type and its element type are unrelated. An `Int!` is not an `[Int]`:
-
-```dang-failure
-let one: [Int] = 1
-```
 
 ## Lists, nullability matrix
 
