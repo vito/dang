@@ -1,0 +1,8 @@
+[1m[31mError:[0m syntax error: invalid escape sequence in string literal
+  [2m[34m--> errors/syntax_string_unknown_escape.dang:1:15[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlet path = "C:\Users\me"
+[2m                     [31m^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

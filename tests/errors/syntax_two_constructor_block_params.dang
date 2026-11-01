@@ -1,0 +1,5 @@
+type Repeater {
+  new(&a: Int!, &b: Int!) {
+    self
+  }
+}

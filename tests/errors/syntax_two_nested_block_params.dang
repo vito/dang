@@ -1,0 +1,3 @@
+pub apply(&blk(&a: Int!, &b: Int!): Int!): Int! {
+  1
+}

@@ -2,6 +2,8 @@ package dang
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"unicode/utf8"
@@ -27,6 +29,84 @@ func (p *parserError) ParseErrorLocation() *SourceLocation {
 		Line:   p.pos.line,
 		Column: p.pos.col + 1,
 	}
+}
+
+// Unwrap exposes the error an action returned or panicked with, so errors.As
+// finds a rejectedSyntax through the parser's error list.
+func (p *parserError) Unwrap() error {
+	return p.Inner
+}
+
+// rejectedSyntax is source the grammar matched but that is still invalid,
+// like an integer too large for an Int or a second block parameter.
+type rejectedSyntax struct {
+	msg string
+	loc *SourceLocation
+}
+
+func (e *rejectedSyntax) Error() string { return e.msg }
+
+// reject aborts the parse with a rejectedSyntax at loc.
+//
+// It panics, which pigeon turns into a parse error, rather than returning the
+// error from the action: pigeon rolls its error list back when a left-recursive
+// rule enclosing the action backtracks, so a returned error can be lost and
+// the parse "succeed" with a bogus value (and returning a nil node instead
+// crashes the rule that uses it). Call it only for text no valid program
+// contains, so stopping is always right.
+func (c *current) reject(loc *SourceLocation, msg string) {
+	panic(&rejectedSyntax{msg: msg, loc: loc})
+}
+
+// rejectSecondBlockParam rejects args declaring more than one block
+// parameter, at the second; what names the declaration, as in "function can
+// only have one block parameter".
+func (c *current) rejectSecondBlockParam(args []*FieldDecl, what string) {
+	seen := false
+	for _, arg := range args {
+		if !arg.IsBlockParam {
+			continue
+		}
+		if seen {
+			c.reject(arg.Loc, what+" can only have one block parameter")
+		}
+		seen = true
+	}
+}
+
+// rejectedSourceError renders a rejectedSyntax from a parse error as a
+// SourceError with its snippet. It takes precedence over tree-sitter's
+// diagnosis, which sees nothing wrong with such source.
+func rejectedSourceError(pegErr error, filename string, source []byte) (*SourceError, bool) {
+	var rejected *rejectedSyntax
+	if !errors.As(pegErr, &rejected) {
+		return nil, false
+	}
+	loc := *rejected.loc
+	if loc.Filename == "" {
+		loc.Filename = filename
+	}
+	return NewSourceError(fmt.Errorf("syntax error: %s", rejected.msg), &loc, string(source)), true
+}
+
+// unquoteString decodes a double-quoted string literal. It accepts every Go
+// escape plus `\/` for `/` (as JSON does), which strconv.Unquote rejects.
+func unquoteString(text []byte) (string, error) {
+	if !bytes.Contains(text, []byte(`\/`)) {
+		return strconv.Unquote(string(text))
+	}
+	// Rewrite only escapes that are `\/`: in `\\/` the backslash is escaped.
+	buf := make([]byte, 0, len(text))
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\\' && i+1 < len(text) {
+			i++
+			if text[i] != '/' {
+				buf = append(buf, '\\')
+			}
+		}
+		buf = append(buf, text[i])
+	}
+	return strconv.Unquote(string(buf))
 }
 
 func (c current) Loc() *SourceLocation {

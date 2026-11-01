@@ -405,7 +405,7 @@ NewConstructorDecl <- NewToken _ args:ArgTypes _ block:Block {
   for _, arg := range allArgs {
     if arg.IsBlockParam {
       if blockParam != nil {
-        return nil, fmt.Errorf("constructor can only have one block parameter")
+        c.reject(arg.Loc, "constructor can only have one block parameter")
       }
       blockParam = arg
     } else {
@@ -507,7 +507,7 @@ TypeAndArgsAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { r
   for _, arg := range allArgs {
     if arg.IsBlockParam {
       if blockParam != nil {
-        return nil, fmt.Errorf("function can only have one block parameter")
+        c.reject(arg.Loc, "function can only have one block parameter")
       }
       blockParam = arg
     } else {
@@ -546,6 +546,7 @@ HeaderField <- docstring:DocString? field:(TypeAndArgsField / TypeOnlyFunField) 
 }
 
 TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+  c.rejectSecondBlockParam(args.([]*FieldDecl), "function")
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{args.([]*FieldDecl), type_.(TypeNode)},
@@ -681,6 +682,7 @@ BlockParamDecl <- AmpersandToken name:Symbol _ args:ArgTypes? _ ColonToken _ ret
   if args != nil {
     argTypes = args.([]*FieldDecl)
   }
+  c.rejectSecondBlockParam(argTypes, "block")
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{argTypes, ret.(TypeNode)},
@@ -961,12 +963,12 @@ HeadersBlock <- '{' _ eles:(e:HeaderField Sep { return e, nil })* last:HeaderFie
 
 // Literals
 
-Literal <- Float / Int / Boolean / TripleQuoteString / String / Template / Quoted / Null / SelfKeyword
+Literal <- Float / Int / Boolean / TripleQuoteString / String / Template / Null / SelfKeyword
 
-Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit+) Exponent)) {
+Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit*) Exponent)) {
   value, err := strconv.ParseFloat(string(c.text), 64)
   if err != nil {
-    return nil, err
+    c.reject(c.Loc(), "float literal out of range")
   }
   return &Float{
     Value: value,
@@ -978,7 +980,7 @@ Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?
 Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   value, err := strconv.ParseInt(string(c.text), 10, 64)
   if err != nil {
-    return nil, err
+    c.reject(c.Loc(), "integer literal out of range")
   }
   return &Int{
     Value: value,
@@ -1013,11 +1015,11 @@ ImmediateTripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
 TripleQuote <- "\"\"\""
 
 
-String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken {
-  c.text = bytes.Replace(c.text, []byte(`\/`), []byte(`/`), -1)
-  value, err := strconv.Unquote(string(c.text))
+String <- '"' ( ImmediateStringContent / ImmediateEscape / InvalidEscape )* ImmediateQuoteToken {
+  value, err := unquoteString(c.text)
   if err != nil {
-    return nil, err
+    // The grammar admits escapes that encode no character, like \777.
+    c.reject(c.Loc(), "invalid escape sequence in string literal")
   }
   return &String{
     Value: value,
@@ -1028,12 +1030,19 @@ String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken 
 ImmediateQuoteToken <- '"'
 ImmediateStringContent <- [^\\"\n]+
 ImmediateEscape <- '\\' (
-    [abfnrtv"\\]
+    [abfnrtv"\\/]
   / 'x' [0-9a-f]i [0-9a-f]i
   / 'u' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / 'U' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / [0-7] [0-7] [0-7]
 )
+
+// An escape ImmediateEscape doesn't know, reported where it is rather than at
+// the start of the form. Tree-sitter leaves it out, so editors still flag it.
+InvalidEscape <- '\\' . {
+  c.reject(c.Loc(), "invalid escape sequence in string literal")
+  return nil, nil
+}
 
 // Backtick-delimited template strings with optional ${...} interpolations.
 // Single-line uses one backtick; multi-line uses three or more.
@@ -1120,16 +1129,6 @@ DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _
   return normalizeTripleQuoteString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
-}
-
-Quoted <- '%' quoter:WordToken '{' raw:QuotedRawToken '}' {
-  return &Quoted{
-    Quoter: quoter.(string),
-    Raw:    raw.(string),
-  }, nil
-}
-QuotedRawToken <- [^}]* {
-  return string(c.text), nil
 }
 
 Boolean <- TrueToken {

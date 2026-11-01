@@ -1,0 +1,10 @@
+[1m[31mError:[0m syntax error: integer literal out of range
+  [2m[34m--> errors/syntax_negative_int_out_of_range.dang:3:10[0m
+ [2m    |[0m
+ [2m  1 | # `-` is an operator applied to the literal, not part of it, so the minimum[0m
+ [2m  2 | # Int has no literal of its own: write -9223372036854775807 - 1.[0m
+ [2m[34m[1m  3 | [0mlet x = -9223372036854775808
+[2m                [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

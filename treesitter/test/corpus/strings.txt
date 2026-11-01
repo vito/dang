@@ -1,0 +1,15 @@
+===
+Escaped slash
+===
+
+"a\/b"
+
+---
+
+(dang
+  last: (literal
+    (string
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token))))
