@@ -944,28 +944,18 @@ func getTypeName(typeRef *introspection.TypeRef) string {
 }
 
 // loadObjectFromID turns an ID into a lazy handle for the object or interface
-// it identifies, so that a field typed as that object by @expectedType can be
-// chained onto like any other object-returning field.
+// it identifies, through the schema's Relay-style `node(id:)` root field (see
+// nodeLoaderFor). The handle is typed as typeName itself, not as node's
+// interface, and its chain reaches the type with an inline fragment, as in
+// node(id: "...") { ... on Container { ... } }.
 //
-// Returns nil (and no error) if the schema has no root field to load the type
-// with (see idLoaderFor), in which case the caller keeps the raw ID string.
+// Returns nil (and no error) if the schema has no node(id:) that can load the
+// type.
 func loadObjectFromID(id, typeName string, schema *introspection.Schema, typeScope TypeScope, client graphql.Client) (Value, error) {
-	return loadObjectFromTypedID(id, "", typeName, schema, typeScope, client)
-}
-
-// loadObjectFromTypedID is loadObjectFromID for an ID read from an `id` field
-// of type idType: only a loader whose `id` argument takes that type is used.
-// An empty idType accepts any loader.
-//
-// The handle is typed as typeName itself, not whatever interface the loader
-// returns, and its chain starts at the loader: with the Relay-style
-// `node(id:)`, which returns an interface, the concrete type is reached with
-// an inline fragment, as in node(id: "...") { ... on Container { ... } }.
-func loadObjectFromTypedID(id, idType, typeName string, schema *introspection.Schema, typeScope TypeScope, client graphql.Client) (Value, error) {
 	if schema == nil || typeScope == nil || client == nil {
 		return nil, nil
 	}
-	loader, fragment := idLoaderFor(schema, typeName, idType)
+	loader := nodeLoaderFor(schema, typeName)
 	if loader == nil {
 		return nil, nil
 	}
@@ -977,10 +967,7 @@ func loadObjectFromTypedID(id, idType, typeName string, schema *introspection.Sc
 	if !found {
 		return nil, fmt.Errorf("loading %s from ID: type not found", typeName)
 	}
-	chain := querybuilder.Query().Client(client).Select(loader.Name).Arg("id", id)
-	if fragment {
-		chain = chain.InlineFragment(typeName)
-	}
+	chain := querybuilder.Query().Client(client).Select(loader.Name).Arg("id", id).InlineFragment(typeName)
 	return GraphQLValue{
 		Name:     loader.Name,
 		TypeName: typeName,
@@ -1012,41 +999,16 @@ func concreteTypeField(name string, t *introspection.Type) *introspection.Field 
 	}
 }
 
-// idLoaderFor finds the root field that loads an object of typeName from its
-// ID, and whether the loaded value needs an inline fragment to reach the type.
-//
-// The Relay-style `node(id:)` is preferred when it can return typeName; it is
-// what current Dagger engines expose. Otherwise a per-type
-// `load<T>FromID(id:)` field returning the type is used, the convention of
-// older Dagger schemas (still served to older clients). When idType is
-// non-empty, the loader's `id` argument must take that named type, so that an
-// ID read from the object's `id` field is accepted as is.
-func idLoaderFor(schema *introspection.Schema, typeName, idType string) (*introspection.Field, bool) {
-	if node := nodeLoaderField(schema); node != nil &&
-		loaderTakesIDType(node, idType) && nodeCanReturn(schema, node, typeName) {
-		return node, true
+// nodeLoaderFor returns the schema's Relay-style `node(id: ID!)` root field
+// when it can load an object of typeName, or nil. It is the only ID loader:
+// Dagger engines expose it for every object, and older schemas' per-type
+// `load<T>FromID` loaders and `<T>ID` scalars are not supported.
+func nodeLoaderFor(schema *introspection.Schema, typeName string) *introspection.Field {
+	node := nodeLoaderField(schema)
+	if node == nil || getTypeName(node.Args[0].TypeRef) != "ID" || !nodeCanReturn(schema, node, typeName) {
+		return nil
 	}
-	queryType := schema.Types.Get(schema.QueryType.Name)
-	if queryType == nil {
-		return nil, false
-	}
-	name := "load" + typeName + "FromID"
-	for _, field := range queryType.Fields {
-		if field.Name != name || len(field.Args) != 1 || field.Args[0].Name != "id" {
-			continue
-		}
-		if getTypeName(field.TypeRef) != typeName || !loaderTakesIDType(field, idType) {
-			continue
-		}
-		return field, false
-	}
-	return nil, false
-}
-
-// loaderTakesIDType reports whether loader's `id` argument takes idType, or
-// whether idType is empty (anything goes).
-func loaderTakesIDType(loader *introspection.Field, idType string) bool {
-	return idType == "" || getTypeName(loader.Args[0].TypeRef) == idType
+	return node
 }
 
 // nodeCanReturn reports whether node, a `node(id:)` loader, can load
@@ -1099,15 +1061,14 @@ func nodeLoaderField(schema *introspection.Schema) *introspection.Field {
 	return nil
 }
 
-// loadableIDField returns t's `id` field when it identifies the object for an
-// ID loader: a non-null `ID!`, or a non-null custom scalar such as Dagger's
-// legacy per-type `ContainerID!` (which goes with `load<T>FromID`), that takes
-// no required arguments. Returns nil otherwise.
+// loadableIDField returns t's `id` field when it identifies the object for
+// node(id:): a non-null `ID!` that takes no required arguments. Returns nil
+// otherwise.
 //
-// Built-in scalars other than `ID` don't count, `String!` included: loading
-// through `node(id:)` relies on the Relay convention that IDs are unique
-// across every type, which only a schema declaring its IDs as `ID` promises.
-// A `String!` id might be a per-type key that would load the wrong object.
+// Other scalars don't count, `String!` included: loading through `node(id:)`
+// relies on the Relay convention that IDs are unique across every type, which
+// only a schema declaring its IDs as `ID` promises. A `String!` id might be a
+// per-type key that would load the wrong object.
 func loadableIDField(t *introspection.Type) *introspection.Field {
 	if t == nil {
 		return nil
@@ -1117,11 +1078,8 @@ func loadableIDField(t *introspection.Type) *introspection.Field {
 			continue
 		}
 		if f.TypeRef == nil || f.TypeRef.Kind != introspection.TypeKindNonNull ||
-			f.TypeRef.OfType == nil || f.TypeRef.OfType.Kind != introspection.TypeKindScalar {
-			return nil
-		}
-		switch f.TypeRef.OfType.Name {
-		case "String", "Int", "Float", "Boolean":
+			f.TypeRef.OfType == nil || f.TypeRef.OfType.Kind != introspection.TypeKindScalar ||
+			f.TypeRef.OfType.Name != "ID" {
 			return nil
 		}
 		if !hasZeroRequiredArgs(f) {
@@ -1166,36 +1124,26 @@ func possibleObjectTypes(schema *introspection.Schema, t *introspection.Type) []
 // type typeName is null: `__typename`, plus its `id` when it has a loadable
 // one (see loadableIDField), so that a non-null result can be loaded by ID.
 // For an interface without an `id` of its own, or a union, the IDs of the
-// possible types that have one are fetched with inline fragments. idType is
-// the named type of the IDs fetched, or "" when none are.
-func nullProbeSelection(schema *introspection.Schema, typeName string) (fields []string, idType string) {
+// possible types that have one are fetched with inline fragments.
+func nullProbeSelection(schema *introspection.Schema, typeName string) []string {
 	t := schema.Types.Get(typeName)
 	if t == nil {
-		return []string{"__typename"}, ""
+		return []string{"__typename"}
 	}
-	if f := loadableIDField(t); f != nil {
-		return []string{"id", "__typename"}, getTypeName(f.TypeRef)
+	if loadableIDField(t) != nil {
+		return []string{"id", "__typename"}
 	}
-	fields = []string{"__typename"}
+	fields := []string{"__typename"}
 	if t.Kind != introspection.TypeKindInterface && t.Kind != introspection.TypeKindUnion {
-		return fields, ""
+		return fields
 	}
 	for _, pt := range possibleObjectTypes(schema, t) {
-		f := loadableIDField(pt)
-		if f == nil {
-			continue
-		}
-		// Every `id` shares one response key, so they must share a type to
-		// be selectable side by side.
-		ptIDType := getTypeName(f.TypeRef)
-		if idType == "" {
-			idType = ptIDType
-		} else if ptIDType != idType {
+		if loadableIDField(pt) == nil {
 			continue
 		}
 		fields = append(fields, "... on "+pt.Name+" { id }")
 	}
-	return fields, idType
+	return fields
 }
 
 // resolveNull probes a handle that may be null (see GraphQLFunction.Call)
@@ -1263,7 +1211,7 @@ func (g GraphQLValue) concreteObjectTypeName() (string, bool) {
 // is narrowed to its concrete type, so an interface- or union-typed handle
 // matches `case` type patterns by what it actually is.
 func (g GraphQLValue) resolveObject(ctx context.Context, what string) (Value, error) {
-	fields, idType := nullProbeSelection(g.Schema, g.TypeName)
+	fields := nullProbeSelection(g.Schema, g.TypeName)
 	var result map[string]any
 	probe := g.QueryChain.SelectMultiple(fields...).Bind(&result).Client(g.Client)
 	if err := probe.Execute(ctx); err != nil {
@@ -1279,7 +1227,7 @@ func (g GraphQLValue) resolveObject(ctx context.Context, what string) (Value, er
 		typeName = g.TypeName
 	}
 	if id, ok := result["id"].(string); ok && id != "" {
-		loaded, err := loadObjectFromTypedID(id, idType, typeName, g.Schema, g.TypeScope, g.Client)
+		loaded, err := loadObjectFromID(id, typeName, g.Schema, g.TypeScope, g.Client)
 		if err != nil {
 			return nil, err
 		}
@@ -1388,9 +1336,12 @@ func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType 
 			if err != nil {
 				return nil, err
 			}
-			if val != nil {
-				return val, nil
+			if val == nil {
+				// The raw ID string is not a value of the object type the
+				// field is typed as, so don't pass it off as one.
+				return nil, fmt.Errorf("cannot load %s from ID %q: the schema has no node(id: ID!) field that can return it", expectedType, str)
 			}
+			return val, nil
 		}
 		return StringValue{Val: str}, nil
 	case "Int":

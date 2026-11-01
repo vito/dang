@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"slices"
 	"sort"
-	"strings"
 	"sync/atomic"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -316,12 +315,6 @@ func gqlOutputTypeRefToTypeNode(mod TypeScope, ref *introspection.TypeRef, expec
 				return nil, fmt.Errorf("gqlOutputTypeRefToTypeNode: expected type %q not found", expectedType)
 			}
 			return t, nil
-		}
-		if strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID" {
-			return gqlOutputTypeRefToTypeNode(mod, &introspection.TypeRef{
-				Name: strings.TrimSuffix(ref.Name, "ID"),
-				Kind: introspection.TypeKindObject,
-			}, "")
 		}
 		fallthrough
 	default:

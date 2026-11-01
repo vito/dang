@@ -152,78 +152,57 @@ func TestExpectedTypeDirectivePromotesIDResultToObjectValue(t *testing.T) {
 	require.Equal(t, "cv-id", id)
 }
 
-// Without a node(id:) field there is nothing to load the ID with, so the raw ID
-// string stays as-is -- it still satisfies the ID arguments it flows into.
-func TestExpectedTypeDirectiveKeepsIDResultWithoutNodeField(t *testing.T) {
+// Without a node(id:) field there is nothing to load the ID with. The field is
+// typed as the object, which the raw ID string is not, so the result is an
+// error rather than the string passed off as the object.
+func TestExpectedTypeDirectiveIDResultWithoutNodeFieldErrors(t *testing.T) {
 	schema := expectedTypeTestSchema()
 	env := TypeScopeFromSchema("Dagger", schema)
 	client := graphql.NewClient("http://dang.test/query", nil)
 
-	val, err := graphQLResultToValue("cv-id", idTypeRef(), "CacheVolume", schema, env, client)
-	require.NoError(t, err)
-	require.Equal(t, StringValue{Val: "cv-id"}, val)
+	_, err := graphQLResultToValue("cv-id", idTypeRef(), "CacheVolume", schema, env, client)
+	require.ErrorContains(t, err, `cannot load CacheVolume from ID "cv-id": the schema has no node(id: ID!) field`)
 }
 
-// Older Dagger schemas have no node(id:), but a load<T>FromID root field per
-// type, taking that type's own ID scalar. Objects load through it, with no
-// inline fragment needed, as long as the ID has the type the loader takes.
-func TestLoadObjectFromIDUsesPerTypeLoader(t *testing.T) {
+// Older Dagger schemas identified each object with its own `<T>ID` scalar
+// and loaded it with a per-type load<T>FromID root field. Neither is
+// supported: a `<T>ID` result is just that scalar, and only node(id: ID!)
+// loads objects.
+func TestLegacyIDSchemaIsNotSpecialCased(t *testing.T) {
 	schema := legacyLoaderTestSchema()
 	env := TypeScopeFromSchema("Dagger", schema)
 	client := graphql.NewClient("http://dang.test/query", nil)
 
-	fields, idType := nullProbeSelection(schema, "CacheVolume")
-	require.Equal(t, []string{"id", "__typename"}, fields)
-	require.Equal(t, "CacheVolumeID", idType)
+	cacheVolume, found := env.NamedType("CacheVolume")
+	require.True(t, found)
+	idScheme, found := cacheVolume.SchemeOf("id")
+	require.True(t, found)
+	idType, _ := idScheme.Type()
+	require.Equal(t, "Dagger.CacheVolumeID!", unwrapZeroArgFn(idType).String())
 
-	val, err := loadObjectFromTypedID("cv-id", idType, "CacheVolume", schema, env, client)
-	require.NoError(t, err)
-	gqlVal, ok := val.(GraphQLValue)
-	require.True(t, ok, "expected a GraphQL handle, got %T", val)
-	require.Equal(t, "CacheVolume", gqlVal.TypeName)
-	require.Equal(t, "cv-id", gqlVal.KnownID)
+	require.Equal(t, []string{"__typename"}, nullProbeSelection(schema, "CacheVolume"))
 
-	query, err := gqlVal.QueryChain.Select("id").Build(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, `{loadCacheVolumeFromID(id:"cv-id"){id}}`, query)
-
-	// An ID of another type can't be fed to the loader.
-	val, err = loadObjectFromTypedID("cv-id", "ID", "CacheVolume", schema, env, client)
+	val, err := loadObjectFromID("cv-id", "CacheVolume", schema, env, client)
 	require.NoError(t, err)
 	require.Nil(t, val)
-}
 
-// When a schema has both, node(id:) wins.
-func TestIDLoaderPrefersNode(t *testing.T) {
-	schema := legacyLoaderTestSchema()
+	// A node(id:) taking a per-type ID scalar is not a loader either.
 	node := nodeLoaderTestField()
 	node.Args[0].TypeRef.OfType.Name = "CacheVolumeID"
 	schema.Types.Get("Query").Fields = append(schema.Types.Get("Query").Fields, node)
-
-	loader, fragment := idLoaderFor(schema, "CacheVolume", "CacheVolumeID")
-	require.NotNil(t, loader)
-	require.Equal(t, "node", loader.Name)
-	require.True(t, fragment)
-
-	// ...unless it takes a different kind of ID.
-	node.Args[0].TypeRef.OfType.Name = "ID"
-	loader, fragment = idLoaderFor(schema, "CacheVolume", "CacheVolumeID")
-	require.NotNil(t, loader)
-	require.Equal(t, "loadCacheVolumeFromID", loader.Name)
-	require.False(t, fragment)
+	require.Nil(t, nodeLoaderFor(schema, "CacheVolume"))
 }
 
-// Only an ID that promises to identify an object is loadable: `ID!`, or a
-// custom ID scalar like Dagger's legacy `CacheVolumeID!`. Other built-in
-// scalars, `String!` included, and nullable IDs are not.
-func TestLoadableIDFieldRequiresIDOrCustomScalar(t *testing.T) {
+// Only an ID that promises to identify an object is loadable: `ID!`. Other
+// scalars, `String!` and custom ID scalars included, and nullable IDs are not.
+func TestLoadableIDFieldRequiresID(t *testing.T) {
 	for _, tc := range []struct {
 		scalar   string
 		nonNull  bool
 		loadable bool
 	}{
 		{"ID", true, true},
-		{"CacheVolumeID", true, true},
+		{"CacheVolumeID", true, false},
 		{"ID", false, false},
 		{"String", true, false},
 		{"Int", true, false},
@@ -260,9 +239,8 @@ func TestNullProbeDoesNotLoadStringID(t *testing.T) {
 	query.Fields = append(query.Fields, node)
 	env := TypeScopeFromSchema("Dagger", schema)
 
-	fields, idType := nullProbeSelection(schema, "CacheVolume")
+	fields := nullProbeSelection(schema, "CacheVolume")
 	require.Equal(t, []string{"__typename"}, fields)
-	require.Empty(t, idType)
 
 	var queries []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
