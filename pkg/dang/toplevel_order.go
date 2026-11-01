@@ -49,6 +49,8 @@ type topDecl struct {
 	// writes names a top-level binding its initializer may write: directly,
 	// through a closure it runs, or by forcing another declaration that does.
 	writes string
+	// reads holds the top-level bindings its initializer reads.
+	reads map[effTarget]bool
 }
 
 // topForm is the top-level form being inferred: a declaration's
@@ -154,20 +156,38 @@ func withTopStatement(ctx context.Context, env hm.Env, form Node) context.Contex
 }
 
 // noteTopWrite records that the top-level form being inferred may write
-// target (at node), outside any function body.
+// target (at node), outside any function body. A statement may not write a
+// binding that a declaration after it reads: declarations all run before
+// statements, so the declaration would see the value from before the write.
 func noteTopWrite(ctx context.Context, target effTarget, node Node) {
 	f := topFormFrom(ctx)
 	if f == nil || !isTopLevelFrame(target.frame, topLevelFrameFrom(ctx)) {
 		return
 	}
-	if f.decl != nil && f.decl.writes == "" {
-		f.decl.writes = target.name
+	if f.decl != nil {
+		if f.decl.writes == "" {
+			f.decl.writes = target.name
+		}
+		return
 	}
+	var reader *topDecl
+	for _, d := range topOrderFrom(ctx).decls {
+		if d.reads[target] && f.pos.before(d.pos) && (reader == nil || d.pos.before(reader.pos)) {
+			reader = d
+		}
+	}
+	if reader == nil {
+		return
+	}
+	_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
+		"top-level declarations run before top-level statements, so `%s` (line %d) reads `%s` before this statement writes it; write `%s` in a declaration instead (e.g. compute it in `%s`'s initializer), or read it in a statement",
+		reader.name, reader.pos.line, target.name, target.name, reader.name), node))
 }
 
 // noteTopRead handles a read (at node) of name, resolved in env: a
-// declaration forcing another whose initializer writes top-level state may
-// write it too, and forcing one from a `{{ }}` field may run it concurrently.
+// declaration's initializer records what it reads; forcing a declaration
+// whose initializer writes top-level state may write it too, and forcing one
+// from a `{{ }}` field may run it concurrently.
 func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) error {
 	o := topOrderFrom(ctx)
 	if o == nil {
@@ -177,11 +197,18 @@ func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) error 
 	if frame == nil {
 		return nil
 	}
-	d := o.decls[effTarget{frame: frame, name: name}]
+	target := effTarget{frame: frame, name: name}
+	f := topFormFrom(ctx)
+	if f != nil && f.decl != nil && isTopLevelFrame(frame, topLevelFrameFrom(ctx)) {
+		if f.decl.reads == nil {
+			f.decl.reads = map[effTarget]bool{}
+		}
+		f.decl.reads[target] = true
+	}
+	d := o.decls[target]
 	if d == nil || d.writes == "" {
 		return nil
 	}
-	f := topFormFrom(ctx)
 	if f != nil && f.decl != nil && f.decl != d && f.decl.writes == "" {
 		f.decl.writes = d.writes
 	}

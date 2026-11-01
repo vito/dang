@@ -557,6 +557,44 @@ func TestTopLevelInitializersInFields(t *testing.T) {
 	})
 }
 
+// Top-level declarations all run before top-level statements, so a statement
+// can't write what a later declaration reads: the declaration would see the
+// value from before the write.
+func TestTopLevelStatementOrder(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "assignment before a declaration reading it",
+			src: `
+				let p = null
+				p = 1
+				let s = p
+			`,
+			want: "top-level declarations run before top-level statements, so `s` (line 4) reads `p` before this statement writes it",
+		},
+		{
+			name: "block writing before a declaration reading it",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				let s2 = sum
+			`,
+			want: "so `s2` (line 4) reads `sum` before this statement writes it",
+		},
+		{
+			name: "statements reading, and declarations before the write, are fine",
+			src: `
+				let total = 0
+				let start = total
+				[1, 2, 3].each { x => total += x }
+				print(total)
+				total = 10
+				print([start, total])
+				let doubled = { let t = 0; [1, 2].each { x => t += x * 2 }; t }
+			`,
+		},
+	})
+}
+
 // InferFormsWithPhases called directly (embedders, tests) is an entry point
 // too: the deferred checks run, so an escaping block with a non-local return
 // can never reach evaluation, where nothing would catch it.
