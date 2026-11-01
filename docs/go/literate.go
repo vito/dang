@@ -20,6 +20,14 @@ import (
 type literateSession struct {
 	typeScope  dang.TypeScope
 	valueScope dang.ValueScope
+
+	// ctx is the base context every block on the page runs under (see
+	// literateContext). It is built once per session so the page shares one
+	// schema-module cache: a second `import Demo` further down the page must
+	// yield the same Demo types as the first, or values bound before it
+	// stop fitting its annotations. ctxErr records a failure to build it.
+	ctx    context.Context
+	ctxErr error
 }
 
 // literateFencesPartial is the section partial under which \literate-fences
@@ -66,7 +74,8 @@ func literateSessionFor(section *booklit.Section) *literateSession {
 	}
 
 	typeScope, valueScope := dang.BuildScopesFromImports("", nil)
-	s := &literateSession{typeScope: typeScope, valueScope: valueScope}
+	ctx, err := literateContext()
+	s := &literateSession{typeScope: typeScope, valueScope: valueScope, ctx: ctx, ctxErr: err}
 	file.SetPartial(literateSessionPartial, literateSessionContent{booklit.Empty, s})
 	return s
 }
@@ -186,6 +195,12 @@ func (p Plugin) literateFailureBlock(code booklit.Content, label string) (bookli
 	source := strings.TrimRight(code.String(), "\n")
 	sess := literateSessionFor(p.section)
 
+	// A broken bundled import is a build problem, not the snippet's expected
+	// failure, so surface it before literateFailEval could bake it.
+	if sess.ctxErr != nil {
+		return nil, fmt.Errorf("%s in %s: %w", label, p.section.FilePath(), sess.ctxErr)
+	}
+
 	stdout, stage, failure := literateFailEval(source, sess)
 	if failure == nil {
 		return nil, fmt.Errorf("%s in %s: expected the snippet to fail, but it succeeded — use a plain ```dang fence\n\n%s", label, p.section.FilePath(), source)
@@ -243,13 +258,18 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 	typeScope := sess.typeScope.Clone()
 	valueScope := sess.valueScope.Derive(true)
 
+	if sess.ctxErr != nil {
+		return "", "type", sess.ctxErr
+	}
+	base := sess.ctx
+
 	fresh := hm.NewSimpleFresher()
-	if _, err := dang.InferTopLevel(context.Background(), forms, typeScope, fresh); err != nil {
+	if _, err := dang.InferTopLevel(base, forms, typeScope, fresh); err != nil {
 		return "", "type", err
 	}
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx := ioctx.StdoutToContext(base, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	for _, node := range forms {
@@ -269,7 +289,23 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 // two must stay in lockstep so enhancing a page client-side doesn't change
 // what the reader already saw.
 func literateEval(source string, sess *literateSession) (string, string, error) {
-	return literateEvalCtx(context.Background(), source, sess)
+	if sess.ctxErr != nil {
+		return "", "", sess.ctxErr
+	}
+	return literateEvalCtx(sess.ctx, source, sess)
+}
+
+// literateContext builds the base context for a page's literate blocks: it
+// makes `import Demo` resolve against the bundled in-process schema, as the
+// wasm playground's literate replay does (cmd/dang-playground's withDemo), so
+// a page can demonstrate GraphQL and a client-side replay matches the baked
+// output. literateSessionFor calls it once per page.
+func literateContext() (context.Context, error) {
+	cfg, err := demoImport()
+	if err != nil {
+		return nil, fmt.Errorf("building bundled GraphQL import: %w", err)
+	}
+	return dang.ContextWithImportConfigs(context.Background(), cfg), nil
 }
 
 // literateEvalCtx is literateEval with an explicit base context, so callers can

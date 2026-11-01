@@ -30,8 +30,9 @@
 //     type-checked and evaluated incrementally against accumulated state —
 //     nothing is re-parsed or re-run. This mirrors the native CLI REPL
 //     (cmd/dang/repl_tuist.go), which reuses one scope pair for the whole
-//     session rather than replaying history. The browser REPL runs the core
-//     language only (no GraphQL imports), so it stays synchronous.
+//     session rather than replaying history. The browser REPL's only GraphQL
+//     import is the bundled in-process Demo schema, so it never touches the
+//     network and stays synchronous.
 //
 //   - dangLiterateEval(sessionID, source) is dangReplEval with the literate
 //     blocks' display rule: an entry whose last form is a declaration yields
@@ -248,6 +249,11 @@ func evalSource(source, token string) map[string]any {
 type replSession struct {
 	typeScope  dang.TypeScope
 	valueScope dang.ValueScope
+	// ctx carries the bundled Demo import (withDemo). It is built once per
+	// session so every entry shares one schema-module cache: a second
+	// `import Demo` yields the same Demo types as the first, as in the
+	// build-time literate session (docs/go/literate.go).
+	ctx context.Context
 }
 
 // replSessions holds the live sessions keyed by the handle the frontend assigns
@@ -263,7 +269,7 @@ func session(id int) *replSession {
 	s := replSessions[id]
 	if s == nil {
 		typeScope, valueScope := dang.BuildScopesFromImports("", nil)
-		s = &replSession{typeScope: typeScope, valueScope: valueScope}
+		s = &replSession{typeScope: typeScope, valueScope: valueScope, ctx: withDemo(context.Background())}
 		replSessions[id] = s
 	}
 	return s
@@ -316,8 +322,9 @@ func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, val
 // scopes, which are mutated in place so definitions accumulate (`let greeting =
 // "world"` then “ `hello, ${greeting}!` “ works) without re-parsing or
 // re-running any earlier entry. Only this entry's output and result are
-// returned. The browser REPL is core-language only (no GraphQL imports), so
-// unlike dangEval it never touches the network and stays synchronous.
+// returned. The browser REPL's only GraphQL import is the bundled in-process
+// Demo schema, so unlike dangEval it never touches the network and stays
+// synchronous.
 //
 // Like the native CLI REPL, a single scope pair lives for the whole session.
 // The tradeoff is that an entry which fails partway (a type error, or a runtime
@@ -334,7 +341,7 @@ func dangReplEval(_ js.Value, args []js.Value) any {
 	fresh := hm.NewSimpleFresher()
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
+	ctx := ioctx.StdoutToContext(sess.ctx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	value, _, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
@@ -359,7 +366,7 @@ func dangLiterateEval(_ js.Value, args []js.Value) any {
 	fresh := hm.NewSimpleFresher()
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
+	ctx := ioctx.StdoutToContext(sess.ctx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	value, lastIsDecl, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
@@ -397,7 +404,7 @@ func dangLiterateFailEval(_ js.Value, args []js.Value) any {
 	fresh := hm.NewSimpleFresher()
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
+	ctx := ioctx.StdoutToContext(sess.ctx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	value, lastIsDecl, err, stage := evalForms(ctx, source, typeScope, valueScope, fresh)

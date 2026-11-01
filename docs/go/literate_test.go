@@ -269,6 +269,40 @@ func TestLiterateRedefinitions(t *testing.T) {
 	must("quarter(8)", "2")
 }
 
+// Page literate blocks can `import Demo`, the bundled in-process schema the
+// wasm playground also provides, and later blocks — failures included — see
+// the import.
+func TestLiterateDemoImport(t *testing.T) {
+	sess := literateSessionFor(&booklit.Section{Path: "graphql.md"})
+
+	if _, _, err := literateEval("import Demo", sess); err != nil {
+		t.Fatalf("import Demo: %v", err)
+	}
+	stdout, value, err := literateEval(`user(id: "User:1").name`, sess)
+	if err != nil {
+		t.Fatalf("querying Demo: %v", err)
+	}
+	if value != `"John Doe"` {
+		t.Errorf("user name = %s, want \"John Doe\"", value)
+	}
+	if !strings.Contains(stdout, "→ ") {
+		t.Errorf("query not echoed on stdout: %q", stdout)
+	}
+
+	if _, stage, err := literateFailEval(`user(id: "User:1").nope`, sess); stage != "type" || err == nil {
+		t.Errorf("failure against Demo: stage %q, err %v", stage, err)
+	}
+
+	// A second import further down the page is the same Demo, so values
+	// bound after the first still fit its types.
+	if _, _, err := literateEval(`let first = primaryUser`, sess); err != nil {
+		t.Fatalf("binding a Demo value: %v", err)
+	}
+	if _, _, err := literateEval("import Demo\nlet again: Demo.User! = first", sess); err != nil {
+		t.Errorf("second import Demo on the page: %v", err)
+	}
+}
+
 // Booklit's dev server re-loads the whole book on every page request,
 // concurrently across requests, and Dang scopes are not safe for concurrent
 // use — so each load must get its own sessions. Each goroutine here simulates
