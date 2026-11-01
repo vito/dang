@@ -1,7 +1,8 @@
 # Copy-on-write field writes through a nullable link. Writing through a link
 # that may be null is a type error (tests/errors/assign_path_through_nullable_link.dang);
 # asserting the link with `!` writes through it, and raises like any other
-# assertion when it is null.
+# assertion when it is null. (A path through a computed `{ }` member is a
+# compile error: see errors/assign_through_computed_field.dang.)
 
 type Inner {
   x: Int!

@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot assign to s.center.x: s.center is computed, not a stored field
+  [2m[34m--> errors/assign_through_computed_field.dang:14:1[0m
+ [2m    |[0m
+ [2m 12 | [0m
+ [2m 13 | let s = Shape(Point(1))[0m
+ [2m[34m[1m 14 | [0ms.center.x = 3
+[2m       [31m^^^^^^^^[0m
+ [2m 15 | [0m
+ [2m    |[0m
+

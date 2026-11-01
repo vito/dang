@@ -1,0 +1,14 @@
+# A computed member has nothing to store into, so a field path can't run
+# through one
+type Point {
+  x: Int!
+}
+
+type Shape {
+  origin: Point!
+
+  center: Point! { origin }
+}
+
+let s = Shape(Point(1))
+s.center.x = 3

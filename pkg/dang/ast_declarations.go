@@ -590,20 +590,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err := checkDefaultWrite(ctx, env, r.Target); err != nil {
 			return nil, NewInferError(err, r)
 		}
-		// `x! = v` / `x! += v` would assign to the assertion, not to x.
-		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
-			if r.Modifier == "+" {
-				return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion: drop the !, and if the target is nullable, %s", compoundNullableAdvice), r.Target)
-			}
-			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
-		}
-		// Lists and maps are immutable values; there is no element write.
-		if _, isIndex := r.Target.(*Index); isIndex {
-			return nil, NewInferError(fmt.Errorf("cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that"), r.Target)
-		}
-		// A field write copies every link of its path back to a binding, so
-		// the path must start at a name or `self`.
-		if err := checkAssignmentPath(r.Target); err != nil {
+		if err := r.checkTargetShape(); err != nil {
 			return nil, err
 		}
 		// Infer the type of the target (left-hand side) as a storage location,
@@ -625,6 +612,8 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err := checkStaticWrite(r); err != nil {
 			return nil, err
 		}
+		// Every link must be stored (not computed) and non-null (or
+		// asserted with !): there must be something to copy the write into.
 		if err := checkPathLinks(env, r.Target); err != nil {
 			return nil, err
 		}
@@ -718,6 +707,37 @@ func (r *Reassignment) checkInterfaceFieldWrite() error {
 		}
 	}
 	return nil
+}
+
+// checkTargetShape rejects assignment targets evaluation can't write: only a
+// name (`x = v`) or a path of fields from a name or `self` (`x.a.b = v`,
+// `self.a = v`, with links asserted non-null like `a.b!.c = v`) can be
+// assigned. It runs before the target is inferred. Targets with a likely
+// intent get advice of their own: an assertion (`x! = v`), an index (`xs[0] =
+// v`; lists and maps are immutable), and a field path from anything but a
+// name or `self` (checkAssignmentPath). Whether each link of a path can be
+// written through (stored, non-null) is checkPathLinks', once it is inferred.
+func (r *Reassignment) checkTargetShape() error {
+	switch t := r.Target.(type) {
+	case *Symbol:
+		return nil
+	case *NonNullAssert:
+		// `x! = v` / `x! += v` would assign to the assertion, not to x.
+		if r.Modifier == "+" {
+			return NewInferError(fmt.Errorf("cannot assign to a non-null assertion: drop the !, and if the target is nullable, %s", compoundNullableAdvice), t)
+		}
+		return NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), t)
+	case *Index:
+		return NewInferError(fmt.Errorf("cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that"), t)
+	case *Select:
+		// A field write copies every link of its path back to a binding, so
+		// the path must start at a name or `self`.
+		return checkAssignmentPath(t)
+	}
+	return NewInferError(
+		fmt.Errorf("cannot assign to %s: only a name or a field path like `a.b.c` can be assigned", strings.TrimSpace(Format(r.Target))),
+		r,
+	)
 }
 
 func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.Env, fresh hm.Fresher, targetType, valueType hm.Type) error {
@@ -974,14 +994,31 @@ func checkAssignmentPath(target Node) error {
 // checkPathLinks rejects a field write through a link that may be null
 // (`a.maybe.x = 4`, which would have nothing to copy and write into) or is a
 // computed member (`a.comp.x = 4`, which has nothing to store into), once
-// the target is inferred. A link asserted with `!` is non-null.
+// the target is inferred. A link asserted with `!` is non-null. Computed
+// links are reported first, anywhere on the path: asserting a link can't
+// make the write possible then.
 func checkPathLinks(env hm.Env, target Node) error {
 	sel, ok := target.(*Select)
 	if !ok {
 		return nil
 	}
+	var links []Node
 	for {
 		recv := sel.Receiver
+		links = append(links, recv)
+		next, ok := pathLink(recv).(*Select)
+		if !ok {
+			break
+		}
+		sel = next
+	}
+	for _, recv := range links {
+		if computedLink(env, pathLink(recv)) {
+			link := strings.TrimSpace(Format(pathLink(recv)))
+			return NewInferError(fmt.Errorf("cannot assign to %s: %s is computed, not a stored field", strings.TrimSpace(Format(target)), link), recv)
+		}
+	}
+	for _, recv := range links {
 		if typed, ok := recv.(interface{ GetInferredType() hm.Type }); ok {
 			if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
 				link := strings.TrimSpace(Format(recv))
@@ -989,16 +1026,8 @@ func checkPathLinks(env hm.Env, target Node) error {
 				return NewInferError(fmt.Errorf("cannot assign to %s: %s may be null; assert it with ! to raise if it is (`%s!%s = ...`), or check it for null first", strings.TrimSpace(Format(target)), link, link, rest), recv)
 			}
 		}
-		if computedLink(env, pathLink(recv)) {
-			link := strings.TrimSpace(Format(pathLink(recv)))
-			return NewInferError(fmt.Errorf("cannot assign to %s: %s is computed, not a stored field", strings.TrimSpace(Format(target)), link), recv)
-		}
-		next, ok := pathLink(recv).(*Select)
-		if !ok {
-			return nil
-		}
-		sel = next
 	}
+	return nil
 }
 
 // computedLink reports whether a link of a write path is a computed member

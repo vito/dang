@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot assign to a.comp.maybe.x: a.comp is computed, not a stored field
+  [2m[34m--> errors/assign_path_computed_and_nullable.dang:16:1[0m
+ [2m    |[0m
+ [2m 14 | [0m
+ [2m 15 | let a = Foo[0m
+ [2m[34m[1m 16 | [0ma.comp.maybe.x = 4
+[2m       [31m^^^^^^[0m
+ [2m 17 | [0m
+ [2m    |[0m
+
