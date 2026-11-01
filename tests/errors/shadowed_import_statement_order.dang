@@ -1,0 +1,8 @@
+# A local declaration shadowing an unqualified import is the top-level
+# binding the statement-vs-declaration order check sees.
+import Test
+
+let postTitles = ["local"]
+postTitles = ["written"]
+let seen = postTitles
+print(seen)
