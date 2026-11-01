@@ -1,0 +1,9 @@
+[1m[31mError:[0m syntax error: integer literal out of range
+  [2m[34m--> errors/syntax_int_out_of_range.dang:2:9[0m
+ [2m    |[0m
+ [2m  1 | let max = 9223372036854775807[0m
+ [2m[34m[1m  2 | [0mlet x = 9223372036854775808
+[2m               [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

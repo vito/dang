@@ -14,3 +14,10 @@ assert { -b == 4 }
 
 assert { [-1, -2, -3][0] == -1 }
 assert { [-1, -2, -3][2] == -3 }
+
+# The Int bounds: 9223372036854775807 is the largest literal, and the minimum
+# is written as an expression since `-` isn't part of the literal.
+let maxInt = 9223372036854775807
+let minInt = -9223372036854775807 - 1
+assert { -maxInt - 1 == minInt }
+assert { minInt + maxInt == -1 }

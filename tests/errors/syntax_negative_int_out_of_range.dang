@@ -1,0 +1,3 @@
+# `-` is an operator applied to the literal, not part of it, so the minimum
+# Int has no literal of its own: write -9223372036854775807 - 1.
+let x = -9223372036854775808
