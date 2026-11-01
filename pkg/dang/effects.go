@@ -294,7 +294,11 @@ func selfTypeFrame(env hm.Env) TypeScope {
 func absorbWrite(ctx context.Context, target effTarget, node Node) {
 	fieldReported := checkFieldWrite(ctx, target, node)
 	fr := bodyFrame(ctx)
-	if fr == nil || fr.inside(target.frame) {
+	if fr == nil {
+		noteTopWrite(ctx, target, node)
+		return
+	}
+	if fr.inside(target.frame) {
 		return
 	}
 	if fr.sealed != nil {
@@ -326,6 +330,16 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 	checkFieldCall(ctx, callee, node, name)
 	fr := bodyFrame(ctx)
 	if fr == nil {
+		if callee.kind == effClosure {
+			targets := make([]effTarget, 0, len(callee.targets))
+			for t := range callee.targets {
+				targets = append(targets, t)
+			}
+			sort.Slice(targets, func(i, j int) bool { return targets[i].name < targets[j].name })
+			for _, t := range targets {
+				noteTopWrite(ctx, t, node)
+			}
+		}
 		return
 	}
 	switch callee.kind {
@@ -517,6 +531,8 @@ type effectSolver struct {
 	errs []error
 	// narrow logs what may invalidate null narrowings (narrowing.go).
 	narrow narrowLog
+	// top tracks top-level declarations' initialization (toplevel_order.go).
+	top topOrder
 }
 
 // escapes reports whether closure eff is bound to a parameter that escapes.

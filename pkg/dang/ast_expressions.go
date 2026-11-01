@@ -797,6 +797,9 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if err := checkDefaultName(ctx, env, s.Name); err != nil {
 			return nil, err
 		}
+		if err := noteTopRead(ctx, env, s.Name, s); err != nil {
+			return nil, err
+		}
 		t, _ := scheme.Type()
 		// A refinement the read can't trust gives way to the declared type,
 		// which, for a mutable binding, is pinned to what it is now.
