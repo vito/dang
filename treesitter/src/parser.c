@@ -4522,6 +4522,11 @@ static const TSSymbol ts_supertype_map_entries[] = {
     sym_unary_expr,
 };
 
+static const TSCharacterRange sym_immediate_escape_character_set_1[] = {
+  {'"', '"'}, {'/', '7'}, {'U', 'U'}, {'\\', '\\'}, {'a', 'b'}, {'f', 'f'}, {'n', 'n'}, {'r', 'r'},
+  {'t', 'v'}, {'x', 'x'},
+};
+
 static bool ts_lex(TSLexer *lexer, TSStateId state) {
   START_LEXER();
   eof = lexer->eof(lexer);
@@ -4736,14 +4741,7 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       if (lookahead == 'u') ADVANCE(36);
       if (lookahead == 'x') ADVANCE(34);
       if (('0' <= lookahead && lookahead <= '7')) ADVANCE(32);
-      if (lookahead == '"' ||
-          lookahead == '\\' ||
-          lookahead == 'a' ||
-          lookahead == 'b' ||
-          lookahead == 'f' ||
-          lookahead == 'n' ||
-          lookahead == 'r' ||
-          ('t' <= lookahead && lookahead <= 'v')) ADVANCE(106);
+      if (set_contains(sym_immediate_escape_character_set_1, 10, lookahead)) ADVANCE(106);
       END_STATE();
     case 17:
       if (lookahead == '$') ADVANCE(41);
@@ -4782,14 +4780,7 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       if (lookahead == 'u') ADVANCE(36);
       if (lookahead == 'x') ADVANCE(34);
       if (('0' <= lookahead && lookahead <= '7')) ADVANCE(32);
-      if (lookahead == '"' ||
-          lookahead == '\\' ||
-          lookahead == 'a' ||
-          lookahead == 'b' ||
-          lookahead == 'f' ||
-          lookahead == 'n' ||
-          lookahead == 'r' ||
-          ('t' <= lookahead && lookahead <= 'v')) ADVANCE(106);
+      if (set_contains(sym_immediate_escape_character_set_1, 10, lookahead)) ADVANCE(106);
       END_STATE();
     case 25:
       if (lookahead == '{') ADVANCE(109);

@@ -1013,9 +1013,8 @@ ImmediateTripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
 TripleQuote <- "\"\"\""
 
 
-String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken {
-  c.text = bytes.Replace(c.text, []byte(`\/`), []byte(`/`), -1)
-  value, err := strconv.Unquote(string(c.text))
+String <- '"' ( ImmediateStringContent / ImmediateEscape / InvalidEscape )* ImmediateQuoteToken {
+  value, err := unquoteString(c.text)
   if err != nil {
     // The grammar admits escapes that encode no character, like \777.
     c.reject(c.Loc(), "invalid escape sequence in string literal")
@@ -1029,12 +1028,19 @@ String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken 
 ImmediateQuoteToken <- '"'
 ImmediateStringContent <- [^\\"\n]+
 ImmediateEscape <- '\\' (
-    [abfnrtv"\\]
+    [abfnrtv"\\/]
   / 'x' [0-9a-f]i [0-9a-f]i
   / 'u' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / 'U' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / [0-7] [0-7] [0-7]
 )
+
+// An escape ImmediateEscape doesn't know, reported where it is rather than at
+// the start of the form. Tree-sitter leaves it out, so editors still flag it.
+InvalidEscape <- '\\' . {
+  c.reject(c.Loc(), "invalid escape sequence in string literal")
+  return nil, nil
+}
 
 // Backtick-delimited template strings with optional ${...} interpolations.
 // Single-line uses one backtick; multi-line uses three or more.

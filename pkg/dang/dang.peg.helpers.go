@@ -73,6 +73,26 @@ func rejectedSourceError(pegErr error, filename string, source []byte) (*SourceE
 	return NewSourceError(fmt.Errorf("syntax error: %s", rejected.msg), &loc, string(source)), true
 }
 
+// unquoteString decodes a double-quoted string literal. It accepts every Go
+// escape plus `\/` for `/` (as JSON does), which strconv.Unquote rejects.
+func unquoteString(text []byte) (string, error) {
+	if !bytes.Contains(text, []byte(`\/`)) {
+		return strconv.Unquote(string(text))
+	}
+	// Rewrite only escapes that are `\/`: in `\\/` the backslash is escaped.
+	buf := make([]byte, 0, len(text))
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\\' && i+1 < len(text) {
+			i++
+			if text[i] != '/' {
+				buf = append(buf, '\\')
+			}
+		}
+		buf = append(buf, text[i])
+	}
+	return strconv.Unquote(string(buf))
+}
+
 func (c current) Loc() *SourceLocation {
 	fn, _ := c.globalStore["filePath"].(string)
 	textEnd := len(c.text)

@@ -11,6 +11,7 @@ import (
 // tsSkippedRules lists named rules whose bodies should not appear in the
 // tree-sitter grammar because they are produced by the external scanner
 // instead. References to these rules are redirected via tsRuleRefAliases.
+// InvalidEscape only exists to report an error, so tree-sitter leaves it out.
 var tsSkippedRules = map[string]bool{
 	"MultiTemplateOpenToken":    true,
 	"MultiTemplateCloseToken":   true,
@@ -18,6 +19,7 @@ var tsSkippedRules = map[string]bool{
 	"SingleTemplateContentChar": true,
 	"LangTagTerminator":         true,
 	"CommentToken":              true,
+	"InvalidEscape":             true,
 }
 
 func skipTS(name string) bool {
