@@ -34,10 +34,10 @@ let localURL = URL
 assert { localURL != null }
 
 testURL: Test.URL! = Test.homepage
-assert { testURL == ("https://dang-lang.dev" :: Test.URL!) }
+assert { testURL == ("https://danglang.org" :: Test.URL!) }
 
 otherURL: Other.URL! = Other.homepage
-assert { otherURL == ("https://dang-lang.dev" :: Other.URL!) }
+assert { otherURL == ("https://danglang.org" :: Other.URL!) }
 
 interface Node {
   label: String!

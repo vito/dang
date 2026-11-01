@@ -1,8 +1,15 @@
 \use-plugin{dang}
+\literate-fences
 
 # Fields and functions {#fields-functions}
 
 > Meta: introduce the *field* concept first and let the examples carry it — the whole rule is just: `let` makes a field local, a type makes it public, and a bare `name = value` reassigns. Then the four "feels weird at first" function points: zero-arity has no parens; the body has no `return`; positional args can mix with named; `&fn` is for references. Don't mention `pub` (it's legacy and formatted away). Object-context behavior lives in [#objects] — link, don't duplicate.
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## Fields {#fields}
 
@@ -17,41 +24,60 @@ A field is recognized by its **shape** — a name followed by a type, an argumen
 list, or a block body:
 
 ```dang
-name: String!             # typed field
-greet: String! { "hi!" }  # computed field / method
-add(x: Int!): Int! { x }  # method with args
-y: Int! = 100             # typed field with default
-maybe: String = null      # nullable
-let secret = "shhh"       # local field (untyped is fine)
+type Profile {
+  name: String!                          # typed field
+  greet: String! { `hi, ${name}!` }      # computed field / method
+  plus(x: Int!): Int! { x + bonus }      # method with args
+  bonus: Int! = 100                      # typed field with default
+  nickname: String = null                # nullable
+  let secret = "shhh"                    # local field (untyped is fine)
+}
+
+let ada = Profile(name: "Ada")
+
+ada.greet
 ```
 
-- fields without a value (`name: Type`) act as required constructor parameters
-  (in objects) or unresolved declarations
-- a `let` (private) required field with no default still becomes a required
-  constructor parameter; a `let` field *with* a default does not
-- private fields with defaults are preferred over outer-scope bindings of the
-  same name inside the type
-- a field's default runs once, while the object is being built, so it sees
-  only values: the other fields and the enclosing scope, not `self` or
-  methods — see [#field-defaults]
+A field with no value (`name: String!`) is a required constructor parameter
+in a type, as `name` is above. A `let` field with no default is required
+too, while a `let` field *with* a default is not a parameter at all:
+
+```dang
+type Token {
+  let value: String!
+  let prefix = "tok_"
+  masked: String! { prefix + "***" }
+}
+
+Token("abc123").masked
+```
+
+A field's default runs once, while the object is being built, so it sees
+only values: the other fields and the enclosing scope, not `self` or
+methods (see [#field-defaults]). Inside a type, its own `let` fields win over
+outer bindings of the same name:
+
+```dang
+let label = "outer"
+
+type Tag {
+  let label = "inner"
+  show: String! { label }
+}
+
+Tag.show
+```
 
 ### Visibility
 
 A field is **public** when it declares a type, and **local** when it starts with
-`let`:
+`let`. `ada.greet` and `ada.bonus` above are public; `secret` is local.
 
-```dang
-name: String!              # public field
-greet: String! { "hi!" }   # public method
-count: Int! = 0            # public field with a default
-let secret = "shhh"        # local field
-```
-
-`let` introduces a local field. A *type-level* `let` is readable only inside that
-type's own methods and defaults; a *block-level* `let` is a fresh local; a
-*top-level* `let` is module-scoped — visible to every `.dang` file in the
-directory but not exported, which is how you share helpers across a module (see
-[#modules]).
+`let` introduces a local field. A *type-level* or *top-level* `let` is
+private to the module: any `.dang` file in the same directory can read it,
+but code that imports the module can't (see [#modules]). That's how you share
+helpers across a module without exporting them. A *block-level* `let` is a
+fresh local.
 
 ### Declaration vs. reassignment
 
@@ -59,18 +85,23 @@ A bare `name = value` reassigns an existing field — see [#mutation]. To declar
 new field instead, give it a type or introduce it with `let`:
 
 ```dang
-total: Int! = 0   # declares a public field
-let total = 0     # declares a local field
-total = 5         # reassigns the existing field
+let total = 0   # declares a local field
+total = 5       # reassigns it
+total += 1      # compound update
+
+total
+```
+
+The new value must fit the field's declared type:
+
+```dang-failure
+total = "six"
 ```
 
 - `name = newValue` mutates an existing field (or local/arg of that name)
 - only top-level script code can reassign a top-level field; functions and
   methods can't — see [#top-level-bindings]
 - `+=` for compound update (Int add, String/List concatenation)
-- type must remain assignable to the field's declared type
-- assigning a function-valued field a bare function name *calls* it; use `&name`
-  to assign the function itself — see the function references section below
 - nested-path mutation is copy-on-write: copying an object then writing
   `m.a.b.c = 2` leaves the original unchanged
 - inside a `type`'s methods, bare `name = ...` resolves to the field when
@@ -78,67 +109,100 @@ total = 5         # reassigns the existing field
   **field** mutation requires `self.name = ...` — see [#lexical-scope]
 - the type body itself can't reassign the type's fields — see [#field-defaults]
 
+Assigning a bare function name to a function-valued field *calls* the
+function. Use `&name` to assign the function itself (see *Function
+references* below):
+
+```dang
+type Clock {
+  now: String! { "noon" }
+}
+
+later: String! { "midnight" }
+```
+
+```dang-failure
+let clock = Clock
+clock.now = later
+```
+
+```dang
+let clock = Clock
+clock.now = &later
+clock.now
+```
+
 ### Docstrings
 
-- a `"""..."""` literal immediately before a declaration attaches as documentation
-- works on modules, types, fields, functions, function parameters, directives,
-  directive args
+A `"""..."""` literal right before a declaration documents it. This works on
+modules, types, fields, functions, function parameters, directives, and
+directive arguments:
 
 ```dang
 """
 Greets the named user.
 """
-greet(name: String!): String! {
-  `hi, ${name}`
-}
-```
-
-— and on parameters:
-
-```dang
-greet(
+welcome(
   """name of the person to greet"""
   name: String!
-): String! { "hey, ${name}!" }
+): String! {
+  `welcome, ${name}!`
+}
+
+welcome("Ada")
 ```
 
 ## Functions {#functions}
 
-A function is a field with an argument list:
+A function is a field with an argument list. The last expression of the body
+is the result, so the normal result needs no `return`:
 
 ```dang
 add(a: Int!, b: Int!): Int! { a + b }
+
+add(2, 3)
 ```
 
-- name, parameter list, return type, body
-- last expression is the result — no `return` keyword needed for the normal result
-- `return expr` is available for *early* exit and unwinds through enclosing blocks/loops; also valid in `new(...)` constructors
-- `return` outside any function/method/constructor errors: `return outside of function`
-- multi-form bodies separate forms with newlines or `;`
+`return expr` is for leaving *early*. It unwinds through enclosing blocks
+and loops, and also works in `new(...)` constructors. Outside a function,
+method, or constructor it's an error (see [#control-flow]). Forms in a body
+are separated by newlines or `;`.
 
 ### Zero-arity and auto-calling
 
+A function with no arguments drops the parentheses, both where it's declared
+and where it's called. It runs when referenced, like a property:
+
 ```dang
 motd: String! { "hello" }
+
+motd
 ```
 
-- omit the parentheses; the function is a *field* with a function body
-- callers also omit the parens: `motd`, not `motd()`
-- a zero-arity function/method *invokes* on reference, like a property
-- `&name` (see below) suppresses invocation
-- the same rule applies to GraphQL fields with no required args
+`&motd` gets the function without calling it (see below). GraphQL fields
+with no required arguments work the same way. With the bundled `Demo`
+schema (see [#interop]):
+
+```dang
+import Demo
+
+serverInfo.version
+```
 
 ### Arguments
 
+Arguments can be named, positional, or both:
+
 ```dang
-greet(name: "Alice")   # named
-greet("Alice")         # positional
-add(10, b: 20)         # mixed
+[add(a: 10, b: 20), add(10, 20), add(10, b: 20)]
 ```
 
-- positional args come first, then named; `add(a: 10, 20)` is an error:
-  `positional arguments must come before named arguments` (the same rule
-  applies to directive applications)
+Positional arguments come first, then named ones. The same rule applies to
+directive applications:
+
+```dang-failure
+add(a: 10, 20)
+```
 
 Defaults:
 
@@ -151,37 +215,91 @@ Defaults:
   the field-default rule: they see the fields' values and earlier params, not
   `self` — see [#field-defaults]
 
-A non-null parameter *with* a default (`name: String! = "world"`) is **nullable on the
-caller's side but non-null on the receiver's side**. Callers may omit it, pass `null`, or
-pass a nullable `String`; every such case falls back to the default. Inside the body the
-parameter is a plain `String!`, so no null checks or assertions are needed. This lets an API
-excise null at the boundary — prefer a non-null-with-default parameter over a nullable one
-whenever a sensible default (including a sentinel like `""`) exists, keeping both the caller
-(who can omit the argument) and the body (which never sees null) happy.
+```dang
+span(start: Int! = 0, end: Int! = start + 10): [Int!]! { [start, end] }
+
+[span, span(5), span(5, 6)]
+```
+
+A non-null parameter *with* a default (`name: String! = "world"`) is
+**nullable on the caller's side but non-null on the receiver's side**.
+Callers may omit it, pass `null`, or pass a nullable `String`; each falls
+back to the default. Inside the body the parameter is a plain `String!`, so
+it needs no null checks. Prefer this over a nullable parameter whenever a
+sensible default (even a sentinel like `""`) exists: the caller can leave
+it out, and the body never sees null.
 
 ```dang
-greet(name: String! = "world"): String! { "hi " + name }
-greet                      # "hi world"  (omitted)
-greet(null)                # "hi world"  (explicit null falls back)
-greet(someNullableString)  # falls back to "world" when the value is null
+salute(name: String! = "world"): String! { "hi " + name }
+
+let nobody = null :: String
+
+[salute, salute(null), salute(nobody), salute("Ada")]
 ```
 
 ### Function references: `&fn`
 
-- the `&` prefix operator (see [#operators]) yields the function itself without calling it
-- `&greet` — captures a zero-arity function/method without auto-calling it; it stays live and re-reads its closure each call
-- needed for assignment to a function-typed field, passing as an arg, etc.
+`&` (see [#operators]) gives you a function without calling it. You need it
+to store a function in a function-typed field, or to pass one as an
+argument. Here `Greeter.hello` is swapped for another function:
+
+```dang
+type Greeter {
+  hello(name: String!): String! { `hello, ${name}` }
+  greet(name: String!): String! { hello(name) }
+}
+
+shout(name: String!): String! { `HEY ${name.toUpper}` }
+
+let loud = Greeter
+loud.hello = &shout
+loud.greet("ada")
+```
+
+A function stored where another function type is expected must accept every
+argument that type promises (parameters are contravariant, results
+covariant), and name its parameters the same, in the same order: callers
+name arguments by the target's signature. `wave` takes `who`, not `name`:
+
+```dang
+wave(who: String!): String! { `*waves at ${who}*` }
+```
+
+```dang-failure
+let polite = Greeter
+polite.hello = &wave
+```
+
+Blocks are the exception: a block takes on the parameter names of the
+signature it's passed for.
+
+- `&greet` captures a zero-arity function/method without auto-calling it; it stays live and re-reads its closure each call
 - combined with `.method` selection: `&user.greet`
 - a captured ref must still satisfy the target's block-parameter signature
-- stored where another function type is expected (a function-typed field), a function must accept every argument that type promises (parameters are contravariant, results covariant) and name its parameters the same, in the same order: callers name arguments by the target's signature. Blocks are the exception: a block takes on the parameter names of the signature it's passed for
 - a method ref is lexical: wherever it is stored or called from, it runs against the `self` where it was written, never the caller's — see [#lexical-scope]
 - inside a method, `&helper` and `&self.helper` read `self` when called, so they see field writes made after the ref was taken; a ref through any other receiver (`&r.helper`) holds that value, since values are immutable
 - a ref to a closure that writes outside itself can be called or passed as an argument, but not stored or returned — see [#impure-closures]. Named functions and methods only write their own copy of `self`, so refs to them can go anywhere
 
 ### Nested functions
 
-- functions declared inside method (or `new()`) bodies are closures, like blocks: they capture the enclosing scope lexically, so the method's args and locals shadow fields inside them just as in the method body
-- they share the method's `self`: field writes inside them (bare or `self.`) accumulate into the method's fork, so `let bump: Int! { n += 1; n }` called twice yields `1` then `2` and leaves `n == 2` for the rest of the method
+Functions declared inside a function, method, or `new()` body are closures,
+like blocks. They see the enclosing scope lexically, so its arguments and
+locals shadow fields inside them just as in the body. Their writes land in
+the enclosing scope, so `bump` here counts up across calls:
+
+```dang
+tally: [Int!]! {
+  let n = 0
+  bump: Int! { n += 1; n }
+  let first = bump
+  let second = bump
+  [first, second, n]
+}
+
+tally
+```
+
+- inside a method they share its `self`: field writes inside them (bare or `self.`) accumulate into the method's copy
 - a nested function that writes the method's locals or `self` can't be stored or returned, or called from a `{{ }}` field — see [#impure-closures], [#concurrent-fields]
 - editor hover on a closure lists what it writes outside itself and which block parameters it calls, e.g. `// Effects: writes n; calls block`
 - sibling methods differ: each call forks `self` on its own, and its changes surface only through a returned `self`
@@ -192,10 +310,30 @@ greet(someNullableString)  # falls back to "world" when the value is null
 
 tl;dr: they work.
 
-`.dang` files within a directory share a common scope, like in Go
-* field declarations may forward-reference fields later in the same file
-* field declarations may cross-reference fields in sibling files
-* types may forward-reference types declared later in the file
-* forward reads hidden behind function calls / computed defaults resolve via lazy module slots
-* a *direct* initializer cycle (`a = b`, `b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`
-* a cycle hidden behind an auto-called function or constructor default is caught at runtime when the variable is forced: `initialization cycle while evaluating variable "..."`
+`.dang` files within a directory share a common scope, like in Go. A field
+may use fields declared later in the same file or in sibling files, and
+types may use types declared later:
+
+```dang
+area: Int! { width * height }
+width: Int! = 3
+height: Int! = 4
+
+area
+```
+
+A *direct* initializer cycle is rejected before the script runs:
+
+```dang-failure
+first: Int! = second
+second: Int! = first
+```
+
+A cycle hidden behind an auto-called function or a constructor default is
+caught at runtime, when the variable is first read. Run as a script, this
+reports `initialization cycle while evaluating variable "start"`:
+
+```dang-static
+start: Int! = next
+next: Int! { start + 1 }
+```

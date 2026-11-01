@@ -208,13 +208,15 @@ so it takes a `null` pattern too:
 ```dang
 enum Light { RED GREEN }
 
-let next: Light = Light.RED
-
-case (next) {
-  Light.RED => "stop"
-  Light.GREEN => "go"
-  null => "off"
+signal(light: Light): String! {
+  case (light) {
+    Light.RED => "stop"
+    Light.GREEN => "go"
+    null => "off"
+  }
 }
+
+[signal(Light.RED), signal(null)]
 ```
 
 The operand must be a union or an interface (see [#interfaces-unions]) — a

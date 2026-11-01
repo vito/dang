@@ -1,8 +1,19 @@
 \use-plugin{dang}
+\literate-fences
 
 # GraphQL interop {#interop}
 
 > Meta: this is the page that justifies the language. Lead with "schema-as-stdlib" — when you `import Dagger`, every type and root function in the schema becomes part of the language. Import wiring (`dang.toml`, `import`) lives in [#modules]; type machinery in [#nullability]; record/object access in [#objects].
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
+>
+> They run against `Demo`, a small GraphQL schema bundled with the docs and
+> served in-process. Each request it receives is printed as `→ query …`, so
+> you can see exactly what a snippet sends.
 
 ## Schema-as-stdlib
 
@@ -11,121 +22,276 @@
 - enum and input types map directly
 - custom scalars become Dang scalars
 
-## Calling a field
-
 ```dang
-let users = users(limit: 10)
+import Demo
+
+hello(name: "Dang")
 ```
 
-- named args: as in the schema
-- positional args: in schema-declared order
-- a no-arg field calls automatically: `serverInfo.platform` (no parens)
+## Calling a field
+
+Arguments are named as in the schema, or positional in the schema's order:
+
+```dang
+posts(authorId: "User:2", limit: 1).{{ title }}.map { _.title }
+```
+
+```dang
+posts(null, 2).{{ title }}.map { _.title }
+```
+
+A field with no required arguments is called without parentheses:
+
+```dang
+serverInfo.version
+```
 
 ## Multi-field selection
 
+A selection reads several fields in one GraphQL query:
+
 ```dang
-user.{{ name, email, posts.{{ title, createdAt }} }}
+let ada = user(id: "User:1").{{ name, emails }}
+
+ada.emails
 ```
 
 - multi-field selection and record literals are the **same construct**: the double braces `{{ }}`, the same anonymous structural type, and the same concurrent evaluation. A selection `recv.{{ name }}` is a record literal whose fields are read off `recv` — `{{ name: recv.name }}`
 - desugars to a single GraphQL query — the headline feature
-- a field may be **aliased** to rename it in the result, GraphQL-style — the alias goes before the colon: `user.{{ fullName: name, email }}` yields a record with keys `fullName` and `email`
-- a bare field is shorthand for aliasing it to itself: `user.{{ name }}` means `user.{{ name: name }}`, exactly as `{{ name }}` is shorthand for `{{ name: name }}` in a record literal (see [#objects])
-- aliases are emitted as real GraphQL aliases, so the **same field** can be selected more than once under different arguments: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`
 - `{{ }}` **always evaluates its fields concurrently**, failing fast on the first error (see [#syntax]): over a GraphQL receiver that is the single batched query above, over a plain object it is parallel Dang evaluation, and over a list it runs the elements in parallel
 - so fields produce values rather than write shared state: writing a binding declared outside a field, or calling a closure from outside it that writes, is a compile error (see [#concurrent-fields])
 - a record literal is `{{ }}` with no receiver, so it has the same parallelism: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` sends both queries at once
 - nested selections work to arbitrary depth
-- arguments on nested fields:
+
+A field may be **aliased** to rename it in the result, GraphQL-style: the
+alias goes before the colon. A bare field is shorthand for aliasing it to
+itself, so `user.{{ name }}` means `user.{{ name: name }}`, exactly as `{{
+name }}` is shorthand for `{{ name: name }}` in a record literal (see
+[#objects]):
 
 ```dang
-user.{{ posts(first: 5).{{ title }} }}
+user(id: "User:1").{{ fullName: name }}.fullName
 ```
 
-- positional args work in nested selections too: `users.{{ posts(1).{{ ... }} }}`
-- selection on a nullable receiver **short-circuits**: if `user` is `null`, `user.{{ name }}` is `null` (not an error), and the result type is nullable
-- the result is a record (`{{ ... }}`); access fields by name; see [#objects]
-- after selection you only have the fields you selected: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type
-- `.{{ }}` selection is navigation (it reads fields), so it short-circuits on null; the single-brace dot-block `.{ }` is block *application*, so it passes the receiver — null included — into the block. Same `.`-brace surface, different jobs; see [#blocks]'s [#dot-block]
+Aliases are sent as real GraphQL aliases, so the **same field** can be
+selected more than once with different arguments. Nested fields take
+arguments like any call:
+
+```dang
+let pages = user(id: "User:1").{{
+  earliest: posts(first: 1).{{ posts.{{ title }} }}
+  latest: posts(last: 1).{{ posts.{{ title }} }}
+}}
+
+[pages.earliest.posts[0]!.title, pages.latest.posts[0]!.title]
+```
+
+A selection on a nullable receiver **short-circuits**: if the receiver is
+`null`, the selection is `null` (not an error), and its type is nullable.
+`maybeUser` returns `null` for an unknown ID:
+
+```dang
+maybeUser(id: "User:99").{{ name }}
+```
+
+The result is a record holding only what you selected. Reading a field you
+didn't select is a *compile* error, even after a `case` narrows the type:
+
+```dang-failure
+user(id: "User:1").{{ name }}.emails
+```
+
+`.{{ }}` selection is navigation (it reads fields), so it short-circuits on
+null; the single-brace dot-block `.{ }` is block *application*, so it passes
+the receiver — null included — into the block. Same `.`-brace surface,
+different jobs; see [#blocks]'s [#dot-block].
 
 ## Inline fragments
 
+An inline fragment selects fields by concrete type, on unions and
+interfaces ([#interfaces-unions]). Fragments are separated by newlines or
+commas, and the result narrows in `case`:
+
 ```dang
-node(id: "x").{{
-  ... on User {{ name, email }}
+let hit = node(id: "Post:1").{{
+  ... on User {{ name }}
   ... on Post {{ title }}
 }}
+
+case (hit) {
+  u: User => `user ${u.name}`
+  p: Post => `post ${p.title}`
+}
 ```
 
-- type-conditional selection on unions and interfaces ([#interfaces-unions])
 - the field set is delimited by the same double braces as any other selection: `... on User {{ name, email }}`
 - selects different field sets per concrete type; applies to a single value or to a list (maps over elements)
 - type conditions resolve against the receiver's (GraphQL) schema, not a local type that shadows the name
 - the type name may be module-qualified, matching an imported type: `... on Dagger.Editor` (or `... on Dagger.Editor!`)
 - can nest: `... on Post {{ title, author.{{name}} }}`, and selections-of-selections `edges.{{ node.{{ ... on User {{ ... }} }} }}`
-- the union-type result narrows in `case` (see [#interfaces-unions])
 
 ### Lazy inline fragments
 
-- the lazy form `... on User` (no field block) narrows the value to that type without selecting fields, returning a chainable lazy value / typed reference
+The lazy form `... on Post` (no field block) narrows the value to that type
+without selecting anything. You can keep chaining off the result:
+
+```dang
+node(id: "Post:1").{{ ... on Post }}.title
+```
+
+A narrowing that doesn't match is `null`, and so is one on a `null` value:
+
+```dang
+node(id: "Post:1").{{ ... on User }} == null
+```
+
+The non-null form `... on User!` asserts and unwraps instead. A mismatch, or
+a `null` value, is a runtime error:
+
+```dang-failure
+node(id: "Post:1").{{ ... on User! }}.name
+```
+
 - works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}` — comma- or newline-separated); multiple lazy fragments narrow a union
-- a narrowing that doesn't match returns `null`: `cat.{{... on Dog}} == null` (e.g. `node(...).{{... on Post}}` when the node is a User), and so does one on a `null` value
-- the non-null form `... on User!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`. A `null` value fails the assertion too (`… got null`), since `null` isn't a `User`; use `... on User` to let it through
 - on a value already known to be of a concrete type (a checked nullable field, a `case` binding), a narrowing is matched without a request
-- useful for narrowing a GraphQL interface/union value before chaining (`node(id).{{... on User}}.name`)
 
 ## Lists of objects
 
+A selection on a list **distributes over its elements**. This is the shape
+GraphQL itself produces: `users.{{ name }}` mirrors the response of `{
+users { name } }`, a list of records:
+
 ```dang
-users.{{ name, email }}
+users.{{ name }} == [{{ name: "John Doe" }}, {{ name: "Jane Smith" }}]
 ```
 
-- a selection on a list **distributes over its elements**: `users.{{ name, email }}` selects those fields from every element, producing `[ {{ name, email }} ]` — a list of records
-- this is the shape GraphQL itself produces: a selection set on a list-typed field applies to each element, so `users.{{ name, email }}` mirrors the response of `{ users { name email } }`
-- `.{{ … }}` and `.field` do different jobs on a list. `.field` treats the **list** as the receiver and resolves a list method (`users.length`, `users.map { … }`); `.{{ … }}` reaches **into** each element. So `xs.{{ f }}` is not `xs.f` — the former is a list of `{{ f }}` records, the latter looks for a method `f` on the list itself
-- nested selections distribute the same way: `users.{{ name, posts.{{ title }} }}` gives a list of records each holding its own list of post records
-- the result records compare by **value** ([#operators]), so a list of projections can be compared, asserted on, or deduplicated directly: `users.{{ name }} == [{{ name: "Alice" }}, {{ name: "Bob" }}]`
-- the result is an ordinary list — chain list operations on it (`users.{{ name }}.map { r => r.name }`) or index to force the query: `users.{{ name }}[0].name`; see [#collections]
+The result records compare by **value** ([#operators]), as above. The result
+is an ordinary list: index it, or chain list methods (see [#collections]):
+
+```dang
+users.{{ name }}.map { _.name }
+```
+
+Nested selections distribute the same way, giving each record its own list:
+
+```dang
+users.{{ name, posts.{{ posts.{{ title }} }} }}.map { u => `${u.name}: ${u.posts.posts.length}` }
+```
+
+`.{{ … }}` and `.field` do different jobs on a list: `.{{ … }}` reaches
+**into** each element, while `.field` looks for a list method. List methods
+like `.length` and `.map` aren't available on a list of GraphQL objects
+until you select the fields you need:
+
+```dang-failure
+users.length
+```
+
+```dang
+users.{{ id }}.length
+```
 
 ## Mutations
 
 - root `Mutation` fields are functions like queries
 - the result is whatever the schema declares
-- side effects happen when the call executes, which is when its value is **forced** — and every forced selection off an object-returning mutation re-sends it: `let u = Mutation.createUser(…)` runs nothing on its own, and `u.name` then `u.id` creates two users. Select everything you need in one `.{{ }}` on the call (`Mutation.createUser(…).{{ id, name }}`) to run it exactly once
 - the laziness/forcing rules below apply to mutations as they do to queries, with one exception: nullable object fields reached through a mutation are not checked for null (see [#nullable-object-fields])
+
+Side effects happen when the call executes, which is when its value is
+**forced**, and every forced selection off an object-returning mutation
+sends it again. Demo's `touchNode` changes nothing, so it's safe to watch:
+`let touched = …` sends nothing, and each read of `touched.id` sends the
+mutation once more:
+
+```dang
+let touched = Mutation.touchNode(id: "User:1")
+
+[touched.id, touched.id]
+```
+
+Select everything you need in one `.{{ }}` on the call to run it exactly
+once:
+
+```dang
+Mutation.touchNode(id: "User:1").{{ id }}.id
+```
 
 > Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. Two exceptions send a small query early: a handle that may be `null` is checked when it escapes the chain (see [#nullable-object-fields]), and `case` asks for the concrete type of an interface or union value it matches type patterns against (see [#interfaces-unions]). See [#mutation] for how forcing interacts with side effects.
 
 ## Nullable object fields {#nullable-object-fields}
 
+A field returning a **nullable** object, interface or union (`manager:
+User`, not `User!`) may be `null`. So a handle to it is checked when it
+**escapes** the chain: when it's bound with `let`, passed as an argument,
+returned, compared, and so on. The check is one small query, so the value is
+either `null` or a handle known to be non-null, and `== null`, `??`, `!`,
+`null` patterns in `case`, and flow narrowing ([#flow-typing]) all behave as
+written:
+
 ```dang
-let parent = me.parent   # parent: Agent (nullable)
-if (parent == null) {
-  raise "no parent"
+let boss = user(id: "User:2").manager
+if (boss == null) {
+  raise "no manager"
 }
-parent.id
+
+boss.name
 ```
 
-- a field returning a **nullable** object, interface or union (`parent: Agent`, not `Agent!`) may be `null`, so a handle to it is checked before it **escapes** the chain — when it's bound with `let`, passed as an argument, returned, compared, and so on. The check is one small query, so the value is either `null` or a handle known to be non-null
-- so `== null`, `??`, `!`, `null` patterns in `case`, and flow narrowing ([#flow-typing]) all behave as written
-- a field that is only **selected through** isn't checked: whatever runs the chain reveals the null itself. A leaf field selected off a null object is `null` (`me.parent.name`, one round-trip), and so is a `.{{ }}` selection (`me.parent.{{ id, name }}`, one round-trip)
+The check fetched the manager's `id`, and `boss.name` then started from
+`node(id:)` rather than re-running the chain.
+
+A field that is only **selected through** isn't checked: whatever runs the
+chain reveals the null itself. User 1 has no manager, so this is `null`, in
+one round trip:
+
+```dang
+user(id: "User:1").manager.name
+```
+
 - anything selected off an unchecked nullable field may be null too, even a non-null field: `let d = a.maybeB.c.d` sends one check, for `d`, at the end of the chain; `a.maybeB.c.name` sends none
 - the check fetches the object's `id` along with its `__typename`, when the type has a non-null `ID` id (not `String`, which doesn't promise IDs unique across types). The object is then **loaded by that ID**, the way the Dagger Go SDK does it: later selections start from the loader instead of re-running the chain (`node(id: "…") { ... on Agent { name } }`), and passing the object as an ID argument costs no extra query
 - the loader is the schema's Relay-style `node(id: ID!)` root field, which Dagger engines expose. Without one the original chain is kept, with its ID remembered. Without an `id`, the check is just `__typename`. Older Dagger schemas' per-type `<T>ID` scalars and `load<T>FromID` loaders are not supported: a `<T>ID` is just a scalar
 - the checked handle has the object's **concrete** type, even when the field returns an interface or union. `case` type patterns match it without another query; on any GraphQL interface or union value, nullable or not, they match the concrete type (see [#interfaces-unions])
-- **non-null** object fields (`Agent!`) on a chain without nullable steps can't be null, so they stay lazy and cost nothing until forced
+- **non-null** object fields (`User!`) on a chain without nullable steps can't be null, so they stay lazy and cost nothing until forced
 - this matches the Dagger SDKs, which also run nullable object fields right away (fetching their IDs) and keep non-null ones lazy
 - **mutations:** nullable object fields reached through a mutation are *not* checked, because every query built on a mutation re-sends it. They stay lazy and never compare equal to `null`; select a leaf or `.{{ }}` through them to see the null. For the same reason `case` doesn't ask for the concrete type of an interface or union value reached through a mutation; a type pattern it can't decide raises (see [#interfaces-unions])
 
 ## Object equality
 
-- `==`/`!=` compare GraphQL objects by **reference identity** — there's no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "User:1")` is `false`
-- to ask whether two objects are the *same server entity*, compare an identifying field explicitly — `a.id == b.id` — which forces the necessary fetch where you can see it, instead of hiding I/O inside `==`
-- a `.{{ }}` selection is different: it materializes an **anonymous record**, which compares by **value**, so two selections with the same fields and equal values are equal (see [#operators])
+`==` and `!=` compare GraphQL objects by **reference identity**. The
+comparison itself sends nothing (though a nullable operand is checked for
+null first, as above). A GraphQL object's identity is the query that
+produced it, so the same handle equals itself, but two independent queries
+don't, even when they denote the same server object. To ask whether two
+objects are the *same server entity*, compare an identifying field, which
+runs the fetch where you can see it. `primaryUser` is a non-null `User!`, so
+only the `id` reads send anything here:
+
+```dang
+let first = primaryUser
+
+[first == first, first == primaryUser, first.id == user(id: "User:1").id]
+```
+
+A `.{{ }}` selection is different: it makes an **anonymous record**, which
+compares by **value** (see [#operators]):
+
+```dang
+primaryUser.{{ name }} == user(id: "User:1").{{ name }}
+```
 
 ## Errors from the server
 
-- non-null violations and GraphQL errors raise — recoverable via `rescue` (see [#errors])
+Non-null violations and GraphQL errors raise, and `rescue` can recover from
+them (see [#errors]):
+
+```dang-failure
+user(id: "User:99").name
+```
+
+```dang
+user(id: "User:1").alwaysFails rescue { e: GraphQLError => e.message }
+```
 
 ## Talking to multiple endpoints
 
@@ -133,3 +299,9 @@ parent.id
 - types from different endpoints are *distinct* even if they share a name (e.g. `Test.User` ≠ `Other.User`)
 - a bare unqualified name provided by two imports is ambiguous — must qualify (see [#modules])
 
+The qualified name always works, even with only one import:
+
+```dang
+let viewer: Demo.User! = primaryUser
+viewer.name
+```

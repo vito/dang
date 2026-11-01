@@ -4,7 +4,7 @@ import Test
 # same way they do at field/return/arg boundaries. Without coercion, this
 # would fail with a String! != URL! mismatch.
 let urlClass = case (homepage) {
-  "https://dang-lang.dev" => "official"
+  "https://danglang.org" => "official"
   "https://example.com" => "other"
 }
 assert { urlClass == "official" }

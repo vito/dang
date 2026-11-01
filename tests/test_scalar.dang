@@ -9,7 +9,7 @@ let urlValue = homepage
 
 # Scalar values should have proper types
 assert { timestampValue == "2024-01-15T10:30:00Z" }
-assert { urlValue == "https://dang-lang.dev" }
+assert { urlValue == "https://danglang.org" }
 
 # Test that scalars can be compared
 assert { timestampValue == timestampValue }

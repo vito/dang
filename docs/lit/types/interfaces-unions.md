@@ -1,12 +1,20 @@
 \use-plugin{dang}
+\literate-fences
 
 # Interfaces and unions {#interfaces-unions}
 
 > Meta: these align directly with GraphQL interfaces and unions, so users coming from a schema will recognize them. Worth saying that up front to set expectations.
 
-- interfaces and unions map 1:1 to their GraphQL counterparts; a schema's interfaces/unions are available as [#nullability] values
-- both are discriminated with `case` (see [#control-flow]) and, for GraphQL values, with inline fragments (see [#interop])
-- the interface/union type itself is also a runtime value (`Named != null`, `Pet != null`): its namespace, not an instance, so it can't be passed for one and no type pattern matches it
+Interfaces and unions work like their GraphQL counterparts, so a schema's
+interfaces and unions are ordinary Dang types. Both are taken apart with
+`case` (see [#control-flow]), and GraphQL values also with inline fragments
+(see [#interop]).
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## Interfaces
 
@@ -25,53 +33,172 @@ type Person implements Named {
   name: String!
   age: Int!
 }
+
+type Company implements Named {
+  name: String!
+  size: Int!
+}
 ```
 
 - `implements A & B` for multiple
 - field types must satisfy the interface (subtyping rules below)
-- declared fields are zero-arg functions / fields (see [#objects]); a method field also satisfies an interface field
 - the built-in `Error` interface (see [#errors]) is an ordinary interface; user error types implement it
-- missing a required field → `object X is missing \`f(): T\`, required by interface I`
-- a field whose type doesn't satisfy the interface → `field "f": type ... is not compatible with interface type ...`
-- an interface's fields are readable by anyone holding the interface, so a `let` member can't implement a public interface field (nor can a child interface redeclare a parent's public field with `let`)
+
+A method satisfies an interface field too. `Robot` computes its `name`:
+
+```dang
+type Robot implements Named {
+  serial: Int!
+  name: String! { `unit-${serial}` }
+}
+
+greet(n: Named!): String! { `hello, ${n.name}` }
+
+[greet(Person("Ada", 36)), greet(Robot(7))]
+```
+
+Conformance is checked. A missing field, or one whose type doesn't fit, is
+an error:
+
+```dang-failure
+type Rock implements Named { weight: Int! }
+```
+
+```dang-failure
+type Pebble implements Named { name: Int! }
+```
+
+An interface's fields are readable by anyone holding the interface, so a
+`let` member can't implement a public interface field (nor can a child
+interface redeclare a parent's public field with `let`):
+
+```dang-failure
+type Secret implements Named { let name: String! = "classified" }
+```
+
+The interface name is also a value: its namespace, not an instance. It
+can't be passed where an instance is expected, and no type pattern matches
+it:
+
+```dang-failure
+greet(Named)
+```
 
 ### Interface inheritance
 
 ```dang
-interface User implements Named { email: String! }
-interface Post implements Named & Timestamped { title: String! }
+interface Dated { createdAt: String! }
+
+interface Author implements Named {
+  name: String!
+  email: String!
+}
+
+interface Story implements Named & Dated {
+  name: String!
+  createdAt: String!
+  title: String!
+}
 ```
 
-- a child interface must re-declare (cover) every field the parent declares
-- the child's field types must be compatible with the parent's (same variance rules as type implementations)
-- a value of the child interface type widens to the parent interface type (and lists likewise: `[User!]!` → `[Named!]!`)
+A child interface must re-declare every field the parent declares, with
+compatible types (the same variance rules as type implementations):
+
+```dang-failure
+interface Label implements Named { text: String! }
+```
+
+A value of the child interface type widens to the parent, and lists do too:
+
+```dang
+type Essay implements Story {
+  name: String!
+  createdAt: String!
+  title: String!
+}
+
+let stories: [Story!]! = [Essay("Ada", "1843", "Notes")]
+let everyone: [Named!]! = stories
+
+everyone.map { _.name }
+```
 
 ### Variance
 
-- **return types** may be more specific (covariant): an interface field `getData: String` (nullable) can be implemented as `getData: String!` (non-null). Weakening (`String!` → `String`) is rejected: `return type String is not compatible with interface return type String! (covariance required)`
-- **argument types** may be more general (contravariant): can accept nullable where the interface wants non-null (e.g. interface `process(input: String!)`, impl `process(input: String)`). Extra *optional* args are also allowed.
+**Return types** may be more specific (covariant). An interface field
+`summary: String` (nullable) can be implemented as `summary: String!`
+(non-null), but not the other way around:
+
+```dang
+interface Summarized { summary: String }
+type Report implements Summarized { summary: String! = "all good" }
+```
+
+```dang-failure
+interface Headlined { headline: String! }
+type Draft implements Headlined { headline: String }
+```
+
+**Argument types** may be more general (contravariant): an implementation
+can accept a nullable argument where the interface wants a non-null one.
+Extra *optional* arguments are allowed too:
+
+```dang
+interface Formatter { format(input: String!): String! }
+
+type Lenient implements Formatter {
+  format(input: String, width: Int! = 10): String! { (input ?? "").padLeft(width) }
+}
+
+Lenient.format("hi") + "|"
+```
+
 - **block arguments** are arguments too: the implementation's block parameter must accept every block the interface's callers may pass, naming its parameters as the interface's does. An implementation may call its block with something more specific than the interface promises the block, not more general
 - **list elements** are covariant in both nullability and type: `[String!]` satisfies `[String]`, and `[Dog!]` satisfies `[Animal!]`
-- **scalar fields** are invariant — `id: String!` does not satisfy `id: ID!` (distinct scalar types; see [#enums-scalars])
+
+**Scalar fields** are invariant: an `ID!` field does not satisfy a
+`String!` interface field, even though an `ID!` value can be passed where a
+`String!` is wanted (see [#enums-scalars]):
+
+```dang-failure
+interface Keyed { key: String! }
+type Row implements Keyed { key: ID! }
+```
 
 ### Pattern-matching an interface
 
 ```dang
-case (n) {
-  p: Person => p.age
-  c: Company => c.size
-  fallback: Named => fallback.name
+describe(n: Named!): String! {
+  case (n) {
+    p: Person => `${p.name}, age ${p.age}`
+    c: Company => `${c.name}, ${c.size} people`
+    fallback: Named => fallback.name
+  }
 }
+
+[describe(Person("Ada", 36)), describe(Company("Acme", 12)), describe(Robot(7))]
 ```
 
 - `binding: Type` narrows; the binding is typed as the matched concrete/interface type inside the arm
 - an interface pattern (`n: Named`) matches *any* implementer — useful as a catch-all after specific types
-- the operand must be a union or interface; a type pattern on a plain object → `type pattern requires a union or interface operand`
 - see [#control-flow] for full `case` semantics; flow typing of the binding is covered in [#flow-typing]
-- on a **GraphQL** interface or union value, type patterns match the object's **concrete** type, whatever type the field that produced it declares, nullable or not:
+
+The operand must be a union or an interface. A plain object type is already
+known, so there's nothing to match:
+
+```dang-failure
+case (Person("Ada", 36)) { p: Person => p.name }
+```
+
+On a **GraphQL** interface or union value, type patterns match the object's
+**concrete** type, whatever type the field that produced it declares,
+nullable or not. With the bundled `Demo` schema (see [#interop]), whose
+`favoriteNode` is a `Node!`:
 
 ```dang
-case (favoriteNode) {   # favoriteNode: Node!
+import Demo
+
+case (favoriteNode) {
   u: User => u.name
   p: Post => p.title + " by " + p.author.name
   else => "something else"
@@ -89,28 +216,57 @@ case (favoriteNode) {   # favoriteNode: Node!
 ### Declaration
 
 ```dang
+type Cat { name: String!; lives: Int! = 9 }
+type Dog { name: String!; tricks: [String!]! = [] }
+
 union Pet = Cat | Dog
 ```
 
-- members must be object types (no scalars/interfaces/enums) → `union member X must be an object type, got enum`
-- members must exist → `union member X not found`
-- only members may be matched in `case`: a non-member type pattern → `type X is not a member of union Pet`
+Members must be object types that exist:
+
+```dang-failure
+enum Mood { HAPPY GRUMPY }
+union Feeling = Cat | Mood
+```
+
+```dang-failure
+union Aquarium = Cat | Fish
+```
 
 ### Discriminating {#discriminating}
 
 ```dang
-case (pet) {
-  c: Cat => c.purr
-  d: Dog => d.bark
+let pets: [Pet!]! = [Cat("Tom"), Dog("Rex", ["sit", "stay"])]
+
+pets.map { pet =>
+  case (pet) {
+    c: Cat => `${c.name} has ${c.lives} lives`
+    d: Dog => `${d.name} knows ${d.tricks.join(" and ")}`
+  }
 }
 ```
 
-- covering every member is exhaustive: no `else` needed, and the result stays non-null (a nullable operand also needs a `null =>` pattern)
-- a `case` missing some members still type-checks, but a value that matches no arm yields `null`, so the case's type is nullable
-- add `else => ...` as a catch-all to cover unmatched members and keep the result non-null
+Covering every member is exhaustive: no `else` needed, and the result stays
+non-null. A nullable operand also needs a `null =>` arm. A `case` that
+leaves a member out still type-checks, but a value that matches no arm
+yields `null`, so the result is nullable. Add `else => ...` to cover the
+rest and keep it non-null:
+
+```dang-failure
+petName(p: Pet!): String! {
+  case (p) { c: Cat => c.name }
+}
+```
+
+Only members can be matched:
+
+```dang-failure
+case (pets[0]!) { p: Person => p.name }
+```
+
 - GraphQL union values match their concrete type, the same way as interface values (see above), at the cost of the same one small query
 - for GraphQL values, `case` and an inline fragment (below) both discriminate, with different tradeoffs:
-  - `.{{ ... on User {{ name }} ... on Post {{ title }} }}` gets the type **and** the fields in **one** round-trip, and works over a list in that same round-trip. The result is a record holding just the selected fields
+  - `.{{ ... on User {{ name }}, ... on Post {{ title }} }}` gets the type **and** the fields in **one** round-trip, and works over a list in that same round-trip. The result is a record holding just the selected fields
   - `case` costs a query to learn the type, then each arm's selections run on their own, but the binding is a full handle: keep chaining off it (`u.posts.{{ title }}`) or pass it along as an argument
   - so read fields with fragments, and branch with `case` when an arm does more with the object than read a few fields
 
@@ -118,14 +274,18 @@ case (pet) {
 
 > Meta: inline fragments are selection syntax, so the full treatment — the field-selecting form, the lazy narrowing form, null/assertion behavior — lives with the rest of selection in [#interop]. Keep this as a pointer, not a second copy.
 
+An inline fragment selects a different set of fields for each concrete
+type. It works on single values and lists:
+
 ```dang
-pets.{{
+let picked = pets.{{
   ... on Cat {{ name, lives }}
   ... on Dog {{ name, tricks }}
 }}
+
+JSON.encode(picked)
 ```
 
-- selects different field sets per concrete type; works on single values and lists
 - the lazy form (`... on Cat`, no field block) narrows without selecting, and `... on Cat!` asserts
 - see [#interop] for the full rules
 

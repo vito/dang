@@ -45,10 +45,10 @@ assert { multiResult[2] == "Fetched[2]: https://c.com" }
 # =============================================================================
 
 let urlValue = homepage
-assert { urlValue == ("https://dang-lang.dev" :: URL!) }
+assert { urlValue == ("https://danglang.org" :: URL!) }
 
 let fetchedHomepage = fetchURL(url: urlValue)
-assert { fetchedHomepage == "Fetched: https://dang-lang.dev" }
+assert { fetchedHomepage == "Fetched: https://danglang.org" }
 
 # =============================================================================
 # Test 5: Templates also auto-coerce, even with interpolations
