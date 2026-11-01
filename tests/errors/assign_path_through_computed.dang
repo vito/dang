@@ -1,0 +1,14 @@
+# A computed member has nothing to store into, so a field write can't go
+# through it.
+type Inner {
+  x: Int!
+}
+
+type Foo {
+  x: Int!
+
+  comp: Inner! { Inner(x) }
+}
+
+let a = Foo(1)
+a.comp.x = 4
