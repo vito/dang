@@ -259,6 +259,10 @@ The same goes for writes the checker sees less directly:
   assigns `x` null (it runs again on the next iteration), or when `x` is set
   to null after a nested function or stored block that reads it is created.
   Check `x` inside it, or bind the checked value to a local
+- a field write evaluates its value before it walks the target's path, so in
+  `x.n = v` a value that may set `x` to null (calling such a closure, or a
+  block parameter) ends the narrowing of `x` for the write: compute the value
+  into a local first, or assert the root (`x!.n = v`)
 
 Here `reset` sets `total` back to null, so calling it ends the narrowing:
 

@@ -1,0 +1,16 @@
+# A compound write evaluates its value before reading and writing the target,
+# so a value that may set the target's root to null is an error too.
+type Box {
+  n: Int! = 0
+}
+
+let bump(b: Box): Int! {
+  let cur = b
+  if (cur == null) { return 0 }
+  let clear: Int! {
+    cur = null
+    5
+  }
+  cur.n += clear
+  0
+}

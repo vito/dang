@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to cur.n: the value is evaluated first, and it may set `cur` to null; compute the value into a local, then check `cur` for null (`let v = ...; if (cur != null) { cur.n = v }`), or assert it (`cur!.n = ...`)
+  [2m[34m--> errors/write_target_nulled_by_self_write.dang:13:5[0m
+ [2m    |[0m
+ [2m 11 |   reset: Holder! {[0m
+ [2m 12 |     if (cur == null) { return self }[0m
+ [2m[34m[1m 13 | [0m    cur.n = {
+[2m           [31m^^^[0m
+ [2m 14 |       self.cur = null[0m
+ [2m 15 |       3[0m
+ [2m    |[0m
+

@@ -1,0 +1,17 @@
+# A field write evaluates its value first, then walks the target's path. A
+# value that may set the path's root to null ends the root's narrowing, so the
+# write isn't checked against the narrowing it had before.
+type Box {
+  n: Int! = 0
+}
+
+let bump(b: Box): Int! {
+  let cur = b
+  if (cur == null) { return 0 }
+  let clear: Int! {
+    cur = null
+    5
+  }
+  cur.n = clear
+  0
+}

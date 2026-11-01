@@ -637,6 +637,11 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: value: %w", err)
 		}
+		// The value is evaluated before the target's path is walked, so a
+		// value that may null the path's root ends its narrowing first.
+		if err := checkRootAfterValue(ctx, env, r.Target); err != nil {
+			return nil, err
+		}
 
 		// For simple assignment, check compatibility
 		switch r.Modifier {
@@ -997,6 +1002,50 @@ func checkAssignmentPath(target Node) error {
 	}
 	root := pathLink(node)
 	return NewInferError(fmt.Errorf("cannot assign to a field of %s: a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that", strings.TrimSpace(Format(root))), root)
+}
+
+// checkRootAfterValue rejects a field write whose root name was narrowed to
+// non-null, when inferring the value (which runs first: Reassignment.Eval
+// evaluates it before walking the path) may have set the root to null:
+// `cur.n = clear` with `clear` assigning `cur = null`. checkPathLinks, run
+// before the value, saw the narrowing still in force. A root asserted with
+// `!` is checked when the write runs.
+func checkRootAfterValue(ctx context.Context, env hm.Env, target Node) error {
+	if _, ok := target.(*Select); !ok {
+		return nil
+	}
+	var node Node = target
+	asserted := false
+walk:
+	for {
+		switch n := node.(type) {
+		case *Select:
+			node = n.Receiver
+			asserted = false
+		case *NonNullAssert:
+			node = n.Expr
+			asserted = true
+		default:
+			break walk
+		}
+	}
+	root, ok := node.(*Symbol)
+	if !ok || asserted || activeNarrowing(env, root.Name) == nil {
+		return nil
+	}
+	scheme, ok := env.SchemeOf(root.Name)
+	if !ok {
+		return nil
+	}
+	narrowed, _ := scheme.Type()
+	if t := readNarrowed(ctx, env, root.Name, root, narrowed); !knownNullable(t) {
+		return nil
+	}
+	path := strings.TrimSpace(Format(target))
+	rest := strings.TrimPrefix(path, root.Name)
+	return NewInferError(fmt.Errorf(
+		"cannot assign to %s: the value is evaluated first, and it may set `%s` to null; compute the value into a local, then check `%s` for null (`let v = ...; if (%s != null) { %s = v }`), or assert it (`%s!%s = ...`)",
+		path, root.Name, root.Name, root.Name, path, root.Name, rest), root)
 }
 
 // checkPathLinks rejects a field write through a link that may be null

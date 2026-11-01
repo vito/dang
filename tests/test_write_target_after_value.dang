@@ -1,0 +1,57 @@
+# A field write evaluates its value before walking the target's path. A value
+# that doesn't touch the path's root keeps the root's narrowing; one that may
+# null it needs the root asserted, which raises when the write runs.
+type Box {
+  n: Int! = 0
+}
+
+let untouched(b: Box, k: Int!): Int! {
+  let cur = b
+  let other: Box = Box
+  if (cur == null) { return -1 }
+  let compute: Int! {
+    other = null
+    k * 2
+  }
+  cur.n = compute
+  cur.n += compute
+  cur.n
+}
+
+assert { untouched(Box, 3) == 12 }
+assert { untouched(null, 3) == -1 }
+
+let asserted(b: Box): String! {
+  let cur = b
+  if (cur == null) { return "none" }
+  let clear: Int! {
+    cur = null
+    5
+  }
+  {
+    cur!.n = clear
+    "written"
+  } rescue {
+    e: Error => e.message
+  }
+}
+
+assert { asserted(Box) == "non-null assertion failed: value is null" }
+
+type Holder {
+  cur: Box = Box
+
+  reset: Holder! {
+    self.cur!.n = {
+      self.cur = null
+      3
+    }
+    self
+  }
+}
+
+let holderReset = { Holder.reset.cur } rescue {
+  e: Error => e.message
+}
+
+assert { holderReset == "non-null assertion failed: value is null" }

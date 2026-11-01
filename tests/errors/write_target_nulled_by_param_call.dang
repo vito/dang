@@ -1,0 +1,16 @@
+# A block parameter runs its caller's block, which may null a binding the
+# function narrowed, so a write whose value calls it can't rely on the
+# narrowing.
+type Box {
+  n: Int! = 0
+}
+
+let run(b: Box): Box {
+  let cur = b
+  let set(&value: Int!): Int! {
+    if (cur == null) { return 0 }
+    cur.n = value
+    0
+  }
+  cur
+}
