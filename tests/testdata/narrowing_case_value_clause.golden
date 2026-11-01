@@ -1,0 +1,11 @@
+[1m[31mError:[0m operator addition is not defined for nullable type Int: check it for null first, supply a default with ??, or assert it with !
+  [2m[34m--> errors/narrowing_case_value_clause.dang:7:13[0m
+ [2m    |[0m
+ [2m  5 |   case (x) {[0m
+ [2m  6 |     1 => 0[0m
+ [2m[34m[1m  7 | [0m    else => x + 1
+[2m                   [31m^[0m
+ [2m  8 |   }[0m
+ [2m  9 | }[0m
+ [2m    |[0m
+
