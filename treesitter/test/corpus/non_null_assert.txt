@@ -58,3 +58,225 @@ a! != b
               (auto_call_symbol
                 name: (id
                   (word_token))))))))))
+
+===
+Asserted call in argument position
+===
+
+print(steps[0]!(5))
+
+---
+
+(dang
+  (symbol_or_call
+    (call
+      (symbol
+        (id
+          (word_token)))
+      (arg_values
+        (immediate_paren)
+        (argument
+          (positional_value
+            (non_null_assert
+              (index_or_call
+                (symbol_or_call
+                  (auto_call_symbol
+                    (id
+                      (word_token))))
+                (immediate_bracket)
+                (literal
+                  (int)))
+              (bang_token)
+              (arg_values
+                (immediate_paren)
+                (argument
+                  (positional_value
+                    (literal
+                      (int
+                        (non_zero_decimal_digit)))))))))))))
+
+===
+Asserted call as a named argument
+===
+
+f(x: g!(1))
+
+---
+
+(dang
+  (symbol_or_call
+    (call
+      (symbol
+        (id
+          (word_token)))
+      (arg_values
+        (immediate_paren)
+        (argument
+          (key_value
+            (word_token)
+            (colon_token)
+            (non_null_assert
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token))))
+              (bang_token)
+              (arg_values
+                (immediate_paren)
+                (argument
+                  (positional_value
+                    (literal
+                      (int
+                        (non_zero_decimal_digit)))))))))))))
+
+===
+Nested asserted calls
+===
+
+f(g!(h!(1)))
+
+---
+
+(dang
+  (symbol_or_call
+    (call
+      (symbol
+        (id
+          (word_token)))
+      (arg_values
+        (immediate_paren)
+        (argument
+          (positional_value
+            (non_null_assert
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token))))
+              (bang_token)
+              (arg_values
+                (immediate_paren)
+                (argument
+                  (positional_value
+                    (non_null_assert
+                      (symbol_or_call
+                        (auto_call_symbol
+                          (id
+                            (word_token))))
+                      (bang_token)
+                      (arg_values
+                        (immediate_paren)
+                        (argument
+                          (positional_value
+                            (literal
+                              (int
+                                (non_zero_decimal_digit)))))))))))))))))
+
+===
+Asserted call as a block body
+===
+
+xs.map { v => g!(v) }
+
+---
+
+(dang
+  (select_or_call
+    (symbol_or_call
+      (auto_call_symbol
+        (id
+          (word_token))))
+    (dot_token)
+    (field_id)
+    (block_arg
+      (block_params
+        (block_param
+          (symbol
+            (id
+              (word_token)))))
+      (arrow_token)
+      (non_null_assert
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token))))
+        (bang_token)
+        (arg_values
+          (immediate_paren)
+          (argument
+            (positional_value
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token)))))))))))
+
+===
+Asserted call in a condition and after return
+===
+
+if (g!(3) == 6) { 1 }
+let f: Int! { return g!(4) }
+
+---
+
+(dang
+  (conditional
+    (if_token)
+    (default_expr
+      (rescue_expr
+        (logical_or_expr
+          (logical_and_expr
+            (equality_expr
+              (non_null_assert
+                (symbol_or_call
+                  (auto_call_symbol
+                    (id
+                      (word_token))))
+                (bang_token)
+                (arg_values
+                  (immediate_paren)
+                  (argument
+                    (positional_value
+                      (literal
+                        (int
+                          (non_zero_decimal_digit)))))))
+              (equality_op)
+              (literal
+                (int
+                  (non_zero_decimal_digit))))))))
+    (block
+      (literal
+        (int
+          (non_zero_decimal_digit)))))
+  (form_sep)
+  (decl
+    (field_decl
+      (type_and_block_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (bang_token)))
+        (block
+          (return
+            (return_token)
+            (non_null_assert
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token))))
+              (bang_token)
+              (arg_values
+                (immediate_paren)
+                (argument
+                  (positional_value
+                    (literal
+                      (int
+                        (non_zero_decimal_digit)))))))))))))
