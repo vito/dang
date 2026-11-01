@@ -1,0 +1,11 @@
+[1m[31mError:[0m `x` is checked for null outside this block, which may be stored and run after `x` is set to null (by assigning it at line 19); bind the checked value to a local with let and use that instead
+  [2m[34m--> errors/narrowing_captured_stored_block.dang:17:24[0m
+ [2m    |[0m
+ [2m 15 |   let h = Host[0m
+ [2m 16 |   if (x != null) {[0m
+ [2m[34m[1m 17 | [0m    h = h.store { y => x + y }
+[2m                              [31m^[0m
+ [2m 18 |   }[0m
+ [2m 19 |   x = null[0m
+ [2m    |[0m
+

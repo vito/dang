@@ -1,0 +1,9 @@
+# A nested function may be called after a narrowed name it reads is set to
+# null.
+run(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  let next: Int! { x + 1 }
+  x = null
+  next
+}

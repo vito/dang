@@ -1223,7 +1223,7 @@ func (l *LogicalAnd) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 		// The right side only runs when the left is true, so it sees the
 		// left's truthy refinements: `x != null and x > 0`.
-		rightEnv := withNarrowings(env, analyzeCondition(l.Left, env).Truthy)
+		rightEnv := withNarrowings(ctx, env, analyzeCondition(l.Left, env).Truthy)
 		rightType, err := l.Right.Infer(ctx, rightEnv, fresh)
 		if err != nil {
 			return nil, err
@@ -1326,7 +1326,7 @@ func (l *LogicalOr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 		// The right side only runs when the left is false, so it sees the
 		// left's falsy refinements: `x == null or x > 0`.
-		rightEnv := withNarrowings(env, analyzeCondition(l.Left, env).Falsy)
+		rightEnv := withNarrowings(ctx, env, analyzeCondition(l.Left, env).Falsy)
 		rightType, err := l.Right.Infer(ctx, rightEnv, fresh)
 		if err != nil {
 			return nil, err

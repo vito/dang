@@ -1,0 +1,14 @@
+# `self.v = null` writes the field the bare name `v` reads, so it ends the
+# narrowing of `v` too.
+type Counter {
+  v: Int = 1
+
+  next: Int! {
+    if (v != null) {
+      self.v = null
+      v + 1
+    } else {
+      0
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# A block passed in from top-level script code may reassign top-level
+# bindings, so calling a block parameter ends the narrowing of a top-level
+# binding.
+let limit: Int = 1
+
+check(&cb: Int): Int! {
+  if (limit == null) { return 0 }
+  cb
+  limit + 1
+}
+
+print(check {
+  limit = null
+  0
+})

@@ -462,7 +462,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			// conditional's branch diverges (raise/return/break/continue),
 			// the opposite branch's refinements are guaranteed to hold.
 			if cond, ok := form.(*Conditional); ok {
-				applyNarrowings(newEnv, conditionalExitNarrowings(cond, newEnv))
+				applyNarrowings(ctx, newEnv, conditionalExitNarrowings(cond, newEnv))
 			}
 		}
 

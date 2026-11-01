@@ -87,6 +87,24 @@ loop {
 - sequential guards accumulate: each narrows independently as forms are processed in order
 - inside a `loop` / `.each` block, a guard that `break`s or `continue`s narrows the rest of that iteration (`if (x == null) { break }` → `x` is `T!` after)
 
+### Reassigning a narrowed name
+
+A narrowed name can still be assigned anything its declared type allows. A non-null value keeps it narrowed; a possibly-null one ends the narrowing until the next check:
+
+```dang
+if (x != null) {
+  x = x.next   # fine: x is declared nullable
+  x.val        # error: x may be null again
+}
+```
+
+The same goes for writes the checker sees less directly:
+
+- `self.x = v` ends the narrowing of the bare field `x`
+- calling a closure that assigns `x` ends it, even if the closure was written before the check
+- inside a function, calling a block parameter ends the narrowing of top-level bindings, which the caller's block may reassign
+- a block or nested function can't rely on a check made outside it if it may run again, or later, after `x` is set to null: when the block itself assigns `x` null (it runs again on the next iteration), or when `x` is set to null after a nested function or stored block that reads it is created. Check `x` inside it, or bind the checked value to a local
+
 ### Type narrowing via `case`
 
 ```dang

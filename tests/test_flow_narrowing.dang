@@ -191,3 +191,59 @@ let h = Holder
 assert("then-branch narrows via !=") { h.describeNotEq == "missing" }
 assert("else-branch narrows via ==") { h.describeEq == "missing" }
 assert("compound and narrows both in then-branch") { h.bothBranches == "missing" }
+
+# A narrowed name can be reassigned: a non-null value keeps the narrowing, a
+# nullable one ends it until the next check.
+type Link {
+  val: Int!
+  next: Link = null
+}
+
+let sumLinks(head: Link): Int! {
+  let cur = head
+  let total = 0
+  loop {
+    if (cur == null) { break }
+    total += cur.val
+    cur = cur.next
+  }
+  total
+}
+
+assert("loop guard narrows a name reassigned in the loop") {
+  sumLinks(Link(1, next: Link(2, next: Link(3)))) == 6
+}
+
+let reassigned(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  x = x + 1
+  let kept: Int! = x
+  x = null
+  if (x == null) { kept } else { x }
+}
+
+assert("non-null reassignment keeps a narrowing") { reassigned(1) == 2 }
+
+type Chain {
+  first: Link = null
+
+  second: Int! {
+    if (first == null) { return 0 }
+    first = first.next
+    if (first == null) { return -1 }
+    first.val
+  }
+}
+
+assert("bare field reassigned after a guard") {
+  Chain(Link(1, next: Link(2))).second == 2
+}
+
+let joined(parts: [String!]!): String {
+  let acc: String = null
+  parts.each { p => if (acc == null) { acc = p } else { acc = acc + p } }
+  acc
+}
+
+assert("narrowing inside a block that reassigns") { joined(["a", "b"]) == "ab" }

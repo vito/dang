@@ -1,0 +1,11 @@
+[1m[31mError:[0m `x` is checked for null outside this function, which may be called after `x` is set to null (by assigning it at line 7); bind the checked value to a local with let and use that instead
+  [2m[34m--> errors/narrowing_captured_nested_function.dang:6:20[0m
+ [2m    |[0m
+ [2m  4 |   let x = a[0m
+ [2m  5 |   if (x == null) { return 0 }[0m
+ [2m[34m[1m  6 | [0m  let next: Int! { x + 1 }
+[2m                          [31m^[0m
+ [2m  7 |   x = null[0m
+ [2m  8 |   next[0m
+ [2m    |[0m
+
