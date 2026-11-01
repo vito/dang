@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "id": type String! is not compatible with interface type ID!
+  [2m[34m--> errors/interface_id_field_wrong_type.dang:9:24[0m
+ [2m    |[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0mtype Widget implements Thing {
+[2m                              [31m^^^^^[0m
+ [2m 10 |   id: String![0m
+ [2m 11 | }[0m
+ [2m    |[0m
+
