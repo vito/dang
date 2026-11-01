@@ -96,19 +96,35 @@ sortedUsers(sort: byNameDesc).{{ name }}.map { _.name }
 
 ### In `case`
 
-Value patterns are the qualified members:
+Value patterns are the qualified members (or string literals). A `case` that
+names every member is exhaustive: it needs no `else`, and its result stays
+non-null:
 
 ```dang
 action(c: Color!): String! {
   case (c) {
     Color.RED => "stop"
     Color.GREEN => "go"
-    else => "wait"
+    Color.BLUE => "wait"
   }
 }
 
 [action(Color.RED), action(Color.BLUE)]
 ```
+
+Leave a member out and the `case` can fall through to `null`, so it no
+longer fits a `String!`. Add the member, or an `else`:
+
+```dang-failure
+caution(c: Color!): String! {
+  case (c) {
+    Color.RED => "stop"
+    Color.GREEN => "go"
+  }
+}
+```
+
+A nullable operand also needs a `null =>` arm (see [#control-flow]).
 
 ### From strings (`::`)
 
