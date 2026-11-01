@@ -368,6 +368,114 @@ func TestRunDirTopLevelImmutableAcrossFiles(t *testing.T) {
 	require.ErrorContains(t, err, "b.dang")
 }
 
+// A type declared in a function body is a value like any other: it can be
+// stored, returned and used concurrently, so its methods, constructor and
+// field defaults may not write (or call anything writing) outside the type.
+func TestLocalTypesSealed(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "method writing an enclosing local",
+			src: `
+				interface Bumper { bump: Int! }
+				make: Bumper! {
+					let n = 0
+					type T implements Bumper { bump: Int! { n += 1; n } }
+					T
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside T",
+		},
+		{
+			name: "field default writing an enclosing local",
+			src: `
+				run: Int! {
+					let n = 0
+					type T { a: Int! = { n = 5; 1 } }
+					T.a + n
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside T",
+		},
+		{
+			name: "constructor writing an enclosing local",
+			src: `
+				run: Int! {
+					let n = 0
+					type T { a: Int! = 1; new { n += 1; self } }
+					T.a + n
+				}
+			`,
+			want: "cannot assign to `n`: it is declared outside T",
+		},
+		{
+			name: "method calling an impure enclosing closure",
+			src: `
+				run: Int! {
+					let n = 0
+					bump: Int! { n += 1; n }
+					type T { go: Int! { bump } }
+					T.go
+				}
+			`,
+			want: "`bump` writes `n`, which is declared outside T",
+		},
+		{
+			name: "method passing an impure block to a builtin",
+			src: `
+				run: Int! {
+					let n = 0
+					type T { go: Int! { [1, 2].each { x => n += x }; 0 } }
+					T.go
+				}
+			`,
+			want: "this block writes `n`, which is declared outside T",
+		},
+		{
+			name: "method calling an enclosing block parameter",
+			src: `
+				wrap(&cb: Int!): Int! {
+					type T { go: Int! { cb } }
+					T.go
+				}
+				run: Int! {
+					let k = 0
+					wrap { k += 1; k }
+				}
+			`,
+			want: "`T.go` calls `cb`, and T's methods, constructor and field defaults run wherever its values are used",
+		},
+		{
+			name: "method passing an enclosing pure block parameter",
+			src: `
+				wrap(&cb: Int!): Int! {
+					type T { go: Int! { cb } }
+					T.go
+				}
+				run: Int! { wrap { 1 } }
+			`,
+		},
+		{
+			name: "own state, reads and nested closures are fine",
+			src: `
+				run: Int! {
+					let k = 2
+					scale(x: Int!): Int! { x * k }
+					type T {
+						total: Int! = 0
+						add(x: Int!): T! {
+							let local = 0
+							bump: Int! { local += 1; total += scale(x); local }
+							[1, 2].each { y => bump }
+							self
+						}
+					}
+					T.add(1).total
+				}
+			`,
+		},
+	})
+}
+
 // InferFormsWithPhases called directly (embedders, tests) is an entry point
 // too: the deferred checks run, so an escaping block with a non-local return
 // can never reach evaluation, where nothing would catch it.
