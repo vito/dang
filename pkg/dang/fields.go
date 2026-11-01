@@ -35,21 +35,23 @@ type FieldDecl struct {
 	// without an annotation, which Infer keeps.
 	declaredType hm.Type
 
-	// shadowsImport is set during inference when the declaration replaces an
-	// unqualified import of the same name in its own frame: evaluation must
-	// then bind over the imported value, as inference resolved the name.
-	shadowsImport bool
+	// rebind is set during inference when the declaration replaces a binding
+	// already in its own frame: an unqualified import of the same name, or,
+	// in an interactive session, the same name declared by an earlier entry.
+	// Evaluation must then bind over the existing value, as inference
+	// resolved the name.
+	rebind bool
 }
 
 // noteImportShadow records whether this declaration shadows an unqualified
-// import bound in env's own frame (see shadowsImport).
+// import bound in env's own frame (see rebind).
 func (s *FieldDecl) noteImportShadow(env hm.Env) {
 	e, ok := env.(TypeScope)
 	if !ok {
 		return
 	}
 	if _, defined := e.LocalSchemeOf(s.Name.Name); defined && localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
-		s.shadowsImport = true
+		s.rebind = true
 	}
 }
 
@@ -461,7 +463,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		// An unqualified import in the same frame is shadowed, not redefined.
 		s.noteImportShadow(env)
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
-		if defined && !localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
+		if defined && !s.rebind && !localValueBindingIsUnqualifiedImport(e, s.Name.Name) {
 			curT, curMono := cur.Type()
 			if !curMono {
 				return nil, fmt.Errorf("FieldDecl.Infer: TODO: type is not monomorphic")
@@ -532,7 +534,7 @@ func (s *FieldDecl) Publish(scope ValueScope, val Value) {
 
 func (s *FieldDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		if val, defined := scope.LookupLocal(s.Name.Name); defined && !s.shadowsImport {
+		if val, defined := scope.LookupLocal(s.Name.Name); defined && !s.rebind {
 			// Already defined (e.g. through constructor). The value reached us
 			// through a Coerce-wrapped argument so it is already materialized;
 			// don't re-evaluate or re-bind it.
