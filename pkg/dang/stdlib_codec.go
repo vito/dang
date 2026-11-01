@@ -54,7 +54,7 @@ func registerCodecs() {
 		Doc("parses a JSON string into an opaque value that is materialized by an expected type").
 		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
+		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			raw, err := decodeJSON(args.GetString("data"))
 			if err != nil {
@@ -91,7 +91,7 @@ func registerCodecs() {
 		Replacement("JSON.decode").
 		Example(`fromJSON("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
+		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			raw, err := decodeJSON(args.GetString("data"))
 			if err != nil {
@@ -118,7 +118,7 @@ func registerCodecs() {
 		Doc("parses a YAML string into an opaque value that is materialized by an expected type").
 		Example(`YAML.decode("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
+		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			raw, err := decodeYAMLRaw(args.GetString("data"))
 			if err != nil {
@@ -132,7 +132,7 @@ func registerCodecs() {
 		Replacement("YAML.decode").
 		Example(`fromYAML("[a, b, c]") :: [String!]!`).
 		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
+		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			raw, err := decodeYAMLRaw(args.GetString("data"))
 			if err != nil {
@@ -159,7 +159,7 @@ func registerCodecs() {
 		Doc("parses a TOML string into an opaque value that is materialized by an expected type").
 		Example("type Settings { count: Int! }\nTOML.decode(\"count = 3\") :: Settings").
 		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
+		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			raw, err := decodeTOML(args.GetString("data"))
 			if err != nil {

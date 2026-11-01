@@ -18,8 +18,8 @@
 
 ## Inspection
 
-> Strings have no `.length` / `.isEmpty` methods — those are list methods ([#collections]). Use the predicates below.
-
+- `s.length` — the number of characters (Unicode code points, not bytes): `"héllo".length` is 5
+- `s.isEmpty`
 - `s.contains(sub)`
 - `s.hasPrefix(p)`
 - `s.hasSuffix(p)`
@@ -33,7 +33,7 @@
 
 - `s.trim(charset)`, `s.trimLeft(charset)`, `s.trimRight(charset)`, `s.trimSpace`
 - `s.trimPrefix(p)`, `s.trimSuffix(p)`
-- `s.padLeft(width)`, `s.padRight(width)`, `s.center(width)`
+- `s.padLeft(width)`, `s.padRight(width)`, `s.center(width)` — pad with spaces to `width` characters (code points, like `s.length`); `center` puts an odd extra space on the right
 
 ## Split / replace
 

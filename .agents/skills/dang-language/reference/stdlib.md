@@ -18,15 +18,14 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 
 ## `String!` methods
 
-Strings have **no** `.length` / `.isEmpty` — those are list/map-only. Use the predicates below.
-
+- `.length -> Int!` — number of characters (Unicode code points, not bytes): `"héllo".length == 5`; `.isEmpty -> Boolean!`
 - `.toUpper -> String!`, `.toLower -> String!`
 - `.toBase64 -> String!` — standard padded base64 of the string's bytes; `.fromBase64 -> String!` — decode standard padded base64 (raises on invalid input)
 - `.contains(substring: String!) -> Boolean!`
 - `.hasPrefix(prefix: String!) -> Boolean!`, `.hasSuffix(suffix: String!) -> Boolean!`
 - `.trim(cutset: String!)`, `.trimLeft(cutset)`, `.trimRight(cutset)`, `.trimSpace`
 - `.trimPrefix(prefix)`, `.trimSuffix(suffix)`
-- `.padLeft(width: Int!)`, `.padRight(width)`, `.center(width)` — space-padded; no-op if already ≥ width
+- `.padLeft(width: Int!)`, `.padRight(width)`, `.center(width)` — space-padded to `width` characters (Unicode code points, like `.length`); no-op if already ≥ width; `center` puts an odd extra space on the right
 - `.split(separator: String!, limit: Int = 0) -> [String!]!` — empty separator splits into characters; `limit` caps parts (last keeps remainder)
 - `.replace(old: String!, new: String!, count: Int = -1) -> String!` — `count = -1` replaces all; empty `old` inserts between characters
 
@@ -157,6 +156,7 @@ let s = JSON.decode(...) :: Status!
 f(d: String!): Summary! { JSON.decode(d) }
 let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a table
 ```
+- Until it reaches an expected type, a decode result has the opaque type `Decoded`: it can be stored, passed, and returned, but `JSON.decode("1") + 1`, `JSON.decode("1") == 1`, `if (JSON.decode("true"))`, and `.field` on it are type errors — cast first. Joins with typed values too: `(JSON.decode(s) :: Int!) rescue 0`.
 - Works for primitives, lists, maps (`Map[T]`, from an object), records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
 - YAML anchors/aliases and `<<` merge keys are resolved; a mapping's own keys beat merged ones, and earlier entries of `<<: [*a, *b]` beat later ones.

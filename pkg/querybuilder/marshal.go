@@ -40,6 +40,7 @@ type enum interface {
 var (
 	gqlMarshaller = reflect.TypeFor[GraphQLMarshaller]()
 	enumT         = reflect.TypeFor[enum]()
+	jsonNumberT   = reflect.TypeFor[json.Number]()
 )
 
 func MarshalGQL(ctx context.Context, v any) (string, error) {
@@ -58,6 +59,12 @@ func marshalValue(ctx context.Context, v reflect.Value) (string, error) {
 
 	if t.Implements(enumT) {
 		return marshalEnumName(v), nil
+	}
+
+	if t == jsonNumberT {
+		// A number kept as its JSON text (e.g. a custom scalar's value) is
+		// written as that exact number literal, not as a string.
+		return v.String(), nil
 	}
 
 	switch t.Kind() {

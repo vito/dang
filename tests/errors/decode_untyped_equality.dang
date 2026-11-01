@@ -1,0 +1,4 @@
+# Comparing decoded data before it has a type compares the raw data, which
+# never equals the value it decodes to.
+let flag = JSON.decode("true")
+assert { flag == true }

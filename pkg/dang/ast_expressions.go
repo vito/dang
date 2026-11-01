@@ -1132,6 +1132,10 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		var rec TypeScope
 		var isNullable bool
 
+		if _, ok := unwrapNonNull(lt).(DecodedType); ok {
+			return nil, fmt.Errorf("cannot select %q from decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T).%s`", d.Field.Name, lt, d.Field.Name)
+		}
+
 		if nn, ok := lt.(hm.NonNullType); ok {
 			// Non-null receiver
 			envType, ok := nn.Type.(TypeScope)
@@ -3484,6 +3488,9 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		subs, err := hm.Assignable(exprType, hintType)
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
+		}
+		if err != nil && assignableDecoded(exprType, hintType) {
+			subs, err = hm.NewSubs(), nil
 		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)

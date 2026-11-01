@@ -51,6 +51,15 @@ func TestMarshalGQL(t *testing.T) {
 			expect: "true",
 		},
 		{
+			// JSON numbers (e.g. a custom scalar's value) keep their exact text
+			v:      json.Number("12345678901234567890.5"),
+			expect: "12345678901234567890.5",
+		},
+		{
+			v:      map[string]any{"n": json.Number("1"), "xs": []any{json.Number("2.5"), "a"}},
+			expect: `{n:1,xs:[2.5,"a"]}`,
+		},
+		{
 			v:      unicode,
 			expect: "\"∆?–∂∂√˛\\u0007v\\u001CiÙ˜Ÿ¿\\u0011GÆÓ∂Ó˘◊ñ\"",
 		},

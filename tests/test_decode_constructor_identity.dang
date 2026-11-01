@@ -1,0 +1,45 @@
+# Decoding into a named type builds a value of exactly that type, even where
+# the type's name resolves to some other binding.
+import Lib
+
+# A local type shadows the imported Greeter's unqualified name; decoding into
+# the qualified Lib.Greeter must still build a Lib.Greeter.
+type Greeter {
+  name: Int!
+}
+
+let imported: Lib.Greeter! = JSON.decode("{\"name\": \"Dang\"}")
+assert { imported.greeting == "Hello, Dang!" }
+
+let local: Greeter! = JSON.decode("{\"name\": 42}")
+assert { local.name == 42 }
+
+type Record {
+  value: String!
+}
+
+type Other {
+  value: Int!
+}
+
+# A local binding named like the type does not hijack its construction.
+shadowed(data: String!): String! {
+  let Record = &Other
+  let decoded: Record! = JSON.decode(data)
+  decoded.value.toUpper
+}
+
+assert { shadowed("{\"value\": \"hi\"}") == "HI" }
+
+# A type declared in a function body still uses that call's constructor.
+localDefault(suffix: String!, data: String!): String! {
+  type Tagged {
+    value: String!
+    tag: String! = suffix
+  }
+  let decoded: Tagged! = JSON.decode(data)
+  decoded.value + decoded.tag
+}
+
+assert { localDefault("!", "{\"value\": \"a\"}") == "a!" }
+assert { localDefault("?", "{\"value\": \"b\"}") == "b?" }

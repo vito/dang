@@ -18,3 +18,7 @@ resolver:
 directives:
   expectedType:
     skip_runtime: true
+
+models:
+  Opaque:
+    model: github.com/99designs/gqlgen/graphql.Any

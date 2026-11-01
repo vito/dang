@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use {count: Decoded}! as {count: Int!}!:
+  - field "count": type Decoded is not compatible with Int!
+  [2m[34m--> errors/decode_untyped_record_field.dang:3:27[0m
+ [2m    |[0m
+ [2m  1 | # Record literal fields are not materialized, so decoded data can't fill a[0m
+ [2m  2 | # typed record field through one: the field would keep the raw data.[0m
+ [2m[34m[1m  3 | [0mlet r: {{count: Int!}}! = {{count: JSON.decode("\"oops\"")}}
+[2m                                 [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

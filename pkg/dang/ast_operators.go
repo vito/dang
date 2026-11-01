@@ -107,12 +107,31 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 				if _, err := b.resolveOperands(env, lt, rt); err != nil {
 					return nil, err
 				}
+			} else if err := checkDecodedComparison(b.Left, lt, b.Right, rt); err != nil {
+				return nil, err
 			}
 			return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", b.Loc}}.Infer(ctx, env, fresh)
 		default:
 			return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
 		}
 	})
+}
+
+// checkDecodedComparison rejects an equality comparison (== or !=) with an
+// operand still carrying codec-decoded data (DecodedType). Equality is
+// defined across all types, but decoded data is only materialized where it
+// meets an expected type, so comparing it as is compares the raw data and is
+// always unequal — even to the very value it decodes to.
+func checkDecodedComparison(left Node, lt hm.Type, right Node, rt hm.Type) error {
+	for _, side := range []struct {
+		node Node
+		typ  hm.Type
+	}{{left, lt}, {right, rt}} {
+		if containsDecoded(side.typ) {
+			return NewInferError(fmt.Errorf("cannot compare decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T)`", side.typ), side.node)
+		}
+	}
+	return nil
 }
 
 // resolveOperands validates a binary operator's operands against its declared
@@ -632,12 +651,17 @@ var _ Evaluator = (*Equality)(nil)
 func (e *Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(e, func() (hm.Type, error) {
 		// Type check both sides for validity, but allow cross-type comparison at runtime
-		_, err := e.Left.Infer(ctx, env, fresh)
+		leftType, err := e.Left.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
-		_, err = e.Right.Infer(ctx, env, fresh)
+		rightType, err := e.Right.Infer(ctx, env, fresh)
 		if err != nil {
+			return nil, err
+		}
+		// Decoded data is only materialized at a typed boundary, so comparing
+		// it as is would compare the raw data and always come out unequal.
+		if err := checkDecodedComparison(e.Left, leftType, e.Right, rightType); err != nil {
 			return nil, err
 		}
 		noteCheck(ctx, e)

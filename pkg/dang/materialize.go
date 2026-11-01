@@ -115,6 +115,9 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 			return coerceSubs, nil
 		}
 	}
+	if assignableDecoded(have, want) {
+		return hm.NewSubs(), nil
+	}
 	if nullErr := nullIntoRigid(have, want, value); nullErr != nil {
 		return nil, nullErr
 	}
@@ -187,6 +190,74 @@ func isNullNode(n Node) bool {
 	}
 	_, ok := unwrapGrouped(n).(*Null)
 	return ok
+}
+
+// assignableDecoded reports whether a value of type have may flow into want
+// because it carries codec-decoded data (DecodedType) that the boundary's
+// Coerce will materialize: have is Decoded, or a list/map of it, where want
+// has the same list/map shape. A Decoded leaf may enter any type, nullability
+// included — materializeDecoded checks the data (null included) against it
+// and raises when it does not fit. Every other part of have must already fit
+// want, which is why only Decoded itself may cross into a non-null slot.
+//
+// want must be fully known: admitting Decoded into a type variable (say the
+// `a!` of `ident(x: a!): a!`) would leave the variable unbound, so the call's
+// result could then be used as anything. (A bare variable never gets here:
+// plain unification binds it to Decoded first.)
+func assignableDecoded(have, want hm.Type) bool {
+	switch h := have.(type) {
+	case DecodedType:
+		return len(want.FreeTypeVar()) == 0
+	case hm.NonNullType:
+		if w, ok := want.(hm.NonNullType); ok {
+			return assignableDecoded(h.Type, w.Type)
+		}
+		return assignableDecoded(h.Type, want)
+	case ListType:
+		switch w := want.(type) {
+		case ListType:
+			return assignableDecoded(h.Type, w.Type)
+		case GraphQLListType:
+			return assignableDecoded(h.Type, w.Type)
+		}
+	case MapType:
+		if w, ok := want.(MapType); ok {
+			return assignableDecoded(h.Type, w.Type)
+		}
+	}
+	return false
+}
+
+// containsDecoded reports whether t carries DecodedType, on its own or within
+// a list, map, union, or anonymous record's fields.
+func containsDecoded(t hm.Type) bool {
+	switch v := t.(type) {
+	case DecodedType:
+		return true
+	case hm.NonNullType:
+		return containsDecoded(v.Type)
+	case ListType:
+		return containsDecoded(v.Type)
+	case MapType:
+		return containsDecoded(v.Type)
+	case *hm.UnionType:
+		for _, option := range v.Options {
+			if containsDecoded(option) {
+				return true
+			}
+		}
+	case *Type:
+		// Anonymous records ({{...}}) compare structurally, field by field;
+		// named types compare by identity, never reaching their fields' data.
+		if v.Kind == ObjectKind && v.Named == "" {
+			for _, field := range v.AsRecord().Fields {
+				if ft, mono := field.Value.Type(); mono && containsDecoded(ft) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may
@@ -330,7 +401,18 @@ func bestUnionMatch(have *Type, want *hm.UnionType) (*Type, *Type, []string, boo
 // and interface-vs-interface contexts).
 func diagnoseModule(have, want *Type) []string {
 	var issues []string
-	for name, wantScheme := range want.Bindings(PublicVisibility) {
+	wantFields := want.Bindings(PublicVisibility)
+	if want.Named == "" && have.Named == "" {
+		// Anonymous records' fields are not public bindings; compare them all.
+		wantFields = func(yield func(string, *hm.Scheme) bool) {
+			for _, field := range want.AsRecord().Fields {
+				if !yield(field.Key, field.Value) {
+					return
+				}
+			}
+		}
+	}
+	for name, wantScheme := range wantFields {
 		wantType, _ := wantScheme.Type()
 		haveScheme, found := have.LocalSchemeOf(name)
 		if !found {
@@ -539,7 +621,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 	}
 
 	switch target.(type) {
-	case hm.TypeVariable, hm.NullableTypeVariable:
+	case hm.TypeVariable, hm.NullableTypeVariable, DecodedType:
 		return DeferredValue{Raw: raw, Codec: codec}, nil
 	}
 
@@ -640,6 +722,15 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			return EnumValue{Val: s, EnumType: mod}, nil
 		case ScalarKind:
 			s, ok := raw.(string)
+			if !ok && mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil {
+				// A GraphQL scalar's value may be any JSON (see
+				// graphQLResultToValue), so its encoded form decodes back.
+				encoded, err := json.Marshal(raw)
+				if err != nil {
+					return nil, materializeDeferredError(path, "encoding %s value: %s", mod.Name(), err)
+				}
+				return ScalarValue{Val: string(encoded), ScalarType: mod, Encoded: true}, nil
+			}
 			if !ok {
 				return nil, materializeDeferredError(path, "expected string for scalar %s, got %s", mod.Name(), decodedKind(raw))
 			}
@@ -687,16 +778,9 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
 	}
 
-	constructorVal, found, err := scope.Lookup(ctx, mod.Named)
+	callable, err := constructorFor(ctx, scope, mod)
 	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return nil, materializeDeferredError(path, "constructor for %s not found", mod.Name())
-	}
-	callable, ok := constructorVal.(Callable)
-	if !ok {
-		return nil, materializeDeferredError(path, "%s is not callable", mod.Name())
+		return nil, materializeDeferredError(path, "%s", err.Error())
 	}
 
 	args, err := materializeConstructorArgs(ctx, scope, obj, mod, callable, path, codec)
@@ -705,6 +789,43 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 	}
 
 	return callable.Call(ctx, scope, args)
+}
+
+// constructorFor finds the constructor that builds values of mod. The type's
+// name in scope is preferred, so a type declared in a function body uses that
+// call's own constructor, but only when it really constructs mod: the name may
+// be shadowed by an unrelated binding (or another type's constructor), or not
+// bound at all where mod is reached qualified (`Lib.T`). Calling whatever the
+// name resolves to would hand back a value of a different type than the one
+// the checker assigned. Otherwise fall back to the constructor recorded on
+// the type when its declaration was evaluated.
+func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable, error) {
+	want := canonicalModule(mod)
+	val, found, err := scope.Lookup(ctx, mod.Named)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		if callable, ok := val.(Callable); ok && constructsType(callable, want) {
+			return callable, nil
+		}
+	}
+	if callable := want.Constructor(); callable != nil {
+		return callable, nil
+	}
+	return nil, fmt.Errorf("constructor for %s not found", mod.Name())
+}
+
+// constructsType reports whether callable is the constructor of want.
+func constructsType(callable Callable, want *Type) bool {
+	switch c := callable.(type) {
+	case *ConstructorFunction:
+		return c.ObjectType != nil && canonicalModule(c.ObjectType) == want
+	case InputObjectConstructor:
+		return c.TypeScope != nil && canonicalModule(c.TypeScope) == want
+	default:
+		return false
+	}
 }
 
 func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {

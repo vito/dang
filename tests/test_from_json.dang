@@ -74,3 +74,19 @@ assert { parsedReturn.children[0].outcome == Status.FAILED }
 let anon = JSON.decode("{\"foo\": 1, \"bar\": \"PASSED\", \"extra\": 2}") :: {{foo: Int!, bar: Status!}}!
 assert { anon.foo == 1 }
 assert { anon.bar == Status.PASSED }
+
+# An untyped decode result can be stored and passed along; it materializes
+# wherever it meets an expected type.
+let raw = JSON.decode("[1, 2]")
+let rawList: [Int!]! = raw
+assert { rawList.length == 2 }
+assert { [1, 2].contains(JSON.decode("2")) }
+let decodedElems = [JSON.decode("1"), JSON.decode("2")] :: [Int!]!
+assert { decodedElems[1] == 2 }
+assert { JSON.encode(JSON.decode("{\"a\": [1]}")) == "{\"a\":[1]}" }
+
+# A list of untyped decode results compares its elements by their data.
+let rawItems = [JSON.decode("1"), JSON.decode("2"), JSON.decode("1")]
+assert { rawItems.contains(JSON.decode("2")) }
+assert { !rawItems.contains(JSON.decode("3")) }
+assert { rawItems.uniq.length == 2 }

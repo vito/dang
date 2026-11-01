@@ -236,6 +236,43 @@ func (t MapType) Supertypes() []hm.Type {
 	return innerSupers
 }
 
+// DecodedType is the static type of a codec decode result (JSON.decode and
+// friends): data whose shape is only known at runtime, carried as a
+// DeferredValue until it reaches an expected type. It is deliberately opaque —
+// it unifies only with itself and type variables, so operators, conditions
+// and selections reject it, and equality does too (checkDecodedComparison,
+// since it is otherwise defined across all types) — and it may cross into any
+// fully known type only at a materializing boundary (a Coerce: annotations,
+// arguments, returns, `::`), where assignableDecoded admits it and
+// materializeValue converts the data or raises. Typing decode results as a
+// bare type variable instead made them usable as anything without
+// materialization, so `JSON.decode("1") + 1` type-checked and then failed at
+// runtime.
+type DecodedType struct{}
+
+var _ hm.Type = DecodedType{}
+
+func (t DecodedType) Name() string { return "Decoded" }
+
+func (t DecodedType) Apply(hm.Subs) hm.Substitutable { return t }
+
+func (t DecodedType) FreeTypeVar() hm.TypeVarSet { return nil }
+
+func (t DecodedType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) { return t, nil }
+
+func (t DecodedType) Types() hm.Types { return nil }
+
+func (t DecodedType) Supertypes() []hm.Type { return nil }
+
+func (t DecodedType) String() string { return "Decoded" }
+
+func (t DecodedType) Format(s fmt.State, c rune) { _, _ = fmt.Fprint(s, "Decoded") }
+
+func (t DecodedType) Eq(other hm.Type) bool {
+	_, ok := other.(DecodedType)
+	return ok
+}
+
 // GraphQLListType represents a list returned from GraphQL that contains objects.
 // Unlike ListType, it cannot be directly iterated - it must first be converted
 // to a ListType via object selection (.{fields}) to avoid N+1 query problems.
