@@ -262,7 +262,10 @@ with "must be pure" reasons once discovered).
    `{{ }}` field: one whose initializer may write top-level state (directly,
    through blocks it runs, or by forcing another such declaration) can't be
    read from a field when it's declared later than the declaration being
-   initialized, or from a function body (`toplevel_order.go`).
+   initialized, or from a function body (`toplevel_order.go`). And since all
+   top-level declarations run before any top-level statement, a statement
+   can't write a binding that a declaration after it reads (it would see the
+   value from before the write).
 2. **Impure closures can't escape.** A block, nested function, or `&ref` to
    one whose effect writes a binding it doesn't declare may appear only as a
    callee or as an argument for a function-typed parameter. Escape detection
