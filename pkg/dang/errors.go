@@ -386,7 +386,9 @@ func WithInferErrorHandling(node SourceLocatable, fn func() (hm.Type, error)) (h
 		// No source location context, wrap it
 		return nil, WrapInferError(err, node)
 	}
-	return typ, nil
+	// Weak variables bound since the parts of typ were inferred stand for
+	// what they are bound to (see hm.NewWeakVar).
+	return hm.ResolveWeak(typ), nil
 }
 
 // WithEvalErrorHandling wraps an Eval method implementation with automatic error handling

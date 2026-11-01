@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared [String!]!, inferred [Int!]!
+  [2m[34m--> errors/weak_type_field.dang:11:23[0m
+ [2m    |[0m
+ [2m  9 |   }[0m
+ [2m 10 | [0m
+ [2m[34m[1m 11 | [0m  strings: [String!]! { items }
+[2m                             [31m^^^^^^^^^[0m
+ [2m 12 | }[0m
+ [2m 13 | [0m
+ [2m    |[0m
+

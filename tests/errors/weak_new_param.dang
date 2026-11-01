@@ -1,0 +1,13 @@
+# An explicit new()'s parameters have one type each, like the fields they
+# set: the first `Cell(...)` makes `x` (and so `v`) an Int!.
+type Cell {
+  v: a
+
+  new(x: a) {
+    self.v = x
+    self
+  }
+}
+
+let ints = Cell(1)
+let n: Int! = Cell("s").v + 1

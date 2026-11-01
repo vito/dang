@@ -207,6 +207,10 @@ type Type struct {
 	// an outer binding (see applyNarrowings).
 	narrowed map[string]bool
 
+	// weakDecls keeps alive the declarations of the bindings here whose
+	// types have weak variables, and so their cells (see keepWeakCells).
+	weakDecls map[*FieldDecl]struct{}
+
 	// Scalar-body runtime hooks: Dang-defined methods and the new()
 	// materialization hook for scalars declared with a body. Written once by
 	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).
@@ -1253,7 +1257,12 @@ func (t *Type) Eq(other hm.Type) bool {
 		return t == otherMod
 	}
 	// Unnamed modules (anonymous record-like modules) use structural equality
-	return t.AsRecord().Eq(otherMod.AsRecord())
+	// up to a renaming of their variables: two `{{xs: []}}`s, or a `{{x: []}}`
+	// and a `{{x: [a]!}}` parameter, are typed with variables of their own.
+	// Anonymous record types hold no free variables to substitute (see
+	// FreeTypeVar), so this is also what lets such an argument meet such a
+	// parameter.
+	return hm.EqIgnoringIDs(t.AsRecord(), otherMod.AsRecord())
 }
 
 func (t *Type) Supertypes() []hm.Type {
@@ -1431,8 +1440,10 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	// If interface field is not a function, object field must match exactly
 	if !ifaceIsFn {
 		if !objectIsFn {
-			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOf(objectFieldType, ifaceFieldType) {
+			// Both are non-function types - check covariance. A stored
+			// field's type is pinned by conforming: reading it through the
+			// interface is a use like any other.
+			if _, err := hm.Assignable(objectFieldType, ifaceFieldType); err != nil {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, objectFieldType, ifaceFieldType)
 			}
@@ -1454,8 +1465,9 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	if isZeroArgFn && !objectIsFn {
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
-		// Compare the return type with the object field type
-		if !hm.IsSubtypeOf(objectFieldType, ifaceRetType) {
+		// Compare the return type with the object field type, pinning the
+		// field's type as above.
+		if _, err := hm.Assignable(objectFieldType, ifaceRetType); err != nil {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, objectFieldType, ifaceRetType)
 		}

@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use a possibly-null value as a: callers may pick a non-null type for a; check it for null first (`if (first == null) { raise ... }`), assert it with `first!`, or fall back with `first ?? other` where `other` is itself an a
+  [2m[34m--> errors/generic_nullable_local.dang:5:17[0m
+ [2m    |[0m
+ [2m  3 | closest(sorted: [a]!, item: a, &compare(x: a, y: a): Int!): Int! {[0m
+ [2m  4 |   let first = sorted[0][0m
+ [2m[34m[1m  5 | [0m  compare(item, first)
+[2m                       [31m^^^^^[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

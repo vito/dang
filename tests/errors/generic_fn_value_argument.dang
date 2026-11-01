@@ -1,0 +1,8 @@
+# A function value passed as an argument keeps what its `a!` means: `a` is
+# nullable, so what comes back out of `id` can't return an Int! for `[]`.
+first(xs: [a!]!): a { xs[0] }
+
+id(v: a): a { v }
+
+let g = id(&first)
+let n: Int! = g([])

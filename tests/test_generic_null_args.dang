@@ -1,0 +1,125 @@
+# A call site's own type variables (from `null`, `[]`, ...) are distinct from
+# the type variables of the generic function it calls, even when they share a
+# letter.
+generic(v: a, x: String = "default"): String { x }
+
+assert { generic(1) == "default" }
+assert { generic(1, x: null) == "default" }
+assert { generic(1, null) == "default" }
+assert { generic(1, x: null :: String) == "default" }
+assert { generic(1, x: "given") == "given" }
+assert { generic("s") == "default" }
+
+# a nullable parameter without a default
+noDefault(v: a, x: String): String { x ?? "none" }
+
+assert { noDefault(1, x: null) == "none" }
+
+# null for the type variable itself
+id(v: a): a { v }
+
+assert { id(null) == null }
+assert { id(id(null)) == null }
+
+let fromId: String = id(null)
+assert { fromId == null }
+
+# two type variables, in either order
+two(v: a, w: b, x: String = "default"): String { x }
+
+assert { two(1, "s", x: null) == "default" }
+assert { two(1, null) == "default" }
+assert { two(null, null) == "default" }
+
+swapped(v: b, w: a, x: String = "default"): String { x }
+
+assert { swapped(1, 2, x: null) == "default" }
+
+# a repeated type variable still joins its arguments
+same(x: a, y: a): a { y }
+
+assert { same(1, null) == null }
+assert { same(null, 1) == 1 }
+
+# an empty list, inline or let-bound
+strings(v: a, w: [String!]!): Int! { w.length }
+
+assert { strings(1, w: []) == 0 }
+
+let empty = []
+assert { strings(1, w: empty) == 0 }
+
+# a generic method
+type Box {
+  pick(v: a, x: String = "default"): String { x }
+}
+
+assert { Box.pick(1, x: null) == "default" }
+
+# a generic function taking a block
+withBlock(v: a, x: String = "default", &yield(y: a): b): b { yield(v) }
+
+assert { withBlock(1, x: null) { y => y + 1 } == 2 }
+
+# a generic function calling another
+inner(v: a, x: String = "inner"): String { x }
+
+outer(v: a): String { inner(v, x: null) }
+
+assert { outer(3) == "inner" }
+
+# an auto-called generic function
+takesInts(x: [Int!]!, y: String): String { y ?? "none" }
+
+none(x: Int! = 1): [a]! { [] }
+
+assert { takesInts(none, null) == "none" }
+
+# a list method on the result of a generic call
+wrap(x: a): [a]! { [x] }
+
+let wrapped = wrap(null)
+assert {
+  wrapped.reduce("") { acc, x =>
+    let n: Int! = x ?? 1
+    acc + "!"
+  } == "!"
+}
+
+# each call gets its own copy of a generic function's variables
+nonez(x: Int! = 1): [z]! { [] }
+
+takesLists(x: [Int!]!, y: [String!]!): Int! { 1 }
+
+assert { takesLists(nonez(1), nonez(1)) == 1 }
+assert { takesLists(none, none) == 1 }
+
+zipped(v: z, w: [String!]!): Int! { w.length }
+
+assert { zipped(1, w: nonez(1)) == 0 }
+
+# records built from separate calls still have one shape
+let r1 = {{xs: none}}
+let r2 = {{xs: none}}
+assert { r1 == r2 }
+assert { [r1, r2].length == 2 }
+
+# and so do records built from separate empty lists
+let e1 = {{xs: []}}
+let e2 = {{xs: []}}
+assert { e1 == e2 }
+assert { [e1, e2].length == 2 }
+
+# a record argument meets a parameter written with its own variable
+takesRecord(r: {{x: [a]!}}): Int! { 1 }
+
+assert { takesRecord({{x: []}}) == 1 }
+
+# reduce's own `b` is not one written in the receiver's annotation
+let annotated: [[b]!]! = [[]]
+assert {
+  annotated.reduce("") { acc, x =>
+    let n: [Int!]! = x
+    acc + "!"
+  } == "!"
+}

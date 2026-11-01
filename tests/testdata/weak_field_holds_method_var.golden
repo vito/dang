@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m cannot use a here: a is a type its generic function's caller picks, and this binding is declared outside that function
+  [2m[34m--> errors/weak_field_holds_method_var.dang:7:5[0m
+ [2m    |[0m
+ [2m  5 | [0m
+ [2m  6 |   put(v: a): Store! {[0m
+ [2m[34m[1m  7 | [0m    items += [v]
+[2m           [31m^^^^^^^^^^^^[0m
+ [2m  8 |     self[0m
+ [2m  9 |   }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m return type mismatch: declared a, inferred _a!
+  [2m[34m--> errors/weak_field_holds_method_var.dang:11:16[0m
+ [2m    |[0m
+ [2m  9 |   }[0m
+ [2m 10 | [0m
+ [2m[34m[1m 11 | [0m  get(w: a): a {
+[2m                      [31m^[0m
+ [2m 12 |     let r = items[0][0m
+ [2m 13 |     if (r == null) {[0m
+ [2m    |[0m
+

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -77,4 +78,77 @@ func TestReplChecksFieldPurity(t *testing.T) {
 
 	_, err = s.enter("run2: Int! { let n = 0; {{a: if (true) { n += 1; n } else { 0 }}}.a }")
 	require.ErrorContains(t, err, "{{ }} fields run concurrently; this assignment writes `n`")
+}
+
+// Each entry infers with a new fresher, whose variables must still be none of
+// those that earlier entries left behind.
+func TestReplGenericCallsAcrossEntries(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("f(v: b, w: [String!]!): Int! { w.length }")
+	require.NoError(t, err)
+	_, err = s.enter("let empty = []")
+	require.NoError(t, err)
+	v, err := s.enter("f(1, w: empty)")
+	require.NoError(t, err)
+	require.Equal(t, "0", dang.Repr(v))
+
+	_, err = s.enter("let p = null\nlet ys = [null]")
+	require.NoError(t, err)
+	v, err = s.enter(`ys.reduce("") { acc, x => let n: Int! = x ?? 1; acc + "!" }`)
+	require.NoError(t, err)
+	require.Equal(t, `"!"`, dang.Repr(v))
+
+	_, err = s.enter("nonez(x: Int! = 1): [z]! { [] }")
+	require.NoError(t, err)
+	v, err = s.enter("[p, nonez(1)]")
+	require.NoError(t, err)
+	require.Equal(t, "[null, []]", dang.Repr(v))
+}
+
+// Re-entering a binding redefines it as it was, though the new entry types it
+// with variables of its own.
+func TestReplRedefinesGenericBindings(t *testing.T) {
+	s := newTestReplSession(t)
+	for _, entry := range []string{
+		"let xs = []", "let xs = []",
+		"let p = null", "let p = null",
+		"let u = if (true) { [] } else { 1 }", "let u = if (true) { [] } else { 1 }",
+	} {
+		_, err := s.enter(entry)
+		require.NoError(t, err, entry)
+	}
+}
+
+// A binding's type, pinned by a use in one entry, stays pinned in later ones,
+// after the earlier entries' syntax is gone.
+func TestReplKeepsPinnedBindingTypes(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let xs = []")
+	require.NoError(t, err)
+	_, err = s.enter("xs += [1]")
+	require.NoError(t, err)
+	runtime.GC()
+	runtime.GC()
+	_, err = s.enter("let strs: [String!]! = xs")
+	require.ErrorContains(t, err, "cannot use [Int!]! as [String!]!")
+	v, err := s.enter("xs")
+	require.NoError(t, err)
+	require.Equal(t, "[1]", dang.Repr(v))
+}
+
+// A binding's variable bound to another entry's (a block call's here) keeps
+// that one alive, so it can still be pinned after the entry is gone.
+func TestReplKeepsLinkedWeakVariables(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let xs = []")
+	require.NoError(t, err)
+	_, err = s.enter("[[]].each { y => let z = y + xs }")
+	require.NoError(t, err)
+	runtime.GC()
+	runtime.GC()
+	runtime.GC()
+	_, err = s.enter("xs += [1]")
+	require.NoError(t, err)
+	_, err = s.enter(`xs += ["s"]`)
+	require.ErrorContains(t, err, "cannot use [String!]! as [Int!]!")
 }

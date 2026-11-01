@@ -67,6 +67,10 @@ type FunCall struct {
 	// (`.field`, `.method(...)` or `.{{ }}`), which defers the null probe of
 	// GraphQL object fields to whatever runs the chain. See markSelectedThrough.
 	selectedThrough bool
+
+	// weakCells keeps alive the weak variables made for a call with a
+	// block (see inferFunctionType).
+	weakCells []*hm.WeakCell
 }
 
 var _ Node = (*FunCall)(nil)
@@ -133,6 +137,8 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 
 // inferFunctionType handles type inference for FunctionType calls
 func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
+	ft = instantiateCallee(ft)
+
 	// Handle positional argument mapping for type inference
 	argMapping, err := c.mapArgumentsForInference(ft)
 	if err != nil {
@@ -183,6 +189,28 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		}
 	}
 
+	// Required arguments are judged once the given arguments have pinned the
+	// signature's variables, but before omitted ones make theirs nullable:
+	// with `choose(x: a, y: a)`, `choose(1)` misses an Int!.
+	signature := ft
+	if argSubs != nil {
+		signature = ft.Apply(argSubs).(*hm.FunctionType)
+	}
+
+	// An omitted argument is null or its default; see omittedParamSubs.
+	if omittedSubs := c.omittedArgSubs(argRecord, argMapping); omittedSubs != nil {
+		if argSubs == nil {
+			argSubs = omittedSubs
+		} else if argSubs, err = argSubs.Compose(omittedSubs); err != nil {
+			return nil, NewInferError(err, c)
+		}
+	}
+	// Merging the arguments' constraints may pin weak variables (the
+	// element type of a `let xs = []`) that no one argument did.
+	if err := hm.CommitWeak(argSubs); err != nil {
+		return nil, NewInferError(err, c)
+	}
+
 	// Apply argument substitutions to the function type before inferring the
 	// block arg, so that type variables resolved from arguments (like 'b' from
 	// reduce's initial arg) are concrete in the block's expected param types.
@@ -195,6 +223,18 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	var blockArgSubs hm.Subs
 	var blockBreakTarget *InferControlTarget
 	if c.BlockArg != nil {
+		// A block is checked once but may run many times, each run seeing
+		// what the last one left through its parameters (reduce's
+		// accumulator, say): the unknowns of its parameters' types are one
+		// type for all runs, which the block's uses pin down, not a type
+		// for each use. (Its result alone carries nothing back.)
+		if block := ft.Block(); block != nil {
+			own := hm.NewSubs()
+			weakenVars(ctx, block.Arg(), own, &c.weakCells)
+			if len(own) > 0 {
+				ft = ft.Apply(own).(*hm.FunctionType)
+			}
+		}
 		blockBreakTarget = NewInferControlTarget(BlockCallFrame)
 		blockCtx := contextWithInferBreakTarget(ctx, blockBreakTarget)
 		subs, err := c.inferBlockArg(blockCtx, env, fresh, ft)
@@ -208,7 +248,7 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 
 	// Check that all required arguments are provided
-	err = c.validateRequiredArgumentsInInfer(ft)
+	err = c.validateRequiredArgumentsInInfer(signature)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +267,91 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		retType = mergeCallBreakTypes(retType, c.BlockArg.BodyNode, blockBreakTarget, blockArgSubs, fresh)
 	}
 	return retType, nil
+}
+
+// instantiateCallee gives a callee's flexible type variables new identities
+// (keeping their names), so that each call gets its own copy of them, as
+// instantiating a type scheme does in HM. Without this, the variables of a
+// generic signature meet those of any other written with the same letter: in
+// `g(1, w: nonez(1))`, with `g(v: z, w: [String!]!)` and `nonez: [z]!`, `g`'s
+// `z := Int!` from `v` clashed with the `z` in `nonez`'s result. Rigid
+// variables stand for the enclosing generic function's own parameters and
+// are left alone.
+func instantiateCallee(ft *hm.FunctionType) *hm.FunctionType {
+	subs := freshenSubs(ft.FreeTypeVar())
+	if len(subs) == 0 {
+		return ft
+	}
+	// A variable the signature writes `a!` stands for nullable types only
+	// (its non-null form being `a!`), so the call's copy is a nullable one:
+	// `first(xs: [a!]!): a` may return null, which no use of its result
+	// can then take for an Int!.
+	for tv := range hm.NonNullVars(ft) {
+		if fresh, ok := subs[tv]; ok {
+			subs[tv] = hm.Nullable(fresh)
+		}
+	}
+	return ft.Apply(subs).(*hm.FunctionType)
+}
+
+// fnValueType gives a function taken as a value (`&first`, a bare `first`
+// or `T.m` not called) a type that keeps what instantiateCallee keeps for
+// a call: a variable its signature writes `a!` stands for nullable types
+// only, so its bare occurrences are nullable, `a?`. Otherwise `let f =
+// &first` with `first(xs: [a!]!): a` would give `f([])` an `a` some use
+// could take for an Int!. Rigid variables are the enclosing body's own,
+// already nullable-only by its callers; weak ones are pinned as they are.
+func fnValueType(t hm.Type) hm.Type {
+	ft, ok := t.(*hm.FunctionType)
+	if !ok {
+		return t
+	}
+	var subs hm.Subs
+	for tv := range hm.NonNullVars(ft) {
+		if tv.IsRigid() || tv.IsWeak() {
+			continue
+		}
+		if subs == nil {
+			subs = hm.NewSubs()
+		}
+		subs.Add(tv, hm.Nullable(tv))
+	}
+	if subs == nil {
+		return t
+	}
+	return ft.Apply(subs).(*hm.FunctionType)
+}
+
+// freshenSubs maps each flexible variable in tvs to a new one of its name.
+// Weak variables, the unknown parts of a mutable binding's type, have one
+// identity everywhere.
+func freshenSubs(tvs hm.TypeVarSet) hm.Subs {
+	subs := hm.NewSubs()
+	for tv := range tvs {
+		if !tv.IsRigid() && !tv.IsWeak() {
+			subs.Add(tv, hm.Freshen(tv))
+		}
+	}
+	return subs
+}
+
+// autoCallInstantiated is autoCallFnType for a reference being inferred: an
+// auto-call is a call too, so its result comes from an instantiated callee.
+func autoCallInstantiated(t hm.Type) (hm.Type, bool, error) {
+	ret, called, err := autoCallFnType(t)
+	if err != nil || !called {
+		return ret, called, err
+	}
+	if ft, ok := t.(*hm.FunctionType); ok {
+		ft = instantiateCallee(ft)
+		if rec, ok := ft.Arg().(*RecordType); ok {
+			if subs := omittedParamSubs(rec, nil); subs != nil {
+				ft = ft.Apply(subs).(*hm.FunctionType)
+			}
+		}
+		return ft.Ret(false), true, nil
+	}
+	return ret, called, nil
 }
 
 // inferBlockArg performs bidirectional type inference for block arguments.
@@ -276,6 +401,42 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	}
 
 	return subs, nil
+}
+
+// omittedArgSubs makes nullable each flexible variable that types a
+// parameter the call leaves out.
+func (c *FunCall) omittedArgSubs(rec *RecordType, argMapping map[int]string) hm.Subs {
+	provided := map[string]bool{}
+	for i, arg := range c.Args {
+		provided[c.getArgumentKey(arg, argMapping, i)] = true
+	}
+	return omittedParamSubs(rec, provided)
+}
+
+// omittedParamSubs makes nullable each flexible variable that types a
+// parameter in rec not provided: the parameter is then null (or its default,
+// which fits any type the call picks). Without it, `id(v: a): a` called as
+// `id()` would hand null to any a the result is put to, Int! included.
+func omittedParamSubs(rec *RecordType, provided map[string]bool) hm.Subs {
+	var subs hm.Subs
+	for _, field := range rec.Fields {
+		if provided[field.Key] {
+			continue
+		}
+		t, ok := field.Value.Type()
+		if !ok {
+			continue
+		}
+		tv, ok := t.(hm.TypeVariable)
+		if !ok || tv.IsRigid() {
+			continue
+		}
+		if subs == nil {
+			subs = hm.NewSubs()
+		}
+		subs.Add(tv, hm.NullableTypeVariable{TypeVariable: hm.Freshen(tv)})
+	}
+	return subs
 }
 
 // getArgumentKey determines the argument key for positional or named arguments
@@ -565,8 +726,10 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 		paramName := field.Key
 		scheme := field.Value
 
-		// Skip if this argument was provided
-		if providedArgs[paramName] {
+		// Skip if this argument was provided, or has a default (which a
+		// non-null type pinned by the other arguments doesn't change:
+		// `y: a = x` isn't required once a := Int!)
+		if providedArgs[paramName] || rt.Defaulted[paramName] {
 			continue
 		}
 
@@ -636,11 +799,12 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 		t, _ := scheme.Type()
+		t = hm.ResolveWeak(t)
 		if s.AutoCall {
 			var err error
 			var called bool
 			before := t
-			t, called, err = autoCallFnType(t)
+			t, called, err = autoCallInstantiated(t)
 			if err != nil {
 				return nil, err
 			}
@@ -654,6 +818,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				return nil, err
 			}
 		}
+		t = fnValueType(t)
 		s.SetInferredType(t)
 		return t, nil
 	})
@@ -773,6 +938,15 @@ func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) erro
 }
 
 func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t, err := d.infer(ctx, env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	// A method taken as a value keeps its `a!` meaning (see fnValueType).
+	return fnValueType(t), nil
+}
+
+func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Every Select has a receiver: bare names are Symbols.
 		if d.Receiver == nil {
@@ -803,7 +977,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							}
 							if d.AutoCall {
 								var err error
-								t, _, err = autoCallFnType(t)
+								t, _, err = autoCallInstantiated(t)
 								if err != nil {
 									return nil, err
 								}
@@ -961,7 +1135,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			var err error
 			var called bool
 			before := t
-			t, called, err = autoCallFnType(t)
+			t, called, err = autoCallInstantiated(t)
 			if err != nil {
 				return nil, err
 			}
@@ -1203,13 +1377,10 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		// Extract element/value type from the receiver. Maps are indexed by
 		// String!, lists by Int!.
 		var elementType hm.Type
-		var isNullable bool
 
 		unwrapped := receiverType
 		if nonNull, ok := receiverType.(hm.NonNullType); ok {
 			unwrapped = nonNull.Type
-		} else {
-			isNullable = true
 		}
 
 		switch recv := unwrapped.(type) {
@@ -1238,30 +1409,16 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		// Apply auto-call if needed
 		if i.AutoCall {
 			var err error
-			elementType, _, err = autoCallFnType(elementType)
+			elementType, _, err = autoCallInstantiated(elementType)
 			if err != nil {
 				return nil, err
 			}
 		}
 
 		// Return nullable element type since indexing can fail (out of bounds)
-		// or if the original list was nullable
-		var resultType hm.Type
-		if isNullable {
-			// Remove NonNull wrapper if present, since nullable list means nullable result
-			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-				resultType = nonNullElem.Type
-			} else {
-				resultType = elementType
-			}
-		} else {
-			// Even for non-null lists, indexing can fail, so return nullable
-			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-				resultType = nonNullElem.Type
-			} else {
-				resultType = elementType
-			}
-		}
+		// or if the original list was nullable. A type variable element may
+		// stand for a non-null type, so it becomes its nullable form too.
+		resultType := hm.Nullable(elementType)
 		i.SetInferredType(resultType)
 		return resultType, nil
 	})
@@ -3597,21 +3754,42 @@ func (b *BlockArg) Walk(fn func(Node) bool) {
 // instantiateListMethod instantiates a list method's type by substituting
 // the type variable 'a' with the actual element type of the list.
 func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
+	// The method's other variables (e.g. reduce's accumulator `b`) get new
+	// identities first, so that the element type cannot capture them.
+	own := hm.NewTypeVarSet()
+	for _, param := range def.ParamTypes {
+		own = own.Union(param.Type.FreeTypeVar())
+	}
+	if def.ReturnType != nil {
+		own = own.Union(def.ReturnType.FreeTypeVar())
+	}
+	if def.BlockType != nil {
+		own = own.Union(def.BlockType.FreeTypeVar())
+	}
+	own.Remove('a')
+	rename := freshenSubs(own)
+	instantiate := func(t hm.Type) hm.Type {
+		if t == nil {
+			return nil
+		}
+		return substituteTypeVar(t.Apply(rename).(hm.Type), 'a', elemType)
+	}
+
 	// Build a record type for the method arguments, replacing TypeVar('a') with elemType
 	args := NewRecordType("")
 	for _, param := range def.ParamTypes {
-		paramType := substituteTypeVar(param.Type, 'a', elemType)
+		paramType := instantiate(param.Type)
 		args.Add(param.Name, hm.NewScheme(nil, paramType))
 	}
 
 	// Similarly, handle the return type
-	returnType := substituteTypeVar(def.ReturnType, 'a', elemType)
+	returnType := instantiate(def.ReturnType)
 
 	fnType := hm.NewFnType(args, returnType)
 
 	// Copy the block type if present, substituting type variables
 	if def.BlockType != nil {
-		blockType := substituteTypeVar(def.BlockType, 'a', elemType).(*hm.FunctionType)
+		blockType := instantiate(def.BlockType).(*hm.FunctionType)
 		fnType.SetBlock(blockType)
 	}
 

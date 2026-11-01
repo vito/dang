@@ -1030,12 +1030,7 @@ func (n *NonNullAssert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		// Strip the outer nullability. If the type is already non-null the
 		// assertion is a no-op and we keep the type as-is.
-		if nn, ok := t.(hm.NonNullType); ok {
-			n.SetInferredType(nn)
-			return nn, nil
-		}
-
-		result := hm.NonNullType{Type: t}
+		result := hm.NonNull(t)
 		n.SetInferredType(result)
 		return result, nil
 	})

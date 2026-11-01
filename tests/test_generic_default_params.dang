@@ -1,0 +1,42 @@
+# A `x: T! = default` parameter is nullable to callers but T! in the body,
+# in generic functions as in any other.
+generic(v: a, label: String! = "default"): String! {
+  let l: String! = label
+  l
+}
+
+assert { generic(1) == "default" }
+assert { generic("x", label: "given") == "given" }
+
+# the generic parameter itself still works
+echo(v: a, times: Int! = 1): a { v }
+
+assert { echo("s") == "s" }
+
+# a nullable defaulted parameter stays nullable
+maybeLabel(v: a, label: String = "default"): String { label }
+
+assert { maybeLabel(1) == "default" }
+
+# a default fitting every `a`, e.g. an earlier argument or an empty list
+both(x: a, y: a = x): [a]! { [x, y] }
+
+assert { both(1) == [1, 1] }
+assert { both(1, 2) == [1, 2] }
+
+orEmpty(xs: [a]! = []): [a]! { xs }
+
+assert { orEmpty == [] }
+assert { orEmpty([1]) == [1] }
+
+# an omitted argument is null
+id(v: a): a { v }
+
+assert { id == null }
+assert { id(1) == 1 }
+
+# so null is a default for a bare `a`
+opt(v: a = null): a { v }
+
+assert { opt == null }
+assert { opt(1) == 1 }

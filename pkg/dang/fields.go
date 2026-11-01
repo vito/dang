@@ -22,6 +22,18 @@ type FieldDecl struct {
 
 	// A type inferred from context, i.e. a lambda passed as a function argument.
 	ContextInferredType hm.Type
+
+	// defaultType is the inferred type of Value, when the field has both a
+	// type and a value: for a function's parameter, its default's type.
+	defaultType hm.Type
+
+	// weakVars maps the type variables of a binding's type to their weak
+	// counterparts, whose cells weakCells keeps alive (see weaken).
+	weakVars  hm.Subs
+	weakCells []*hm.WeakCell
+	// declaredType is the (weakened) type a declaration pass gave a field
+	// without an annotation, which Infer keeps.
+	declaredType hm.Type
 }
 
 var _ Node = (*FieldDecl)(nil)
@@ -133,7 +145,123 @@ func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	return nil
 }
 
+// weaken makes the flexible type variables of a binding's type weak: a
+// binding can be written, so its type is one type, which its uses pin down
+// (see hm.NewWeakVar), not a type for each use. `let xs = []; xs += [1];
+// xs += ["s"]` is then an error, as is reading `xs` as a `[String!]!` after
+// the first write. The same variable is weakened the same way each time,
+// so hoisting and inference agree. A function declared here isn't a binding
+// in this sense (its variables are its generic parameters), but a function
+// value held in one is: `let g = &id` holds one instantiation of id, since
+// `g = &intOnly` could replace it.
+func (s *FieldDecl) weaken(ctx context.Context, t hm.Type) hm.Type {
+	if t == nil || s.funDecl() != nil {
+		return t
+	}
+	if _, isFn := s.Value.(*FunDecl); isFn {
+		return t
+	}
+	if s.weakVars == nil {
+		s.weakVars = hm.NewSubs()
+	}
+	t = weakenVars(ctx, t, s.weakVars, &s.weakCells)
+	// Weak variables of other bindings, now part of this one's type, live
+	// as long as it does too.
+	s.weakCells = append(s.weakCells, hm.WeakCells(t)...)
+	return t
+}
+
+// weakenVars makes t's flexible variables weak, reusing (and adding to) the
+// ones vars already maps them to, and appends the new ones' cells to cells.
+// The weak variables may hold the enclosing generic functions' own
+// variables, but no other function's.
+func weakenVars(ctx context.Context, t hm.Type, vars hm.Subs, cells *[]*hm.WeakCell) hm.Type {
+	var scope hm.TypeVarSet
+	for _, r := range scopedTypeVars(ctx) {
+		if rv, ok := r.(hm.TypeVariable); ok {
+			if scope == nil {
+				scope = hm.NewTypeVarSet()
+			}
+			scope.Add(rv)
+		}
+	}
+	for tv := range t.FreeTypeVar() {
+		if tv.IsRigid() || tv.IsWeak() {
+			continue
+		}
+		if _, ok := vars[tv]; ok {
+			continue
+		}
+		w, cell := hm.NewWeakVar(tv, scope)
+		vars[tv] = w
+		*cells = append(*cells, cell)
+	}
+	if len(vars) == 0 {
+		return t
+	}
+	return t.Apply(vars).(hm.Type)
+}
+
+type paramDeclKey struct{}
+
+// withParamDecl marks ctx as inferring a parameter's declaration (or not):
+// parameters' type variables are their function's generic ones, never weak.
+func withParamDecl(ctx context.Context, param bool) context.Context {
+	if inParamDecl(ctx) == param {
+		return ctx
+	}
+	return context.WithValue(ctx, paramDeclKey{}, param)
+}
+
+func inParamDecl(ctx context.Context) bool {
+	p, _ := ctx.Value(paramDeclKey{}).(bool)
+	return p
+}
+
+// isInterfaceField reports whether fields declared in env are an
+// interface's.
+func isInterfaceField(env hm.Env) bool {
+	frame, ok := envFrame(env).(*Type)
+	return ok && frame.Kind == InterfaceKind
+}
+
 func (s *FieldDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
+	t, err := s.unweakenedSignatureType(withParamDecl(ctx, false), env, fresh, allowComputed)
+	if err != nil || t == nil || inParamDecl(ctx) || isInterfaceField(env) {
+		return t, err
+	}
+	t = s.weaken(ctx, t)
+	if s.Type_ == nil {
+		// Inferring the value again would give its unknown parts new
+		// variables: Infer reuses these instead (see declaredType).
+		s.declaredType = t
+	}
+	keepWeakCells(env, s)
+	return t, nil
+}
+
+// keepWeakCells keeps s's weak cells alive as long as the frame binding it,
+// whose types mention them: the syntax may be dropped first, as a REPL
+// entry's is.
+func keepWeakCells(env hm.Env, s *FieldDecl) {
+	frame, ok := envFrame(env).(*Type)
+	if !ok {
+		return
+	}
+	frame.keepWeakCells(s)
+}
+
+func (frame *Type) keepWeakCells(s *FieldDecl) {
+	if len(s.weakCells) == 0 {
+		return
+	}
+	if frame.weakDecls == nil {
+		frame.weakDecls = map[*FieldDecl]struct{}{}
+	}
+	frame.weakDecls[s] = struct{}{}
+}
+
+func (s *FieldDecl) unweakenedSignatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	if s.Type_ != nil {
 		fieldType, err := s.Type_.Infer(ctx, env, fresh)
 		if err != nil {
@@ -235,11 +363,20 @@ func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.F
 func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
 
+	// A parameter's variables are its function's generic ones, and an
+	// interface's field is a contract each implementation meets in its own
+	// type: neither is a binding that holds one type.
+	isParam := inParamDecl(ctx) || isInterfaceField(env)
+	ctx = withParamDecl(ctx, false)
+
 	var definedType hm.Type
 	if s.Type_ != nil {
 		definedType, err = s.Type_.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
+		}
+		if !isParam {
+			definedType = s.weaken(ctx, definedType)
 		}
 	}
 
@@ -264,14 +401,35 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
+			s.defaultType = inferredType
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
+		} else if !isParam && s.declaredType != nil {
+			// Declared (hoisted) from an earlier inference of the value:
+			// keep that type, whose unknown parts others may already use.
+			if _, err := assignableForValue(inferredType, s.declaredType, s.Value); err != nil {
+				return nil, NewInferError(err, s.Value)
+			}
+			definedType = s.declaredType
 		} else {
 			definedType = inferredType
+			if !isParam {
+				definedType = s.weaken(ctx, definedType)
+			}
 		}
 	}
 
 	if definedType == nil {
-		definedType = fresh.Fresh()
+		if !isParam && s.declaredType != nil {
+			definedType = s.declaredType
+		} else {
+			definedType = fresh.Fresh()
+			if !isParam {
+				definedType = s.weaken(ctx, definedType)
+			}
+		}
+	}
+	if !isParam {
+		keepWeakCells(env, s)
 	}
 	// A function field's annotation is built fresh: give it the function's
 	// effect and its parameters' effect variables (see effects.go).
@@ -287,7 +445,9 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 				return nil, fmt.Errorf("FieldDecl.Infer: TODO: type is not monomorphic")
 			}
 
-			if !definedType.Eq(curT) {
+			// A REPL entry may redefine a binding as it was, e.g. `let xs =
+			// []` again, though with variables of its own.
+			if !hm.EqIgnoringIDs(definedType, curT) {
 				return nil, WrapInferError(
 					fmt.Errorf("FieldDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
 					s,
@@ -1073,6 +1233,11 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
+		// A type isn't generic, so neither is its constructor: the implicit
+		// one's parameters are the type's fields, with the fields' types,
+		// and an explicit new()'s have one type each too, which a field
+		// they're stored in shares.
+		paramsAreFields: true,
 	}
 	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 	argEnv := env.Clone()
@@ -1080,9 +1245,15 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 	if err != nil {
 		return nil, fmt.Errorf("%s Constructor.Declare: %w", objectType.Named, err)
 	}
+	// The constructor's type outlives argEnv: its parameters' weak
+	// variables live as long as the type.
+	for _, p := range params {
+		objectType.keepWeakCells(p)
+	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(params)
 
 	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: objectType})
 	if blockParam != nil {
@@ -1528,7 +1699,7 @@ func (s *ScalarDecl) inferScalarNew(ctx context.Context, newDecl *NewConstructor
 	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
 	newEnv := env.Clone().(*OverlayTypeScope)
 	arg := newDecl.Args[0]
-	argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+	argType, err := arg.Infer(withParamDecl(constructorCtx, true), newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 	}
@@ -1935,6 +2106,10 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 
+		if err := i.checkFieldsConcrete(iface.(*Type)); err != nil {
+			return nil, err
+		}
+
 		i.Inferred = iface.(*Type)
 		i.SetInferredType(iface)
 
@@ -1956,6 +2131,56 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		return iface, nil
 	})
+}
+
+// checkFieldsConcrete rejects an interface field whose type has a type
+// variable, like `items: [a]!`. Each implementation would pick its own
+// type for it, so a reader through the interface couldn't know which, and
+// the variable would unify with anything it is used as: `let s:
+// [String!]! = c.items` on an implementation holding Ints. (Methods are
+// fine: their variables are generic parameters, picked per call.)
+func (i *InterfaceDecl) checkFieldsConcrete(iface *Type) error {
+	errs := &InferenceErrors{}
+	for _, form := range i.Value.Forms {
+		field, ok := form.(*FieldDecl)
+		if !ok {
+			continue
+		}
+		scheme, found := iface.LocalSchemeOf(field.Name.Name)
+		if !found {
+			continue
+		}
+		t, _ := scheme.Type()
+		if fn := fnTypeOf(t); fn != nil {
+			// A zero-arity member is read like a field; one taking
+			// arguments is a method, generic per call.
+			rec, _ := fn.Arg().(*RecordType)
+			if fn.Block() != nil || rec == nil || len(rec.Fields) > 0 {
+				continue
+			}
+			t = fn.Ret(false)
+		}
+		var vars []string
+		for tv := range t.FreeTypeVar() {
+			vars = append(vars, tv.String())
+		}
+		if len(vars) == 0 {
+			continue
+		}
+		sort.Strings(vars)
+		errs.Add(NewInferError(
+			fmt.Errorf("interface field `%s` can't have a type variable (%s) in its type %s: each implementation would pick its own, so code reading it through %s couldn't know which; use a concrete type",
+				field.Name.Name, strings.Join(vars, ", "), t, i.Name.Name),
+			field,
+		))
+	}
+	if errs.HasErrors() {
+		if len(errs.Errors) == 1 {
+			return errs.Errors[0]
+		}
+		return errs
+	}
+	return nil
 }
 
 // validateInterfaceExtension checks that a child interface satisfies every

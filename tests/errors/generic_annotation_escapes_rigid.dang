@@ -1,0 +1,9 @@
+# Inside a generic function, an `a` written in an annotation is the
+# function's own `a`, not a new variable free to unify with anything: `r + 1`
+# would add 1 to whatever the caller passed.
+bad(v: a): Int! {
+  let r: a = v
+  r + 1
+}
+
+print(toString(bad("s")))

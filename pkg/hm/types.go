@@ -2,7 +2,9 @@ package hm
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Type represents all possible type constructors with nullability support
@@ -34,53 +36,153 @@ type Substitutable interface {
 	FreeTypeVar() TypeVarSet
 }
 
-// TypeVariable represents a type variable
-type TypeVariable rune
+// TypeVariable represents a type variable. Its low bits are its name, as
+// written (the `a` of `id(x: a): a`) or numbered by a fresher (see FreshVar);
+// its high bits are an id that tells apart variables sharing a name. An
+// author-written variable has none, while every variable a fresher mints, and
+// every copy Freshen makes, gets a new one, unique in the process: so no two
+// fresh variables are ever the same, however many freshers minted them, and
+// none is ever an author's.
+type TypeVariable int64
 
-// rigidBase offsets rigid (skolem) type variables into the Unicode Private Use
-// Area so they never collide with the fresh flexible variables minted from
-// 'a'..'z' and the Greek letters. A rigid variable stands for an
-// author-written, universally-quantified type parameter (e.g. the `b` in
-// `do(&yield: b): b`). Unlike a flexible variable, it must NOT unify with a
-// concrete type while checking the body it was declared in — that is what makes
-// `yield * 2` a definition-time error rather than a runtime surprise.
-const rigidBase = 0xE000
+const (
+	nameBits = 24
+	nameMask = 1<<nameBits - 1
 
-// Rigid mints the rigid (skolem) counterpart of an author-written type-variable
-// letter such as 'b'.
-func Rigid(letter rune) TypeVariable { return TypeVariable(rigidBase + letter) }
+	// rigidBit marks rigid (skolem) type variables, keeping them apart from
+	// every flexible variable. A rigid variable stands for an author-written,
+	// universally-quantified type parameter (e.g. the `b` in `do(&yield: b):
+	// b`). Unlike a flexible variable, it must NOT unify with a concrete type
+	// while checking the body it was declared in — that is what makes `yield
+	// * 2` a definition-time error rather than a runtime surprise.
+	rigidBit = 1 << 62
+)
 
-// rigidSpan bounds the rigid range within the Private Use Area. It is wide
-// enough to cover every flexible variable letter (ASCII 'a'..'z' and the Greek
-// letters near U+03B1) once offset by rigidBase, while staying inside the PUA.
-const rigidSpan = 0x1000
+// lastID is the id of the last fresh variable minted.
+var lastID atomic.Int64
+
+// Freshen returns a new flexible variable named like tv.
+func Freshen(tv TypeVariable) TypeVariable {
+	return tv&nameMask | TypeVariable(lastID.Add(1)<<nameBits)
+}
+
+// Rigid returns the rigid (skolem) counterpart of a flexible type variable.
+func Rigid(tv TypeVariable) TypeVariable { return tv | rigidBit }
+
+// EqIgnoringIDs reports whether a and b are equal up to a consistent renaming
+// of their flexible type variables: `{x: [b]!}` matches `{x: [a]!}`, but
+// `{x: [a]!, y: [a]!}` does not match `{x: [a]!, y: [b]!}`. It is for
+// comparing shapes that separate inferences produced, each with variables of
+// its own, such as two `{{xs: []}}`s, or a `{{x: []}}` and a parameter
+// written `{{x: [a]!}}`. Rigid variables are compared as they are.
+func EqIgnoringIDs(a, b Type) bool {
+	if a.Eq(b) {
+		return true
+	}
+	return canonical(a).Eq(canonical(b))
+}
+
+// canonicalBase offsets the names canonical gives variables past any written
+// letter; with id 0, none of them is a fresh variable either. Only canonical
+// types, compared and dropped, ever hold them.
+const canonicalBase = 0x800000
+
+// canonical renames t's flexible variables after the order they first occur
+// in it, walking its components in order (record fields by key).
+func canonical(t Type) Type {
+	var subs Subs
+	var walk func(Type)
+	visit := func(tv TypeVariable) {
+		if tv.IsRigid() {
+			return
+		}
+		if _, seen := subs[tv]; seen {
+			return
+		}
+		if subs == nil {
+			subs = NewSubs()
+		}
+		subs.Add(tv, TypeVariable(canonicalBase+len(subs)))
+	}
+	walk = func(t Type) {
+		switch v := t.(type) {
+		case TypeVariable:
+			visit(v)
+		case NullableTypeVariable:
+			visit(v.TypeVariable)
+		case *UnionType:
+			// A union lists no components in Types.
+			for _, o := range v.Options {
+				walk(o)
+			}
+		default:
+			for _, c := range t.Types() {
+				walk(c)
+			}
+		}
+	}
+	walk(t)
+	if len(subs) == 0 {
+		return t
+	}
+	return t.Apply(subs).(Type)
+}
 
 // IsRigid reports whether tv is a rigid (skolem) type variable.
 func (tv TypeVariable) IsRigid() bool {
-	return tv >= rigidBase && tv < rigidBase+rigidSpan
+	return tv&rigidBit != 0
 }
 
-// letter returns the original letter a rigid variable was minted from, or the
-// variable itself when it is already flexible.
-func (tv TypeVariable) letter() rune {
-	if tv.IsRigid() {
-		return rune(tv) - rigidBase
+// IsWritten reports whether tv is a flexible variable as an author writes
+// it, with no id: not one a fresher minted or Freshen copied.
+func (tv TypeVariable) IsWritten() bool {
+	return tv >= 0 && tv>>nameBits == 0 && tv < freshBase
+}
+
+// freshBase offsets the names of the fresh variables minted past 'z' beyond
+// Unicode, where they can repeat neither a letter nor each other.
+const freshBase = 0x110000
+
+// FreshVar returns a new variable named after the nth fresh one: 'a'..'z'
+// first, then a1..z1, a2..z2 and so on.
+func FreshVar(n int) TypeVariable {
+	name := TypeVariable(freshBase + n)
+	if n < len(letters) {
+		name = TypeVariable(letters[n])
 	}
-	return rune(tv)
+	return Freshen(name & nameMask)
+}
+
+const letters = "abcdefghijklmnopqrstuvwxyz"
+
+// name renders the variable as it was written or numbered (see FreshVar).
+func (tv TypeVariable) name() string {
+	n := int(tv & nameMask)
+	if n >= freshBase {
+		n -= freshBase
+		return string(letters[n%len(letters)]) + strconv.Itoa(n/len(letters))
+	}
+	return string(rune(n))
 }
 
 func (tv TypeVariable) Name() string {
-	return string(tv.letter())
+	return tv.String()
 }
 
 func (tv TypeVariable) Apply(subs Subs) Substitutable {
 	if t, exists := subs[tv]; exists {
 		return t
 	}
+	if b, ok := tv.weakBinding(); ok {
+		return b.Apply(subs)
+	}
 	return tv
 }
 
 func (tv TypeVariable) FreeTypeVar() TypeVarSet {
+	if b, ok := tv.weakBinding(); ok {
+		return b.FreeTypeVar()
+	}
 	return NewTypeVarSet(tv)
 }
 
@@ -93,7 +195,10 @@ func (tv TypeVariable) Types() Types {
 }
 
 func (tv TypeVariable) Eq(other Type) bool {
-	if ot, ok := other.(TypeVariable); ok {
+	if b, ok := tv.weakBinding(); ok {
+		return b.Eq(other)
+	}
+	if ot, ok := prune(other).(TypeVariable); ok {
 		return tv == ot
 	}
 	return false
@@ -104,11 +209,18 @@ func (tv TypeVariable) Supertypes() []Type {
 }
 
 func (tv TypeVariable) String() string {
-	return string(tv.letter())
+	if b, ok := tv.weakBinding(); ok {
+		return b.String()
+	}
+	if tv.IsWeak() {
+		// Like OCaml's '_weak: not a generic type, one not known yet.
+		return "_" + tv.name()
+	}
+	return tv.name()
 }
 
 func (tv TypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s", string(tv.letter()))
+	_, _ = fmt.Fprintf(s, "%s", tv.String())
 }
 
 // NullableTypeVariable is a type variable that carries a nullability taint.
@@ -130,7 +242,63 @@ func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
 	if t, exists := subs[ntv.TypeVariable]; exists {
 		return makeNullable(t)
 	}
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return makeNullable(b.Apply(subs).(Type))
+	}
 	return ntv
+}
+
+// Nullable returns the nullable form of t: T for T!, a? for a variable a, and
+// t itself when it is already nullable.
+func Nullable(t Type) Type { return makeNullable(t) }
+
+// NonNullVars returns the variables t writes non-null, as `a!`. Such a
+// variable stands only for nullable types: `a!` is its non-null form, and
+// `a` itself may be null (a list of `a!` indexed out of bounds, say).
+func NonNullVars(t Type) TypeVarSet {
+	set := TypeVarSet{}
+	var walk func(Type)
+	walk = func(t Type) {
+		switch v := t.(type) {
+		case NonNullType:
+			if tv, ok := v.Type.(TypeVariable); ok {
+				set.Add(tv)
+				return
+			}
+			walk(v.Type)
+		case *FunctionType:
+			walk(v.arg)
+			walk(v.ret)
+			if v.block != nil {
+				walk(v.block)
+			}
+		case *UnionType:
+			for _, o := range v.Options {
+				walk(o)
+			}
+		default:
+			for _, c := range t.Types() {
+				if c != nil {
+					walk(c)
+				}
+			}
+		}
+	}
+	walk(t)
+	return set
+}
+
+// NonNull returns the non-null form of t: T! for T, a! for a variable a or
+// its nullable form a?, and t itself when it is already non-null.
+func NonNull(t Type) Type {
+	switch tt := prune(t).(type) {
+	case NonNullType:
+		return tt
+	case NullableTypeVariable:
+		return NonNullType{Type: tt.TypeVariable}
+	default:
+		return NonNullType{Type: tt}
+	}
 }
 
 func makeNullable(t Type) Type {
@@ -147,18 +315,31 @@ func makeNullable(t Type) Type {
 }
 
 func (ntv NullableTypeVariable) Eq(other Type) bool {
-	if ot, ok := other.(NullableTypeVariable); ok {
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return makeNullable(b).Eq(other)
+	}
+	if ot, ok := prune(other).(NullableTypeVariable); ok {
 		return ntv.TypeVariable == ot.TypeVariable
 	}
 	return false
 }
 
+func (ntv NullableTypeVariable) FreeTypeVar() TypeVarSet {
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return b.FreeTypeVar()
+	}
+	return NewTypeVarSet(ntv.TypeVariable)
+}
+
 func (ntv NullableTypeVariable) String() string {
-	return string(ntv.TypeVariable) + "?"
+	if b, ok := ntv.TypeVariable.weakBinding(); ok {
+		return makeNullable(b).String()
+	}
+	return ntv.TypeVariable.String() + "?"
 }
 
 func (ntv NullableTypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s?", string(ntv.TypeVariable))
+	_, _ = fmt.Fprint(s, ntv.String())
 }
 
 // Effect is an opaque annotation on a function type describing what calling
@@ -492,7 +673,9 @@ func (t NonNullType) Name() string {
 
 func (t NonNullType) Apply(subs Subs) Substitutable {
 	applied := t.Type.Apply(subs).(Type)
-	return NonNullType{applied}
+	// A variable may stand for a non-null type (a bound weak one, say),
+	// or for a? : T!! is T!, and a?! is a!.
+	return NonNull(applied)
 }
 
 func (t NonNullType) FreeTypeVar() TypeVarSet {

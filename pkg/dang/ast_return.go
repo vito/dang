@@ -143,6 +143,18 @@ func returnValueType(ret *Return) hm.Type {
 	return nil
 }
 
+// returnMismatch reports a returned type that doesn't fit the declared one,
+// keeping the cause when it is a generic type escaping into a binding, or a
+// possibly-null value for a generic one (which says how to fix it).
+func returnMismatch(declared, inferred hm.Type, cause error) error {
+	var escape hm.EscapeError
+	var nullable *nullableRigidError
+	if errors.As(cause, &escape) || errors.As(cause, &nullable) {
+		return fmt.Errorf("return type mismatch: declared %s, inferred %s: %w", declared, inferred, cause)
+	}
+	return fmt.Errorf("return type mismatch: declared %s, inferred %s", declared, inferred)
+}
+
 func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType hm.Type, target *InferControlTarget) (hm.Type, error) {
 	returns := collectReturnStatements(body, target)
 
@@ -150,10 +162,7 @@ func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType h
 		subs, err := assignableForValue(bodyType, declaredType, body)
 		if err != nil {
 			return nil, NewInferError(
-				withUnionProvenance(
-					fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, bodyType),
-					bodyType,
-				),
+				withUnionProvenance(returnMismatch(declaredType, bodyType, err), bodyType),
 				body,
 			)
 		}
@@ -169,10 +178,7 @@ func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType h
 			retSubs, err := assignableForValue(retType, declaredType, ret.Value)
 			if err != nil {
 				return nil, NewInferError(
-					withUnionProvenance(
-						fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, retType),
-						retType,
-					),
+					withUnionProvenance(returnMismatch(declaredType, retType, err), retType),
 					ret.Value,
 				)
 			}

@@ -1,0 +1,8 @@
+# A nested function's `a` is the enclosing generic function's `a`: `inner`
+# returns `v`, so `inner(1)` is no Int!.
+outer(v: a): Int! {
+  inner(w: a): a { v }
+  inner(1)
+}
+
+print(toString(outer("s") + 1))

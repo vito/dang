@@ -29,6 +29,10 @@ type FunctionBase struct {
 	// EffectName names the function in effect diagnostics.
 	EffectName string
 	effects    *fnEffects
+
+	// paramsAreFields marks a constructor, whose parameters have one type
+	// each (a field's, for the implicit one), not a generic function's.
+	paramsAreFields bool
 }
 
 // fnEffects holds a function's effect and the effect variables of its
@@ -101,8 +105,9 @@ func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.En
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
 	docStrings := make(map[string]string)
+	paramCtx := withParamDecl(ctx, !f.paramsAreFields)
 	for _, arg := range f.Args {
-		finalArgType, err := inferArg(arg, ctx, env, fresh)
+		finalArgType, err := inferArg(arg, paramCtx, env, fresh)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -168,6 +173,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(f.Args)
 
 	var blockType *hm.FunctionType
 	if f.BlockParam != nil {
@@ -248,18 +254,51 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 			continue
 		}
 		for tv := range t.FreeTypeVar() {
-			if tv.IsRigid() {
+			if tv.IsRigid() || tv.IsWeak() {
 				continue
 			}
 			if _, seen := skolem.Get(tv); seen {
 				continue
 			}
-			r := hm.Rigid(rune(tv))
+			r := hm.Rigid(tv)
 			skolem.Add(tv, r)
 			unskolem.Add(r, tv)
 		}
 	}
 	return skolem, unskolem
+}
+
+// checkGenericDefault checks the default of the parameter named name, if it
+// has one, against its type in the body, rigid: a caller who leaves the
+// argument out still picks the function's type variables (from the other
+// arguments, or from where the result goes), so the default must be a value
+// of every type they might pick. `v: a = 1` would make `let s: String! = f`
+// a String! holding 1. The default's own type is made rigid the same way:
+// it may mention earlier parameters' types, which are the same variables.
+func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type, skolem hm.Subs) error {
+	for _, p := range params {
+		if p.Name.Name != name || p.defaultType == nil {
+			continue
+		}
+		if len(rigid.FreeTypeVar()) == 0 {
+			return nil
+		}
+		want := rigid
+		if tv, ok := rigid.(hm.TypeVariable); ok {
+			// Leaving out a parameter typed by a bare variable makes the
+			// variable nullable for that call (see omittedParamSubs), so a
+			// null default fits.
+			want = hm.Nullable(tv)
+		}
+		have := p.defaultType.Apply(skolem).(hm.Type)
+		if _, err := assignableForValue(have, want, p.Value); err != nil {
+			return NewInferError(
+				fmt.Errorf("default %s doesn't fit every type the caller may pick for %s: %w", p.defaultType, rigid, err),
+				p.Value,
+			)
+		}
+	}
+	return nil
 }
 
 // inferFunctionType provides shared type inference logic for functions
@@ -291,6 +330,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(f.Args)
 
 	// Process block parameter if present
 	var blockType *hm.FunctionType
@@ -342,9 +382,20 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	skolem, unskolem := skolemSubs(sigTypes...)
 	if len(skolem) > 0 {
+		// Rebind each argument from its body binding, not its signature type:
+		// a defaulted `x: T! = d` is nullable in the signature (callers may
+		// omit it or pass null) but T! in the body.
 		for _, arg := range args {
-			if t, ok := arg.Value.Type(); ok {
-				newEnv.Add(arg.Key, hm.NewScheme(nil, t.Apply(skolem).(hm.Type)))
+			scheme, found := f.InferredScope.LocalSchemeOf(arg.Key)
+			if !found {
+				scheme = arg.Value
+			}
+			if t, ok := scheme.Type(); ok {
+				rigid := t.Apply(skolem).(hm.Type)
+				newEnv.Add(arg.Key, hm.NewScheme(nil, rigid))
+				if err := checkGenericDefault(f.Args, arg.Key, rigid, skolem); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if blockType != nil {
@@ -353,6 +404,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		if definedRet != nil {
 			definedRet = definedRet.Apply(skolem).(hm.Type)
 		}
+		effCtx = withScopedTypeVars(effCtx, skolem)
 	}
 
 	// Infer return type from function body. A fresh return target lets

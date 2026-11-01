@@ -1,0 +1,11 @@
+[1m[31mError:[0m default a doesn't fit every type the caller may pick for b: cannot use a as b?
+  [2m[34m--> errors/generic_default_earlier_param.dang:3:16[0m
+ [2m    |[0m
+ [2m  1 | # A default naming an earlier parameter must still fit every type: `x` is an[0m
+ [2m  2 | # `a`, which needn't be the `b` the caller picks for `y`.[0m
+ [2m[34m[1m  3 | [0mf(x: a, y: b = x): b { y }
+[2m                      [31m^[0m
+ [2m  4 | [0m
+ [2m  5 | let s: String = f(1)[0m
+ [2m    |[0m
+

@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use a? as Int!
+  [2m[34m--> errors/generic_nonnull_var_result.dang:5:15[0m
+ [2m    |[0m
+ [2m  3 | firstOfNonNull(xs: [a!]!): a { xs[0] }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet n: Int! = firstOfNonNull([])
+[2m                     [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

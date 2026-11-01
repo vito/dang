@@ -291,6 +291,9 @@ type RecordType struct {
 	Fields     []Keyed[*hm.Scheme]
 	Directives []Keyed[[]*DirectiveApplication]
 	DocStrings map[string]string // Maps field names to their doc strings
+	// Defaulted names the fields, as a function's parameters, that have a
+	// default value.
+	Defaulted map[string]bool
 }
 
 var _ hm.Type = (*RecordType)(nil)
@@ -301,6 +304,20 @@ func NewRecordType(name string, fields ...Keyed[*hm.Scheme]) *RecordType {
 		Named:  name,
 		Fields: fields,
 	}
+}
+
+// defaultedParams names the parameters among args that have a default.
+func defaultedParams(args []*FieldDecl) map[string]bool {
+	var out map[string]bool
+	for _, a := range args {
+		if a.Value != nil {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[a.Name.Name] = true
+		}
+	}
+	return out
 }
 
 var _ hm.Env = (*RecordType)(nil)
@@ -323,6 +340,7 @@ func (t *RecordType) Clone() hm.Env {
 	}
 	retVal.Fields = ts
 	retVal.Directives = t.Directives
+	retVal.Defaulted = t.Defaulted
 	// Clone doc strings map
 	if t.DocStrings != nil {
 		retVal.DocStrings = make(map[string]string, len(t.DocStrings))
@@ -354,6 +372,7 @@ func (t *RecordType) Apply(subs hm.Subs) hm.Substitutable {
 	dup := NewRecordType(t.Named, fields...)
 	dup.Directives = t.Directives
 	dup.DocStrings = t.DocStrings
+	dup.Defaulted = t.Defaulted
 	return dup
 }
 
@@ -494,7 +513,40 @@ func (t VariableTypeNode) ReferencedSymbols() []string {
 }
 
 func (t VariableTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return hm.TypeVariable(t.Name), nil
+	tv := hm.TypeVariable(t.Name)
+	if scoped, ok := scopedTypeVars(ctx)[tv]; ok {
+		return scoped, nil
+	}
+	return tv, nil
+}
+
+type scopedTypeVarsKey struct{}
+
+// withScopedTypeVars brings a generic function's own type variables into
+// scope for its body, as the rigid variables skolem maps them to: there, an
+// `a` written in an annotation (`let r: a = v`, `v :: a`, a nested function's
+// signature) is the function's `a`, which stands for whatever type the caller
+// picks, not a new variable free to unify with anything.
+func withScopedTypeVars(ctx context.Context, skolem hm.Subs) context.Context {
+	outer := scopedTypeVars(ctx)
+	scoped := make(hm.Subs, len(outer)+len(skolem))
+	for tv, t := range outer {
+		scoped[tv] = t
+	}
+	for tv, t := range skolem {
+		// Only written variables can be written again; fresh ones (from an
+		// inferred default, say) have no name to write.
+		if !tv.IsWritten() {
+			continue
+		}
+		scoped[tv] = t
+	}
+	return context.WithValue(ctx, scopedTypeVarsKey{}, scoped)
+}
+
+func scopedTypeVars(ctx context.Context) hm.Subs {
+	s, _ := ctx.Value(scopedTypeVarsKey{}).(hm.Subs)
+	return s
 }
 
 type ObjectTypeField struct {
@@ -613,6 +665,7 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	argsRec := NewRecordType("", regularArgs...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
+	argsRec.Defaulted = defaultedParams(t.Args)
 
 	// Create function type with optional block parameter
 	fnType := hm.NewFnType(argsRec, ret)
