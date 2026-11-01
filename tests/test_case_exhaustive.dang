@@ -1,0 +1,75 @@
+# A case whose clauses match every possible value of the operand is
+# exhaustive: its result needs no else and isn't nullable.
+
+import Test
+
+enum Color {
+  RED
+  GREEN
+}
+
+let c: Color! = Color.GREEN
+
+# Every value of the enum, by member...
+let byMember: Int! = case (c) {
+  Color.RED => 1
+  Color.GREEN => 2
+}
+
+# ...by string literal...
+let byLiteral: Int! = case (c) {
+  "RED" => 1
+  "GREEN" => 2
+}
+
+# ...or by an imported enum's bare values.
+let dir: SortDirection! = SortDirection.DESC
+
+let byBareName: String! = case (dir) {
+  ASC => "up"
+  DESC => "down"
+}
+
+# Both Booleans.
+let flag = false
+
+let byBoolean: String! = case (flag) {
+  true => "yes"
+  false => "no"
+}
+
+# A nullable operand also needs a null pattern.
+let maybe: Color = null
+
+let withNull: Int! = case (maybe) {
+  Color.RED => 1
+  Color.GREEN => 2
+  null => 0
+}
+
+# Type patterns covering every member of a union, with null for a nullable
+# operand.
+type Dog {
+  name: String!
+}
+
+type Cat {
+  name: String!
+}
+
+union Pet = Dog | Cat
+
+let pet: Pet = null
+
+let petName: String! = case (pet) {
+  d: Dog => d.name
+  k: Cat => k.name
+  null => "none"
+}
+
+assert { byMember == 2 }
+assert { byLiteral == 2 }
+assert { byBareName == "down" }
+assert { byBoolean == "no" }
+assert { withNull == 0 }
+assert { petName == "none" }

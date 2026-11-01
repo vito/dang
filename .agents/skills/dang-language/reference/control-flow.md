@@ -25,7 +25,7 @@ case (value) {
 ```
 - Clauses tried top-to-bottom; first match wins. Duplicate **value** clauses are legal (first wins), but provably-dead clauses are **compile errors**: any clause after an `else` (`unreachable clause: follows the else catch-all on line N`), a duplicate type pattern, or a type pattern covered by an earlier interface pattern (`unreachable clause: X is already matched by the Y clause on line N`). A trailing `else` after type patterns stays legal — a nullable operand falls through every type pattern.
 - Clause bodies merge to a common type when they can; diverging bodies widen to a union, like `if` branches.
-- If nothing matches and there's no `else`, the case is `null` — its result type is **nullable**. An `else` keeps it non-null, as do type patterns covering every member of a non-null union (**exhaustive**). An interface operand is exhaustive only via an interface catch-all pattern (its implementer set is open); a nullable operand is never exhaustive (`null` matches no type pattern).
+- If nothing matches and there's no `else`, the case is `null` — its result type is **nullable**. An `else` keeps it non-null, as do type patterns covering every member of a union (**exhaustive**), value patterns naming every member of an enum (`Color.RED`, an imported bare `RED`, or `"RED"`), or `true` and `false` for a `Boolean`. An interface operand is exhaustive only via an interface catch-all pattern (its implementer set is open); a nullable operand is exhaustive only with a `null` pattern as well.
 
 ### Value patterns
 - Literal scalars: ints `1`, floats `3.14`, strings `"foo"`, booleans, `null`, enum values.

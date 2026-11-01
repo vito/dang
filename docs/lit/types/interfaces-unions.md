@@ -105,7 +105,7 @@ case (pet) {
 }
 ```
 
-- covering every member is exhaustive: no `else` needed, and the result stays non-null
+- covering every member is exhaustive: no `else` needed, and the result stays non-null (a nullable operand also needs a `null =>` pattern)
 - a `case` missing some members still type-checks, but a value that matches no arm yields `null`, so the case's type is nullable
 - add `else => ...` as a catch-all to cover unmatched members and keep the result non-null
 - GraphQL union values match their concrete type, the same way as interface values (see above), at the cost of the same one small query

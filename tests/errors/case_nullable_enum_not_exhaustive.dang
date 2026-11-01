@@ -1,0 +1,14 @@
+# A nullable operand can be null, which no value of the enum matches: an
+# exhaustive case also needs a `null` pattern (or else).
+
+enum Color {
+  RED
+  GREEN
+}
+
+let maybe: Color = null
+
+let n: Int! = case (maybe) {
+  Color.RED => 1
+  Color.GREEN => 2
+}

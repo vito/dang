@@ -199,6 +199,24 @@ nullable fallthrough applies — `pet` is a `Cat`, so this is `null`:
 case (pet) { d: Dog => d.name }
 ```
 
+Value patterns are exhaustive the same way when they name every value the
+operand can have: each member of an enum (as `Color.RED`, an imported bare
+`RED`, or a string literal `"RED"`), or both `true` and `false` for a
+`Boolean!`. A nullable operand (enum, Boolean or union) can also be `null`,
+so it takes a `null` pattern too:
+
+```dang
+enum Light { RED GREEN }
+
+let next: Light = Light.RED
+
+case (next) {
+  Light.RED => "stop"
+  Light.GREEN => "go"
+  null => "off"
+}
+```
+
 The operand must be a union or an interface (see [#interfaces-unions]) — a
 plain object type is already fully known, so there is nothing to narrow:
 

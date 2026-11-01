@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use Int as Int!
+  [2m[34m--> errors/case_nullable_enum_not_exhaustive.dang:11:15[0m
+ [2m    |[0m
+ [2m  9 | let maybe: Color = null[0m
+ [2m 10 | [0m
+ [2m[34m[1m 11 | [0mlet n: Int! = case (maybe) {
+[2m                     [31m^^^^^^^^^^^^^^[0m
+ [2m 12 |   Color.RED => 1[0m
+ [2m 13 |   Color.GREEN => 2[0m
+ [2m    |[0m
+
