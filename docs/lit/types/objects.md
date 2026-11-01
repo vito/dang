@@ -1,8 +1,18 @@
 \use-plugin{dang}
+\literate-fences
 
 # Objects (`type`) {#objects}
 
 > Meta: lead with "a `type` declares both a type and its prototype constructor." That's the unusual thing. Cross-link to [#mutation] — don't try to explain CoW here.
+
+A `type` declaration makes two things: a type, and a constructor function
+of the same name.
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## Declaration
 
@@ -15,6 +25,8 @@ type Person {
     "hi, I'm " + name
   }
 }
+
+Person("Alice").greet
 ```
 
 - declares a type `Person` and a constructor function `Person`
@@ -25,38 +37,93 @@ type Person {
 - a bare member is **public** — readable from outside the type; public is the default for a `type`
 - `let` — private to the declaring **module**: readable by any type or method in the same module, rejected across a module boundary (see [#modules])
 - `pub` is still accepted as an explicit public marker, but it is redundant and `dang fmt` removes it (see [#fields])
-- whether a member is a **constructor parameter** depends on having NO default, NOT on visibility:
-  - `x: T!` (no default) → required positional param
-  - `x: T! = d` → optional param (default `d`)
-  - `let x: T!` (no default) → required positional param too, e.g. `Foo("public_value", "private_value")`
-  - `let x: T! = d` → NOT a param; the default is used
-  - method/computed members (have a `{ body }`) are never constructor params
+
+`let` privacy is module-scoped, not type-scoped, so another type in the
+same module can read a `let` member:
 
 ```dang
-# `let` privacy is module-scoped, not type-scoped: another type in the same
-# module reaches a let member (across a module boundary it is rejected)
 type Account { let secret: String! = "hunter2" }
 type Vault { unlock(a: Account!): String! { a.secret } }
-Vault.unlock(Account)   # "hunter2"
+
+Vault.unlock(Account)
 ```
+
+Whether a member is a **constructor parameter** depends on whether it has a
+default, not on its visibility:
+
+- `x: T!` (no default) → required positional param
+- `x: T! = d` → optional param (default `d`)
+- `let x: T!` (no default) → required positional param too
+- `let x: T! = d` → NOT a param; the default is used
+- method/computed members (have a `{ body }`) are never constructor params
 
 ## Implicit constructor
 
-- one positional parameter per non-default field, in **declaration order** (NOT required-first-then-defaults — a defaulted field may precede a required one; positional args still line up by declaration order)
-  - e.g. `Mixed { pub publicWithDefault = "default"; let privateRequired: Int! }` constructs as `Mixed("default", 42)`
-- can also be called with named arguments (`Counter(value: 42)`)
-- field defaults are the constructor's parameter defaults, so a default may reference sibling fields, e.g. `combined: String! = prefix + "_" + suffix` (`Computed("hello").combined` sees the passed `prefix`); they run while the object is built, so they see only values, not `self` or methods (see [#field-defaults])
+Without a `new`, the constructor takes the parameters listed above, in
+**declaration order**. It can be called with positional
+arguments, named ones, or both:
 
 ```dang
-Person("Alice", age: 30)
-Person(name: "Alice")
+[Person("Alice", age: 30).age, Person(name: "Bob").age, Person("Cy", 41).age]
+```
+
+Declaration order means a defaulted field can come before a required one,
+and positional arguments still line up with the declarations. Here the first
+positional argument goes to `label`:
+
+```dang
+type Ticket {
+  label: String! = "general"
+  let seat: Int!
+  show: String! { `${label} #${seat}` }
+}
+
+Ticket("vip", 12).show
+```
+
+```dang-failure
+Ticket(12)
+```
+
+Name the argument to skip the defaulted field: `Ticket(seat: 12)`.
+
+Field defaults are the constructor's parameter defaults, so a default may use
+other fields. They run while the object is built, so they see only values,
+not `self` or methods (see [#field-defaults]):
+
+```dang
+type Slot {
+  prefix: String!
+  suffix: String! = "end"
+  combined: String! = prefix + "_" + suffix
+}
+
+Slot("start").combined
 ```
 
 ## Zero-arg auto-construction
 
-- a type whose constructor needs nothing (all fields have defaults / no required params) constructs on bare reference:
-  `let p = Person` ≡ `let p = Person()`
-- a bare reference to a function requiring a **block argument** is an error (`function requires a block argument`) — same as calling it without a block; use `&name` to reference it without calling
+A type whose constructor needs nothing (every field has a default)
+constructs on bare reference: `Settings` is the same as `Settings()`.
+
+```dang
+type Settings { verbose: Boolean! = false }
+
+let settings = Settings
+settings.verbose
+```
+
+A bare reference to a function that requires a **block argument** is an
+error, the same as calling it without a block. Use `&name` to reference it
+without calling it:
+
+```dang
+twice(&body: Int!): Int! { body + body }
+```
+
+```dang-failure
+let doubled = twice
+```
 
 ## Explicit constructor: `new`
 
@@ -69,23 +136,72 @@ type Greeter {
     self
   }
 }
+
+Greeter("Ada").greeting
 ```
 
 - declared as `new(args) { body }` or `new { body }` (no parens when no args)
-- no `pub` and no return-type annotation — both are errors ("'new' is a constructor, not a method")
-- `new` is only valid inside a `type` body
 - overrides the implicit constructor (the type's fields no longer auto-become params; `new`'s arg list defines the signature)
-- constructor args are *local* bindings — distinct from fields, even when same-named:
-  - mutable: `foo = foo + 10` / `foo += foo` rebinds the arg, does NOT touch `self.foo`
-  - shadow same-named fields and outer scope; bare name = arg, field write needs `self.field =`
-  - NOT visible in method bodies — only in `new`
 - `new`'s parameter defaults follow the same rule as field defaults, and run after them (see [#field-defaults])
-- must return the constructed type (`self`, or a method chain that returns it): body's last expression must be `Foo!`
-  - returning another type errors: `new() must return Wrong!, got String!`
-  - returning `null` errors
 - may end by chaining other methods, which propagate their forked `self`, e.g. `self.withSuffix("!")`
 - self-field mutation inside a loop accumulates into one fork
 - can accept block args: `new(&condition: Boolean!) { ... }`; a block param uses `&name`
+
+`new` takes no `pub` and no return type, and is only valid inside a `type`
+body:
+
+```dang-failure
+type Gadget {
+  size: Int! = 1
+  new(): Gadget! { self }
+}
+```
+
+Constructor arguments are *local* bindings, separate from fields even when
+they share a name. Reassigning `text` here rebinds the argument; the field
+is written with `self.text =`. The arguments are visible only in `new`, not
+in methods:
+
+```dang
+type Shout {
+  text: String!
+
+  new(text: String!) {
+    text = text.toUpper
+    self.text = text + "!"
+    self
+  }
+}
+
+Shout("hey").text
+```
+
+The body must return the constructed type (`self`, or a method chain that
+returns it). Returning another type, or `null`, is an error:
+
+```dang-failure
+type Broken {
+  size: Int! = 1
+  new { "not a Broken" }
+}
+```
+
+A constructor can end with a method chain, and its field writes add up, even
+inside a loop:
+
+```dang
+type Counter {
+  value: Int! = 0
+  bump: Counter! { value += 1; self }
+
+  new(times: Int!) {
+    [1, 2, 3].each { i => if (i <= times) { value += 1 } }
+    self.bump
+  }
+}
+
+Counter(2).value
+```
 
 ## `self`
 
@@ -100,16 +216,29 @@ type Greeter {
 
 ## Computed fields
 
-- a member with a type and a body but no arg list is a computed field — a zero-arg function evaluated on `self` each access:
+A member with a type and a body but no argument list is a computed field. It
+reads like a plain field (`obj.full`, no parentheses) and runs again on every
+access, against the current receiver. A member with a default value, by
+contrast, is computed once, when the object is built:
 
 ```dang
-fullName: String! { firstName + " " + lastName }
+type FullName {
+  first: String!
+  last: String!
+  full: String! { first + " " + last }       # every access
+  original: String! = first + " " + last     # once, at construction
+}
+
+let author = FullName("Ada", "Lovelace")
+author.first = "Augusta"
+
+[author.full, author.original]
 ```
 
-- accessed like a plain field (`obj.fullName`, no call parens); recomputes against the current receiver
-- a defaulted-value member (`pub computedField = config.name + "_computed"`) is computed once at construction; a `{ body }` computed field is re-evaluated per access
-
 ## Static members {#static-members}
+
+A `self { }` block declares statics. They live on the type itself, reached
+as `Type.member`, never on an instance:
 
 ```dang
 type Color {
@@ -119,8 +248,6 @@ type Color {
 
   luminance: Int! { (r + g + b) / 3 }        # an instance member
 
-  # a self { } block declares statics: they live on the type itself, reached as
-  # Color.member, never on an instance
   self {
     white: Color! { Color(r: 255, g: 255, b: 255) }   # a factory method
     fromGray(v: Int!): Color! { Color(r: v, g: v, b: v) }
@@ -130,35 +257,63 @@ type Color {
   }
 }
 
-Color.white.luminance          # 255
-Color.fromGray(10).r           # 10
-Color.grayMid.g                # 128
-Color.doubled(7)               # 14
-Color(r: 3, g: 6, b: 9).luminance   # 6 — instances are unaffected by statics
-Color.luminance                # 0 — a bare all-default type still auto-constructs
+[Color.white.luminance, Color.fromGray(10).r, Color.grayMid.g, Color.doubled(7)]
 ```
 
+Instances don't have the statics, and a bare all-default type still
+auto-constructs, so `Color.luminance` reads an instance member:
+
 ```dang
-# static stored fields hold singleton values on the type
+[Color(r: 3, g: 6, b: 9).luminance, Color.luminance]
+```
+
+```dang-failure
+Color(r: 1).white
+```
+
+Static stored fields hold singleton values on the type:
+
+```dang
 type Config {
   host: String! = "localhost"
+
   self {
     limit: Int! = 100
     default: Config! = Config    # a static holding a constructed instance
   }
 }
 
-Config.limit          # 100
-Config.default.host   # "localhost"
+Config.limit
 ```
 
-- statics are immutable: `Config.limit = 5` is a compile error from anywhere (see [#top-level-bindings])
-- a scalar may also carry a `self { }` block — including static *stored* fields, even though instance stored fields on a scalar are forbidden (see [#scalar-bodies])
+```dang
+Config.default.host
+```
+
+Statics are immutable, from everywhere (see [#top-level-bindings]):
+
+```dang-failure
+Config.limit = 5
+```
+
+A scalar may also carry a `self { }` block, including static *stored*
+fields, even though a scalar can't have instance stored fields (see
+[#scalar-bodies]).
 
 ## Implements
 
 ```dang
-type Person implements Named & Identifiable { name: String!; id: String! }
+interface Named { name: String! }
+interface Identifiable { id: String! }
+
+type Member implements Named & Identifiable {
+  name: String!
+  id: String!
+}
+
+describe(n: Named!): String! { `named ${n.name}` }
+
+describe(Member("Ada", "m1"))
 ```
 
 - see [#interfaces-unions]
@@ -168,5 +323,18 @@ type Person implements Named & Identifiable { name: String!; id: String! }
 - methods can reference types and fields defined later in the same file
 - references also resolve across files in a directory module, order-independently
 - defaults can reference sibling fields, including ones declared after them
+
+```dang
+type Order {
+  total: Int! = price * quantity   # declared before the fields it uses
+  price: Int! = 5
+  quantity: Int! = 2
+  receipt: Receipt! { Receipt(total) }
+}
+
+type Receipt { amount: Int! }
+
+Order.receipt.amount
+```
 
 > Meta: user-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax. Schema input types are constructed exactly like local types: `CreateUserInput(name: "Alice", email: "...")` passed as `Mutation.createUser(input: ...)`. See [#interop].
