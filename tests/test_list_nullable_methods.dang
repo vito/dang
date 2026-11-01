@@ -24,4 +24,25 @@ assert { empty.filter { y => y > 0 } == null }
 assert { empty.reduce(0) { acc, y => acc + y } == null }
 assert { empty.length == null }
 
+# auto-called methods are nullable on a nullable list; default or check them
+hasAny(xs: [Int!]): Boolean! { (xs.length ?? 0) > 0 }
+
+assert { !hasAny(null) }
+assert { hasAny([1]) }
+
+isBlank(xs: [Int!]): Boolean! { if (xs.isEmpty ?? true) { true } else { false } }
+
+assert { isBlank(null) }
+assert { isBlank([]) }
+assert { !isBlank([1]) }
+
+nonEmpty(xs: [Int!]): Boolean! { xs != null and !xs.isEmpty }
+
+assert { !nonEmpty(null) }
+assert { nonEmpty([1]) }
+
+let noCounts: Map[Int!] = null
+assert { noCounts.length == null }
+assert { (noCounts.isEmpty ?? true) }
+
 print("Nullable list method tests passed!")

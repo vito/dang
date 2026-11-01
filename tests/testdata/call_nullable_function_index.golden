@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot call [&a][5]: it may be null (((x: Int!): Int!)?); bind it to a local with let and check that for null, or assert it with ! (`…!(…)`)
+  [2m[34m--> errors/call_nullable_function_index.dang:5:7[0m
+ [2m    |[0m
+ [2m  3 | let a(x: Int!): Int! { x }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mprint([&a][5](x: 1))
+[2m             [31m^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

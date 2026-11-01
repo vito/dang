@@ -725,6 +725,45 @@ func (FormatSuite) TestUnaryMinusFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+// `f!()` calls the asserted function; `f!` asserts what auto-calling `f`
+// returns, so the formatter must keep the empty parentheses.
+func (FormatSuite) TestNonNullAssertCallFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "asserted call without arguments",
+			input:    `pub x = fs[0]!()`,
+			expected: "pub x = fs[0]!()\n",
+		},
+		{
+			name:     "asserted call with arguments",
+			input:    `pub x = fs[0]!(x: 1)`,
+			expected: "pub x = fs[0]!(x: 1)\n",
+		},
+		{
+			name:     "assertion without a call",
+			input:    `pub x = fs[0]!`,
+			expected: "pub x = fs[0]!\n",
+		},
+		{
+			name:     "asserted call inline",
+			input:    `pub x = [fs[0]!(), g!()]`,
+			expected: "pub x = [fs[0]!(), g!()]\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

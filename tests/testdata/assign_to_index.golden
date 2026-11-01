@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that
+  [2m[34m--> errors/assign_to_index.dang:3:1[0m
+ [2m    |[0m
+ [2m  1 | # Lists and maps are immutable, so an index isn't an assignment target.[0m
+ [2m  2 | let counts = ["a": 1][0m
+ [2m[34m[1m  3 | [0mcounts["a"] = 2
+[2m       [31m^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

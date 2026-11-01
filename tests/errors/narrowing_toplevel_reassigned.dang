@@ -1,0 +1,12 @@
+# A top-level guard's narrowing ends when the name is assigned null.
+let optional(n: Int): Int { n }
+
+let limit = optional(3)
+
+if (limit == null) {
+  raise "no limit"
+}
+
+limit = optional(null)
+
+print(limit + 1)

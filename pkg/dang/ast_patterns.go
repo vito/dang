@@ -47,6 +47,35 @@ func (c *Case) ReferencedSymbols() []string {
 
 func (c *Case) Body() hm.Expression { return c }
 
+// clauseFacts returns the refinements a value clause implies for its body
+// (truthy) and for the clauses after it (falsy). Without an operand a
+// clause's value is a condition. With a bare name as operand, `null =>`
+// leaves it non-null for the later clauses, and a non-null value matching
+// makes it non-null in that clause's body. The check is the clause's value
+// being inferred (noteCheck), so writes after it end the refinements.
+func (c *Case) clauseFacts(ctx context.Context, env hm.Env, clause *CaseClause, valueType hm.Type) ConditionFacts {
+	if c.NoOperand {
+		return analyzeCondition(clause.Value, env)
+	}
+	sym, ok := c.Expr.(*Symbol)
+	if !ok {
+		return ConditionFacts{}
+	}
+	nonNull, ok := nonNullType(env, sym.Name)
+	if !ok {
+		return ConditionFacts{}
+	}
+	noteCheck(ctx, clause.Value)
+	n := []Narrowing{{Symbol: sym.Name, Type: nonNull, check: clause.Value}}
+	if _, isNull := clause.Value.(*Null); isNull {
+		return ConditionFacts{Falsy: n}
+	}
+	if _, nn := valueType.(hm.NonNullType); nn {
+		return ConditionFacts{Truthy: n}
+	}
+	return ConditionFacts{}
+}
+
 func (c *Case) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
@@ -61,10 +90,34 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		hasElse := false
+		// Arms are exclusive: each arm's body skips the writes of the arms
+		// before it (narrowlog.go).
+		var arms []tickRange
+		inferArm := func(clause *CaseClause, infer func() (hm.Type, error)) (hm.Type, error) {
+			var unskips []func()
+			for _, r := range arms {
+				unskips = append(unskips, skipRange(ctx, r.from, r.to))
+			}
+			start := enterBranch(ctx)
+			t, err := infer()
+			end := enterBranch(ctx)
+			for _, undo := range unskips {
+				undo()
+			}
+			arms = append(arms, tickRange{start, end})
+			skipBranch(ctx, clause.Expr, start)
+			return t, err
+		}
+		defer func() { noteExclusive(ctx, arms) }()
 		var elseClause *CaseClause
 		var priorPatterns []*CaseClause
 		var resultType hm.Type
+		// Later clauses run only when the earlier ones didn't match, so they
+		// see the earlier clauses' falsy refinements: after `null =>`, the
+		// operand is non-null.
+		armEnv := env
 		for i, clause := range c.Clauses {
+			env := armEnv
 			// A clause after an else catch-all can never match, whatever
 			// kind it is.
 			if err := checkClauseReachable(clause, elseClause, nil); err != nil {
@@ -85,10 +138,12 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				// Infer the clause body in a scoped env with the binding.
 				// Use resolvedMemberType which respects narrowed unions from
 				// inline fragment selections.
-				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					clauseEnv := env.Clone()
-					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
-					return clause.Expr.Infer(ctx, clauseEnv, fresh)
+				caseType, err = inferArm(clause, func() (hm.Type, error) {
+					return WithInferErrorHandling(clause, func() (hm.Type, error) {
+						clauseEnv := env.Clone()
+						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
+						return clause.Expr.Infer(ctx, clauseEnv, fresh)
+					})
 				})
 			} else if !clause.IsElse {
 				// Value match clause
@@ -105,11 +160,16 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				if err != nil {
 					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause.Value)
 				}
+				facts := c.clauseFacts(ctx, env, clause, valueType)
 				clause.Value = wrapCoerce(clause.Value, exprType, "")
 
-				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					return clause.Expr.Infer(ctx, env, fresh)
+				bodyEnv := withNarrowings(ctx, env, facts.Truthy)
+				caseType, err = inferArm(clause, func() (hm.Type, error) {
+					return WithInferErrorHandling(clause, func() (hm.Type, error) {
+						return clause.Expr.Infer(ctx, bodyEnv, fresh)
+					})
 				})
+				armEnv = withNarrowings(ctx, armEnv, facts.Falsy)
 			} else {
 				// Else clause. Note: an else after type patterns is never
 				// flagged here — a nullable operand falls through every type
@@ -117,8 +177,10 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				// interface catch-all.
 				hasElse = true
 				elseClause = clause
-				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					return clause.Expr.Infer(ctx, env, fresh)
+				caseType, err = inferArm(clause, func() (hm.Type, error) {
+					return WithInferErrorHandling(clause, func() (hm.Type, error) {
+						return clause.Expr.Infer(ctx, env, fresh)
+					})
 				})
 			}
 			if err != nil {

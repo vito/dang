@@ -1,0 +1,8 @@
+# A generic function held in a binding keeps its signature's meaning:
+# `first` may return null, so its result is no operand.
+first(xs: [a!]!): a { xs[0] }
+
+run: Int! {
+  let f = &first
+  f([]) + 1
+}

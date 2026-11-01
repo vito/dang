@@ -2,9 +2,9 @@
 
 # Multiple parameter block arg
 pairs: [[Int!]!]! = [[1, 2], [3, 4], [5, 6]]
-# Note: pair[0] returns Int (nullable) because indexing can fail,
-# so the map returns [Int]! not [Int!]!
-sums: [Int]! = pairs.map { pair => pair[0] + pair[1] }
+# Note: pair[0] returns Int (nullable) because indexing can fail, and
+# arithmetic needs non-null operands, so assert each element with `!`
+sums: [Int!]! = pairs.map { pair => pair[0]! + pair[1]! }
 assert { sums[0] == 3 }
 assert { sums[1] == 7 }
 assert { sums[2] == 11 }

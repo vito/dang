@@ -1,0 +1,10 @@
+# A field write must start at a name or self: an indexed element has no
+# binding to copy the update back to.
+type Item {
+  n: Int! = 0
+}
+
+bumpFirst(items: [Item!]!): Int! {
+  items[0]!.n = 1
+  0
+}

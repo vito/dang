@@ -111,6 +111,17 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			return nil, err
 		}
 
+		// A function read through a nullable receiver (`t.foo(...)`) calls
+		// through null propagation: the call is null when t is. Any other
+		// possibly-null function can't be called.
+		if nfn, ok := fun.(hm.NullableFunctionType); ok {
+			if sel, isSel := c.Fun.(*Select); isSel && sel.NullableReceiver {
+				fun = nfn.Fn
+			} else {
+				return nil, NewInferError(nullableCalleeError(c.Fun, nfn), c.Fun)
+			}
+		}
+
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
 			absorbCall(ctx, effectOf(ft), c, calleeNameOf(c.Fun))
@@ -133,6 +144,16 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 		}
 	})
+}
+
+// nullableCalleeError reports a call of a function value that may be null.
+func nullableCalleeError(callee Node, t hm.NullableFunctionType) error {
+	name := strings.TrimSpace(Format(callee))
+	advice := "bind it to a local with let and check that for null, or assert it with ! (`…!(…)`)"
+	if _, isSym := unwrapGrouped(callee).(*Symbol); isSym {
+		advice = fmt.Sprintf("check it for null first (`if (%s != null) { … }`), or assert it with ! (`%s!(…)`)", name, name)
+	}
+	return fmt.Errorf("cannot call %s: it may be null (%s); %s", name, t, advice)
 }
 
 // inferFunctionType handles type inference for FunctionType calls
@@ -383,6 +404,7 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 
 	// Set expected return type on the block arg
 	c.BlockArg.ExpectedReturnType = expectedFnType.Ret(false)
+	c.BlockArg.toDang = effectOf(ft) != nil
 
 	// Now infer the block arg with these constraints
 	inferredType, err := c.BlockArg.Infer(ctx, env, fresh)
@@ -799,6 +821,9 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 		t, _ := scheme.Type()
+		// A refinement the read can't trust gives way to the declared type,
+		// which, for a mutable binding, is pinned to what it is now.
+		t = readNarrowed(ctx, env, s.Name, s, t)
 		t = hm.ResolveWeak(t)
 		if s.AutoCall {
 			var err error
@@ -1031,9 +1056,13 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			}
 
 			// For nullable list receivers, mark as nullable so the call site
-			// propagates null and makes the return type nullable.
+			// propagates null and makes the return type nullable. An
+			// auto-called method has no call site: the null propagates here.
 			if nullableList {
 				d.NullableReceiver = true
+				if d.AutoCall {
+					methodType, _ = stripNonNull(methodType)
+				}
 			}
 
 			d.SetInferredType(methodType)
@@ -1073,6 +1102,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			if nullableMap {
 				d.NullableReceiver = true
+				if d.AutoCall {
+					methodType, _ = stripNonNull(methodType)
+				}
 			}
 
 			d.SetInferredType(methodType)
@@ -1146,12 +1178,11 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 		// If receiver was nullable, make result nullable too
 		if isNullable {
-			// Remove any existing NonNullType wrapper from the field type
-			if nnType, ok := t.(hm.NonNullType); ok {
-				d.SetInferredType(nnType.Type)
-				return nnType.Type, nil
-			}
-			// Field type is already nullable, return as-is
+			// Remove any existing NonNullType wrapper from the field type. A
+			// method read off a nullable receiver is a possibly-null function:
+			// a call through the receiver propagates the null (FunCall), but
+			// the function itself can't be called once it's taken (`&t.foo`).
+			t = Nullable(t)
 			d.SetInferredType(t)
 			return t, nil
 		}
@@ -1415,10 +1446,17 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			}
 		}
 
-		// Return nullable element type since indexing can fail (out of bounds)
-		// or if the original list was nullable. A type variable element may
-		// stand for a non-null type, so it becomes its nullable form too.
+		// Indexing can fail (out of bounds) and the receiver may be null, so
+		// the result is the nullable element type — a nullable type variable
+		// while the element type is still open (even `a!`, which Nullable
+		// unwraps to a bare `a`), so operators can tell. A rigid `a` its
+		// generic signature writes `a!` already stands only for nullable
+		// types (withNullableOnlyVars), and `a?` would no longer be an `a`;
+		// any other rigid `a` may stand for a non-null type.
 		resultType := hm.Nullable(elementType)
+		if tv, isVar := resultType.(hm.TypeVariable); isVar && !nullableOnlyVars(ctx).Contains(tv) {
+			resultType = hm.NullableTypeVariable{TypeVariable: tv}
+		}
 		i.SetInferredType(resultType)
 		return resultType, nil
 	})
@@ -2996,24 +3034,34 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		}
 
 		if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), c.Condition)
+			return nil, NewInferError(notBooleanError("condition", condType, c.Condition), c.Condition)
 		}
 
 		// Apply flow-sensitive narrowings to each branch based on the condition.
 		facts := analyzeCondition(c.Condition, env)
 
-		thenEnv := withNarrowings(env, facts.Truthy)
+		thenEnv := withNarrowings(ctx, env, facts.Truthy)
+		thenStart := enterBranch(ctx)
 		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
+		thenEnd := enterBranch(ctx)
+		// Writes in a branch that returns never reach what follows.
+		skipBranch(ctx, c.Then, thenStart)
 
 		if c.Else != nil {
-			elseEnv := withNarrowings(env, facts.Falsy)
+			elseEnv := withNarrowings(ctx, env, facts.Falsy)
+			// The else branch can't see the then branch's writes.
+			unskip := skipRange(ctx, thenStart, thenEnd)
+			elseStart := enterBranch(ctx)
 			elseType, err := c.Else.Infer(ctx, elseEnv, fresh)
+			unskip()
 			if err != nil {
 				return nil, err
 			}
+			noteExclusive(ctx, []tickRange{{thenStart, thenEnd}, {elseStart, enterBranch(ctx)}})
+			skipBranch(ctx, c.Else, elseStart)
 
 			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
 			if err != nil {
@@ -3354,9 +3402,11 @@ func collectContinueStatements(root Node, target *InferControlTarget) []*Continu
 func nullableControlResultType(t hm.Type) hm.Type {
 	switch typ := t.(type) {
 	case hm.NonNullType:
-		return typ.Type
+		return Nullable(typ)
 	case hm.TypeVariable:
 		return hm.NullableTypeVariable{TypeVariable: typ}
+	case *hm.FunctionType:
+		return Nullable(typ)
 	default:
 		return t
 	}
@@ -3491,6 +3541,10 @@ type BlockArg struct {
 
 	// effect is the block's closure effect (see effects.go).
 	effect *Effect
+
+	// toDang is set when the block is passed to a Dang-defined function,
+	// which may rescue a raise from it (narrowlog.go).
+	toDang bool
 }
 
 // blockArgUsesImplicitUnderscore reports whether the body references the
@@ -3630,15 +3684,19 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// receives the block leaves the block.
 		if b.effect == nil {
 			b.effect = newClosureEffect("block")
+			b.effect.block = true
 		}
 		var fr *effFrame
 		bodyCtx, fr = withEffFrame(bodyCtx, b.effect.reset(), newEnv, nil)
 		fr.block = true
+		fr.toDang = b.toDang
 		fr.entryBreak = currentInferBreakTarget(ctx)
 		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
+		endBlockSkips(fr)
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
 		}
+		exitNarrowBody(bodyCtx, fr)
 
 		// Continue values are block-local results. Plain returns inside a block arg
 		// are non-local and are checked against the enclosing function instead.

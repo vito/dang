@@ -206,6 +206,9 @@ type Type struct {
 	// narrowed marks names bound here only as flow-sensitive refinements of
 	// an outer binding (see applyNarrowings).
 	narrowed map[string]bool
+	// narrowings holds the refinements applied in this frame, including of
+	// names it declares.
+	narrowings map[string]*Narrowing
 
 	// weakDecls keeps alive the declarations of the bindings here whose
 	// types have weak variables, and so their cells (see keepWeakCells).

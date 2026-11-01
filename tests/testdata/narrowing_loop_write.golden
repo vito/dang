@@ -1,0 +1,11 @@
+[1m[31mError:[0m `total` is checked for null outside this block, but the block may set it to null (by assigning it at line 8), so it may be null here when the block runs again; check it inside the block
+  [2m[34m--> errors/narrowing_loop_write.dang:7:13[0m
+ [2m    |[0m
+ [2m  5 |   if (total == null) { return 0 }[0m
+ [2m  6 |   xs.each { x =>[0m
+ [2m[34m[1m  7 | [0m    total = total + x
+[2m                   [31m^^^^^[0m
+ [2m  8 |     if (x > 2) { total = null }[0m
+ [2m  9 |   }[0m
+ [2m    |[0m
+

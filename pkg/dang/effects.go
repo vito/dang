@@ -57,6 +57,15 @@ type Effect struct {
 	nonLocal Node
 	// createdIn is the frame the closure was created in.
 	createdIn *effFrame
+	// escaped reports whether the closure is stored, returned, or collected
+	// (narrowlog.go).
+	escaped bool
+	// block marks a block argument's effect; nullTargets are the targets it
+	// may assign null (narrowlog.go).
+	block       bool
+	nullTargets map[effTarget]bool
+	// narrowReads are a closure's reads of refinements made outside it.
+	narrowReads []narrowRead
 
 	// effParam: the function owning the parameter, and why it must be bound
 	// to a pure function: because it escapes, or because it is called inside
@@ -84,6 +93,8 @@ func (e *Effect) reset() *Effect {
 	e.targets = nil
 	e.params = nil
 	e.nonLocal = nil
+	e.nullTargets = nil
+	e.narrowReads = nil
 	return e
 }
 
@@ -152,6 +163,14 @@ type effFrame struct {
 	entryBreak *InferControlTarget
 	// field marks a `{{ }}` field (fields_purity.go); it has no eff.
 	field bool
+	// logStart is the narrowing-log tick the body began at, and reads its
+	// reads of refinements made before it (narrowing.go).
+	logStart int
+	reads    []narrowRead
+	// unskips undo skips of writes in branches leaving this block early.
+	unskips []func()
+	// toDang marks a block passed to a Dang-defined function.
+	toDang bool
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {
@@ -191,6 +210,9 @@ func bodyFrame(ctx context.Context) *effFrame {
 func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (context.Context, *effFrame) {
 	fr := &effFrame{parent: effFrameFrom(ctx), eff: eff}
 	eff.createdIn = fr.parent
+	if log := narrowLogFrom(ctx); log != nil {
+		fr.logStart = log.tick()
+	}
 	if own := envFrame(env); own != nil {
 		fr.owns = append(fr.owns, own)
 	}
@@ -252,6 +274,9 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 	if callee == nil {
 		return
 	}
+	if log := narrowLogFrom(ctx); log != nil {
+		log.noteCall(ctx, callee, node)
+	}
 	checkFieldCall(ctx, callee, node, name)
 	fr := bodyFrame(ctx)
 	if fr == nil {
@@ -273,6 +298,15 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 			if _, ok := fr.eff.targets[t]; !ok {
 				fr.eff.targets[t] = w
 			}
+		}
+		for t := range callee.nullTargets {
+			if fr.inside(t.frame) {
+				continue
+			}
+			if fr.eff.nullTargets == nil {
+				fr.eff.nullTargets = map[effTarget]bool{}
+			}
+			fr.eff.nullTargets[t] = true
 		}
 		for p := range callee.params {
 			if p.owner != fr.eff {
@@ -349,6 +383,7 @@ func checkEscape(ctx context.Context, node Node, name string, t hm.Type) error {
 		requirePure(eff, false, fmt.Sprintf("`%s` stores, returns, or collects `%s`", eff.owner.name, eff.name))
 		return nil
 	}
+	eff.escaped = true
 	if eff.impure() {
 		return reportEffectError(ctx, NewInferError(fmt.Errorf(
 			"`%s` %s, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection",
@@ -402,6 +437,19 @@ type effectSolver struct {
 	// errs holds errors found during inference that are reported with the
 	// deferred ones.
 	errs []error
+	// narrow logs what may invalidate null narrowings (narrowing.go).
+	narrow narrowLog
+}
+
+// escapes reports whether closure eff is bound to a parameter that escapes.
+// Call it once requirements have been propagated.
+func (s *effectSolver) escapes(eff *Effect) bool {
+	for _, b := range s.bindings {
+		if b.arg == eff && b.param.escapeWhy != "" {
+			return true
+		}
+	}
+	return false
 }
 
 type effSolverKey struct{}
@@ -486,6 +534,7 @@ func (s *effectSolver) solve() []error {
 			errs.add(b.arg.nonLocal, fmt.Sprintf("%s, so %s may outlive this call and cannot use `%s`", b.param.escapeWhy, subject, controlKeyword(b.arg.nonLocal)))
 		}
 	}
+	s.narrow.checkCaptures(s, errs)
 	return errs.errs
 }
 

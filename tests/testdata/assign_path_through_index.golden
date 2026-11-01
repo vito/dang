@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to a field of items[0]: a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that
+  [2m[34m--> errors/assign_path_through_index.dang:8:3[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | bumpFirst(items: [Item!]!): Int! {[0m
+ [2m[34m[1m  8 | [0m  items[0]!.n = 1
+[2m         [31m^^^^^^^^[0m
+ [2m  9 |   0[0m
+ [2m 10 | }[0m
+ [2m    |[0m
+

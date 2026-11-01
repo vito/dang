@@ -1,0 +1,12 @@
+# A method taken off a nullable value is null when the value is, so it can't
+# be called without a null check.
+type Hooks {
+  hook(x: Int!): Int! { x }
+}
+
+let run(h: Hooks): Int! {
+  let r = &h.hook
+  r(1)
+}
+
+print(run(null))

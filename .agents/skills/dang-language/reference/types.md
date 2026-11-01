@@ -25,6 +25,8 @@
 ## Null propagation
 - `nullable.field` is nullable even if `field: T!`.
 - Chains short-circuit: `a.b.c` is null if any link is null.
+- Function values can be null (a list element `fs[0]`, `&h.hook` off a nullable `h`, an `if` without `else`): not callable until checked (`if (f != null) { f(1) }`), asserted (`fs[0]!(1)`, the call form of `!`), or defaulted with `??`. `h.hook(1)` through a nullable `h` still propagates null.
+- Operators do **not** propagate null: arithmetic (`+ - * / %`, incl. string/list `+`) and ordering (`< <= > >=`) need non-null operands, so `xs[0] + 1`, `m["k"] * 2`, `"hi " + maybeName` are type errors (`operator addition is not defined for nullable type Int: …`). Use `!`, `??`, or a null check. `==`/`!=` accept nullable operands.
 - Recover via `??` or flow narrowing (below).
 
 ## Type variables
@@ -65,6 +67,8 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
 - Code after a diverging guard sees the narrowed type for the rest of the enclosing scope.
 - `else if` chains: the outer guard's falsy facts still apply afterward.
 - Sequential guards accumulate, each narrowing independently in order.
+- At script top level, a guard narrows the later top-level *statements* only: declarations (`let`, functions) all run before the first statement, so `if (x == null) { raise … }; let y: Int! = x` is still an error.
+- `case` clauses narrow like guards: after `null => …`, later clauses see a bare-name operand as `T!`; in an operand-less `case`, later clauses see earlier conditions' falsy facts (`x == null => …` then `x` is `T!`), and each clause body its own condition's truthy facts. A clause matching a non-null value narrows the operand in its body.
 
 ### Compound conditions
 - Guard with `or`: entering the diverging branch means *both* checks failed, so **both** narrow afterward:
@@ -75,11 +79,17 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
   ```dang
   if (maybe != null and other != null) { maybe + other }   # both T! here
   ```
+- The right operand of `and` sees the left's truthy narrowing, and of `or` the left's falsy one, so guards work inline: `x != null and x > 0`, `x == null or x > 0`.
+
+### Reassigning a narrowed name
+- A narrowed name may be assigned anything its declared type allows (`x = x.next`). A non-null value keeps it narrowed; a possibly-null one ends the narrowing until the next check.
+- So do `self.x = v` (for the bare field `x`), calling a closure that assigns `x` null, and calling a block parameter (for anything declared outside the function taking it). Writes in the other branch of the same `if` or arm of the same `case`, in a branch that returns (or breaks/continues, for the rest of the loop body; not inside a `rescue` operand or a block passed to a Dang function, where a raise before the exit may be rescued), or in an uncalled nested function don't count.
+- A block or nested function can't rely on an outer check of `x` if it may run again or later after `x` is set to null (the block assigns `x` null itself, or `x` is set to null after a nested function or stored block reading it is created): compile error. Check inside it, or bind the checked value to a local.
 
 ### Limitations (the surprising gaps)
 - Narrowing is **intra-procedural** — calling a function doesn't carry narrowed types across.
 - **`and`-guard does NOT narrow**: `if (x == null and y == null) { raise … }` tells us only that *at least one* is non-null afterward, so neither narrows.
-- **Field accesses don't narrow**: a null check on `h.val` does not narrow later `h.val` accesses (each access could differ). Workaround: bind to a local first — `let v = h.val; if (v == null) { … }`.
+- **Field accesses don't narrow**: a null check on `h.val` does not narrow later `h.val` accesses (each access could differ). Workaround: bind to a local first — `let v = h.val; if (v == null) { … }`. Same for a computed member (`text: String { … }`) used by its bare name: each read calls it again.
 - In an `else` after a `== null` guard, the variable is known *null* (not `T!`) — using it as non-null there errors.
 
 ### Type narrowing via `case`

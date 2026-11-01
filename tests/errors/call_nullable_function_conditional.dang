@@ -1,0 +1,10 @@
+# An `if` without `else` may produce null, so a function it produces can't be
+# called without a null check.
+let a(x: Int!): Int! { x }
+
+let run(flag: Boolean!): Int! {
+  let g = if (flag) { &a }
+  g(x: 1)
+}
+
+print(run(false))

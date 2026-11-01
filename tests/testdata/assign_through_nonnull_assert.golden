@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot assign to a non-null assertion: drop the !, and if the target is nullable, declare it non-null (with a default), or write `x = (x ?? default) + value`
+  [2m[34m--> errors/assign_through_nonnull_assert.dang:3:1[0m
+ [2m    |[0m
+ [2m  1 | # Assigning through `!` would write to the assertion, not the variable.[0m
+ [2m  2 | let total: Int = 0[0m
+ [2m[34m[1m  3 | [0mtotal! += 1
+[2m       [31m^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

@@ -310,7 +310,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
-	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
+	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(outsideRescue(ctx)))
 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(TypeScope)
@@ -318,7 +318,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// Writes and calls in the body accumulate into the function's effect. A
 	// method or constructor owns its receiver: its `self` writes are forks.
 	// Argument defaults are evaluated by the call too, so they count as well.
-	effCtx, _ := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
+	effCtx, effFr := withEffFrame(functionCtx, f.fnEffects().latent.reset(), newEnv, methodSelfFrame(env))
 
 	// Process arguments using shared logic. Defaults are evaluated at function
 	// call time, so they must not inherit the caller's return/break/continue targets.
@@ -405,6 +405,11 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 			definedRet = definedRet.Apply(skolem).(hm.Type)
 		}
 		effCtx = withScopedTypeVars(effCtx, skolem)
+		rigidSig := make([]hm.Type, len(sigTypes))
+		for i, t := range sigTypes {
+			rigidSig[i] = t.Apply(skolem).(hm.Type)
+		}
+		effCtx = withNullableOnlyVars(effCtx, rigidSig)
 	}
 
 	// Infer return type from function body. A fresh return target lets
@@ -418,6 +423,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
+	exitNarrowBody(bodyCtx, effFr)
 
 	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
 	if err != nil {
@@ -578,16 +584,43 @@ func (r *Reassignment) Body() hm.Expression { return r.Target }
 
 func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
+// compoundNullableAdvice is how to fix `x += v` on a nullable x: `!` and
+// rebinding to a local, the fixes for a nullable operand, don't apply to a
+// write target.
+const compoundNullableAdvice = "declare it non-null (with a default), or write `x = (x ?? default) + value`"
+
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
 		// A type body's own fields can't be reassigned while it's being built.
 		if err := checkDefaultWrite(ctx, env, r.Target); err != nil {
 			return nil, NewInferError(err, r)
 		}
+		// `x! = v` / `x! += v` would assign to the assertion, not to x.
+		if _, isAssert := r.Target.(*NonNullAssert); isAssert {
+			if r.Modifier == "+" {
+				return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion: drop the !, and if the target is nullable, %s", compoundNullableAdvice), r.Target)
+			}
+			return nil, NewInferError(fmt.Errorf("cannot assign to a non-null assertion; assign to the expression without !"), r.Target)
+		}
+		// Lists and maps are immutable values; there is no element write.
+		if _, isIndex := r.Target.(*Index); isIndex {
+			return nil, NewInferError(fmt.Errorf("cannot assign to an index: lists and maps are immutable; build a new one (e.g. map.with(key, value)) and assign that"), r.Target)
+		}
+		// A field write copies every link of its path back to a binding, so
+		// the path must start at a name or `self`.
+		if err := checkAssignmentPath(r.Target); err != nil {
+			return nil, err
+		}
 		// Infer the type of the target (left-hand side) as a storage location,
 		// without auto-calling zero-arity functions stored in that location.
-		// A location is not a function value escaping.
-		targetType, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, r.Target), env, fresh, r.Target)
+		// A location is not a function value escaping. A plain assignment's
+		// target is not a read either: a narrowed name gets the type it is
+		// declared with, which is what it may be assigned.
+		targetCtx := withAllowedFn(ctx, r.Target)
+		if r.Modifier == "=" {
+			targetCtx = withAssignTarget(targetCtx, r.Target)
+		}
+		targetType, err := inferNodeWithoutAutoCall(targetCtx, env, fresh, r.Target)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
@@ -595,6 +628,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			return nil, err
 		}
 		if err := checkStaticWrite(r); err != nil {
+			return nil, err
+		}
+		if err := checkPathLinks(env, r.Target); err != nil {
 			return nil, err
 		}
 		if err := checkTopLevelWrite(ctx, env, r); err != nil {
@@ -620,8 +656,26 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
 			r.Value = wrapCoerce(r.Value, targetType, materializePathForNode(r.Target))
+			// A possibly-null value ends any narrowing of the target.
+			noteAssignment(ctx, env, r.Target, valueType)
 			return targetType, nil
 		case "+":
+			// `x += v` reads x as an operand, so a nullable target is a
+			// nullable operand; say how to fix it as a target, which `!` and
+			// rebinding to a local can't.
+			if knownNullable(targetType) {
+				advice := compoundNullableAdvice
+				// `self.b.c += 1` with a nullable `b`: c itself may be
+				// non-null, and it's the receiver that needs the check.
+				if sel, ok := r.Target.(*Select); ok {
+					if typed, ok := sel.Receiver.(interface{ GetInferredType() hm.Type }); ok {
+						if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
+							advice = "it is read through a nullable value; null-check that by its bare name first, e.g. `if (b != null) { b.c += 1 }` (a check on `self.b` doesn't narrow)"
+						}
+					}
+				}
+				return nil, NewInferError(fmt.Errorf("compound assignment needs a non-null target, got %s: %s", targetType, advice), r.Target)
+			}
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)
@@ -646,7 +700,7 @@ func (r *Reassignment) checkInterfaceFieldWrite() error {
 	if !ok {
 		return nil
 	}
-	for ; sel != nil; sel, _ = sel.Receiver.(*Select) {
+	for ; sel != nil; sel, _ = pathLink(sel.Receiver).(*Select) {
 		holder, ok := sel.Receiver.(interface{ GetInferredType() hm.Type })
 		if !ok {
 			continue
@@ -752,7 +806,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, scope ValueSc
 
 func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope, selectNode *Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
-	rootNode, path, err := r.getPath(selectNode)
+	rootNode, path, asserted, err := r.getPath(selectNode)
 	if err != nil {
 		return nil, err
 	}
@@ -794,6 +848,10 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope
 		link := strings.Join(append([]string{rootLabel}, path[:depth]...), ".")
 		target := strings.Join(append([]string{rootLabel}, path...), ".")
 		if _, isNull := v.(NullValue); isNull {
+			// A link asserted with ! raises like any other assertion.
+			if asserted[depth] {
+				return nil, fmt.Errorf("non-null assertion failed: value is null")
+			}
 			return nil, fmt.Errorf("cannot assign to %s: %s is null", target, link)
 		}
 		if _, isFn := v.(FunctionValue); isFn {
@@ -888,12 +946,114 @@ func cowBind(v ValueScope, name string, value Value) {
 	v.Bind(name, value, v.Visibility(name))
 }
 
-func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
+// checkAssignmentPath rejects a field write whose path doesn't start at a
+// name or `self` (`xs[0].c = 1`, `f().c = 1`): there is no binding to copy
+// the updated value back to. A link of the path may be asserted non-null
+// (`a.b!.c = 1`): the write raises if it is null.
+func checkAssignmentPath(target Node) error {
+	sel, ok := target.(*Select)
+	if !ok {
+		return nil
+	}
+	var node Node = sel
+	for {
+		s, ok := pathLink(node).(*Select)
+		if !ok {
+			break
+		}
+		node = s.Receiver
+	}
+	switch pathLink(node).(type) {
+	case *Symbol, *SelfKeyword:
+		return nil
+	}
+	root := pathLink(node)
+	return NewInferError(fmt.Errorf("cannot assign to a field of %s: a field write must start at a name or self, which is what it updates; copy the value to a local and assign to that", strings.TrimSpace(Format(root))), root)
+}
+
+// checkPathLinks rejects a field write through a link that may be null
+// (`a.maybe.x = 4`, which would have nothing to copy and write into) or is a
+// computed member (`a.comp.x = 4`, which has nothing to store into), once
+// the target is inferred. A link asserted with `!` is non-null.
+func checkPathLinks(env hm.Env, target Node) error {
+	sel, ok := target.(*Select)
+	if !ok {
+		return nil
+	}
+	for {
+		recv := sel.Receiver
+		if typed, ok := recv.(interface{ GetInferredType() hm.Type }); ok {
+			if rt := typed.GetInferredType(); rt != nil && knownNullable(rt) {
+				link := strings.TrimSpace(Format(recv))
+				rest := strings.TrimPrefix(strings.TrimSpace(Format(target)), link)
+				return NewInferError(fmt.Errorf("cannot assign to %s: %s may be null; assert it with ! to raise if it is (`%s!%s = ...`), or check it for null first", strings.TrimSpace(Format(target)), link, link, rest), recv)
+			}
+		}
+		if computedLink(env, pathLink(recv)) {
+			link := strings.TrimSpace(Format(pathLink(recv)))
+			return NewInferError(fmt.Errorf("cannot assign to %s: %s is computed, not a stored field", strings.TrimSpace(Format(target)), link), recv)
+		}
+		next, ok := pathLink(recv).(*Select)
+		if !ok {
+			return nil
+		}
+		sel = next
+	}
+}
+
+// computedLink reports whether a link of a write path is a computed member
+// (a zero-arity function, auto-called on read).
+func computedLink(env hm.Env, link Node) bool {
+	var t hm.Type
+	switch l := link.(type) {
+	case *Symbol:
+		// A type name is a constructor, not a computed member.
+		if ts, ok := env.(TypeScope); ok {
+			if _, isType := ts.NamedType(l.Name); isType {
+				return false
+			}
+		}
+		scheme, ok := env.SchemeOf(l.Name)
+		if !ok {
+			return false
+		}
+		t, _ = scheme.Type()
+	case *Select:
+		typed, ok := l.Receiver.(interface{ GetInferredType() hm.Type })
+		if !ok {
+			return false
+		}
+		rt, _ := stripNonNull(typed.GetInferredType())
+		rec, ok := rt.(TypeScope)
+		if !ok {
+			return false
+		}
+		scheme, ok := rec.SchemeOf(l.Field.Name)
+		if !ok {
+			return false
+		}
+		t, _ = scheme.Type()
+	default:
+		return false
+	}
+	return fnTypeOf(t) != nil
+}
+
+// getPath returns a field write's root (a Symbol or self), its field path,
+// and the depths of the links asserted non-null: 0 for the root, i for the
+// value of path[i-1].
+func (r *Reassignment) getPath(selectNode *Select) (Node, []string, map[int]bool, error) {
 	var path []string
+	var assertedAbove []int
 	var currentNode Node = selectNode
 
 	// Traverse down the chain of Select nodes, collecting field names
 	for {
+		if nn, ok := currentNode.(*NonNullAssert); ok {
+			assertedAbove = append(assertedAbove, len(path))
+			currentNode = nn.Expr
+			continue
+		}
 		if s, ok := currentNode.(*Select); ok {
 			path = append([]string{s.Field.Name}, path...)
 			currentNode = s.Receiver
@@ -901,15 +1061,19 @@ func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
 			break
 		}
 	}
+	asserted := map[int]bool{}
+	for _, above := range assertedAbove {
+		asserted[len(path)-above] = true
+	}
 
 	// The final node in the chain should be a Symbol or SelfKeyword (the root object)
 	if _, ok := currentNode.(*Symbol); ok {
-		return currentNode, path, nil
+		return currentNode, path, asserted, nil
 	}
 	if _, ok := currentNode.(*SelfKeyword); ok {
-		return currentNode, path, nil
+		return currentNode, path, asserted, nil
 	}
-	return nil, nil, fmt.Errorf("complex receivers must start with a symbol or self keyword")
+	return nil, nil, nil, fmt.Errorf("complex receivers must start with a symbol or self keyword")
 }
 
 func (r *Reassignment) performAddition(left, right Value, varName string) (Value, error) {

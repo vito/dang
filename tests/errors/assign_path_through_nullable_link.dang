@@ -1,0 +1,12 @@
+# A field write copies every link of its path, so a link that may be null is
+# a type error: assert it with ! to write through it.
+type Inner {
+  x: Int! = 0
+}
+
+type Foo {
+  maybe: Inner = null
+}
+
+let a = Foo
+a.maybe.x = 4

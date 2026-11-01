@@ -289,11 +289,14 @@ func NonNullVars(t Type) TypeVarSet {
 }
 
 // NonNull returns the non-null form of t: T! for T, a! for a variable a or
-// its nullable form a?, and t itself when it is already non-null.
+// its nullable form a?, the function itself for a possibly-null function (a
+// function type is non-null as is), and t itself when it is already non-null.
 func NonNull(t Type) Type {
 	switch tt := prune(t).(type) {
-	case NonNullType:
+	case NonNullType, *FunctionType:
 		return tt
+	case NullableFunctionType:
+		return tt.Fn
 	case NullableTypeVariable:
 		return NonNullType{Type: tt.TypeVariable}
 	default:
@@ -306,13 +309,21 @@ func makeNullable(t Type) Type {
 	case NullableTypeVariable:
 		return tt
 	case NonNullType:
+		if fn, ok := tt.Type.(*FunctionType); ok {
+			return NullableFunctionType{Fn: fn}
+		}
 		return tt.Type
 	case TypeVariable:
 		return NullableTypeVariable{TypeVariable: tt}
+	case *FunctionType:
+		return NullableFunctionType{Fn: tt}
 	default:
 		return t
 	}
 }
+
+// MakeNullable returns the nullable form of t.
+func MakeNullable(t Type) Type { return makeNullable(t) }
 
 func (ntv NullableTypeVariable) Eq(other Type) bool {
 	if b, ok := ntv.TypeVariable.weakBinding(); ok {
@@ -447,7 +458,8 @@ func (ft *FunctionType) Eq(other Type) bool {
 }
 
 func (ft *FunctionType) Supertypes() []Type {
-	return nil
+	// A function value may flow wherever a possibly-null one is expected.
+	return []Type{NullableFunctionType{Fn: ft}}
 }
 
 func (ft *FunctionType) String() string {
@@ -657,6 +669,49 @@ func (t *UnionType) String() string {
 		parts[i] = option.String()
 	}
 	return strings.Join(parts, " | ")
+}
+
+// NullableFunctionType is a function value that may be null: an element of a
+// list of functions, a function-typed field read through a nullable value, an
+// `if` without `else` producing one. A bare *FunctionType is a non-null,
+// callable function, as function types have always been; this is its nullable
+// form, which is not callable until narrowed or asserted.
+type NullableFunctionType struct {
+	Fn *FunctionType
+}
+
+func (t NullableFunctionType) Name() string { return t.String() }
+
+func (t NullableFunctionType) Apply(subs Subs) Substitutable {
+	return NullableFunctionType{Fn: t.Fn.Apply(subs).(*FunctionType)}
+}
+
+func (t NullableFunctionType) FreeTypeVar() TypeVarSet { return t.Fn.FreeTypeVar() }
+
+func (t NullableFunctionType) Normalize(k, v TypeVarSet) (Type, error) {
+	fn, err := t.Fn.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return NullableFunctionType{Fn: fn.(*FunctionType)}, nil
+}
+
+// Types lets two nullable function types unify by their functions.
+func (t NullableFunctionType) Types() Types { return Types{t.Fn} }
+
+func (t NullableFunctionType) Eq(other Type) bool {
+	if ot, ok := other.(NullableFunctionType); ok {
+		return t.Fn.Eq(ot.Fn)
+	}
+	return false
+}
+
+func (t NullableFunctionType) Supertypes() []Type { return nil }
+
+func (t NullableFunctionType) String() string { return fmt.Sprintf("(%s)?", t.Fn) }
+
+func (t NullableFunctionType) Format(s fmt.State, c rune) {
+	_, _ = fmt.Fprint(s, t.String())
 }
 
 // NonNullType represents a non-nullable type wrapper

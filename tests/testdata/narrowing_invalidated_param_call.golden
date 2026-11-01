@@ -1,0 +1,11 @@
+[1m[31mError:[0m operator addition is not defined for nullable type Int: check it for null first, supply a default with ??, or assert it with !
+  [2m[34m--> errors/narrowing_invalidated_param_call.dang:9:3[0m
+ [2m    |[0m
+ [2m  7 |   if (limit == null) { return 0 }[0m
+ [2m  8 |   cb[0m
+ [2m[34m[1m  9 | [0m  limit + 1
+[2m         [31m^^^^^[0m
+ [2m 10 | }[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

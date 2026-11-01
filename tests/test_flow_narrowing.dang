@@ -191,3 +191,272 @@ let h = Holder
 assert("then-branch narrows via !=") { h.describeNotEq == "missing" }
 assert("else-branch narrows via ==") { h.describeEq == "missing" }
 assert("compound and narrows both in then-branch") { h.bothBranches == "missing" }
+
+# A narrowed name can be reassigned: a non-null value keeps the narrowing, a
+# nullable one ends it until the next check.
+type Link {
+  val: Int!
+  next: Link = null
+}
+
+let sumLinks(head: Link): Int! {
+  let cur = head
+  let total = 0
+  loop {
+    if (cur == null) { break }
+    total += cur.val
+    cur = cur.next
+  }
+  total
+}
+
+assert("loop guard narrows a name reassigned in the loop") {
+  sumLinks(Link(1, next: Link(2, next: Link(3)))) == 6
+}
+
+let reassigned(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  x = x + 1
+  let kept: Int! = x
+  x = null
+  if (x == null) { kept } else { x }
+}
+
+assert("non-null reassignment keeps a narrowing") { reassigned(1) == 2 }
+
+type Chain {
+  first: Link = null
+
+  second: Int! {
+    if (first == null) { return 0 }
+    first = first.next
+    if (first == null) { return -1 }
+    first.val
+  }
+}
+
+assert("bare field reassigned after a guard") {
+  Chain(Link(1, next: Link(2))).second == 2
+}
+
+let joined(parts: [String!]!): String {
+  let acc: String = null
+  parts.each { p => if (acc == null) { acc = p } else { acc = acc + p } }
+  acc
+}
+
+assert("narrowing inside a block that reassigns") { joined(["a", "b"]) == "ab" }
+
+# Writes the read can't follow from don't end a narrowing: in the other
+# branch, in a branch that returns or continues, or in a nested function that
+# isn't called (or is out of scope).
+type Gauge {
+  v: Int = 1
+
+  read(flag: Boolean!): Int! {
+    if (v == null) { return 0 }
+    if (flag) {
+      self.v = null
+      0
+    } else {
+      v + 1
+    }
+  }
+}
+
+assert("write in the other branch") { Gauge.read(false) == 2 }
+
+let unreached(a: Int, flag: Boolean!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  let reset: Int! {
+    x = null
+    0
+  }
+  if (flag) {
+    x = null
+    return 5
+  }
+  x + 1
+}
+
+assert("writes in a returning branch or uncalled function") {
+  unreached(1, false) == 2
+}
+
+let scoped(a: Int): Int! {
+  let x = a
+  let r = 0
+  if (x != null) {
+    let inc: Int! { x + 1 }
+    r = inc
+  }
+  x = null
+  r
+}
+
+assert("nested function out of scope") { scoped(1) == 2 }
+
+let skipZeros(head: Link): Int! {
+  let cur = head
+  let total = 0
+  loop {
+    if (cur == null) { break }
+    if (cur.val == 0) {
+      cur = cur.next
+      continue
+    }
+    total += cur.val
+    cur = cur.next
+  }
+  total
+}
+
+assert("write in a branch that continues") {
+  skipZeros(Link(1, next: Link(0, next: Link(2)))) == 3
+}
+
+let addAll(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  [1, 2].each { i => x = x + i }
+  x + 1
+}
+
+assert("non-null writes in a block keep the narrowing") { addAll(1) == 5 }
+
+# A block that returns after a write doesn't run again.
+let findAndReset(xs: [Int!]!, a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  xs.each { i =>
+    if (i == x + 0) {
+      x = null
+      return i
+    }
+  }
+  0
+}
+
+assert("write in a returning branch of a block") { findAndReset([1, 2], 2) == 2 }
+
+# A stored block's narrowing doesn't care about writes before the check.
+type Keeper {
+  let saved(n: Int!): Int! { n }
+
+  keep(&cb(n: Int!): Int!): Keeper! {
+    self.saved = cb
+    self
+  }
+
+  run(n: Int!): Int! { saved(n) }
+}
+
+let keepAfterCheck(a: Int): Int! {
+  let x: Int = 5
+  x = a
+  let k = Keeper
+  if (x != null) {
+    k = k.keep { n => x + n }
+  }
+  k.run(1)
+}
+
+assert("stored block after assign-then-check") { keepAfterCheck(1) == 2 }
+
+let keepInBranch(a: Int, b: Int): Int! {
+  let x = a
+  let k = Keeper
+  if (x != null) {
+    k = k.keep { n => x + n }
+  } else {
+    x = b
+  }
+  k.run(1)
+}
+
+assert("stored block and a write in the other branch") {
+  keepInBranch(1, 2) == 2
+}
+
+let keepEach(xs: [Int!]!): Int! {
+  let k = Keeper
+  xs.each { a =>
+    let x: Int = 5
+    x = a
+    if (x != null) {
+      k = k.keep { n => x + n }
+    }
+  }
+  k.run(1)
+}
+
+assert("stored block of a binding fresh each run") { keepEach([1]) == 2 }
+
+let nextUnlessReset(a: Int, reset: Boolean!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  let next: Int! { x + 1 }
+  if (reset) {
+    x = null
+    return 0
+  }
+  next
+}
+
+assert("nested function and a write in a returning branch") {
+  nextUnlessReset(1, false) == 2
+}
+
+let caseArms(a: Int, k: Int!): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  case (k) {
+    1 => {
+      x = null
+      0
+    }
+    else => x + 1
+  }
+}
+
+assert("write in another case arm") { caseArms(1, 2) == 2 }
+
+# `case` clauses narrow like guards: a later clause runs only when the
+# earlier ones didn't match.
+let caseOnValue(a: Int): Int! {
+  let x = a
+  case (x) {
+    null => 0
+    1 => x + 10
+    else => x + 1
+  }
+}
+
+assert("case operand after a null clause") {
+  caseOnValue(null) == 0 and caseOnValue(1) == 11 and caseOnValue(5) == 6
+}
+
+let caseMatched(a: Int): Int! {
+  case (a) {
+    2 => a * 3
+    else => 0
+  }
+}
+
+assert("case operand matching a non-null value") {
+  caseMatched(2) == 6 and caseMatched(null) == 0
+}
+
+let caseConditions(a: Int): Int! {
+  case {
+    a == null => 0
+    a > 3 => a * 2
+    else => a + 1
+  }
+}
+
+assert("case conditions") {
+  caseConditions(null) == 0 and caseConditions(5) == 10 and caseConditions(1) == 2
+}

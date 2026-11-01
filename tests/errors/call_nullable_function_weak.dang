@@ -1,0 +1,9 @@
+# A binding that starts out null and is given a function only on one path
+# may still be null: calling it is a type error.
+let a(x: Int!): Int! { x }
+
+f(c: Boolean!): Int! {
+  let g = null
+  if (c) { g = &a }
+  g(x: 1)
+}

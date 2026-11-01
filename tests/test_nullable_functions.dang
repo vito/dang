@@ -1,0 +1,115 @@
+# Function values may be null too: an element of a list of functions, a method
+# taken off a nullable value, an `if` without `else`. A possibly-null function
+# can be called once it's checked for null, asserted with !, or defaulted
+# with ??.
+
+let a(x: Int!): Int! { x }
+
+let b(x: Int!): Int! { x * 2 }
+
+let zero: Int! { 42 }
+
+type Hooks {
+  hook(x: Int!): Int! { x + 100 }
+}
+
+let checked(i: Int!): Int! {
+  let g = [&a, &b][i]
+  if (g != null) { g(x: 3) } else { 0 }
+}
+
+assert { checked(1) == 6 }
+assert { checked(5) == 0 }
+
+let asserted(i: Int!): Int! {
+  let fs = [&a]
+  fs[i]!(x: 4)
+}
+
+assert { asserted(0) == 4 }
+assert { [&a][0]!(x: 1) == 1 }
+
+let assertFailed = { asserted(3) } rescue {
+  e: Error => e.message
+}
+assert { assertFailed == "non-null assertion failed: value is null" }
+
+let defaulted(i: Int!): Int! {
+  let g = [&a][i] ?? &b
+  g(x: 5)
+}
+
+assert { defaulted(3) == 10 }
+
+let guarded(flag: Boolean!): Int! {
+  let g = if (flag) { &a }
+  if (g == null) { return -1 }
+  g(x: 7)
+}
+
+assert { guarded(true) == 7 }
+assert { guarded(false) == -1 }
+
+# A method taken off a nullable value is null when the value is; calling it
+# through the value still propagates the null.
+let hookOf(h: Hooks): Int {
+  let r = &h.hook
+  if (r != null) { r(1) } else { null }
+}
+
+assert { hookOf(null) == null }
+assert { hookOf(Hooks) == 101 }
+
+let noHooks: Hooks = null
+assert { noHooks.hook(1) == null }
+
+# A possibly-null zero-arity function reads as its possibly-null result.
+let zeroAt(i: Int!): Int {
+  let g = [&zero][i]
+  g
+}
+
+assert { zeroAt(0) == 42 }
+assert { zeroAt(3) == null }
+
+let n(x: Int): Int! { x ?? 0 }
+
+# `f!(args)` calls the function: it isn't auto-called first, even when it
+# takes no required arguments.
+assert { [&n][0]!(x: 5) == 5 }
+
+let optionalAt(i: Int!): Int! {
+  let fs = [&n]
+  fs[i]!(x: 6)
+}
+
+assert { optionalAt(0) == 6 }
+
+# `f!()` calls the asserted function with no arguments (and `dang fmt` keeps
+# the parentheses).
+let zeroCalled(i: Int!): Int! {
+  let fs = [&zero]
+  fs[i]!()
+}
+
+assert { zeroCalled(0) == 42 }
+
+# `f!(args)` parses wherever an expression can go.
+let inc(x: Int!): Int! { x + 1 }
+
+let calls = [&b]
+
+let incs = [&inc]
+
+assert { inc(calls[0]!(5)) == 11 }
+assert { inc(x: calls[0]!(1)) == 3 }
+assert { inc(calls[0]!(incs[0]!(1))) == 5 }
+assert { [1, 2].map { v => calls[0]!(v) } == [2, 4] }
+assert { ["k": calls[0]!(2)]["k"] == 4 }
+assert { {{k: calls[0]!(3)}}.k == 6 }
+assert { (if (calls[0]!(1) == 2) { "yes" } else { "no" }) == "yes" }
+
+let returned: Int! { return calls[0]!(4) }
+
+assert { returned == 8 }
+assert { `v=${calls[0]!(6)}` == "v=12" }

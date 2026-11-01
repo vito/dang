@@ -1,0 +1,7 @@
+# Assigning a possibly-null value to a narrowed name ends its narrowing.
+bump(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  x = null
+  x + 1
+}

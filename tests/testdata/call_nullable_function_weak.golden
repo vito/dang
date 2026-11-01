@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot call g: it may be null (((x: Int!): Int!)?); check it for null first (`if (g != null) { … }`), or assert it with ! (`g!(…)`)
+  [2m[34m--> errors/call_nullable_function_weak.dang:8:3[0m
+ [2m    |[0m
+ [2m  6 |   let g = null[0m
+ [2m  7 |   if (c) { g = &a }[0m
+ [2m[34m[1m  8 | [0m  g(x: 1)
+[2m         [31m^[0m
+ [2m  9 | }[0m
+ [2m 10 | [0m
+ [2m    |[0m
+

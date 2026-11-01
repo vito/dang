@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m return type mismatch: declared [Int!]!, inferred [Int]!
+  [2m[34m--> errors/narrowing_invalidated_nested_param_call.dang:5:32[0m
+ [2m    |[0m
+ [2m  3 | # local of the enclosing function.[0m
+ [2m  4 | f(x: Int): [Int!]! {[0m
+ [2m[34m[1m  5 | [0m  let g(&b: Boolean!): [Int!]! {
+[2m                                      [31m^[0m
+ [2m  6 |     if (x == null) { return [] }[0m
+ [2m  7 |     b[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m "g" not found
+  [2m[34m--> errors/narrowing_invalidated_nested_param_call.dang:10:3[0m
+ [2m    |[0m
+ [2m  8 |     [x][0m
+ [2m  9 |   }[0m
+ [2m[34m[1m 10 | [0m  g {
+[2m         [31m^[0m
+ [2m 11 |     x = null[0m
+ [2m 12 |     true[0m
+ [2m    |[0m
+

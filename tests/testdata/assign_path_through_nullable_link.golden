@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot assign to a.maybe.x: a.maybe may be null; assert it with ! to raise if it is (`a.maybe!.x = ...`), or check it for null first
+  [2m[34m--> errors/assign_path_through_nullable_link.dang:12:1[0m
+ [2m    |[0m
+ [2m 10 | [0m
+ [2m 11 | let a = Foo[0m
+ [2m[34m[1m 12 | [0ma.maybe.x = 4
+[2m       [31m^^^^^^^[0m
+ [2m 13 | [0m
+ [2m    |[0m
+

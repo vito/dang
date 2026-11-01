@@ -425,6 +425,10 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		newEnv := env.Clone()
 
+		// Nested functions declared here can only be called until the block
+		// ends (narrowlog.go).
+		ctx, endScope := withNarrowScope(ctx)
+		defer endScope()
 		// A block written directly in a `{{ }}` field declares its bindings
 		// inside that field, even when the field's own scope is not an
 		// ancestor of its environment (a selected field's arguments are
@@ -462,7 +466,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			// conditional's branch diverges (raise/return/break/continue),
 			// the opposite branch's refinements are guaranteed to hold.
 			if cond, ok := form.(*Conditional); ok {
-				applyNarrowings(newEnv, conditionalExitNarrowings(cond, newEnv))
+				applyNarrowings(ctx, newEnv, conditionalExitNarrowings(cond, newEnv))
 			}
 		}
 
@@ -871,8 +875,17 @@ func inferFunctionBodiesPhaseResilient(ctx context.Context, functions []Node, en
 
 func inferNonDeclarationsPhaseResilient(ctx context.Context, nonDeclarations []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	var lastT hm.Type
+	// Top-level statements run in source order after every declaration, so
+	// a guard narrows the statements after it, and never a declaration
+	// (`let` included), which ran before it. The narrowings go in a clone:
+	// the module frame is shared with declarations, sibling files and later
+	// REPL prompts.
+	stmtEnv := env
 	for _, form := range nonDeclarations {
-		t, err := form.Infer(ctx, env, fresh)
+		t, err := form.Infer(ctx, stmtEnv, fresh)
+		if cond, ok := form.(*Conditional); ok && err == nil {
+			stmtEnv = withNarrowings(ctx, stmtEnv, conditionalExitNarrowings(cond, stmtEnv))
+		}
 		if err != nil {
 			errs.Add(err)
 			// Non-declarations don't need fallback types

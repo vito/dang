@@ -1,0 +1,75 @@
+# Arithmetic and ordering operators need non-null operands: a null operand
+# would raise at runtime, so the checker rejects a nullable one up front.
+# These are the ways to hand an operator a non-null value.
+
+let xs = [1, 2, 3]
+let counts = ["a": 1]
+
+# `!` asserts non-null
+assert { xs[0]! + 1 == 2 }
+
+# `??` supplies a default
+assert { (xs[9] ?? 0) + 1 == 1 }
+assert { (counts["missing"] ?? 10) * 2 == 20 }
+
+# narrowing by a null check
+addMaybe(a: Int, b: Int!): Int! {
+  if (a == null) {
+    return b
+  }
+  a + b
+}
+
+assert { addMaybe(null, 5) == 5 }
+assert { addMaybe(2, 5) == 7 }
+
+# ordering comparisons follow the same rule
+assert { xs[1]! > 1 }
+
+# `and`/`or` guards narrow their right operand
+positive(x: Int): Boolean! { x != null and x > 0 }
+
+assert { positive(1) }
+assert { !positive(null) }
+assert { !positive(-1) }
+
+absentOrPositive(x: Int): Boolean! { x == null or x > 0 }
+
+assert { absentOrPositive(null) }
+assert { absentOrPositive(2) }
+assert { !absentOrPositive(-2) }
+
+# parenthesized and negated null checks are guards too
+grouped(x: Int): Boolean! { (x != null) and x > 0 }
+
+assert { grouped(1) }
+assert { !grouped(null) }
+
+negated(x: Int): Int! {
+  if (!(x == null)) { x + 1 } else { 0 }
+}
+
+assert { negated(1) == 2 }
+assert { negated(null) == 0 }
+
+# a computed member isn't narrowed by a null check (each read calls it), and
+# guarding it doesn't break the read
+type Label {
+  text: String { "abc" }
+
+  shouty: Boolean! { text != null and text.toUpper == "ABC" }
+}
+
+assert { Label.shouty }
+
+# strings and lists too
+greeting(name: String): String! {
+  if (name != null) { "hi " + name } else { "hi" }
+}
+
+assert { greeting("ada") == "hi ada" }
+assert { greeting(null) == "hi" }
+
+# equality is defined for nullable operands
+assert { xs[9] == null }
+assert { counts["a"] != 2 }

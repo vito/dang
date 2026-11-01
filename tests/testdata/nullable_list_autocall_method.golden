@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Int as Int!
+  [2m[34m--> errors/nullable_list_autocall_method.dang:4:15[0m
+ [2m    |[0m
+ [2m  2 | # so its result is nullable even though the method returns Int!.[0m
+ [2m  3 | let xs: [Int!] = null[0m
+ [2m[34m[1m  4 | [0mlet n: Int! = xs.length
+[2m                     [31m^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

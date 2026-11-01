@@ -38,6 +38,41 @@ func divergesNormally(node Node) bool {
 	return false
 }
 
+// returnsAlways reports whether a node always leaves its function with
+// `return`, so nothing written in it reaches the code after it. (A raise may
+// be rescued, and break/continue stay in the function.)
+func returnsAlways(node Node) bool {
+	switch n := node.(type) {
+	case *Return:
+		return true
+	case *Block:
+		if len(n.Forms) == 0 {
+			return false
+		}
+		return returnsAlways(n.Forms[len(n.Forms)-1])
+	case *Conditional:
+		return n.Else != nil && returnsAlways(n.Then) && returnsAlways(n.Else)
+	}
+	return false
+}
+
+// leavesIteration reports whether a node always leaves the rest of the
+// enclosing block with `break`, `continue` or `return`.
+func leavesIteration(node Node) bool {
+	switch n := node.(type) {
+	case *Return, *Break, *Continue:
+		return true
+	case *Block:
+		if len(n.Forms) == 0 {
+			return false
+		}
+		return leavesIteration(n.Forms[len(n.Forms)-1])
+	case *Conditional:
+		return n.Else != nil && leavesIteration(n.Then) && leavesIteration(n.Else)
+	}
+	return false
+}
+
 // conditionalExitNarrowings returns the type refinements that hold after a
 // conditional statement completes normally. When one branch diverges (e.g.
 // raises), the opposite branch's refinements are guaranteed to apply.

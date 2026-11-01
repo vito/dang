@@ -1,0 +1,7 @@
+# Indexing is nullable even while the element type is still open, as for a
+# list that started out as an empty literal. (Once `acc += [1]` pins it, the
+# element is an Int!, and acc[5] is a plain nullable Int.)
+lastPlusOne: Int! {
+  let acc = []
+  acc[5] + 1
+}
