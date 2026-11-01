@@ -1,0 +1,11 @@
+[1m[31mError:[0m `x` is checked for null outside this function, which may be called after `x` is set to null (by assigning it at line 14); bind the checked value to a local with let and use that instead
+  [2m[34m--> errors/narrowing_captured_type_constructor.dang:10:18[0m
+ [2m    |[0m
+ [2m  8 | [0m
+ [2m  9 |       new {[0m
+ [2m[34m[1m 10 | [0m        self.v = x + 1
+[2m                        [31m^[0m
+ [2m 11 |         self[0m
+ [2m 12 |       }[0m
+ [2m    |[0m
+

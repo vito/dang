@@ -460,3 +460,20 @@ let caseConditions(a: Int): Int! {
 assert("case conditions") {
   caseConditions(null) == 0 and caseConditions(5) == 10 and caseConditions(1) == 2
 }
+
+# A local type's code may read a narrowed name nothing sets to null later.
+let localTypeReads(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  type T {
+    v: Int! = x + 1
+
+    new {
+      self.v = v + x
+      self
+    }
+  }
+  T.v
+}
+
+assert("local type reading a narrowed name") { localTypeReads(1) == 3 }
