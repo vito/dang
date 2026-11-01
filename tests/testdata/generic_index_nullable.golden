@@ -1,4 +1,4 @@
-[1m[31mError:[0m return type mismatch: declared a, inferred a?
+[1m[31mError:[0m return type mismatch: declared a, inferred a?: cannot use a possibly-null value as a: callers may pick a non-null type for a; assert it with `xs[0]!`, fall back with `xs[0] ?? other` where `other` is itself an a, or bind it with `let` and check it for null first
   [2m[34m--> errors/generic_index_nullable.dang:3:20[0m
  [2m    |[0m
  [2m  1 | # Indexing a list can miss, so `xs[0]` is a possibly-null `a`, not an `a`:[0m

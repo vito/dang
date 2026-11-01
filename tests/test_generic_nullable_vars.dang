@@ -27,6 +27,23 @@ firstNonNull(xs: [a]!): a! { xs[0]! }
 
 assert { firstNonNull([3]) == 3 }
 
+# what the error for a possibly-null `a` suggests, for `map.get` too
+firstOr(xs: [a]!, other: a): a { xs[0] ?? other }
+
+assert { firstOr([], 7) == 7 }
+
+getAsserted(m: Map[a], k: String!): a { m.get(k)! }
+
+getOr(m: Map[a], k: String!, other: a): a { m.get(k) ?? other }
+
+getChecked(m: Map[a], k: String!): a {
+  let v = m.get(k)
+  if (v == null) {
+    raise "missing " + k
+  }
+  v
+}
+
 # with the element written non-null, indexing gives a (nullable) `a`, and
 # callers' `a` is nullable
 firstOfNonNull(xs: [a!]!): a { xs[0] }

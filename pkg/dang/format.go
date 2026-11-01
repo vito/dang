@@ -765,6 +765,10 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatBinaryOp(n.Left, n.Right, "!=")
 	case *Grouped:
 		f.formatGrouped(n)
+	case *Coerce:
+		// Inference wraps checked values in Coerce; it isn't syntax, so an
+		// inferred tree (in a diagnostic, say) prints as its source.
+		f.formatNode(n.Expr)
 	default:
 		// Fallback for unknown node types
 		f.write(fmt.Sprintf("/* unknown node type: %T */", node))

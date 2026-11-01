@@ -1,0 +1,6 @@
+# A local bound to a possibly-null `a` is no `a` until it is checked: the
+# error says how to check it.
+closest(sorted: [a]!, item: a, &compare(x: a, y: a): Int!): Int! {
+  let first = sorted[0]
+  compare(item, first)
+}
