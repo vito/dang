@@ -68,23 +68,18 @@ sumAll(xs: [Int!]!): Int! {
 
 assert { sumAll([1, 2]) == 3 }
 
-# an interface's field written with a variable is met by each
-# implementation in its own type
-interface Container {
-  items: [a]!
+# an interface's generic method is generic in each implementation
+interface Mapper {
+  apply(x: a): a
 }
 
-type Ints implements Container {
-  items: [Int!]! = [1]
+type Ident implements Mapper {
+  apply(x: a): a { x }
 }
 
-type Strs implements Container {
-  items: [String!]! = ["s"]
-}
+use(m: Mapper!): String! { m.apply("s") + toString(m.apply(1)) }
 
-count(c: Container!): Int! { c.items.length }
-
-assert { count(Ints) + count(Strs) == 2 }
+assert { use(Ident) == "s1" }
 
 # a local of a generic function may hold its `a`
 orRaise(c: Boolean!, v: a): a {

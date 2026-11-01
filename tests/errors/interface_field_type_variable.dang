@@ -1,0 +1,11 @@
+# An interface field can't have a type variable in its type: each
+# implementation would pick its own, so `c.items` read through Container
+# couldn't be known, and would unify with anything (`let s: [String!]! =
+# c.items` on Ints).
+interface Container {
+  items: [a]!
+}
+
+type Ints implements Container {
+  items: [Int!]! = [1]
+}
