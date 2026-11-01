@@ -97,6 +97,8 @@ NonNullAssert <- expr:Term BangToken !'=' args:ArgValues? {
     Loc: c.Loc(),
   }
   if args != nil {
+    // The operand is the function being called: it isn't auto-called.
+    assert.Callee = true
     return &FunCall{
       Fun: assert,
       Args: Record(args.([]Keyed[Node])),
