@@ -860,8 +860,20 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
 	// Statics are sealed like the rest of the type's code, in a frame of
 	// their own: their locals are scoped to the meta-type.
+	typeFr := effFrameFrom(ctx)
+	keepReads := 0
+	if typeFr != nil {
+		keepReads = len(typeFr.reads)
+	}
 	ctx = withTypeBodyEffFrame(ctx, instanceType, meta, metaScope)
 	_, err := InferFormsWithPhases(withStaticsBody(ctx, meta), forms, metaScope, fresh)
+	// Static fields are computed once, as the declaration runs, so their
+	// reads of outer null narrowings are ordinary reads, not the type's
+	// deferred code (see ObjectDecl.Infer); static methods are checked in
+	// their own frames.
+	if typeFr != nil && typeFr.sealed == instanceType && len(typeFr.reads) > keepReads {
+		typeFr.reads = typeFr.reads[:keepReads]
+	}
 	return err
 }
 

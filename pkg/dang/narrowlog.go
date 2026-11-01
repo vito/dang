@@ -64,6 +64,10 @@ type narrowCapture struct {
 	// unless it escapes. A nested function can be called any time later in
 	// scope.
 	block bool
+	// sealed: a type's code (its methods, field defaults or new()), which
+	// runs wherever the type's values go, so like an escaping closure it may
+	// run any time after it is created.
+	sealed bool
 	// parent is the body the closure is created in, and scope the block
 	// scope it is declared in.
 	parent *effFrame

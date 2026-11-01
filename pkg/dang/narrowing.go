@@ -350,7 +350,7 @@ func exitNarrowBody(ctx context.Context, fr *effFrame) {
 	fr.eff.narrowReads = fr.reads
 	log.captures = append(log.captures, narrowCapture{
 		eff: fr.eff, reads: reads, start: fr.logStart, end: end,
-		block: fr.block, parent: fr.parent, scope: scope,
+		block: fr.block, sealed: fr.sealed != nil, parent: fr.parent, scope: scope,
 	})
 }
 
@@ -377,7 +377,7 @@ func (l *narrowLog) checkCaptures(s *effectSolver, errs *effErrors) {
 		errs.add(e.node, e.msg)
 	}
 	for _, c := range l.captures {
-		escapes := c.eff.escaped || s.escapes(c.eff)
+		escapes := c.sealed || c.eff.escaped || s.escapes(c.eff)
 		if c.block && !escapes {
 			continue
 		}

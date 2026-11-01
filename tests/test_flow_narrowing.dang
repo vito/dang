@@ -477,3 +477,21 @@ let localTypeReads(a: Int): Int! {
 }
 
 assert("local type reading a narrowed name") { localTypeReads(1) == 3 }
+
+# A static field is computed as its type is declared, while the name is
+# still narrowed.
+let staticReads(a: Int): Int! {
+  let x = a
+  if (x == null) { return 0 }
+  type T {
+    v: Int! = 0
+
+    self {
+      k: Int! = x + 1
+    }
+  }
+  x = null
+  T.k
+}
+
+assert("static field reading a narrowed name") { staticReads(1) == 2 }
