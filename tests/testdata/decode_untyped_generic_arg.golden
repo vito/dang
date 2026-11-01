@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use Decoded as a!
+  [2m[34m--> errors/decode_untyped_generic_arg.dang:5:15[0m
+ [2m    |[0m
+ [2m  3 | ident(x: a!): a! { x }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet v = ident(JSON.decode("\"s\""))
+[2m                     [31m^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | v + 1[0m
+ [2m  7 | [0m
+ [2m    |[0m
+
