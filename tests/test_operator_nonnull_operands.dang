@@ -39,6 +39,29 @@ assert { absentOrPositive(null) }
 assert { absentOrPositive(2) }
 assert { !absentOrPositive(-2) }
 
+# parenthesized and negated null checks are guards too
+grouped(x: Int): Boolean! { (x != null) and x > 0 }
+
+assert { grouped(1) }
+assert { !grouped(null) }
+
+negated(x: Int): Int! {
+  if (!(x == null)) { x + 1 } else { 0 }
+}
+
+assert { negated(1) == 2 }
+assert { negated(null) == 0 }
+
+# a computed member isn't narrowed by a null check (each read calls it), and
+# guarding it doesn't break the read
+type Label {
+  text: String { "abc" }
+
+  shouty: Boolean! { text != null and text.toUpper == "ABC" }
+}
+
+assert { Label.shouty }
+
 # strings and lists too
 greeting(name: String): String! {
   if (name != null) { "hi " + name } else { "hi" }
