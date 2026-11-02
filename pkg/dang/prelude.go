@@ -27,6 +27,9 @@ var (
 	// functions and the like), bound builtin-style into every fresh value
 	// scope by NewValueScope.
 	preludeBindings []Keyed[Value]
+	// preludeConstructors are the constructors of the prelude's types, bound
+	// into every fresh value scope alongside preludeBindings.
+	preludeConstructors map[*Type]Callable
 )
 
 // PreludeModule returns the module holding the Dang-source prelude's
@@ -151,6 +154,7 @@ func loadPrelude() {
 			}
 			preludeBindings = append(preludeBindings, Keyed[Value]{Key: name, Value: val})
 		}
+		preludeConstructors = scope.Constructors()
 
 		preludeModule = mod
 		preludeChain = chain

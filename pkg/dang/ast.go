@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"maps"
 	"reflect"
 	"slices"
 
@@ -508,6 +509,23 @@ func (c OverlayValueScope) Bind(name string, value Value, visibility Visibility)
 	c.primary.Bind(name, value, visibility)
 }
 
+func (c OverlayValueScope) BindConstructor(t *Type, ctor Callable) {
+	c.primary.BindConstructor(t, ctor)
+}
+
+func (c OverlayValueScope) LookupConstructor(t *Type) (Callable, bool) {
+	if ctor, ok := c.primary.LookupConstructor(t); ok {
+		return ctor, true
+	}
+	return c.lexical.LookupConstructor(t)
+}
+
+func (c OverlayValueScope) Constructors() map[*Type]Callable {
+	all := c.lexical.Constructors()
+	maps.Copy(all, c.primary.Constructors())
+	return all
+}
+
 func (c OverlayValueScope) Update(name string, value Value) {
 	// Reassign the binding where reads find it: primary first, then lexical.
 	// A name only the lexical scope binds (e.g. a top-level binding written
@@ -693,6 +711,29 @@ func (e *ConstructorScope) MarshalJSON() ([]byte, error) {
 
 func (e *ConstructorScope) Bind(name string, value Value, visibility Visibility) {
 	e.locals.Bind(name, value, visibility)
+}
+
+func (e *ConstructorScope) BindConstructor(t *Type, c Callable) {
+	e.locals.BindConstructor(t, c)
+}
+
+// LookupConstructor skips the instance: types are declared in scopes, never
+// bound as fields of the object under construction.
+func (e *ConstructorScope) LookupConstructor(t *Type) (Callable, bool) {
+	if c, ok := e.locals.LookupConstructor(t); ok {
+		return c, true
+	}
+	if c, ok := e.args.LookupConstructor(t); ok {
+		return c, true
+	}
+	return e.closure.LookupConstructor(t)
+}
+
+func (e *ConstructorScope) Constructors() map[*Type]Callable {
+	all := e.closure.Constructors()
+	maps.Copy(all, e.args.Constructors())
+	maps.Copy(all, e.locals.Constructors())
+	return all
 }
 
 func (e *ConstructorScope) Update(name string, value Value) {

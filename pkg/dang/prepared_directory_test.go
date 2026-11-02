@@ -121,6 +121,42 @@ enum Three { A B }
 	}
 }
 
+// Decoding through a shadowed type name must build the object with this
+// evaluation's constructor, whose methods see this evaluation's imports, even
+// after another evaluation of the same preparation.
+func TestPreparedDirectoryDecodeShadowedConstructor(t *testing.T) {
+	dir := preparedSource(t, `import Session
+type Record {
+  value: String!
+  session: String! { Session.value }
+}
+type Other { value: Int! }
+pub decodeShadowed(data: String!): String! {
+  let Record = &Other
+  let decoded: Record! = JSON.decode(data)
+  decoded.session
+}
+`)
+	schema, err := SchemaFromSDL("type Query { value: String! }", "session.graphqls")
+	require.NoError(t, err)
+	ctxFor := func(client graphql.Client) context.Context {
+		return ContextWithImportConfigs(context.Background(), ImportConfig{Name: "Session", Client: client, Schema: schema})
+	}
+	program, err := PrepareDir(ctxFor(blueprintClient("prepare")), dir)
+	require.NoError(t, err)
+	ctxA := ctxFor(blueprintClient("a"))
+	valuesA, err := program.Evaluate(ctxA)
+	require.NoError(t, err)
+	_, err = program.Evaluate(ctxFor(blueprintClient("b")))
+	require.NoError(t, err)
+	fn, found, err := valuesA.Lookup(ctxA, "decodeShadowed")
+	require.NoError(t, err)
+	require.True(t, found)
+	got, err := fn.(Callable).Call(ctxA, valuesA, map[string]Value{"data": StringValue{Val: `{"value": "x"}`}})
+	require.NoError(t, err)
+	require.Equal(t, "a", got.(StringValue).Val)
+}
+
 func assertPreparedNoError(t *testing.T, err error) bool {
 	t.Helper()
 	if err != nil {

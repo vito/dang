@@ -43,3 +43,25 @@ localDefault(suffix: String!, data: String!): String! {
 
 assert { localDefault("!", "{\"value\": \"a\"}") == "a!" }
 assert { localDefault("?", "{\"value\": \"b\"}") == "b?" }
+
+type Shadow {
+  value: String!
+}
+
+# Each call decodes with its own constructor, even through a shadowed name
+# and after a nested call declared the same type again.
+tagAround(suffix: String!, inner: String, data: String!): String! {
+  type Tagged {
+    value: String!
+    tag: String! = suffix
+  }
+  let innerResult = if (inner != null) { tagAround(inner!, null, data) } else { "" }
+  decodeHere(json: String!): String! {
+    let Tagged = &Shadow
+    let decoded: Tagged! = JSON.decode(json)
+    decoded.value + decoded.tag
+  }
+  innerResult + decodeHere(data)
+}
+
+assert { tagAround("!", "?", "{\"value\": \"a\"}") == "a?a!" }

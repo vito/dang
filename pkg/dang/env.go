@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"slices"
 	"sort"
-	"sync/atomic"
 
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/introspection"
@@ -252,14 +251,6 @@ type Type struct {
 	meta    *Type   // companion meta-type; lazily created via MetaType
 	metaOf  *Type   // non-nil iff THIS is a meta-type, pointing to the instance type it describes
 	statics *Object // runtime namespace of static members; nil until a self { } block is evaluated
-
-	// constructor is the runtime constructor last bound for this type (a
-	// Dang type's ConstructorFunction or a schema input object's
-	// InputObjectConstructor). Decode materialization falls back to it when
-	// the type's name does not resolve to its own constructor at the use
-	// site — the type was reached qualified (Lib.T), or a local binding
-	// shadows the name. See constructorFor.
-	constructor atomic.Pointer[typeConstructor]
 
 	// homeModule identifies the compilation unit (directory module, single
 	// file, or the prelude) this type was declared in. It powers module-level
@@ -1218,22 +1209,6 @@ func (e *Type) SetStatics(statics *Object) { e.statics = statics }
 
 // Statics returns the runtime namespace of static members, or nil.
 func (e *Type) Statics() *Object { return e.statics }
-
-// typeConstructor boxes a constructor for Type.constructor.
-type typeConstructor struct{ Callable }
-
-// SetConstructor records the runtime constructor for this type, each time its
-// declaration (or schema input object) is evaluated.
-func (e *Type) SetConstructor(c Callable) { e.constructor.Store(&typeConstructor{c}) }
-
-// Constructor returns the runtime constructor last recorded for this type,
-// or nil if none has been evaluated.
-func (e *Type) Constructor() Callable {
-	if c := e.constructor.Load(); c != nil {
-		return c.Callable
-	}
-	return nil
-}
 
 // SetScalarMethods records the runtime methods object for a scalar declared
 // with a body. Select.Eval dispatches ScalarValue receivers through it.

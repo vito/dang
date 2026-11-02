@@ -859,7 +859,7 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
 	}
 
-	callable, err := constructorFor(ctx, scope, mod)
+	callable, err := constructorFor(scope, mod)
 	if err != nil {
 		return nil, materializeDeferredError(path, "%s", err.Error())
 	}
@@ -872,41 +872,19 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 	return callable.Call(ctx, scope, args)
 }
 
-// constructorFor finds the constructor that builds values of mod. The type's
-// name in scope is preferred, so a type declared in a function body uses that
-// call's own constructor, but only when it really constructs mod: the name may
-// be shadowed by an unrelated binding (or another type's constructor), or not
-// bound at all where mod is reached qualified (`Lib.T`). Calling whatever the
-// name resolves to would hand back a value of a different type than the one
-// the checker assigned. Otherwise fall back to the constructor recorded on
-// the type when its declaration was evaluated.
-func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable, error) {
-	want := canonicalModule(mod)
-	val, found, err := scope.Lookup(ctx, mod.Named)
-	if err != nil {
-		return nil, err
-	}
-	if found {
-		if callable, ok := val.(Callable); ok && constructsType(callable, want) {
-			return callable, nil
-		}
-	}
-	if callable := want.Constructor(); callable != nil {
+// constructorFor finds the constructor that builds values of mod: the one
+// bound for mod in scope by its declaration, or by the import that brought it
+// in (see BindConstructor). Constructors are keyed by type identity rather
+// than name, so a local binding shadowing the type's name cannot hijack
+// construction, and a type reached only qualified (`Lib.T`) is still found.
+// Each scope holds its own evaluation's constructors, so a type declared in a
+// function body uses that call's constructor, and evaluations of a prepared
+// program never see each other's.
+func constructorFor(scope ValueScope, mod *Type) (Callable, error) {
+	if callable, ok := scope.LookupConstructor(mod); ok {
 		return callable, nil
 	}
 	return nil, fmt.Errorf("constructor for %s not found", mod.Name())
-}
-
-// constructsType reports whether callable is the constructor of want.
-func constructsType(callable Callable, want *Type) bool {
-	switch c := callable.(type) {
-	case *ConstructorFunction:
-		return c.ObjectType != nil && canonicalModule(c.ObjectType) == want
-	case InputObjectConstructor:
-		return c.TypeScope != nil && canonicalModule(c.TypeScope) == want
-	default:
-		return false
-	}
 }
 
 func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {

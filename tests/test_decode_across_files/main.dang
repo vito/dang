@@ -1,0 +1,4 @@
+# Decoding a Holder here builds its Lib.Greeter field too, though this file
+# never imports Lib.
+let held: Holder! = JSON.decode("{\"greeter\": {\"name\": \"Dang\"}}")
+assert { held.greeter.greeting == "Hello, Dang!" }
