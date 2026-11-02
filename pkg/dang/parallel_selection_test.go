@@ -180,6 +180,9 @@ func TestListSelectionEvaluatesElementsConcurrently(t *testing.T) {
 // would normally register them — is frozen at process start.
 func barrierModuleScopes(t *testing.T, modName string, n int, hit func()) (TypeScope, ValueScope) {
 	t.Helper()
+	// The prelude must load against the real registry before it is swapped
+	// out, or it infers against an empty one (when this test runs first).
+	loadPrelude()
 	// Register into a throwaway registry so these test-only builtins never leak
 	// into the shared one (Register mutates the registry in place, so swapping
 	// the pointer is the only way to isolate it).
