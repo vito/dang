@@ -717,8 +717,8 @@ func (e *ConstructorScope) BindConstructor(t *Type, c Callable) {
 	e.locals.BindConstructor(t, c)
 }
 
-// LookupConstructor skips the instance: types are declared in scopes, never
-// bound as fields of the object under construction.
+// LookupConstructor resolves like Lookup: a type declared in the body of the
+// type under construction is bound on the instance.
 func (e *ConstructorScope) LookupConstructor(t *Type) (Callable, bool) {
 	if c, ok := e.locals.LookupConstructor(t); ok {
 		return c, true
@@ -726,11 +726,19 @@ func (e *ConstructorScope) LookupConstructor(t *Type) (Callable, bool) {
 	if c, ok := e.args.LookupConstructor(t); ok {
 		return c, true
 	}
+	if inst, ok := e.instance(); ok {
+		if c, ok := inst.LookupConstructor(t); ok {
+			return c, true
+		}
+	}
 	return e.closure.LookupConstructor(t)
 }
 
 func (e *ConstructorScope) Constructors() map[*Type]Callable {
 	all := e.closure.Constructors()
+	if inst, ok := e.instance(); ok {
+		maps.Copy(all, inst.Constructors())
+	}
 	maps.Copy(all, e.args.Constructors())
 	maps.Copy(all, e.locals.Constructors())
 	return all
