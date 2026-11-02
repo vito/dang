@@ -4,4 +4,5 @@ let c = {
   log += ["c ran"]
   3
 }
-print([c, log])
+print(c)
+print(log)
