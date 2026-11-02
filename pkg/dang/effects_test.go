@@ -379,6 +379,27 @@ func TestRunDirStatementStateAcrossFiles(t *testing.T) {
 	require.ErrorContains(t, err, "`avg`'s initializer reads `sum`, which a top-level statement writes (a.dang:2)")
 }
 
+// An imported Dang module is checked the same wherever the import is: an
+// import written inside a top-level statement doesn't make the module's
+// functions statement code.
+func TestStatementStateInImportedModule(t *testing.T) {
+	for name, main := range map[string]string{
+		"top level":         "import Lib\nprint(1)\n",
+		"in a statement":    "[1].each { x => import Lib; print(x) }\n",
+		"in an initializer": "let x = { import Lib; 1 }\nprint(x)\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "dang.toml"), []byte("[imports.Lib]\npath = \"./lib\"\n"), 0o600))
+			require.NoError(t, os.Mkdir(filepath.Join(dir, "lib"), 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "lib", "main.dang"), []byte("pub sum: Int! = 0\nsum = 5\npub readSum: Int! { sum }\n"), 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(main), 0o600))
+			err := RunFile(context.Background(), filepath.Join(dir, "main.dang"), false)
+			require.ErrorContains(t, err, "`readSum` reads `sum`, which a top-level statement writes")
+		})
+	}
+}
+
 // A type declared in a function body is a value like any other: it can be
 // stored, returned and used concurrently, so its methods, constructor and
 // field defaults may not write (or call anything writing) outside the type.

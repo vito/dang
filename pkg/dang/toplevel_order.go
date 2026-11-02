@@ -36,9 +36,11 @@ import (
 // declarations run after an earlier entry's statements.
 
 // topForm is the top-level form being inferred: a declaration's initializer
-// (decl is its name) or a statement (decl == "").
+// (decl is its name) or a statement (decl == ""), of the module whose
+// top-level frame is top.
 type topForm struct {
 	decl string
+	top  TypeScope
 }
 
 // topOrder holds what rule 2 needs once everything is inferred: function and
@@ -77,8 +79,15 @@ func topOrderFrom(ctx context.Context) *topOrder {
 	return nil
 }
 
+// topFormFrom returns the top-level form being inferred. A Dang module
+// imported from inside a form is compiled with the importer's ctx, under a
+// top-level frame of its own: the importer's form says nothing about the
+// module's code, so it is ignored there.
 func topFormFrom(ctx context.Context) *topForm {
 	f, _ := ctx.Value(topFormKey{}).(*topForm)
+	if f == nil || f.top != topLevelFrameFrom(ctx) {
+		return nil
+	}
 	return f
 }
 
@@ -96,7 +105,7 @@ func withTopDecl(ctx context.Context, env hm.Env, form Node) context.Context {
 	if topOrderFrom(ctx) == nil || !ok || !topLevelEnv(ctx, env) {
 		return ctx
 	}
-	return context.WithValue(ctx, topFormKey{}, &topForm{decl: field.Name.Name})
+	return context.WithValue(ctx, topFormKey{}, &topForm{decl: field.Name.Name, top: topLevelFrameFrom(ctx)})
 }
 
 // withTopStatement marks ctx as inferring a top-level statement (in env).
@@ -104,7 +113,7 @@ func withTopStatement(ctx context.Context, env hm.Env) context.Context {
 	if topOrderFrom(ctx) == nil || !topLevelEnv(ctx, env) {
 		return ctx
 	}
-	return context.WithValue(ctx, topFormKey{}, &topForm{})
+	return context.WithValue(ctx, topFormKey{}, &topForm{top: topLevelFrameFrom(ctx)})
 }
 
 // checkInitializerWrite enforces rule 1: it reports a write (at node) of
