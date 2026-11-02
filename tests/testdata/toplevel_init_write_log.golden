@@ -1,0 +1,10 @@
+[1m[31mError:[0m unify index 1: no common type between [String!]! and Int!
+  [2m[34m--> errors/toplevel_init_write_log.dang:7:11[0m
+ [2m    |[0m
+ [2m  5 |   3[0m
+ [2m  6 | }[0m
+ [2m[34m[1m  7 | [0mprint([c, log])
+[2m                 [31m^^^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

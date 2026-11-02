@@ -1,11 +1,11 @@
-[1m[31mError:[0m {{ }} fields run concurrently; `postTitles` is declared after `r`, so reading it here runs its initializer, which may write `total`, while other fields run; declare `postTitles` before `r`, or read it before the {{ }} (`let postTitles1 = postTitles`)
-  [2m[34m--> errors/shadowed_import_field_race.dang:5:14[0m
+[1m[31mError:[0m cannot assign to `total` in `postTitles`'s initializer: top-level declarations run lazily on first read, maybe concurrently from {{ }} fields, so an initializer may only write its own locals; move the write into a top-level statement, or build the value in a local and return it
+  [2m[34m--> errors/shadowed_import_field_race.dang:7:20[0m
  [2m    |[0m
- [2m  3 | import Test[0m
- [2m  4 | [0m
- [2m[34m[1m  5 | [0mlet r = {{p: postTitles, q: 1}}
-[2m                    [31m^^^^^^^^^^[0m
- [2m  6 | let postTitles = { total += 1; ["local"] }[0m
- [2m  7 | let total = 0[0m
+ [2m  5 | [0m
+ [2m  6 | let r = {{p: postTitles, q: 1}}[0m
+ [2m[34m[1m  7 | [0mlet postTitles = { total += 1; ["local"] }
+[2m                          [31m^^^^^^^^^^[0m
+ [2m  8 | let total = 0[0m
+ [2m  9 | print(r.p)[0m
  [2m    |[0m
 

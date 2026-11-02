@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m cannot assign to `total` in `a`'s initializer: top-level declarations run lazily on first read, maybe concurrently from {{ }} fields, so an initializer may only write its own locals; move the write into a top-level statement, or build the value in a local and return it
+  [2m[34m--> errors/toplevel_init_race_stored_refs.dang:25:5[0m
+ [2m    |[0m
+ [2m 23 |       break[0m
+ [2m 24 |     }[0m
+ [2m[34m[1m 25 | [0m    total += 1
+[2m           [31m^^^^^^^^^^[0m
+ [2m 26 |     i += 1[0m
+ [2m 27 |   }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m cannot assign to `total` in `b`'s initializer: top-level declarations run lazily on first read, maybe concurrently from {{ }} fields, so an initializer may only write its own locals; move the write into a top-level statement, or build the value in a local and return it
+  [2m[34m--> errors/toplevel_init_race_stored_refs.dang:36:5[0m
+ [2m    |[0m
+ [2m 34 |       break[0m
+ [2m 35 |     }[0m
+ [2m[34m[1m 36 | [0m    total += 1
+[2m           [31m^^^^^^^^^^[0m
+ [2m 37 |     i += 1[0m
+ [2m 38 |   }[0m
+ [2m    |[0m
+

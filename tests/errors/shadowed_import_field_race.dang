@@ -1,5 +1,6 @@
 # A local declaration shadowing an unqualified import is the top-level
-# binding the {{ }} initializer race check sees.
+# binding the initializer-write rule sees: `postTitles` may be forced from a
+# {{ }} field, so its initializer can't write `total`.
 import Test
 
 let r = {{p: postTitles, q: 1}}

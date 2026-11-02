@@ -1,0 +1,11 @@
+# A function may be called while top-level declarations initialize, before
+# any statement, so it can't read a binding a statement writes, whoever calls
+# it. Pass the value as an argument instead.
+let sum = 0
+[1, 2, 3].each { x => sum += x }
+
+readSum: Int! {
+  sum
+}
+
+print(readSum)

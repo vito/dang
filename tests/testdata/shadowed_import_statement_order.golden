@@ -1,11 +1,11 @@
-[1m[31mError:[0m top-level declarations run before top-level statements, so `seen` (line 7) reads `postTitles` before this statement writes it; write `postTitles` in a declaration instead (e.g. compute it in `seen`'s initializer), or read it in a statement
-  [2m[34m--> errors/shadowed_import_statement_order.dang:6:1[0m
+[1m[31mError:[0m `seen`'s initializer reads `postTitles`, which a top-level statement writes (line 7), but top-level declarations run before top-level statements, so it would see the value from before the write; read `postTitles` in a top-level statement instead, or compute it in a declaration rather than writing it from statements
+  [2m[34m--> errors/shadowed_import_statement_order.dang:8:12[0m
  [2m    |[0m
- [2m  4 | [0m
- [2m  5 | let postTitles = ["local"][0m
- [2m[34m[1m  6 | [0mpostTitles = ["written"]
-[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  7 | let seen = postTitles[0m
- [2m  8 | print(seen)[0m
+ [2m  6 | let postTitles = ["local"][0m
+ [2m  7 | postTitles = ["written"][0m
+ [2m[34m[1m  8 | [0mlet seen = postTitles
+[2m                  [31m^^^^^^^^^^[0m
+ [2m  9 | print(seen)[0m
+ [2m 10 | [0m
  [2m    |[0m
 

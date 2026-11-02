@@ -1,5 +1,6 @@
 # A local declaration shadowing an unqualified import is the top-level
-# binding the statement-vs-declaration order check sees.
+# binding the statement-state rule sees: a statement writes `postTitles`, so
+# a declaration can't read it.
 import Test
 
 let postTitles = ["local"]

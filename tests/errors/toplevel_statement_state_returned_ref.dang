@@ -1,0 +1,23 @@
+# A function's result may carry a `&ref` it stored, here in a method slot
+# whose type says nothing about what the ref reads, and a declaration may
+# call it before the statement writing `sum` runs. readSum is rejected where
+# it reads `sum`, so nothing needs to follow the ref.
+let sum = 0
+
+readSum: Int! {
+  sum
+}
+
+type Box {
+  get: Int! { 0 }
+}
+
+mk: Box! {
+  let b = Box
+  b.get = &readSum
+  b
+}
+
+sum = 5
+let s = mk.get
+print(s)

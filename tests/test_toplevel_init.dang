@@ -1,0 +1,86 @@
+# Top-level initialization: declarations are hoisted and lazy, so they may
+# refer forward and be forced from {{ }} fields; their initializers write only
+# locals, and statement-written state is read only by statements.
+
+# Initializers build their values from locals.
+let xs = [1, 2, 3]
+let doubled = {
+  let out = []
+  xs.each { x => out += [x * 2] }
+  out
+}
+let total = xs.reduce(0) { a, x => a + x }
+
+type Counter {
+  n: Int! = 0
+
+  bump: Counter! {
+    self.n += 1
+    self
+  }
+}
+
+# Methods fork the receiver's copy: no shared write.
+let c = Counter.bump.bump
+
+assert { doubled == [2, 4, 6] }
+assert { total == 6 }
+assert { c.n == 2 }
+
+# Forward references, including from {{ }} fields, whose fields run
+# concurrently: the initializers they force share no mutable state.
+let r = {{p: later, q: viaFunction, s: viaRef[0]!()}}
+let later = {
+  let acc = 0
+  xs.each { x => acc += x }
+  acc
+}
+
+viaFunction: Int! {
+  evenLater * 2
+}
+
+let viaRef = [&viaFunction]
+let evenLater = later + 1
+
+assert { r.p == 6 }
+assert { r.q == 14 }
+assert { r.s == 14 }
+
+# Codependent types refer to each other before either is declared in full.
+type Tree {
+  root: Branch!
+
+  size: Int! {
+    root.size
+  }
+}
+
+type Branch {
+  leaves: [Int!]!
+  children: [Branch!]! = []
+
+  size: Int! {
+    leaves.length + children.reduce(0) { a, b => a + b.size }
+  }
+
+  tree: Tree! {
+    Tree(root: self)
+  }
+}
+
+let tree = Branch(leaves: [1, 2], children: [Branch(leaves: [3])]).tree
+assert { tree.size == 3 }
+
+# Statements may write top-level bindings, and statement code may read them;
+# functions get statement-written state as arguments.
+let sum = 0
+xs.each { x => sum += x }
+
+double(n: Int!): Int! {
+  n * 2
+}
+
+assert { double(sum) == 12 }
+sum += 1
+print(double(sum))

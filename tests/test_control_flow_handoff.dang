@@ -114,11 +114,16 @@ assert { nestedContinueCount == 4 }
 
 let nestedBlockCount = 0
 let nestedBlockBreak = [1, 2, 3].map { x =>
-  nestedBlockCount += 1
   [10, 20].each { y =>
     break "inner"
   }
   x
+}
+[1, 2, 3].each { x =>
+  nestedBlockCount += 1
+  [10, 20].each { y =>
+    break "inner"
+  }
 }
 
 assert { nestedBlockBreak == [1, 2, 3] }

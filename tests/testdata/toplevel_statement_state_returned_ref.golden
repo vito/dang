@@ -1,0 +1,11 @@
+[1m[31mError:[0m `readSum` reads `sum`, which a top-level statement writes (line 21), but functions may be called while top-level declarations are initialized, before any statement, so it could see the value from before the write; pass `sum` as an argument instead
+  [2m[34m--> errors/toplevel_statement_state_returned_ref.dang:8:3[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | readSum: Int! {[0m
+ [2m[34m[1m  8 | [0m  sum
+[2m         [31m^^^[0m
+ [2m  9 | }[0m
+ [2m 10 | [0m
+ [2m    |[0m
+

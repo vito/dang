@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to `total` in `b`'s initializer: top-level declarations run lazily on first read, maybe concurrently from {{ }} fields, so an initializer may only write its own locals; move the write into a top-level statement, or build the value in a local and return it
+  [2m[34m--> errors/toplevel_init_write_block.dang:5:18[0m
+ [2m    |[0m
+ [2m  3 | let xs = [1, 2, 3][0m
+ [2m  4 | let b = {[0m
+ [2m[34m[1m  5 | [0m  xs.each { x => total += x }
+[2m                        [31m^^^^^^^^^^[0m
+ [2m  6 |   2[0m
+ [2m  7 | }[0m
+ [2m    |[0m
+

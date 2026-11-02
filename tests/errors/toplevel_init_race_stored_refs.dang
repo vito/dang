@@ -1,0 +1,41 @@
+# Two {{ }} fields force `a` and `b` through `&ref`s stored in lists, so
+# their initializers would run concurrently and lose updates to `total`. No
+# tracking of the refs is needed: the initializers can't write `total`.
+let total = 0
+
+readA: Int! { a }
+
+readB: Int! { b }
+
+let fa = {
+  let xs = [&readA]
+  xs
+}
+let fb = {
+  let xs = [&readB]
+  xs
+}
+let r = {{p: fa[0]!(), q: fb[0]!()}}
+let a = {
+  let i = 0
+  loop {
+    if (i >= 20000) {
+      break
+    }
+    total += 1
+    i += 1
+  }
+  i
+}
+let b = {
+  let i = 0
+  loop {
+    if (i >= 20000) {
+      break
+    }
+    total += 1
+    i += 1
+  }
+  i
+}
+print([r.p, r.q, total])

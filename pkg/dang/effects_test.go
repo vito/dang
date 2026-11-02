@@ -368,6 +368,17 @@ func TestRunDirTopLevelImmutableAcrossFiles(t *testing.T) {
 	require.ErrorContains(t, err, "b.dang")
 }
 
+// W spans every file of a directory module: a statement in one file writing
+// a binding puts it off limits to declarations and functions in the others.
+func TestRunDirStatementStateAcrossFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte("pub sum: Int! = 0\nsum = 5\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte("readSum: Int! { sum }\nlet avg = sum / 2\n"), 0o600))
+	_, err := RunDir(context.Background(), dir, false)
+	require.ErrorContains(t, err, "`readSum` reads `sum`, which a top-level statement writes (a.dang:2)")
+	require.ErrorContains(t, err, "`avg`'s initializer reads `sum`, which a top-level statement writes (a.dang:2)")
+}
+
 // A type declared in a function body is a value like any other: it can be
 // stored, returned and used concurrently, so its methods, constructor and
 // field defaults may not write (or call anything writing) outside the type.
@@ -530,6 +541,29 @@ func TestTopLevelInitializerWrites(t *testing.T) {
 			want: "cannot assign to `box` in `c`'s initializer",
 		},
 		{
+			name: "write in a {{ }} field of an initializer",
+			src: `
+				let total = 0
+				let r = {{ p: { total += 1; 1 } }}
+			`,
+			want: "this assignment writes `total`, which is declared outside the field",
+		},
+		{
+			// What #233 checked from the reading side: whatever forces a
+			// and b concurrently, their initializers are rejected.
+			name: "initializers forced from fields through functions",
+			src: `
+				let total = 0
+				let r = {{ p: readA, q: readB }}
+				readA: Int! { a }
+				readB: Int! { helper }
+				helper: Int! { b }
+				let a = { total += 1; 1 }
+				let b = { total += 1; 2 }
+			`,
+			want: "cannot assign to `total` in `b`'s initializer",
+		},
+		{
 			name: "locals, method forks and statements are fine",
 			src: `
 				type Counter { n: Int! = 0; bump: Counter! { self.n += 1; self } }
@@ -539,6 +573,8 @@ func TestTopLevelInitializerWrites(t *testing.T) {
 				let c = Counter.bump.bump
 				let total = 0
 				xs.each { x => total += x }
+				let r = {{ p: later, q: c.n, s: doubled }}
+				let later = { let t = 0; xs.each { x => t += x }; t }
 			`,
 		},
 	})
@@ -585,6 +621,83 @@ func TestTopLevelStatementState(t *testing.T) {
 				let peek = box.n
 			`,
 			want: "`peek`'s initializer reads `box`, which a top-level statement writes (line 4)",
+		},
+		{
+			// #247: the ref travels in a method slot whose type says
+			// nothing about it; readSum is rejected where it reads.
+			name: "ref a function returned",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				mk: Box! { let b = Box; b.get = &readSum; b }
+				sum = 5
+				let s = mk.get
+			`,
+			want: "`readSum` reads `sum`, which a top-level statement writes (line 6)",
+		},
+		{
+			name: "escaping block a function result holds",
+			src: `
+				let sum = 0
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				mk: Box! { Box.store { x => sum + x } }
+				sum = 5
+				let s = mk.saved(1)
+			`,
+			want: "`mk` reads `sum`, which a top-level statement writes (line 8)",
+		},
+		{
+			name: "method reached through an interface",
+			src: `
+				let sum = 0
+				interface Getter { get: Int! }
+				type Box implements Getter { get: Int! { sum } }
+				let held: Getter! = Box
+				sum = 5
+				let s = held.get
+			`,
+			want: "`Box.get` reads `sum`, which a top-level statement writes (line 6)",
+		},
+		{
+			name: "W is a set: a statement's position doesn't matter",
+			src: `
+				let p = null
+				let s = p
+				p = 1
+			`,
+			want: "`s`'s initializer reads `p`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "assignment after a top-level guard",
+			// The guard narrows the statements after it, which are
+			// inferred in a narrowed clone of the module scope; the rule
+			// must still see them as top-level statements.
+			src: `
+				let p: Int = 1
+				if (p == null) { raise "missing" }
+				p = 5
+				let s = p
+			`,
+			want: "`s`'s initializer reads `p`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "storing and calling refs in statements is fine",
+			src: `
+				let sum = 0
+				let xs = [1, 2]
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				xs.each { x => sum += x }
+				print(Box.store { x => sum + x }.saved(1))
+				let held = Box.store { x => x * 2 }
+				print(held.saved(sum))
+			`,
 		},
 		{
 			name: "statements and blocks in them may read W",

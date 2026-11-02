@@ -1,35 +1,50 @@
 # Function references keep zero-arity functions callable without invoking them.
+#
+# The state they read lives in a block: top-level functions and methods can't
+# read a top-level binding that top-level statements write.
+assert {
+  let dynamicValue = 1
 
-let dynamicValue = 1
-
-currentValue: Int! {
-  dynamicValue
-}
-
-let currentGetter = &currentValue
-assert { currentGetter == 1 }
-dynamicValue += 1
-assert { currentGetter == 2 }
-
-# Function references can be assigned to existing function-valued fields.
-let storedGetter: Int! { 0 }
-
-storedGetter = &currentValue
-assert { storedGetter == 2 }
-dynamicValue += 1
-assert { storedGetter == 3 }
-
-# Selecting a function through a receiver can also be captured without auto-call.
-type DynamicMethodRefBox {
   currentValue: Int! {
     dynamicValue
   }
+
+  let currentGetter = &currentValue
+  let first = currentGetter
+  dynamicValue += 1
+  first == 1 and currentGetter == 2
 }
 
-let foo = DynamicMethodRefBox
-let fooGetter = &foo.currentValue
-assert { fooGetter == 3 }
-dynamicValue += 1
-assert { fooGetter == 4 }
+# Function references can be assigned to existing function-valued fields.
+assert {
+  let dynamicValue = 2
+
+  currentValue: Int! {
+    dynamicValue
+  }
+
+  let storedGetter: Int! { 0 }
+  storedGetter = &currentValue
+  let first = storedGetter
+  dynamicValue += 1
+  first == 2 and storedGetter == 3
+}
+
+# Selecting a function through a receiver can also be captured without auto-call.
+assert {
+  let dynamicValue = 3
+
+  type DynamicMethodRefBox {
+    currentValue: Int! {
+      dynamicValue
+    }
+  }
+
+  let foo = DynamicMethodRefBox
+  let fooGetter = &foo.currentValue
+  let first = fooGetter
+  dynamicValue += 1
+  first == 3 and fooGetter == 4
+}
 
 print("Function ref tests passed!")
