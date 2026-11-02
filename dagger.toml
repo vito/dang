@@ -48,3 +48,6 @@ source = "github.com/vito/agents/staff@main"
 
 [modules.reviewer]
 source = "github.com/vito/agents/reviewer@main"
+
+[modules.context]
+source = "github.com/vito/agents/context@main"
