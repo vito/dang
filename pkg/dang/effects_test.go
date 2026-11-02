@@ -544,6 +544,61 @@ func TestTopLevelInitializerWrites(t *testing.T) {
 	})
 }
 
+// A top-level binding some top-level statement writes (W) may only be read
+// by statement code: declarations run before every statement, and function
+// and type code may run while declarations initialize.
+func TestTopLevelStatementState(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "declaration reading W",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				let avg = sum / 3
+			`,
+			want: "`avg`'s initializer reads `sum`, which a top-level statement writes (line 3)",
+		},
+		{
+			name: "function reading W",
+			src: `
+				let sum = 0
+				sum = 5
+				readSum: Int! { sum }
+			`,
+			want: "`readSum` reads `sum`, which a top-level statement writes (line 3)",
+		},
+		{
+			name: "field default reading W",
+			src: `
+				let sum = 0
+				sum = 5
+				type Box { v: Int! = sum }
+			`,
+			want: "the body of `Box` reads `sum`",
+		},
+		{
+			name: "field-path write puts the root in W",
+			src: `
+				type Box { n: Int! = 0 }
+				let box = Box
+				box.n = 5
+				let peek = box.n
+			`,
+			want: "`peek`'s initializer reads `box`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "statements and blocks in them may read W",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				double(n: Int!): Int! { n * 2 }
+				print(double(sum))
+				[1].each { x => print(sum + x) }
+			`,
+		},
+	})
+}
+
 // A top-level declaration is forced on first read, wherever that is; one
 // whose initializer writes top-level state must not be forced from a `{{ }}`
 // field, where it would run concurrently with other fields.

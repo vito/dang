@@ -177,6 +177,9 @@ type effFrame struct {
 	// may not write, or call anything that writes, outside the type, and an
 	// outer parameter it calls must be pure.
 	sealed *Type
+	// typeBody marks a type's body (field defaults, statics), as opposed
+	// to its methods and constructor.
+	typeBody bool
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {
@@ -236,6 +239,7 @@ func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (con
 func withTypeBodyEffFrame(ctx context.Context, object, frame *Type, env hm.Env) context.Context {
 	ctx, fr := withEffFrame(ctx, newClosureEffect(object.Named), env, frame)
 	fr.sealed = object
+	fr.typeBody = true
 	return ctx
 }
 
@@ -296,6 +300,7 @@ func absorbWrite(ctx context.Context, target effTarget, node Node) {
 	if !fieldReported {
 		checkInitializerWrite(ctx, target, node)
 	}
+	noteStatementWrite(ctx, target, node)
 	fr := bodyFrame(ctx)
 	if fr == nil {
 		noteTopWrite(ctx, target, node)

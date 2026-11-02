@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -106,7 +107,29 @@ type topOrder struct {
 	fnCalls   map[*Effect]map[*Effect]bool
 	fieldRefs []fieldRef
 	writes    []stmtWrite
+	// stmtWritten is W: the top-level bindings some top-level statement
+	// writes, each with its first write; outsideReads are the reads of
+	// top-level bindings from code that isn't a statement.
+	stmtWritten  map[effTarget]Node
+	outsideReads []outsideRead
 }
+
+// outsideRead is a read (at node) of target from code other than top-level
+// statements: reader names that code, kind says what it is.
+type outsideRead struct {
+	target effTarget
+	node   Node
+	reader string
+	kind   readerKind
+}
+
+type readerKind int
+
+const (
+	readerDecl readerKind = iota
+	readerFunction
+	readerType
+)
 
 type topFormKey struct{}
 
@@ -241,6 +264,104 @@ func checkInitializerWrite(ctx context.Context, target effTarget, node Node) {
 		target.name, f.decl.name), node))
 }
 
+// noteStatementWrite adds target to W when the write (at node) is in a
+// top-level statement, or a block or nested function written in one.
+func noteStatementWrite(ctx context.Context, target effTarget, node Node) {
+	f := topFormFrom(ctx)
+	if f == nil || f.decl != nil || !isTopLevelFrame(target.frame, topLevelFrameFrom(ctx)) {
+		return
+	}
+	o := topOrderFrom(ctx)
+	if o.stmtWritten == nil {
+		o.stmtWritten = map[effTarget]Node{}
+	}
+	if _, ok := o.stmtWritten[target]; !ok {
+		o.stmtWritten[target] = node
+	}
+}
+
+// noteOutsideRead records a read (at node) of top-level binding target from
+// code that isn't statement code: a declaration's initializer, or the body
+// of a function, method, constructor or type (field defaults, statics).
+func noteOutsideRead(ctx context.Context, o *topOrder, target effTarget, node Node) {
+	f := topFormFrom(ctx)
+	if f != nil && f.decl == nil {
+		return
+	}
+	r := outsideRead{target: target, node: node}
+	if f != nil && !inFunctionBody(ctx) {
+		r.reader, r.kind = f.decl.name, readerDecl
+	} else {
+		r.reader, r.kind = "this code", readerFunction
+		for fr := effFrameFrom(ctx); fr != nil; fr = fr.parent {
+			if fr.field || fr.block {
+				continue
+			}
+			r.reader = fr.eff.name
+			if fr.typeBody {
+				r.kind = readerType
+			}
+			break
+		}
+	}
+	o.outsideReads = append(o.outsideReads, r)
+}
+
+// checkStatementState reports reads of W outside statement code: a
+// declaration has run before any statement, and a function or type's code may
+// run while declarations initialize, so either could see a value from before
+// a statement's write.
+func (o *topOrder) checkStatementState(errs *effErrors) {
+	if len(o.stmtWritten) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	for _, r := range o.outsideReads {
+		w, ok := o.stmtWritten[r.target]
+		if !ok {
+			continue
+		}
+		key := fmt.Sprintf("%d:%s:%s", r.kind, r.reader, r.target.name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		errs.add(r.node, outsideReadMessage(r, w))
+	}
+}
+
+func outsideReadMessage(r outsideRead, write Node) string {
+	name := r.target.name
+	at := writeSite(r.node, write)
+	switch r.kind {
+	case readerDecl:
+		return fmt.Sprintf(
+			"`%s`'s initializer reads `%s`, which a top-level statement writes (%s), but top-level declarations run before top-level statements, so it would see the value from before the write; read `%s` in a top-level statement instead, or compute it in a declaration rather than writing it from statements",
+			r.reader, name, at, name)
+	case readerType:
+		return fmt.Sprintf(
+			"the body of `%s` reads `%s`, which a top-level statement writes (%s), but field defaults may run while top-level declarations are initialized, before any statement, so they could see the value from before the write; pass `%s` in as an argument instead",
+			r.reader, name, at, name)
+	default:
+		return fmt.Sprintf(
+			"`%s` reads `%s`, which a top-level statement writes (%s), but functions may be called while top-level declarations are initialized, before any statement, so it could see the value from before the write; pass `%s` as an argument instead",
+			r.reader, name, at, name)
+	}
+}
+
+// writeSite locates write for a message about read: its line, and its file
+// when that differs.
+func writeSite(read, write Node) string {
+	wl := write.GetSourceLocation()
+	if wl == nil {
+		return "elsewhere"
+	}
+	if rl := read.GetSourceLocation(); rl != nil && rl.Filename != wl.Filename && wl.Filename != "" {
+		return fmt.Sprintf("%s:%d", filepath.Base(wl.Filename), wl.Line)
+	}
+	return fmt.Sprintf("line %d", wl.Line)
+}
+
 // noteTopRead records a read (at node) of name, resolved in env, whose type
 // is t: by the enclosing function bodies and declaration initializer, and,
 // inside a `{{ }}` field, as a reference to check once everything is known.
@@ -260,6 +381,7 @@ func noteTopRead(ctx context.Context, env hm.Env, name string, node Node, t hm.T
 		return
 	}
 	target := effTarget{frame: frame, name: name}
+	noteOutsideRead(ctx, o, target, node)
 	f := topFormFrom(ctx)
 	if f != nil && f.decl != nil {
 		if f.decl.reads == nil {
@@ -507,6 +629,7 @@ func (a *topAnalysis) readsOf(ref fieldRef) ([]*topDecl, []string) {
 
 // check reports the violations of both rules.
 func (o *topOrder) check(errs *effErrors) {
+	o.checkStatementState(errs)
 	if len(o.fieldRefs) == 0 && len(o.writes) == 0 {
 		return
 	}
