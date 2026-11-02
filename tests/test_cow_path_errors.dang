@@ -28,11 +28,13 @@ let throughNull = {
 assert { throughNull == "non-null assertion failed: value is null" }
 
 # A non-null link works, and copies rather than aliasing.
-let a = Foo(1, maybe: Inner(3))
-let b = a
-a.maybe!.x = 4
-assert { a.maybe!.x == 4 }
-assert { b.maybe!.x == 3 }
+let aliasing = {
+  let a = Foo(1, maybe: Inner(3))
+  let b = a
+  a.maybe!.x = 4
+  [a.maybe!.x, b.maybe!.x]
+}
+assert { aliasing == [4, 3] }
 
 # Through self, and compound.
 let c = Foo(1, maybe: Inner(3))

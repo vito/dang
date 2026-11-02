@@ -1117,10 +1117,6 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// sealed: it can't write, or call anything that writes, outside it.
 	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
 	typeFr := effFrameFrom(ctx)
-	if c.ctorFn != nil {
-		// Constructing runs the field defaults.
-		noteTypeBody(ctx, c.ctorFn.fnEffects().latent, typeFr.eff)
-	}
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {

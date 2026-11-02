@@ -148,10 +148,12 @@ assert("ref through an alias keeps the alias's value") { g.refAliasThenWrite == 
 assert("escaped self. ref keeps its own receiver") { g.selfRefEscape.fire(1) == 11 }
 
 # A ref through a variable holds the value, not the variable.
-let gVar = Guest
-let gRef = &gVar.helper
-gVar.n = 50
-assert("ref through a variable keeps the value") { gRef(1) == 11 and gVar.n == 50 }
+assert("ref through a variable keeps the value") {
+  let gVar = Guest
+  let gRef = &gVar.helper
+  gVar.n = 50
+  gRef(1) == 11 and gVar.n == 50
+}
 assert("stored nested fn ref") { g.nestedFire == 11 }
 assert("escaped nested fn ref") { g.nestedEscape.fire(1) == 12 }
 assert("escaped nested fn ref, called directly") { g.nestedEscape.hook(1) == 12 }

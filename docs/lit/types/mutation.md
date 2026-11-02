@@ -170,6 +170,45 @@ bump: Int! {
 }
 ```
 
+Script code means top-level statements, and the blocks written in them. A
+top-level declaration (`let x = ...`) runs lazily, on first read, maybe from a
+`{{ }}` field running alongside others, so its initializer writes only its own
+locals. Build the value there and return it:
+
+```dang-failure
+let seen = 0
+let doubled = {
+  [1, 2, 3].map { x => seen += 1; x * 2 }
+}
+```
+
+```dang
+let tripled = {
+  let out = []
+  [1, 2, 3].each { x => out += [x * 3] }
+  out
+}
+tripled
+```
+
+Every declaration runs before any statement, so a binding a statement writes
+is read only by statements. A declaration would see the value from before the
+write, and a function or method might run before it too, so pass the value in
+as an argument:
+
+```dang-failure
+let sum = 0
+[1, 2, 3].each { x => sum += x }
+readSum: Int! { sum }
+```
+
+```dang
+let sum = 0
+[1, 2, 3].each { x => sum += x }
+double(n: Int!): Int! { n * 2 }
+double(sum)
+```
+
 Statics, the members of a type's `self { }` block (see [#static-members]), are
 immutable from everywhere. A static method's writes to its own `self` stay in
 its copy, like any method's.

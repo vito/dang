@@ -1,0 +1,8 @@
+# An initializer logging to a top-level list writes top-level state.
+let log = []
+let c = {
+  log += ["c ran"]
+  3
+}
+print(c)
+print(log)

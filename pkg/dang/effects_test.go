@@ -368,6 +368,38 @@ func TestRunDirTopLevelImmutableAcrossFiles(t *testing.T) {
 	require.ErrorContains(t, err, "b.dang")
 }
 
+// W spans every file of a directory module: a statement in one file writing
+// a binding puts it off limits to declarations and functions in the others.
+func TestRunDirStatementStateAcrossFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte("pub sum: Int! = 0\nsum = 5\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte("readSum: Int! { sum }\nlet avg = sum / 2\n"), 0o600))
+	_, err := RunDir(context.Background(), dir, false)
+	require.ErrorContains(t, err, "`readSum` reads `sum`, which a top-level statement writes (a.dang:2)")
+	require.ErrorContains(t, err, "`avg`'s initializer reads `sum`, which a top-level statement writes (a.dang:2)")
+}
+
+// An imported Dang module is checked the same wherever the import is: an
+// import written inside a top-level statement doesn't make the module's
+// functions statement code.
+func TestStatementStateInImportedModule(t *testing.T) {
+	for name, main := range map[string]string{
+		"top level":         "import Lib\nprint(1)\n",
+		"in a statement":    "[1].each { x => import Lib; print(x) }\n",
+		"in an initializer": "let x = { import Lib; 1 }\nprint(x)\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "dang.toml"), []byte("[imports.Lib]\npath = \"./lib\"\n"), 0o600))
+			require.NoError(t, os.Mkdir(filepath.Join(dir, "lib"), 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "lib", "main.dang"), []byte("pub sum: Int! = 0\nsum = 5\npub readSum: Int! { sum }\n"), 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(main), 0o600))
+			err := RunFile(context.Background(), filepath.Join(dir, "main.dang"), false)
+			require.ErrorContains(t, err, "`readSum` reads `sum`, which a top-level statement writes")
+		})
+	}
+}
+
 // A type declared in a function body is a value like any other: it can be
 // stored, returned and used concurrently, so its methods, constructor and
 // field defaults may not write (or call anything writing) outside the type.
@@ -500,51 +532,47 @@ func TestLocalTypesSealed(t *testing.T) {
 	})
 }
 
-// A top-level declaration is forced on first read, wherever that is; one
-// whose initializer writes top-level state must not be forced from a `{{ }}`
-// field, where it would run concurrently with other fields.
-func TestTopLevelInitializersInFields(t *testing.T) {
+// Top-level declarations' initializers write only their own locals, so
+// forcing them concurrently (from `{{ }}` fields) can't race.
+func TestTopLevelInitializerWrites(t *testing.T) {
 	runEffectCases(t, []effectCase{
 		{
-			name: "forward reference from a field",
-			src: `
-				let total = 0
-				let r = {{ p: a, q: b }}
-				let a = { total += 1; 1 }
-				let b = { total += 1; 2 }
-			`,
-			want: "`a` is declared after `r`, so reading it here runs its initializer, which may write `total`",
-		},
-		{
-			name: "write through a block the initializer runs",
-			src: `
-				let total = 0
-				let r = {{ p: a }}
-				let a = { [1, 2].each { x => total += x }; 1 }
-			`,
-			want: "`a` is declared after `r`",
-		},
-		{
-			name: "forcing a declaration that writes",
-			src: `
-				let total = 0
-				let r = {{ p: c }}
-				let c = a + 1
-				let a = { total += 1; 1 }
-			`,
-			want: "`c` is declared after `r`, so reading it here runs its initializer, which may write `total`",
-		},
-		{
-			name: "field in a function body",
+			name: "direct write",
 			src: `
 				let total = 0
 				let a = { total += 1; 1 }
-				g: Int! { {{ p: a }}.p }
 			`,
-			want: "reading `a` here may run its initializer, which may write `total`",
+			want: "cannot assign to `total` in `a`'s initializer",
 		},
 		{
-			name: "field calling functions that read later declarations",
+			name: "write in a block the initializer runs",
+			src: `
+				let total = 0
+				let b = { [1, 2].each { x => total += x }; 2 }
+			`,
+			want: "cannot assign to `total` in `b`'s initializer",
+		},
+		{
+			name: "field-path write",
+			src: `
+				type Box { n: Int! = 0 }
+				let box = Box
+				let c = { box.n = 5; 3 }
+			`,
+			want: "cannot assign to `box` in `c`'s initializer",
+		},
+		{
+			name: "write in a {{ }} field of an initializer",
+			src: `
+				let total = 0
+				let r = {{ p: { total += 1; 1 } }}
+			`,
+			want: "this assignment writes `total`, which is declared outside the field",
+		},
+		{
+			// What #233 checked from the reading side: whatever forces a
+			// and b concurrently, their initializers are rejected.
+			name: "initializers forced from fields through functions",
 			src: `
 				let total = 0
 				let r = {{ p: readA, q: readB }}
@@ -554,130 +582,160 @@ func TestTopLevelInitializersInFields(t *testing.T) {
 				let a = { total += 1; 1 }
 				let b = { total += 1; 2 }
 			`,
-			want: "`readB` reads `b` (through `helper`), which is declared after `r`, so calling it here runs `b`'s initializer, which may write `total`",
+			want: "cannot assign to `total` in `b`'s initializer",
 		},
 		{
-			name: "field calling a method that reads a later declaration",
+			name: "locals, method forks and statements are fine",
 			src: `
+				type Counter { n: Int! = 0; bump: Counter! { self.n += 1; self } }
+				let xs = [1, 2, 3]
+				let doubled = { let out = []; xs.each { x => out += [x * 2] }; out }
+				let sum = xs.reduce(0) { a, x => a + x }
+				let c = Counter.bump.bump
 				let total = 0
-				type T { get: Int! { a } }
-				let r = {{ p: T.get }}
-				let a: Int! = { total += 1; 1 }
-			`,
-			want: "`get` reads `a` (through `T.get`), which is declared after `r`",
-		},
-		{
-			name: "earlier declarations, pure ones, and statements are fine",
-			src: `
-				let total = 0
-				let a = { total += 1; 1 }
-				let r = {{ p: a, q: later }}
-				let later = 5
-				let s = {{ p: a }}
-				print({{ p: a, q: later }})
+				xs.each { x => total += x }
+				let r = {{ p: later, q: c.n, s: doubled }}
+				let later = { let t = 0; xs.each { x => t += x }; t }
 			`,
 		},
 	})
 }
 
-// Top-level declarations all run before top-level statements, so a statement
-// can't write what a later declaration reads: the declaration would see the
-// value from before the write.
-func TestTopLevelStatementOrder(t *testing.T) {
+// An assignment's target is written, not read: an initializer writing a
+// binding a statement writes too gets rule 1's error alone.
+func TestInitializerWriteToStatementStateReportedOnce(t *testing.T) {
+	got := inferWithEffects(t, "let total = 0\ntotal = 3\nlet a = { total += 1; total = 2; 1 }\n")
+	require.Contains(t, got, "cannot assign to `total` in `a`'s initializer")
+	require.NotContains(t, got, "initializer reads `total`")
+}
+
+// A top-level binding some top-level statement writes (W) may only be read
+// by statement code: declarations run before every statement, and function
+// and type code may run while declarations initialize.
+func TestTopLevelStatementState(t *testing.T) {
 	runEffectCases(t, []effectCase{
 		{
-			name: "assignment before a declaration reading it",
+			name: "declaration reading W",
+			src: `
+				let sum = 0
+				[1, 2, 3].each { x => sum += x }
+				let avg = sum / 3
+			`,
+			want: "`avg`'s initializer reads `sum`, which a top-level statement writes (line 3)",
+		},
+		{
+			name: "function reading W",
+			src: `
+				let sum = 0
+				sum = 5
+				readSum: Int! { sum }
+			`,
+			want: "`readSum` reads `sum`, which a top-level statement writes (line 3)",
+		},
+		{
+			name: "field default reading W",
+			src: `
+				let sum = 0
+				sum = 5
+				type Box { v: Int! = sum }
+			`,
+			want: "the body of `Box` reads `sum`",
+		},
+		{
+			name: "field-path write puts the root in W",
+			src: `
+				type Box { n: Int! = 0 }
+				let box = Box
+				box.n = 5
+				let peek = box.n
+			`,
+			want: "`peek`'s initializer reads `box`, which a top-level statement writes (line 4)",
+		},
+		{
+			// #247: the ref travels in a method slot whose type says
+			// nothing about it; readSum is rejected where it reads.
+			name: "ref a function returned",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				mk: Box! { let b = Box; b.get = &readSum; b }
+				sum = 5
+				let s = mk.get
+			`,
+			want: "`readSum` reads `sum`, which a top-level statement writes (line 6)",
+		},
+		{
+			name: "escaping block a function result holds",
+			src: `
+				let sum = 0
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				mk: Box! { Box.store { x => sum + x } }
+				sum = 5
+				let s = mk.saved(1)
+			`,
+			want: "`mk` reads `sum`, which a top-level statement writes (line 8)",
+		},
+		{
+			name: "method reached through an interface",
+			src: `
+				let sum = 0
+				interface Getter { get: Int! }
+				type Box implements Getter { get: Int! { sum } }
+				let held: Getter! = Box
+				sum = 5
+				let s = held.get
+			`,
+			want: "`Box.get` reads `sum`, which a top-level statement writes (line 6)",
+		},
+		{
+			name: "W is a set: a statement's position doesn't matter",
 			src: `
 				let p = null
-				p = 1
 				let s = p
+				p = 1
 			`,
-			want: "top-level declarations run before top-level statements, so `s` (line 4) reads `p` before this statement writes it",
+			want: "`s`'s initializer reads `p`, which a top-level statement writes (line 4)",
 		},
 		{
 			name: "assignment after a top-level guard",
 			// The guard narrows the statements after it, which are
-			// inferred in a narrowed clone of the module scope; the order
-			// check must still see them as top-level statements.
+			// inferred in a narrowed clone of the module scope; the rule
+			// must still see them as top-level statements.
 			src: `
 				let p: Int = 1
 				if (p == null) { raise "missing" }
 				p = 5
 				let s = p
 			`,
-			want: "so `s` (line 5) reads `p` before this statement writes it",
+			want: "`s`'s initializer reads `p`, which a top-level statement writes (line 4)",
 		},
 		{
-			name: "block writing before a declaration reading it",
+			name: "storing and calling refs in statements is fine",
+			src: `
+				let sum = 0
+				let xs = [1, 2]
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				xs.each { x => sum += x }
+				print(Box.store { x => sum + x }.saved(1))
+				let held = Box.store { x => x * 2 }
+				print(held.saved(sum))
+			`,
+		},
+		{
+			name: "statements and blocks in them may read W",
 			src: `
 				let sum = 0
 				[1, 2, 3].each { x => sum += x }
-				let s2 = sum
-			`,
-			want: "so `s2` (line 4) reads `sum` before this statement writes it",
-		},
-		{
-			name: "declaration calling a function that reads the binding",
-			src: `
-				let sum = 0
-				[1, 2, 3].each { x => sum += x }
-				let s2 = getSum
-				getSum: Int! { viaHelper }
-				viaHelper: Int! { sum }
-			`,
-			want: "so `s2` (line 4) reads `sum` (through `viaHelper`) before this statement writes it",
-		},
-		{
-			name: "declaration constructing a type whose defaults read the binding",
-			src: `
-				let sum = 0
-				sum = 6
-				type Box { v: Int! = sum }
-				let s3 = Box.v
-			`,
-			want: "so `s3` (line 5) reads `sum` (through `Box`) before this statement writes it",
-		},
-		{
-			name: "declaration calling a stored ref that reads the binding",
-			src: `
-				let sum = 0
-				getSum: Int! { sum }
-				let g = &getSum
-				sum = 5
-				let v = g()
-			`,
-			want: "so `v` (line 6) reads `sum` (through `getSum`) before this statement writes it",
-		},
-		{
-			name: "storing a ref is fine",
-			src: `
-				let sum = 0
-				getSum: Int! { sum }
-				let g = &getSum
-				sum = 5
-				print(g())
-			`,
-		},
-		{
-			name: "constructing a type whose methods read the binding is fine",
-			src: `
-				let sum = 0
-				sum = 6
-				type Box { v: Int! = 1; get: Int! { sum } }
-				let b = Box
-				print(b.get)
-			`,
-		},
-		{
-			name: "statements reading, and declarations before the write, are fine",
-			src: `
-				let total = 0
-				let start = total
-				[1, 2, 3].each { x => total += x }
-				print(total)
-				total = 10
-				print([start, total])
-				let doubled = { let t = 0; [1, 2].each { x => t += x * 2 }; t }
+				double(n: Int!): Int! { n * 2 }
+				print(double(sum))
+				[1].each { x => print(sum + x) }
 			`,
 		},
 	})

@@ -1,0 +1,8 @@
+# A top-level declaration's initializer may only write its own locals: it
+# runs lazily, maybe concurrently from a {{ }} field.
+let total = 0
+let a = {
+  total += 1
+  1
+}
+print([a, total])

@@ -1,0 +1,11 @@
+[1m[31mError:[0m `avg`'s initializer reads `sum`, which a top-level statement writes (line 4), but top-level declarations run before top-level statements, so it would see the value from before the write; read `sum` in a top-level statement instead, or compute it in a declaration rather than writing it from statements
+  [2m[34m--> errors/toplevel_statement_state_declaration.dang:5:11[0m
+ [2m    |[0m
+ [2m  3 | let sum = 0[0m
+ [2m  4 | [1, 2, 3].each { x => sum += x }[0m
+ [2m[34m[1m  5 | [0mlet avg = sum / 3
+[2m                 [31m^^^[0m
+ [2m  6 | print(avg)[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

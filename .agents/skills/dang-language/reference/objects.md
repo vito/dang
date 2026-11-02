@@ -28,7 +28,7 @@ z: Int!                   # declaration without value
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
 - Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself can't reassign fields (see "No field reassignment in the type body" under "Field defaults").
-- Top-level bindings can be reassigned only by top-level script code; functions, methods, `new()` and closures inside them can't write them (see "Compile-time rules" below).
+- Top-level bindings can be reassigned only by top-level statements (and blocks in them); functions, methods, `new()`, closures inside them, and declaration initializers can't write them, and only statements may read what statements write (see "Compile-time rules" below).
 
 ## Functions
 
@@ -228,9 +228,11 @@ Foo(42).incr.a == 43          # original Foo(42) untouched
 ### Compile-time rules
 A write must stay in the scope that owns it. Four rules (all compile errors) enforce that:
 
-1. **Top-level bindings are immutable once initialized.** Top-level script code — top-level forms and blocks inside them (`let total = 0; xs.each { x => total += x }`) — may still reassign them; that's package initialization, and keeps scripts and the REPL working. Functions, methods, `new()`, type bodies and closures inside them can't write a top-level binding, path writes included (`shared.x = …`):
+1. **Top-level bindings are immutable once initialized.** Top-level *statements* and blocks inside them (`let total = 0; xs.each { x => total += x }`) may still reassign them; that's package initialization, and keeps scripts and the REPL working. Functions, methods, `new()`, type bodies and closures inside them can't write a top-level binding, path writes included (`shared.x = …`):
    `` cannot assign to `count`: top-level bindings are immutable once initialized; use a local `let`, a field, or return the new value ``.
    So functions and methods have **no side effects** beyond their own CoW `self`: return the new value instead.
+   **Declaration initializers write only locals** either: `let x = …` runs lazily on first read, maybe from concurrent `{{ }}` fields, so `let a = { total += 1; 1 }` is `` cannot assign to `total` in `a`'s initializer: … ``. Build the value in a local and return it (`let doubled = { let out = []; xs.each { x => out += [x * 2] }; out }`, `xs.reduce(0) { … }`).
+   **Statement-written state stays in statements.** Every declaration runs before the first statement, so a top-level binding any top-level statement writes (`sum += x`, `box.n = 5` writes `box`) may be read only by statements and blocks in them — not by a declaration (`let avg = sum / 3`: `` `avg`'s initializer reads `sum`, which a top-level statement writes … ``) nor by a function, method or type body (`readSum: Int! { sum }`), which may run while declarations initialize. Pass the value as an argument: `double(sum)`. In a directory module this spans every file; in the REPL and literate docs, one entry.
    **Statics** (members in a type's `self { }` block) are immutable once initialized too, from everywhere — top-level script code included: `` cannot assign to `Counter.count`: static members are immutable once initialized; a static method's writes to `self` stay in that call's copy ``.
 2. **Impure closures can't escape.** A block, nested function, or `&ref` to one that writes anything it doesn't declare may only be **called** or **passed as an argument** — not stored (`let`, field), returned, or put in a list/record:
    `` `bump` writes `n`, which is declared outside it, so it can only be called or passed as an argument, not stored, returned, or put in a collection ``.

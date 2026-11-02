@@ -69,21 +69,25 @@ assert {
 
 # Short-circuit still works across lines
 let side_effect = false
-let result = false
-  and {
-    side_effect = true
-    true
-  }
-assert { result == false }
+assert {
+  let result = false
+    and {
+      side_effect = true
+      true
+    }
+  result == false
+}
 assert { side_effect == false }
 
 let side_effect2 = false
-let result2 = true
-  or {
-    side_effect2 = true
-    false
-  }
-assert { result2 }
+assert {
+  let result2 = true
+    or {
+      side_effect2 = true
+      false
+    }
+  result2
+}
 assert { side_effect2 == false }
 
 # Mixed with single-line

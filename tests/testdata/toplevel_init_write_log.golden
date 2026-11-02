@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot assign to `log` in `c`'s initializer: top-level declarations run lazily on first read, maybe concurrently from {{ }} fields, so an initializer may only write its own locals; move the write into a top-level statement, or build the value in a local and return it
+  [2m[34m--> errors/toplevel_init_write_log.dang:4:3[0m
+ [2m    |[0m
+ [2m  2 | let log = [][0m
+ [2m  3 | let c = {[0m
+ [2m[34m[1m  4 | [0m  log += ["c ran"]
+[2m         [31m^^^^^^^^^^^^^^^^[0m
+ [2m  5 |   3[0m
+ [2m  6 | }[0m
+ [2m    |[0m
+

@@ -1,0 +1,8 @@
+# Writing top-level state from a block the initializer runs counts too.
+let total = 0
+let xs = [1, 2, 3]
+let b = {
+  xs.each { x => total += x }
+  2
+}
+print([b, total])

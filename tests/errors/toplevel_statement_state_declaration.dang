@@ -1,0 +1,6 @@
+# Top-level declarations run before top-level statements, so a declaration
+# reading a binding a statement writes would see the value from before it.
+let sum = 0
+[1, 2, 3].each { x => sum += x }
+let avg = sum / 3
+print(avg)

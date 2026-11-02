@@ -5,11 +5,13 @@
 import Test
 
 let holder = primaryUser
-let outcome = {
-  print("swapping")
-  holder = secondaryUser
-  "swapped"
-} rescue "failed"
+assert {
+  let outcome = {
+    print("swapping")
+    holder = secondaryUser
+    "swapped"
+  } rescue "failed"
+  outcome == "swapped"
+}
 
-assert { outcome == "swapped" }
 print(holder.name)

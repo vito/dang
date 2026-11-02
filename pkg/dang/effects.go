@@ -177,6 +177,9 @@ type effFrame struct {
 	// may not write, or call anything that writes, outside the type, and an
 	// outer parameter it calls must be pure.
 	sealed *Type
+	// typeBody marks a type's body (field defaults, statics), as opposed
+	// to its methods and constructor.
+	typeBody bool
 }
 
 func (fr *effFrame) inside(target TypeScope) bool {
@@ -236,6 +239,7 @@ func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (con
 func withTypeBodyEffFrame(ctx context.Context, object, frame *Type, env hm.Env) context.Context {
 	ctx, fr := withEffFrame(ctx, newClosureEffect(object.Named), env, frame)
 	fr.sealed = object
+	fr.typeBody = true
 	return ctx
 }
 
@@ -293,12 +297,12 @@ func selfTypeFrame(env hm.Env) TypeScope {
 // checks it against enclosing `{{ }}` fields.
 func absorbWrite(ctx context.Context, target effTarget, node Node) {
 	fieldReported := checkFieldWrite(ctx, target, node)
-	fr := bodyFrame(ctx)
-	if fr == nil {
-		noteTopWrite(ctx, target, node)
-		return
+	if !fieldReported {
+		checkInitializerWrite(ctx, target, node)
 	}
-	if fr.inside(target.frame) {
+	noteStatementWrite(ctx, target, node)
+	fr := bodyFrame(ctx)
+	if fr == nil || fr.inside(target.frame) {
 		return
 	}
 	if fr.sealed != nil {
@@ -330,16 +334,6 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 	checkFieldCall(ctx, callee, node, name)
 	fr := bodyFrame(ctx)
 	if fr == nil {
-		if callee.kind == effClosure {
-			targets := make([]effTarget, 0, len(callee.targets))
-			for t := range callee.targets {
-				targets = append(targets, t)
-			}
-			sort.Slice(targets, func(i, j int) bool { return targets[i].name < targets[j].name })
-			for _, t := range targets {
-				noteTopWrite(ctx, t, node)
-			}
-		}
 		return
 	}
 	switch callee.kind {
@@ -531,7 +525,8 @@ type effectSolver struct {
 	errs []error
 	// narrow logs what may invalidate null narrowings (narrowing.go).
 	narrow narrowLog
-	// top tracks top-level declarations' initialization (toplevel_order.go).
+	// top holds the top-level initialization rules' state
+	// (toplevel_order.go).
 	top topOrder
 }
 

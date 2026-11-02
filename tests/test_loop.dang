@@ -36,11 +36,13 @@ loop {
 assert { evens == 12 } # 2 + 4 + 6
 
 # loop is an expression; break value flows out through let
-let countdown = 5
-let landed = loop {
-  countdown = countdown - 1
-  if (countdown == 0) {
-    break "liftoff"
+let landed = {
+  let countdown = 5
+  loop {
+    countdown = countdown - 1
+    if (countdown == 0) {
+      break "liftoff"
+    }
   }
 }
 assert { landed == "liftoff" }
