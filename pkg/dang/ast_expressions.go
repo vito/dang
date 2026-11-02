@@ -851,7 +851,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		// which, for a mutable binding, is pinned to what it is now.
 		t = readNarrowed(ctx, env, s.Name, s, t)
 		t = hm.ResolveWeak(t)
-		noteTopRead(ctx, env, s.Name, s, t)
+		noteTopRead(ctx, env, s.Name, s)
 		if s.AutoCall {
 			var err error
 			var called bool
@@ -1048,7 +1048,6 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							if !mono {
 								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
 							}
-							noteTopCall(ctx, effectOf(t), d.Field.Name, d)
 							if d.AutoCall {
 								var err error
 								t, _, err = autoCallInstantiated(t)
@@ -1233,7 +1232,6 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if !mono {
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
 		}
-		noteTopCall(ctx, effectOf(t), d.Field.Name, d)
 		if d.AutoCall {
 			var err error
 			var called bool
