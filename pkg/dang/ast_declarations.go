@@ -606,7 +606,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		// A location is not a function value escaping. A plain assignment's
 		// target is not a read either: a narrowed name gets the type it is
 		// declared with, which is what it may be assigned.
-		targetCtx := withAllowedFn(ctx, r.Target)
+		targetCtx := withAllowedFn(withWriteRoot(ctx, r.Target), r.Target)
 		if r.Modifier == "=" {
 			targetCtx = withAssignTarget(targetCtx, r.Target)
 		}
@@ -676,7 +676,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)
-			sumType, err := tempAddition.Infer(ctx, env, fresh)
+			sumType, err := tempAddition.Infer(withWriteRoot(ctx, r.Target), env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
 			}

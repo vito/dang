@@ -72,6 +72,32 @@ const (
 
 type topFormKey struct{}
 
+type writeRootKey struct{}
+
+// withWriteRoot marks the root name of assignment target (`x` in `x = v`,
+// `x.a.b += v`) as written rather than read, as far as rule 2 goes: outside
+// statement code, writing a top-level binding is an error of its own (rule
+// 1, or checkTopLevelWrite), so the read would only repeat it.
+func withWriteRoot(ctx context.Context, target Node) context.Context {
+	node := pathLink(target)
+	for {
+		sel, ok := node.(*Select)
+		if !ok {
+			break
+		}
+		node = pathLink(sel.Receiver)
+	}
+	if sym, ok := node.(*Symbol); ok {
+		return context.WithValue(ctx, writeRootKey{}, sym)
+	}
+	return ctx
+}
+
+func isWriteRoot(ctx context.Context, node Node) bool {
+	root, _ := ctx.Value(writeRootKey{}).(*Symbol)
+	return root != nil && Node(root) == node
+}
+
 func topOrderFrom(ctx context.Context) *topOrder {
 	if s, ok := ctx.Value(effSolverKey{}).(*effectSolver); ok {
 		return &s.top
@@ -153,7 +179,7 @@ func noteStatementWrite(ctx context.Context, target effTarget, node Node) {
 func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 	o := topOrderFrom(ctx)
 	f := topFormFrom(ctx)
-	if o == nil || (f != nil && f.decl == "") {
+	if o == nil || (f != nil && f.decl == "") || isWriteRoot(ctx, node) {
 		return
 	}
 	frame := resolveBinding(env, name)

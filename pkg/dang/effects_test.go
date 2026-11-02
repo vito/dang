@@ -601,6 +601,14 @@ func TestTopLevelInitializerWrites(t *testing.T) {
 	})
 }
 
+// An assignment's target is written, not read: an initializer writing a
+// binding a statement writes too gets rule 1's error alone.
+func TestInitializerWriteToStatementStateReportedOnce(t *testing.T) {
+	got := inferWithEffects(t, "let total = 0\ntotal = 3\nlet a = { total += 1; total = 2; 1 }\n")
+	require.Contains(t, got, "cannot assign to `total` in `a`'s initializer")
+	require.NotContains(t, got, "initializer reads `total`")
+}
+
 // A top-level binding some top-level statement writes (W) may only be read
 // by statement code: declarations run before every statement, and function
 // and type code may run while declarations initialize.
