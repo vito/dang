@@ -223,6 +223,24 @@ func noteTopWrite(ctx context.Context, target effTarget, node Node) {
 	o.writes = append(o.writes, stmtWrite{pos: f.pos, target: target, node: node})
 }
 
+// checkInitializerWrite reports a write (at node) of top-level binding target
+// from a top-level declaration's initializer, or a block or `{{ }}` field
+// written in it. Initializers write only their own locals, so forcing them
+// concurrently can't race. The check is syntactic: an impure closure can't be
+// stored (effects.go), so any closure an initializer runs that writes outer
+// state is written inside it. Function bodies are left to
+// checkTopLevelWrite, which rejects their top-level writes everywhere.
+func checkInitializerWrite(ctx context.Context, target effTarget, node Node) {
+	f := topFormFrom(ctx)
+	if f == nil || f.decl == nil || inFunctionBody(ctx) ||
+		!isTopLevelFrame(target.frame, topLevelFrameFrom(ctx)) {
+		return
+	}
+	_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
+		"cannot assign to `%s` in `%s`'s initializer: top-level declarations run lazily on first read, maybe concurrently from {{ }} fields, so an initializer may only write its own locals; move the write into a top-level statement, or build the value in a local and return it",
+		target.name, f.decl.name), node))
+}
+
 // noteTopRead records a read (at node) of name, resolved in env, whose type
 // is t: by the enclosing function bodies and declaration initializer, and,
 // inside a `{{ }}` field, as a reference to check once everything is known.

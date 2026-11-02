@@ -500,6 +500,50 @@ func TestLocalTypesSealed(t *testing.T) {
 	})
 }
 
+// Top-level declarations' initializers write only their own locals, so
+// forcing them concurrently (from `{{ }}` fields) can't race.
+func TestTopLevelInitializerWrites(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{
+			name: "direct write",
+			src: `
+				let total = 0
+				let a = { total += 1; 1 }
+			`,
+			want: "cannot assign to `total` in `a`'s initializer",
+		},
+		{
+			name: "write in a block the initializer runs",
+			src: `
+				let total = 0
+				let b = { [1, 2].each { x => total += x }; 2 }
+			`,
+			want: "cannot assign to `total` in `b`'s initializer",
+		},
+		{
+			name: "field-path write",
+			src: `
+				type Box { n: Int! = 0 }
+				let box = Box
+				let c = { box.n = 5; 3 }
+			`,
+			want: "cannot assign to `box` in `c`'s initializer",
+		},
+		{
+			name: "locals, method forks and statements are fine",
+			src: `
+				type Counter { n: Int! = 0; bump: Counter! { self.n += 1; self } }
+				let xs = [1, 2, 3]
+				let doubled = { let out = []; xs.each { x => out += [x * 2] }; out }
+				let sum = xs.reduce(0) { a, x => a + x }
+				let c = Counter.bump.bump
+				let total = 0
+				xs.each { x => total += x }
+			`,
+		},
+	})
+}
+
 // A top-level declaration is forced on first read, wherever that is; one
 // whose initializer writes top-level state must not be forced from a `{{ }}`
 // field, where it would run concurrently with other fields.

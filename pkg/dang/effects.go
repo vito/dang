@@ -293,6 +293,9 @@ func selfTypeFrame(env hm.Env) TypeScope {
 // checks it against enclosing `{{ }}` fields.
 func absorbWrite(ctx context.Context, target effTarget, node Node) {
 	fieldReported := checkFieldWrite(ctx, target, node)
+	if !fieldReported {
+		checkInitializerWrite(ctx, target, node)
+	}
 	fr := bodyFrame(ctx)
 	if fr == nil {
 		noteTopWrite(ctx, target, node)
