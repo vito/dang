@@ -24,16 +24,18 @@ import (
 //     initializers share no mutable state and forcing them concurrently
 //     can't race, however they are reached.
 //  2. Statement-written state stays in statements. Let W be the top-level
-//     bindings some top-level statement writes (in a block or nested
-//     function written in one too; `box.n = v` writes `box`). Only statement
-//     code may read W: a declaration ran before every statement, and a
-//     function's, method's or type's code may run while declarations are
-//     initialized, so either could see a value from before the write.
+//     bindings some top-level statement writes (in a block written in one
+//     too; `box.n = v` writes `box`). Only statement code may read W: a
+//     declaration ran before every statement, and a function's, method's or
+//     type's code may run while declarations are initialized, so either could
+//     see a value from before the write.
 //
 // Both are syntactic. W lives on the effect solver, so it spans every file of
 // a directory module, and, since each REPL, literate-doc or playground entry
-// is inferred with a solver of its own, one entry: a later entry's
-// declarations run after an earlier entry's statements.
+// is inferred with a solver of its own, one entry. Those sessions evaluate
+// each entry's forms eagerly, in source order, so neither hazard arises
+// there; the rules still apply, so what a session accepts, a script accepts
+// too.
 
 // topForm is the top-level form being inferred: a declaration's initializer
 // (decl is its name) or a statement (decl == ""), of the module whose

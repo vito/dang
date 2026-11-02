@@ -11,10 +11,11 @@ import (
 )
 
 // inferReplForms type-checks one REPL entry against the session's type scope.
-// The prompt is top-level script code: entries may reassign the session's
-// bindings, while functions and methods defined at the prompt may not, and
-// the post-inference effect checks ({{ }} and block-parameter purity) run on
-// every entry.
+// The prompt is top-level script code: statements may reassign the session's
+// bindings, while functions and methods defined at the prompt, and
+// declarations' initializers, may not, and the post-inference effect checks
+// ({{ }} and block-parameter purity, top-level initialization) run on every
+// entry.
 func inferReplForms(ctx context.Context, forms []dang.Node, typeScope dang.TypeScope, fresh hm.Fresher) (hm.Type, error) {
 	return dang.InferTopLevel(ctx, forms, typeScope, fresh)
 }

@@ -245,8 +245,9 @@ with "must be pure" reasons once discovered).
    rejects an assignment whose root resolves (`resolveBinding`) to the
    top-level frame (or a frame it extends) when inferring inside a function,
    method, constructor or type body (`withFunctionBody`). Top-level script
-   code — top-level forms and blocks inside them, REPL prompts, doc
-   snippets — may still reassign. Statics (`self { }` members) can't be
+   code — top-level statements and blocks inside them, at the REPL prompt and
+   in doc snippets too — may still reassign; declarations' initializers may
+   not (see below). Statics (`self { }` members) can't be
    written from outside at all (`checkStaticWrite`); a static method's
    `self` writes fork per call like an instance method's. Consequence: **named
    functions and methods never write shared state** — their only writes are
