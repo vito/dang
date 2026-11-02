@@ -2075,21 +2075,32 @@ func (f FunctionValue) IsAutoCallable() bool {
 // most once: on the first Lookup for its name. The result replaces the
 // pending entry in Values, so subsequent reads bypass the initializer.
 //
-// mu serializes forcing so concurrent readers (e.g. independent object-literal
-// fields that reference the same lazy binding) run the initializer once and
-// share the result, rather than racing on the owning Object's maps. The
-// initializer runs while holding mu, so an unrelated concurrent reader of the
-// same binding blocks until it completes. Re-entry by the *same* evaluation
-// chain (a real initialization cycle) is detected via the force chain carried
-// on the context before mu is taken, so it errors instead of deadlocking.
+// Concurrent readers (e.g. independent `{{ }}` fields that reference the same
+// lazy binding) run the initializer once and share the result, value or error:
+// the first reader marks it running and runs Init, later ones wait for ready
+// to close. mu guards the state below and is never held across Init, which
+// runs arbitrary user code.
+//
+// Waiting is where a cycle would deadlock, so force checks for one first: a
+// re-entry by the same evaluation chain (forceChain.has), or a cycle through
+// other goroutines' chains (see awaitInit).
 type pendingInit struct {
 	Init       func(ctx context.Context) (Value, error)
 	Visibility Visibility
 
-	mu   sync.Mutex
-	done bool
-	val  Value
-	err  error
+	mu      sync.Mutex
+	running bool
+	done    bool
+	ready   chan struct{} // closed once done; made by the first waiter
+	val     Value
+	err     error
+
+	// waits counts, per pendingInit, the forces blocked on it from within
+	// this initializer: by the goroutine running Init or by any goroutine it
+	// spawned (a `{{ }}` inside the initializer), i.e. every force whose chain
+	// includes this pendingInit. These are the edges of the wait-for graph
+	// walked by awaitInit. Guarded by forceGraphMu.
+	waits map[*pendingInit]int
 }
 
 // forceChain is a linked list, carried on the evaluation frame, of the pending
@@ -2097,17 +2108,94 @@ type pendingInit struct {
 // distinguish a genuine self-referential cycle (the same chain re-enters a
 // pending it is already forcing) from ordinary concurrent access by an
 // unrelated goroutine (which must wait, not error).
+//
+// Goroutines spawned by a `{{ }}` inside an initializer inherit the chain
+// through ctx: they belong to every initializer on it, since each of those
+// initializers waits for them to finish (evalParallel awaits every task).
 type forceChain struct {
 	p      *pendingInit
 	parent *forceChain
 }
 
-// forcingInChain reports whether p is already being forced earlier in ctx's
-// evaluation chain.
-func forcingInChain(ctx context.Context, p *pendingInit) bool {
-	for fc := currentFrame(ctx).forceChain; fc != nil; fc = fc.parent {
+// has reports whether p is being forced on this chain.
+func (fc *forceChain) has(p *pendingInit) bool {
+	for ; fc != nil; fc = fc.parent {
 		if fc.p == p {
 			return true
+		}
+	}
+	return false
+}
+
+// forceGraphMu guards every pendingInit's waits: the wait-for graph between
+// initializers. It is taken only by a force about to wait for another
+// goroutine's initializer, and never together with any other lock.
+var forceGraphMu sync.Mutex
+
+// awaitInit blocks until p, which another evaluation chain is initializing,
+// is done. It returns false, without blocking, if waiting would deadlock: an
+// initialization cycle spanning goroutines, which no single chain can see.
+//
+// The wait-for graph has an edge q → w while a force whose chain includes q is
+// blocked waiting for w; it is recorded on every initializer of the waiting
+// chain, because none of them can finish before that force returns. Waiting
+// for p from chain deadlocks iff p already (transitively) waits for one of
+// chain's initializers, which in turn wait for us: so before blocking, we walk
+// the edges out of p looking for chain. Checking and recording under one lock
+// means that of the forces closing a cycle, the last to arrive always sees
+// the others' edges and errors, whatever the interleaving; its error then
+// propagates through the initializers on the cycle to the forces waiting on
+// them. Which force that is depends on scheduling, so the binding the error
+// names (and which initializer could rescue it) does too, much as a
+// sequential cycle error names whichever binding was entered first.
+//
+// An edge outlives its wait briefly, between ready closing and its removal
+// below. That can't produce a false cycle: the stale target is done, so no
+// chain includes it, and the forces within it all returned (removing their
+// own edges) before it finished, so the walk dead-ends there.
+func awaitInit(chain *forceChain, p *pendingInit, ready <-chan struct{}) bool {
+	forceGraphMu.Lock()
+	if chain != nil && waitsReach(p, chain) {
+		forceGraphMu.Unlock()
+		return false
+	}
+	for fc := chain; fc != nil; fc = fc.parent {
+		if fc.p.waits == nil {
+			fc.p.waits = make(map[*pendingInit]int)
+		}
+		fc.p.waits[p]++
+	}
+	forceGraphMu.Unlock()
+
+	<-ready
+
+	forceGraphMu.Lock()
+	for fc := chain; fc != nil; fc = fc.parent {
+		if fc.p.waits[p]--; fc.p.waits[p] == 0 {
+			delete(fc.p.waits, p)
+		}
+	}
+	forceGraphMu.Unlock()
+	return true
+}
+
+// waitsReach reports whether p is, or transitively waits for, an initializer
+// on chain. forceGraphMu must be held.
+func waitsReach(p *pendingInit, chain *forceChain) bool {
+	seen := map[*pendingInit]bool{}
+	stack := []*pendingInit{p}
+	for len(stack) > 0 {
+		q := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[q] {
+			continue
+		}
+		seen[q] = true
+		if chain.has(q) {
+			return true
+		}
+		for w := range q.waits {
+			stack = append(stack, w)
 		}
 	}
 	return false
@@ -2425,30 +2513,54 @@ func (m *Object) BindLazy(name string, init func(ctx context.Context) (Value, er
 
 func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value, bool, error) {
 	// A genuine initialization cycle: this evaluation chain is already forcing
-	// p. Detect it before taking p.mu so we report an error rather than
-	// deadlocking on our own lock. Concurrent forcing by an unrelated goroutine
-	// is not a cycle — it falls through and waits on p.mu below.
-	if forcingInChain(ctx, p) {
-		return nil, true, fmt.Errorf("initialization cycle while evaluating variable %q", name)
+	// p, so waiting for it would wait for ourselves.
+	chain := currentFrame(ctx).forceChain
+	if chain.has(p) {
+		return nil, true, initCycleError(name)
 	}
 
-	// Serialize forcing of this binding. Holding p.mu across Init means a
-	// concurrent reader of the same binding blocks until the result is ready and
-	// then sees it cached, so the initializer runs exactly once — value or
-	// error. Distinct bindings have distinct locks, so independent fields still
-	// force in parallel.
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.done {
-		return p.val, true, p.err
+		val, err := p.val, p.err
+		p.mu.Unlock()
+		return val, true, err
 	}
+	if p.running {
+		// Another chain is initializing p: wait for its result, unless that
+		// would close a cycle through other goroutines.
+		if p.ready == nil {
+			p.ready = make(chan struct{})
+		}
+		ready := p.ready
+		p.mu.Unlock()
+		if !awaitInit(chain, p, ready) {
+			return nil, true, initCycleError(name)
+		}
+		p.mu.Lock()
+		val, err := p.val, p.err
+		p.mu.Unlock()
+		return val, true, err
+	}
+	p.running = true
+	p.mu.Unlock()
+
+	// Run the initializer, at most once. Distinct bindings run independently,
+	// so independent fields still force in parallel. Should Init panic, the
+	// waiters are still released, with an error.
+	finished := false
+	defer func() {
+		if !finished {
+			p.finish(nil, fmt.Errorf("initializer for variable %q did not complete", name))
+		}
+	}()
 
 	val, err := p.Init(withForceChain(ctx, p))
 	if err == nil && val == nil {
 		err = fmt.Errorf("initializer for variable %q returned nil", name)
 	}
-	p.val, p.err, p.done = val, err, true
 	if err != nil {
+		finished = true
+		p.finish(nil, err)
 		return nil, true, err
 	}
 
@@ -2457,7 +2569,23 @@ func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value,
 	m.Values[name] = val
 	m.mu.Unlock()
 
+	finished = true
+	p.finish(val, nil)
 	return val, true, nil
+}
+
+// finish memoizes p's result and releases its waiters.
+func (p *pendingInit) finish(val Value, err error) {
+	p.mu.Lock()
+	p.val, p.err, p.done = val, err, true
+	if p.ready != nil {
+		close(p.ready)
+	}
+	p.mu.Unlock()
+}
+
+func initCycleError(name string) error {
+	return fmt.Errorf("initialization cycle while evaluating variable %q", name)
 }
 
 func (m *Object) LookupLocal(name string) (Value, bool) {

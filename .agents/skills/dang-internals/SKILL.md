@@ -206,9 +206,10 @@ Two things to preserve when touching this:
 - **`Object` is concurrency-safe by necessity.** `Lookup`/`force`/`Bind` and
   the other map accessors take `Object.mu` only for brief snapshots/commits —
   never across `Init`, which runs arbitrary user code that re-enters the scope
-  and would deadlock. A pending initializer instead runs under its own
-  `pendingInit.mu` (held across `Init` to serialize forcing), and its result
-  (value *or* error) is memoized. Don't add a path that touches
+  and would deadlock. A pending initializer runs at most once — the first
+  forcer marks it running, later ones wait for its `ready` channel — and its
+  result (value *or* error) is memoized; `pendingInit.mu` guards only that
+  state, never across `Init` either. Don't add a path that touches
   `Values`/`Pending` without `Object.mu`.
 - **A field's own name resolves outward.** During a field's evaluation its own
   name is redirected to the enclosing scope, so `users: users.{{...}}` reads
@@ -228,7 +229,15 @@ Two things to preserve when touching this:
   errors if the chain re-enters a pending it is already forcing. This catches
   cycles the static graph can't see — module-level cycles routed through an
   auto-called function (`module_lazy_cycle`) — and is what stops a
-  self-referential force from deadlocking on its own `pendingInit.mu`.
+  self-referential force from waiting for itself. A cycle split across `{{ }}`
+  fields (field 1 runs `a` and waits for `b`, field 2 runs `b` and reads `a`)
+  is invisible to any one chain, so a force about to wait first walks the
+  wait-for graph (`awaitInit`: edges from each initializer on a blocked chain
+  to what it waits for) and errors if that leads back to its own chain.
+  Goroutines of a `{{ }}` inside an initializer inherit its chain, so they
+  count as part of it. Which force detects such a cycle depends on
+  scheduling, so the binding the error names — and whether a `rescue` in one
+  of the initializers catches it — does too.
 
 ## Effects and escapes (compile-time purity)
 

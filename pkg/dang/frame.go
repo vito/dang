@@ -46,7 +46,7 @@ type evalFrame struct {
 	blockArg Value
 
 	// forceChain is the chain of lazy initializers being forced (see
-	// forcingInChain).
+	// forceChain and awaitInit).
 	forceChain *forceChain
 
 	// inFlight is the error being rescued, exposed through the dynamic extent

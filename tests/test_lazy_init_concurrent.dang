@@ -1,0 +1,48 @@
+# Top-level declarations are lazy, and `{{ }}` fields force them concurrently.
+
+# An initialization cycle hidden behind functions and entered from two fields
+# at once is still reported, not deadlocked on: one field runs a and waits for
+# b while the other runs b and reads a. Each initializer recovers from the
+# cycle, so whichever side detects it falls back to 0 and the other completes.
+let r = {{p: a, q: b}}
+let a = ga rescue {
+  e: Error => 0
+}
+
+ga: Int! { b + 1 }
+
+let b = gb rescue {
+  e: Error => 0
+}
+
+gb: Int! { a + 1 }
+
+assert { r.p + r.q == 1 }
+
+# Two fields forcing the same binding is no cycle: they share its value.
+let s = {{p: c, q: c}}
+let c = gc
+
+gc: Int! { 41 + 1 }
+
+assert { s.p == 42 }
+assert { s.q == 42 }
+
+# `{{ }}` tasks inside initializers wait for and share each other's bindings.
+let n = {{x: d, y: e}}
+let d = gd
+
+gd: Int! { e + 1 }
+
+let e = ge
+
+ge: Int! { {{u: f, v: f + 1}}.u }
+
+let f = gf
+
+gf: Int! { 10 }
+
+assert { n.x == 11 }
+assert { n.y == 10 }
+
+print("Concurrent lazy initialization tests passed!")
