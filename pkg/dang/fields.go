@@ -299,7 +299,7 @@ func (s *FieldDecl) unweakenedSignatureType(ctx context.Context, env hm.Env, fre
 		return nil, nil
 	}
 	if allowComputed {
-		return s.Value.Infer(ctx, env, fresh)
+		return s.Value.Infer(withSlotValue(ctx, s.Value, bindingSlot(ctx, env, s.Name.Name)), env, fresh)
 	}
 	return nil, nil
 }
@@ -414,10 +414,14 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	var inferredType hm.Type
 	if s.Value != nil {
-		inferredType, err = s.Value.Infer(ctx, env, fresh)
+		// The value is stored in the binding: calling it may call a
+		// function value it holds (toplevel_order.go).
+		slot := bindingSlot(ctx, env, s.Name.Name)
+		inferredType, err = s.Value.Infer(withSlotValue(ctx, s.Value, slot), env, fresh)
 		if err != nil {
 			return nil, err
 		}
+		noteSlotStore(ctx, env, slot, s.Value, inferredType)
 
 		if definedType != nil {
 			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
@@ -1116,6 +1120,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// leave that scope again (see withTypeBody). All of the type's code is
 	// sealed: it can't write, or call anything that writes, outside it.
 	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
+	noteTopType(ctx, object)
 	typeFr := effFrameFrom(ctx)
 	if c.ctorFn != nil {
 		// Constructing runs the field defaults.
@@ -1340,6 +1345,8 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 		// variables. The implicit constructor's parameters are fields:
 		// passing a closure for one stores it, so it escapes.
 		ctor.attachParamEffects(argsRec, constructorType.Block())
+	} else {
+		ctor.fnEffects().latent.ctorOf = objectType
 	}
 	return constructorType, nil
 }

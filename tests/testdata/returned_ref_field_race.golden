@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m {{ }} fields run concurrently; `get` reads `a` (through `readA`, which may be stored in `Box.get`), which is declared after `r`, so calling it here runs `a`'s initializer, which may write `total`, while other fields run; declare `a` before `r`, or call `get` before the {{ }}
+  [2m[34m--> errors/returned_ref_field_race.dang:30:14[0m
+ [2m    |[0m
+ [2m 28 | }[0m
+ [2m 29 | [0m
+ [2m[34m[1m 30 | [0mlet r = {{p: boxA.get, q: boxB.get}}
+[2m                    [31m^^^^^^^^[0m
+ [2m 31 | let a = {[0m
+ [2m 32 |   total += 1[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m {{ }} fields run concurrently; `get` reads `a` (through `readA`, which may be stored in `Box.get`), which is declared after `r`, so calling it here runs `a`'s initializer, which may write `total`, while other fields run; declare `a` before `r`, or call `get` before the {{ }}
+  [2m[34m--> errors/returned_ref_field_race.dang:30:27[0m
+ [2m    |[0m
+ [2m 28 | }[0m
+ [2m 29 | [0m
+ [2m[34m[1m 30 | [0mlet r = {{p: boxA.get, q: boxB.get}}
+[2m                                 [31m^^^^^^^^[0m
+ [2m 31 | let a = {[0m
+ [2m 32 |   total += 1[0m
+ [2m    |[0m
+

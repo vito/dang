@@ -268,7 +268,16 @@ with "must be pure" reasons once discovered).
    value from before the write). Reads count through the functions, methods
    and constructors a declaration or field references, transitively: they're
    recorded during inference and checked by the solver over that fixed point
-   (a stored `&ref` passes its reads to whoever reads the declaration).
+   (a stored `&ref` passes its reads to whoever reads the declaration; a
+   function value's type stops saying what it reads once it's stored in a
+   binding or member whose type came from another function, so storing a
+   function value (an assignment, a `let`, a field default, an implicit
+   constructor argument) records it in the target's slot: the function's
+   own effect for a method or named function, else an effect standing for
+   the binding or member, which reads of it call; block arguments of stored
+   parameters count, and interface members call every implementation's; a
+   `&ref` stored anywhere else, like a function argument or list element,
+   counts as called by the code storing it).
 2. **Impure closures can't escape.** A block, nested function, or `&ref` to
    one whose effect writes a binding it doesn't declare may appear only as a
    callee or as an argument for a function-typed parameter. Escape detection

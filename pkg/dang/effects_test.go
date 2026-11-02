@@ -567,6 +567,98 @@ func TestTopLevelInitializersInFields(t *testing.T) {
 			want: "`get` reads `a` (through `T.get`), which is declared after `r`",
 		},
 		{
+			name: "field calling a ref a function returned",
+			src: `
+				let total = 0
+				readA: Int! { a }
+				type Box { get: Int! { 0 } }
+				boxA: Box! { let b = Box; b.get = &readA; b }
+				let r = {{ p: boxA.get }}
+				let a = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `readA`, which may be stored in `Box.get`), which is declared after `r`, so calling it here runs `a`'s initializer, which may write `total`",
+		},
+		{
+			name: "field calling a ref held by a declaration",
+			src: `
+				let total = 0
+				readA: Int! { a }
+				type Box { get: Int! { 0 } }
+				boxA: Box! { let b = Box; b.get = &readA; b }
+				let held = boxA
+				let r = {{ p: held.get }}
+				let a = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `readA`, which may be stored in `Box.get`), which is declared after `r`, so calling it here runs `a`'s initializer, which may write `total`",
+		},
+		{
+			name: "field calling a returned ref through a local",
+			src: `
+				let total = 0
+				readA: Int! { a }
+				type Box { get: Int! { 0 } }
+				boxA: Box! { let b = Box; b.get = &readA; b }
+				let r = { let x = boxA; {{ p: x.get }} }
+				let a = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `readA`, which may be stored in `Box.get`), which is declared after `r`",
+		},
+		{
+			name: "field in a function calling a returned ref through a parameter",
+			src: `
+				let total = 0
+				readA: Int! { a }
+				type Box { get: Int! { 0 } }
+				boxA: Box! { let b = Box; b.get = &readA; b }
+				both(x: Box!): Int! { {{ p: x.get }}.p }
+				let a = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `readA`, which may be stored in `Box.get`), whose initializer may write `total`, so calling it here may run that initializer",
+		},
+		{
+			name: "field calling a stored ref through an interface",
+			src: `
+				let total = 0
+				readA: Int! { a }
+				readZero: Int! { 0 }
+				interface Getter { get: Int! }
+				type Box implements Getter { pub get = &readZero }
+				boxA: Getter! { Box(get: &readA) }
+				let r = { let x = boxA; {{ p: x.get }} }
+				let a = { total += 1; 1 }
+			`,
+			want: "`get` reads `a` (through `readA`, which may be stored in `Box.get`), which is declared after `r`",
+		},
+		{
+			name: "field calling a declaration another initializer stored a ref in",
+			src: `
+				let total = 0
+				readA: Int! { 1 }
+				readB: Int! { b }
+				pub fn = &readA
+				let init = { fn = &readB; 1 }
+				let r = {{ p: fn }}
+				let b = { total += 1; 2 }
+			`,
+			want: "`fn` reads `b` (through `readB`, which may be stored in `fn`), which is declared after `r`",
+		},
+		{
+			name: "returned refs reading nothing that writes are fine",
+			src: `
+				let total = 0
+				readA: Int! { a }
+				type Box { get: Int! { 0 } }
+				type Fixed { get: Int! { 0 } }
+				boxA: Box! { let b = Box; b.get = &readA; b }
+				pure: Fixed! { let k = 3; three: Int! { k }; let b = Fixed; b.get = &three; b }
+				let a = { total += 1; 1 }
+				let r = {{ p: boxA.get, q: pure.get }}
+				let held = boxA
+				let s = {{ p: held.get, q: later }}
+				let later = pure
+			`,
+		},
+		{
 			name: "earlier declarations, pure ones, and statements are fine",
 			src: `
 				let total = 0
@@ -678,6 +770,339 @@ func TestTopLevelStatementOrder(t *testing.T) {
 				total = 10
 				print([start, total])
 				let doubled = { let t = 0; [1, 2].each { x => t += x * 2 }; t }
+			`,
+		},
+		{
+			name: "declaration calling a ref a function returned",
+			// Box.get's type says nothing about readSum: mk's result
+			// carries the ref it stored.
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				mk: Box! { let b = Box; b.get = &readSum; b }
+				sum = 5
+				let s = mk.get
+			`,
+			want: "so `s` (line 7) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a ref held by an earlier function result",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				inner: Box! { let b = Box; b.get = &readSum; b }
+				mk: Box! { inner }
+				let held = mk
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 9) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "initializer calling a ref it stored",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				sum = 5
+				let s = { let b = Box; b.get = &readSum; b.get }
+			`,
+			want: "so `s` (line 6) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a ref another initializer stored in it",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				let holder = Box
+				let init = { holder.get = &readSum; 1 }
+				sum = 5
+				let s = holder.get
+			`,
+			want: "so `s` (line 8) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling an escaping block a function result holds",
+			src: `
+				let sum = 0
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				mk: Box! { Box.store { x => sum + x } }
+				let held = mk
+				sum = 5
+				let s = held.saved(1)
+			`,
+			want: "so `s` (line 10) reads `sum` (through `Box.saved`) before this statement writes it",
+		},
+		{
+			name: "declaration calling an escaping block stored under a bare name",
+			src: `
+				let sum = 0
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { saved = block; self }
+				}
+				mk: Box! { Box.store { x => sum + x } }
+				let held = mk
+				sum = 5
+				let s = held.saved(1)
+			`,
+			want: "so `s` (line 10) reads `sum` (through `Box.saved`) before this statement writes it",
+		},
+		{
+			name: "blocks stored by top-level statements are fine",
+			src: `
+				let sum = 0
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				print(Box.store { x => sum + x }.saved(1))
+				sum = 5
+				let s = Box.saved(1)
+			`,
+		},
+		{
+			name: "declaration reading a binding another initializer stored a ref in",
+			// fn's type is readA's: the ref is fn's, not readA's.
+			src: `
+				let sum = 0
+				readA: Int! { 1 }
+				readB: Int! { sum }
+				pub fn = &readA
+				let init = { fn = &readB; 1 }
+				sum = 5
+				let s = readA
+				let t = fn
+			`,
+			want: "so `t` (line 9) reads `sum` (through `readB`, which may be stored in `fn`) before this statement writes it",
+		},
+		{
+			name: "a function whose type a binding has doesn't read what's stored in it",
+			src: `
+				let sum = 0
+				readA: Int! { 1 }
+				readB: Int! { sum }
+				pub fn = &readA
+				let init = { fn = &readB; 1 }
+				sum = 5
+				let s = readA
+			`,
+		},
+		{
+			name: "declaration calling a method through an interface",
+			src: `
+				let sum = 0
+				interface Getter { get: Int! }
+				type Box implements Getter { get: Int! { sum } }
+				let held: Getter! = Box
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 7) reads `sum` (through `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a method through an extended interface",
+			src: `
+				let sum = 0
+				interface Getter { get: Int! }
+				interface SubGetter implements Getter { get: Int! }
+				type Box implements SubGetter { get: Int! { sum } }
+				let held: Getter! = Box
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 8) reads `sum` (through `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a field default through an interface",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				interface Getter { get: Int! }
+				type Box implements Getter { pub get = &readSum }
+				let held: Getter! = Box
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 8) reads `sum` (through `readSum`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a member ref stored in a slot",
+			src: `
+				let sum = 0
+				readZero: Int! { 0 }
+				readSum: Int! { sum }
+				type C { pub get = &readZero }
+				type Box { get: Int! { 0 } }
+				mkC: C! { let c = C; c.get = &readSum; c }
+				mk: Box! { let c = mkC; let b = Box; b.get = &c.get; b }
+				sum = 5
+				let s = mk.get
+			`,
+			want: "so `s` (line 10) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a ref stored from a conditional",
+			src: `
+				let sum = 0
+				readZero: Int! { 0 }
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				mk(z: Boolean!): Box! { let x = Box; x.get = if (z) { &readZero } else { &readSum }; x }
+				let held = mk(false)
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 9) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a ref stored from a reassigned local",
+			src: `
+				let sum = 0
+				readZero: Int! { 0 }
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				mk: Box! { let f = &readZero; f = &readSum; let x = Box; x.get = &f; x }
+				let held = mk
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 9) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a ref stored from a reassigned declaration",
+			src: `
+				let sum = 0
+				readA: Int! { 1 }
+				readB: Int! { sum }
+				type Box { get: Int! { 0 } }
+				pub fn = &readA
+				let init = { fn = &readB; 1 }
+				let holder = Box
+				let init2 = { holder.get = &fn; 1 }
+				sum = 5
+				let s = holder.get
+			`,
+			want: "so `s` (line 11) reads `sum` (through `readB`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a function stored from a conditional by name",
+			src: `
+				let sum = 0
+				type Box { get(x: Int!): Int! { x } }
+				f(x: Int!): Int! { x }
+				g(x: Int!): Int! { sum + x }
+				mk(z: Boolean!): Box! { let b = Box; b.get = if (z) { f } else { g }; b }
+				let held = mk(false)
+				sum = 5
+				let s = held.get(1)
+			`,
+			want: "so `s` (line 9) reads `sum` (through `g`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a ref stored over a parameter in a local",
+			src: `
+				let sum = 0
+				addSum(x: Int!): Int! { sum + x }
+				type Box {
+					saved(x: Int!): Int! { x }
+					store(&block(x: Int!): Int!): Box! { let g = block; g = &addSum; self.saved = g; self }
+				}
+				mk: Box! { Box.store { x => x } }
+				let held = mk
+				sum = 5
+				let s = held.saved(1)
+			`,
+			want: "so `s` (line 11) reads `sum` (through `addSum`, which may be stored in `Box.saved`) before this statement writes it",
+		},
+		{
+			name: "declaration calling a block stored over a field default",
+			src: `
+				let sum = 0
+				idf(x: Int!): Int! { x }
+				type Box {
+					pub saved = &idf
+					store(&block(x: Int!): Int!): Box! { self.saved = block; self }
+				}
+				mk: Box! { Box.store { x => sum + x } }
+				let held = mk
+				sum = 5
+				let s = held.saved(1)
+			`,
+			want: "so `s` (line 11) reads `sum` (through `Box.saved`) before this statement writes it",
+		},
+		{
+			name: "field defaults and constructor arguments that are refs aren't calls",
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { pub get = &readSum }
+				sum = 5
+				let b = Box
+				let c = Box(get: &readSum)
+				let r = {{p: Box, q: 1}}
+			`,
+		},
+		{
+			name: "declaration calling a ref stored in a field typed by its initializer",
+			src: `
+				let sum = 0
+				readZero: Int! { 0 }
+				readSum: Int! { sum }
+				type Box { pub get = &readZero }
+				mk: Box! { Box(get: &readSum) }
+				let held = mk
+				sum = 5
+				let s = held.get
+			`,
+			want: "so `s` (line 9) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it",
+		},
+		{
+			name: "a function a field's type comes from doesn't read what's stored in it",
+			src: `
+				let sum = 0
+				readZero: Int! { 0 }
+				readSum: Int! { sum }
+				type Box { pub get = &readZero }
+				mk: Box! { let b = Box; b.get = &readSum; b }
+				mk2: Box! { Box(get: &readSum) }
+				let held = mk
+				sum = 5
+				let z = readZero
+			`,
+		},
+		{
+			name: "blocks that don't escape aren't carried",
+			src: `
+				let sum = 0
+				mkList: [Int!]! { [1, 2].map { x => sum + x } }
+				let xs = mkList
+				sum = 5
+				let ys = xs
+			`,
+		},
+		{
+			name: "returned refs reading no top-level binding, or called in statements, are fine",
+			// Slots are told apart by type: only Box.get may call readSum.
+			src: `
+				let sum = 0
+				readSum: Int! { sum }
+				type Box { get: Int! { 0 } }
+				type Fixed { get: Int! { 0 } }
+				mk: Box! { let b = Box; b.get = &readSum; b }
+				pure: Fixed! { let k = 3; three: Int! { k }; let b = Fixed; b.get = &three; b }
+				let held = mk
+				let p = pure
+				sum = 5
+				let q = pure.get
+				let r = p.get
+				print([held.get, mk.get, q, r])
 			`,
 		},
 	})

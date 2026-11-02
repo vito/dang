@@ -1,0 +1,11 @@
+[1m[31mError:[0m top-level declarations run before top-level statements, so `s` (line 22) reads `sum` (through `readSum`, which may be stored in `Box.get`) before this statement writes it; write `sum` in a declaration instead (e.g. compute it in `s`'s initializer), or read it in a statement
+  [2m[34m--> errors/returned_ref_statement_order.dang:21:1[0m
+ [2m    |[0m
+ [2m 19 | }[0m
+ [2m 20 | [0m
+ [2m[34m[1m 21 | [0msum = 5
+[2m       [31m^^^^^^^[0m
+ [2m 22 | let s = mk.get[0m
+ [2m 23 | print(s)[0m
+ [2m    |[0m
+

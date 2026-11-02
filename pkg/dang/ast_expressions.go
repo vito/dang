@@ -206,13 +206,23 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		coerced, argType, subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, ft, arg.Value, argRecord, k)
+		// An implicit constructor stores a function value passed for a
+		// field in it (toplevel_order.go).
+		argCtx := ctx
+		slot := ctorArgSlot(ctx, effectOf(ft), k)
+		if slot != nil {
+			argCtx = withSlotValue(ctx, arg.Value, slot)
+		}
+		coerced, argType, subs, err := c.checkArgumentTypeWithSubs(argCtx, env, fresh, ft, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
 		}
 		if scheme, has := argRecord.SchemeOf(k); has {
 			paramType, _ := scheme.Type()
 			effectArg(ctx, calleeNameOf(c.Fun), paramType, argType, arg.Value)
+			if slot != nil {
+				noteSlotStore(ctx, env, slot, arg.Value, argType)
+			}
 		}
 		c.Args[i].Value = coerced
 		if subs != nil {
@@ -1234,6 +1244,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
 		}
 		noteTopCall(ctx, effectOf(t), d.Field.Name, d)
+		noteTopMember(ctx, rec, d.Field.Name, t, d)
 		if d.AutoCall {
 			var err error
 			var called bool

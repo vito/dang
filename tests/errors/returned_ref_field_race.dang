@@ -1,0 +1,39 @@
+# Calling a `&ref` a function returned, from a {{ }} field, can force a
+# later declaration whose initializer writes `total` while the other field
+# does the same.
+let total = 0
+
+readA: Int! {
+  a
+}
+
+readB: Int! {
+  b
+}
+
+type Box {
+  get: Int! { 0 }
+}
+
+boxA: Box! {
+  let x = Box
+  x.get = &readA
+  x
+}
+
+boxB: Box! {
+  let x = Box
+  x.get = &readB
+  x
+}
+
+let r = {{p: boxA.get, q: boxB.get}}
+let a = {
+  total += 1
+  1
+}
+let b = {
+  total += 1
+  2
+}
+print(r.p)

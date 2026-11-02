@@ -1,0 +1,44 @@
+# Functions can return `&ref`s they stored in a value. The top-level order
+# checks follow what those refs read through the slot they are stored in
+# (here Box.get): these programs read nothing a later statement writes, or
+# call the refs in statements, so they are fine.
+let sum = 0
+
+readSum: Int! {
+  sum
+}
+
+type Box {
+  get: Int! { 0 }
+}
+
+type Fixed {
+  get: Int! { 0 }
+}
+
+mk: Box! {
+  let b = Box
+  b.get = &readSum
+  b
+}
+
+pure: Fixed! {
+  let k = 3
+  three: Int! { k }
+  let b = Fixed
+  b.get = &three
+  b
+}
+
+let held = mk
+let p = pure
+sum = 5
+let q = pure.get
+let r = p.get
+
+assert { held.get == 5 }
+assert { mk.get == 5 }
+assert { q == 3 }
+assert { r == 3 }
+
+print("Returned ref tests passed!")

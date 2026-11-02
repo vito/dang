@@ -57,6 +57,13 @@ type Effect struct {
 	nonLocal Node
 	// createdIn is the frame the closure was created in.
 	createdIn *effFrame
+	// home is, for a named function or method, the binding it is declared
+	// as: a slot whose type has this effect is its own only there
+	// (toplevel_order.go).
+	home effTarget
+	// ctorOf is, for an implicit constructor, the type it constructs: it
+	// stores its arguments in the fields they're passed for.
+	ctorOf *Type
 	// escaped reports whether the closure is stored, returned, or collected
 	// (narrowlog.go).
 	escaped bool
@@ -522,6 +529,9 @@ type effBinding struct {
 	arg     *Effect
 	argNode Node
 	callee  string
+	// inStatement marks a call made by a top-level statement, after every
+	// top-level declaration has run (toplevel_order.go).
+	inStatement bool
 }
 
 type effectSolver struct {
@@ -573,7 +583,7 @@ func effectArg(ctx context.Context, callee string, paramType, argType hm.Type, a
 		return
 	}
 	if s, ok := ctx.Value(effSolverKey{}).(*effectSolver); ok {
-		s.bindings = append(s.bindings, effBinding{param: param, arg: arg, argNode: argNode, callee: callee})
+		s.bindings = append(s.bindings, effBinding{param: param, arg: arg, argNode: argNode, callee: callee, inStatement: inTopStatement(ctx)})
 	}
 }
 
@@ -629,7 +639,7 @@ func (s *effectSolver) solve() []error {
 		}
 	}
 	s.narrow.checkCaptures(s, errs)
-	s.top.check(errs)
+	s.top.check(s, errs)
 	return errs.errs
 }
 

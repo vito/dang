@@ -523,14 +523,22 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 }
 
 // nameEffect names the function for effect diagnostics: `Type.method` for
-// methods, the plain name otherwise.
+// methods, the plain name otherwise. It also records the binding the
+// function is declared as (Effect.home).
 func (f *FunDecl) nameEffect(env hm.Env) {
-	if f.EffectName != "" {
-		return
+	self := methodSelfFrame(env)
+	if f.EffectName == "" {
+		f.EffectName = f.Named
+		if self != nil {
+			f.EffectName = self.Named + "." + f.Named
+		}
 	}
-	f.EffectName = f.Named
-	if self := methodSelfFrame(env); self != nil {
-		f.EffectName = self.Named + "." + f.Named
+	home := envFrame(env)
+	if self != nil {
+		home = self
+	}
+	if home != nil {
+		f.fnEffects().latent.home = effTarget{frame: home, name: f.Named}
 	}
 }
 
@@ -632,8 +640,14 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			recordEffectWrite(ctx, env, r, name, isSelf, first)
 		}
 
-		// Infer the type of the value (right-hand side)
-		valueType, err := r.Value.Infer(ctx, env, fresh)
+		// Infer the type of the value (right-hand side). A function value
+		// stored in a slot is followed through it (toplevel_order.go).
+		valueCtx := ctx
+		slot := slotOf(ctx, env, r.Target, targetType)
+		if slot != nil {
+			valueCtx = withSlotValue(ctx, r.Value, slot)
+		}
+		valueType, err := r.Value.Infer(valueCtx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: value: %w", err)
 		}
@@ -641,6 +655,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		// value that may null the path's root ends its narrowing first.
 		if err := checkRootAfterValue(ctx, env, r.Target); err != nil {
 			return nil, err
+		}
+		if slot != nil {
+			noteSlotStore(ctx, env, slot, r.Value, valueType)
 		}
 
 		// For simple assignment, check compatibility
