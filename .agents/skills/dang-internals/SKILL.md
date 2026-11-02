@@ -259,16 +259,19 @@ with "must be pure" reasons once discovered).
    calls must be pure — since its values can be stored, returned and used
    concurrently like any other.
    Top-level declarations are lazy fields forced on first read, maybe inside a
-   `{{ }}` field: one whose initializer may write top-level state (directly,
-   through blocks it runs, or by forcing another such declaration) can't be
-   read from a field when it's declared later than the declaration being
-   initialized, or from a function body (`toplevel_order.go`). And since all
-   top-level declarations run before any top-level statement, a statement
-   can't write a binding that a declaration after it reads (it would see the
-   value from before the write). Reads count through the functions, methods
-   and constructors a declaration or field references, transitively: they're
-   recorded during inference and checked by the solver over that fixed point
-   (a stored `&ref` passes its reads to whoever reads the declaration).
+   `{{ }}` field, and all run before any top-level statement. Two syntactic
+   rules (`toplevel_order.go`) make that safe without following function
+   values: a declaration's initializer (blocks and fields written in it
+   included) may not write any top-level binding (`checkInitializerWrite`,
+   from `absorbWrite`), so initializers forced concurrently share no mutable
+   state; and a binding some top-level statement writes (W, collected by
+   `noteStatementWrite`; `box.n = v` writes `box`) may be read only by
+   statement code — not by an initializer, nor by a function, method or type
+   body, which may run during initialization (`noteTopRead` from
+   `Symbol.Infer`, checked by the solver once statements are inferred). A
+   top-level form is marked a declaration or statement by
+   `withTopDecl`/`withTopStatement`. W lives on the solver: one directory
+   module, or one REPL/literate entry.
 2. **Impure closures can't escape.** A block, nested function, or `&ref` to
    one whose effect writes a binding it doesn't declare may appear only as a
    callee or as an argument for a function-typed parameter. Escape detection

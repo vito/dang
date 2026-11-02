@@ -13,11 +13,12 @@ import (
 // writes are forks), which is what lets closure purity (and the `{{ }}`
 // check) stay lexical.
 //
-// Top-level script code — top-level forms, and the blocks lexically inside
-// them outside any function, method, or type body — may still reassign
+// Top-level script code — top-level statements, and the blocks lexically
+// inside them outside any function, method, or type body — may still reassign
 // top-level bindings while the module initializes, e.g.
 // `let total = 0; xs.each { x => total += x }`. A REPL prompt is script code
-// too, so reassigning at the prompt keeps working.
+// too, so reassigning at the prompt keeps working. (Declarations'
+// initializers may not: see toplevel_order.go.)
 
 type topLevelFrameKey struct{}
 

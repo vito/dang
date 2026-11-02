@@ -29,11 +29,12 @@ Four ideas the rest of the language hangs on:
   self` to surface it: `Foo(42).incr.a == 43`, original untouched. Names are
   lexical: blocks, nested functions and `&refs` use the variables and `self`
   where they were written. The compiler rejects any write that could leak out
-  of the scope that owns it: functions and methods can't write top-level
-  bindings, nothing can write statics, closures that write their scope can't
-  be stored or returned, `{{ }}` fields can't write outside themselves, and
-  defaults (field defaults, `new()` param defaults) see only values, never
-  `self` or methods. See `reference/objects.md`.
+  of the scope that owns it: functions, methods and top-level declarations'
+  initializers can't write top-level bindings, only top-level statements read
+  what top-level statements write, nothing can write statics, closures that
+  write their scope can't be stored or returned, `{{ }}` fields can't write
+  outside themselves, and defaults (field defaults, `new()` param defaults)
+  see only values, never `self` or methods. See `reference/objects.md`.
 - **Null tracking** — `String` ≠ `String!` in the type system, with
   flow-sensitive narrowing so you rarely write casts.
 
