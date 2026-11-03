@@ -194,6 +194,17 @@ func TestReplRepeatedFunctionDeclarations(t *testing.T) {
 	require.Equal(t, "3", dang.Repr(v))
 }
 
+func TestReplFunctionRebindingsStayInOrder(t *testing.T) {
+	for _, replacement := range []string{`f: Int! { 2 }`, `f: Int! { raise "new f"; 2 }`} {
+		s := newTestReplSession(t)
+		_, err := s.enter("f: Int! { 1 }; let x = 0")
+		require.NoError(t, err)
+		v, err := s.enter("let x = f; " + replacement + "; x")
+		require.NoError(t, err)
+		require.Equal(t, "1", dang.Repr(v))
+	}
+}
+
 func TestReplRepairsFailedInitialization(t *testing.T) {
 	for _, src := range []string{
 		`let x: Int! = { raise "stop"; 1 }`,

@@ -388,15 +388,11 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 		}
 	}
 	eager := make(map[Node]bool)
-	for _, phase := range [][]Node{classified.Constants, classified.Variables} {
+	for _, phase := range [][]Node{classified.Constants, classified.Variables, classified.Functions} {
 		for _, form := range phase {
-			field := form.(*FieldDecl)
-			eager[form] = field.rebind || scope.Has(field.Name.Name) || counts[field.Name.Name] > 1
-		}
-	}
-	for _, form := range classified.Functions {
-		for _, name := range form.DeclaredSymbols() {
-			eager[form] = counts[name] > 1
+			if field, ok := form.(*FieldDecl); ok {
+				eager[form] = field.rebind || scope.Has(field.Name.Name) || counts[field.Name.Name] > 1
+			}
 		}
 	}
 	for _, phase := range [][]Node{classified.Imports, classified.Directives, classified.Constants} {
