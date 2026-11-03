@@ -380,9 +380,11 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 	// also stay in source order: hoisting a later constant must not suppress
 	// an earlier initializer. Decide before installing any new bindings.
 	counts := make(map[string]int)
-	for _, phase := range [][]Node{classified.Constants, classified.Variables} {
+	for _, phase := range [][]Node{classified.Constants, classified.Variables, classified.Functions} {
 		for _, form := range phase {
-			counts[form.(*FieldDecl).Name.Name]++
+			for _, name := range form.DeclaredSymbols() {
+				counts[name]++
+			}
 		}
 	}
 	eager := make(map[Node]bool)
@@ -390,6 +392,11 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 		for _, form := range phase {
 			field := form.(*FieldDecl)
 			eager[form] = field.rebind || scope.Has(field.Name.Name) || counts[field.Name.Name] > 1
+		}
+	}
+	for _, form := range classified.Functions {
+		for _, name := range form.DeclaredSymbols() {
+			eager[form] = counts[name] > 1
 		}
 	}
 	for _, phase := range [][]Node{classified.Imports, classified.Directives, classified.Constants} {
@@ -407,8 +414,10 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 	}
 	for _, phase := range [][]Node{classified.Types, classified.Functions} {
 		for _, form := range phase {
-			if err := eval(form); err != nil {
-				return nil, err
+			if !eager[form] {
+				if err := eval(form); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

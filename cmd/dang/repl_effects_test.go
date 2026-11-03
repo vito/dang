@@ -174,6 +174,26 @@ func TestReplRepeatedFreshDeclarations(t *testing.T) {
 	}
 }
 
+func TestReplRepeatedFunctionDeclarations(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter(`helper(n: Int!): Int! { n }; let f = { raise "stop"; &helper }; f(n: Int!): Int! { n + 2 }; f(1)`)
+	require.ErrorContains(t, err, "stop")
+
+	s = newTestReplSession(t)
+	forms, err := s.infer(`helper(n: Int!): Int! { n }; let f = { print("first"); &helper }; f(n: Int!): Int! { n + 2 }; f(1)`)
+	require.NoError(t, err)
+	var out bytes.Buffer
+	v, err := dang.EvalTopLevel(ioctx.StdoutToContext(context.Background(), &out), forms, s.valueScope, nil)
+	require.NoError(t, err)
+	require.Equal(t, "first\n", out.String())
+	require.Equal(t, "1", dang.Repr(v))
+
+	s = newTestReplSession(t)
+	v, err = s.enter(`helper(n: Int!): Int! { n }; f(n: Int!): Int! { n + 2 }; let f = { raise "unreached"; &helper }; f(1)`)
+	require.NoError(t, err)
+	require.Equal(t, "3", dang.Repr(v))
+}
+
 func TestReplRepairsFailedInitialization(t *testing.T) {
 	for _, src := range []string{
 		`let x: Int! = { raise "stop"; 1 }`,
