@@ -1,0 +1,21 @@
+# An import written inside a block still lets values of its types be decoded
+# outside the block: an imported type's constructor belongs to its module, not
+# to the import.
+let ran = if (true) {
+  import Lib
+  Lib.Greeter(name: "a")
+} else {
+  null
+}
+ran = JSON.decode("{\"name\": \"Dang\"}")
+assert { ran!.greeting == "Hello, Dang!" }
+
+# Even when the block holding the import never ran.
+let skipped = if (false) {
+  import Lib
+  Lib.Greeter(name: "a")
+} else {
+  null
+}
+skipped = JSON.decode("{\"name\": \"Dang\"}")
+assert { skipped!.greeting == "Hello, Dang!" }

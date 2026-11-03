@@ -16,6 +16,12 @@ import "context"
 // Select.Infer.
 type moduleScope struct {
 	label string
+
+	// dang is the imported native Dang module this scope belongs to, or nil
+	// for the program being run and the prelude. Decoding into a top-level
+	// type of an imported module finds its constructor in that module's own
+	// evaluated scope (see constructorFor), wherever the import was written.
+	dang *dangModule
 }
 
 type moduleScopeKey struct{}

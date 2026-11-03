@@ -118,6 +118,41 @@ func TestRecursionDoesNotWalkToContextRoot(t *testing.T) {
 	}
 }
 
+// formsRootLookups evaluates n methods and a computed variable with
+// EvaluateFormsWithPhases under a context without a frame, as the Dagger SDK
+// evaluates a received object's class body, and returns how many context
+// lookups reached the root.
+func formsRootLookups(t *testing.T, n int) int64 {
+	t.Helper()
+	var src strings.Builder
+	for i := range n {
+		src.WriteString("pub m" + strconv.Itoa(i) + "(x: Int!): Int! { x + " + strconv.Itoa(i) + " }\n")
+	}
+	src.WriteString("pub total: Int! = m0(1)\n")
+	parsed, err := ParseWithRecovery("forms", []byte(src.String()))
+	require.NoError(t, err)
+	forms := parsed.(*FileBlock).Forms
+	typeScope, valueScope := BuildScopesFromImports("", nil)
+	_, err = InferFormsWithPhases(context.Background(), forms, typeScope, hm.NewSimpleFresher())
+	require.NoError(t, err)
+
+	root := &countingContext{Context: context.Background()}
+	_, err = EvaluateFormsWithPhases(root, forms, valueScope)
+	require.NoError(t, err)
+	total, found, err := valueScope.Lookup(context.Background(), "total")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, IntValue{Val: 1}, total)
+	return root.lookups.Load()
+}
+
+// An evaluation entry point looks through a context without a frame once, so
+// the lookups reaching the root don't grow with the number of forms.
+func TestEvaluateFormsDoesNotWalkToContextRootPerForm(t *testing.T) {
+	require.Equal(t, formsRootLookups(t, 5), formsRootLookups(t, 200),
+		"lookups reaching the context root should not grow with the number of forms")
+}
+
 func benchmarkRecursion(b *testing.B, src string, depth int, withEvalContext bool) {
 	scope, node := prepareRecursion(b, src, depth)
 	ctx := ioctx.StdoutToContext(context.Background(), io.Discard)

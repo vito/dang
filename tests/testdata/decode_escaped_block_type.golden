@@ -1,0 +1,10 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign Decoded to Local: cannot decode into Local here: it is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here
+  [2m[34m--> errors/decode_escaped_block_type.dang:13:1[0m
+ [2m    |[0m
+ [2m 11 | }[0m
+ [2m 12 | [0m
+ [2m[34m[1m 13 | [0mmade = JSON.decode("{\"value\": \"decoded\"}")
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

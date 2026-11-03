@@ -85,6 +85,13 @@ type ValueScope interface {
 	// Derive returns a fresh child scope. Local bindings shadow this scope.
 	// If sealed, Update stays in the child rather than walking into parents.
 	Derive(sealed bool) ValueScope
+	// BindConstructor records c as the constructor of t's values in this
+	// scope. Constructors are keyed by type identity, not name, so a binding
+	// shadowing the type's name never hides them; decoding into a type finds
+	// them with LookupConstructor (see constructorFor).
+	BindConstructor(t *Type, c Callable)
+	// LookupConstructor resolves t's constructor through the scope chain.
+	LookupConstructor(t *Type) (Callable, bool)
 	// Dynamic scope support for 'self'.
 	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -496,6 +503,9 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	for _, kv := range preludeBindings {
 		builtinsFrame.Bind(kv.Key, kv.Value, PublicVisibility)
 	}
+	for t, c := range preludeConstructors {
+		builtinsFrame.BindConstructor(t, c)
+	}
 
 	return builtinsFrame.Derive(false)
 }
@@ -654,7 +664,6 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				FnType:    fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
-			constructor.TypeScope.SetConstructor(constructor)
 		}
 
 		for _, f := range t.Fields {
@@ -2366,6 +2375,12 @@ type Object struct {
 	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 
+	// constructors holds the constructors of the types declared in this
+	// frame, keyed by canonical type; nil until one is bound. Guarded by mu.
+	// Imported types are not bound here: constructorFor finds them in their
+	// home module's scope. See BindConstructor.
+	constructors map[*Type]Callable
+
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
 	// Its effective parent is not Parent but the current value of its `self`
 	// cell, so bare field reads see the latest copy-on-write generation of
@@ -2412,10 +2427,16 @@ func (m *Object) nextFrame(cell *DynamicScope) (*Object, bool) {
 
 // NewObject creates a new Object with an empty values map
 func NewObject(mod TypeScope) *Object {
+	// An instance ends up binding every member its type declares, so size
+	// its maps for them up front rather than growing them one by one.
+	var size int
+	if t, ok := mod.(*Type); ok {
+		size = len(t.vars)
+	}
 	return &Object{
 		Mod:          mod,
-		Values:       make(map[string]Value),
-		Visibilities: make(map[string]Visibility),
+		Values:       make(map[string]Value, size),
+		Visibilities: make(map[string]Visibility, size),
 		Parent:       nil,
 	}
 }
@@ -2627,6 +2648,31 @@ func (m *Object) Visibility(name string) Visibility {
 	return m.visibilityFrom(name, m.dynamicScope)
 }
 
+func (m *Object) BindConstructor(t *Type, c Callable) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.constructors == nil {
+		m.constructors = make(map[*Type]Callable)
+	}
+	m.constructors[canonicalModule(t)] = c
+}
+
+func (m *Object) LookupConstructor(t *Type) (Callable, bool) {
+	t = canonicalModule(t)
+	cell := m.dynamicScope
+	for o := m; o != nil; {
+		o.mu.Lock()
+		c, ok := o.constructors[t]
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		if ok {
+			return c, true
+		}
+		o = parent
+	}
+	return nil, false
+}
+
 func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
 	for o := m; o != nil; {
 		o.mu.Lock()
@@ -2748,6 +2794,12 @@ func (m *Object) snapshotReceiver() *Object {
 		}
 		for name, vis := range f.Visibilities {
 			snap.Visibilities[name] = vis
+		}
+		for t, c := range f.constructors {
+			if snap.constructors == nil {
+				snap.constructors = make(map[*Type]Callable)
+			}
+			snap.constructors[t] = c
 		}
 		f.mu.Unlock()
 	}
@@ -2898,6 +2950,7 @@ func (m *Object) cowCopy() *Object {
 		Parent:       m.Parent,
 		IsForked:     m.IsForked,
 		dynamicScope: m.dynamicScope,
+		constructors: maps.Clone(m.constructors),
 	}
 	m.mu.Unlock()
 	if next.Values == nil {

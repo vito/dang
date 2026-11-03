@@ -210,11 +210,16 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 // createFunctionValue creates a FunctionValue from processed arguments
 func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
-	defaults := make(map[string]Node)
+	// Defaults is only read, so a function without any can share the nil
+	// map instead of allocating an empty one for every value of it.
+	var defaults map[string]Node
 
 	for i, arg := range f.Args {
 		argNames[i] = arg.Name.Name
 		if arg.Value != nil {
+			if defaults == nil {
+				defaults = make(map[string]Node)
+			}
 			defaults[arg.Name.Name] = arg.Value
 		}
 	}
@@ -291,7 +296,9 @@ func checkGenericDefault(params []*FieldDecl, name string, rigid hm.Type, skolem
 			want = hm.Nullable(tv)
 		}
 		have := p.defaultType.Apply(skolem).(hm.Type)
-		if _, err := assignableForValue(have, want, p.Value); err != nil {
+		// want has free type variables here, which never admit decoded data
+		// (assignableDecoded), so no decode target needs an env to check.
+		if _, err := assignableForValue(nil, have, want, p.Value); err != nil {
 			return NewInferError(
 				fmt.Errorf("default %s doesn't fit every type the caller may pick for %s: %w", p.defaultType, rigid, err),
 				p.Value,
@@ -428,7 +435,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	exitNarrowBody(bodyCtx, effFr)
 
-	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
+	inferredRet, err = inferReturnTypeWithEarlyReturns(newEnv, f.Body, inferredRet, definedRet, returnTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -646,7 +653,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		// For simple assignment, check compatibility
 		switch r.Modifier {
 		case "=":
-			if _, err := assignableForValue(valueType, targetType, r.Value); err != nil {
+			if _, err := assignableForValue(env, valueType, targetType, r.Value); err != nil {
 				if refErr := r.functionRefAssignmentError(ctx, env, fresh, targetType, valueType); refErr != nil {
 					return nil, refErr
 				}
@@ -1490,6 +1497,10 @@ type ImportDecl struct {
 	// It carries the compiled module reused at Eval, mirroring how client/schema
 	// are stashed for GraphQL imports.
 	dangMod *dangModule
+
+	// Prepared source retains schema/type metadata, never a client. Evaluation
+	// resolves this import against the current invocation's configuration.
+	prepared bool
 }
 
 type ImportConfig struct {
@@ -1666,7 +1677,18 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 	}
 
 	// Create evaluation environment for the imported schema
-	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
+	client, schema := i.client, i.schema
+	if i.prepared {
+		config, err := i.loadImportConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if config.DangModuleDir != "" || !samePreparedSchema(i.schema, config.Schema) {
+			return nil, fmt.Errorf("prepared import %q has a different schema", i.Name.Name)
+		}
+		client, schema = config.Client, config.Schema
+	}
+	importValueScope := ValueScopeFromSchema(i.inferred, client, schema)
 
 	installImportedValueScope(scope, i.Name.Name, importValueScope, locallyDeclared(ctx))
 

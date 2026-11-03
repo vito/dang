@@ -1,0 +1,10 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign Decoded to Inner!: cannot decode into Inner here: it is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here
+  [2m[34m--> errors/decode_escaped_nested_type.dang:11:1[0m
+ [2m    |[0m
+ [2m  9 | [0m
+ [2m 10 | let d = Outer().make[0m
+ [2m[34m[1m 11 | [0md = JSON.decode("{\"value\": \"decoded\"}")
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 12 | [0m
+ [2m    |[0m
+

@@ -118,8 +118,11 @@ func classifyForms(forms []Node) ClassifiedForms {
 		case *FieldDecl:
 			if isConstantValue(f.Value) {
 				classified.Constants = append(classified.Constants, f)
-			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
-				// Treat FieldDecl with function bodies as functions for proper hoisting
+			} else if f.funDecl() != nil {
+				// Treat FieldDecl with function bodies as functions for proper
+				// hoisting. Inference wraps a typed field's value in a Coerce, so
+				// look through it: evaluation must classify the forms as
+				// inference did.
 				classified.Functions = append(classified.Functions, f)
 			} else {
 				classified.Variables = append(classified.Variables, f)
@@ -332,6 +335,10 @@ func isConstantValue(value Node) bool {
 // read, and then forced in source order before non-declarations run. This is
 // used for both module top-levels and object bodies.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
+	// An entry point: look through a context without a frame once, rather
+	// than in every EvalNode below.
+	ctx, _ = ensureFrame(ctx)
+
 	var result Value = NullValue{}
 	var err error
 

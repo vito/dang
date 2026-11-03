@@ -1,0 +1,6 @@
+# Lib is imported only in this file, but Holder's field is a Lib type.
+import Lib
+
+type Holder {
+  greeter: Lib.Greeter!
+}

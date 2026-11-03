@@ -43,3 +43,68 @@ localDefault(suffix: String!, data: String!): String! {
 
 assert { localDefault("!", "{\"value\": \"a\"}") == "a!" }
 assert { localDefault("?", "{\"value\": \"b\"}") == "b?" }
+
+type Shadow {
+  value: String!
+}
+
+# Each call decodes with its own constructor, even through a shadowed name
+# and after a nested call declared the same type again.
+tagAround(suffix: String!, inner: String, data: String!): String! {
+  type Tagged {
+    value: String!
+    tag: String! = suffix
+  }
+  let innerResult = if (inner != null) { tagAround(inner!, null, data) } else { "" }
+  decodeHere(json: String!): String! {
+    let Tagged = &Shadow
+    let decoded: Tagged! = JSON.decode(json)
+    decoded.value + decoded.tag
+  }
+  innerResult + decodeHere(data)
+}
+
+assert { tagAround("!", "?", "{\"value\": \"a\"}") == "a?a!" }
+
+# A type declared in another type's body decodes in that type's new() and
+# methods, with the enclosing instance's constructor.
+type Outer {
+  label: String!
+
+  type Inner {
+    value: String!
+  }
+
+  new(json: String!) {
+    let decoded: Inner! = JSON.decode(json)
+    self.label = decoded.value
+    self
+  }
+
+  relabel(json: String!): String! {
+    let decoded: Inner! = JSON.decode(json)
+    decoded.value
+  }
+}
+
+let outer = Outer("{\"value\": \"made\"}")
+assert { outer.label == "made" }
+assert { outer.relabel("{\"value\": \"again\"}") == "again" }
+
+# A field every codec ignores is never decoded, so its type need not be
+# decodable here, though it is declared in another type's body.
+type Maker {
+  type Made {
+    value: String!
+  }
+  make: Made! { Made(value: "made") }
+}
+
+type Wrapper {
+  name: String!
+  pub made @JSON.ignore @YAML.ignore @TOML.ignore = Maker.make
+}
+
+let wrapped: Wrapper! = JSON.decode("{\"name\": \"w\"}")
+assert { wrapped.name == "w" }
+assert { wrapped.made.value == "made" }

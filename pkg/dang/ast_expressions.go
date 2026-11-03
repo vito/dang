@@ -514,7 +514,7 @@ func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fre
 		return value, nil, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
-	subs, err := assignableForValue(it, dt, value)
+	subs, err := assignableForValue(env, it, dt, value)
 	if err != nil {
 		return value, it, nil, NewInferError(err, value)
 	}
@@ -3062,7 +3062,25 @@ func (o *ObjectSelection) Walk(fn func(Node) bool) {
 	if !fn(o) {
 		return
 	}
-	o.Receiver.Walk(fn)
+	// A nested selection has no receiver of its own.
+	if o.Receiver != nil {
+		o.Receiver.Walk(fn)
+	}
+	walkFieldSelections(o.Fields, fn)
+	for _, frag := range o.InlineFragments {
+		walkFieldSelections(frag.Fields, fn)
+	}
+}
+
+func walkFieldSelections(fields []*FieldSelection, fn func(Node) bool) {
+	for _, field := range fields {
+		for _, arg := range field.Args {
+			arg.Value.Walk(fn)
+		}
+		if field.Selection != nil {
+			field.Selection.Walk(fn)
+		}
+	}
 }
 
 // Conditional represents an if-then-else expression
@@ -3572,6 +3590,9 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil
+			if decodeErr := checkDecodeTarget(env, hintType); decodeErr != nil {
+				return nil, NewInferError(decodeErr, t.Expr)
+			}
 		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)

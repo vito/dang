@@ -1,0 +1,60 @@
+# Methods, field defaults and argument defaults in an object body, on every
+# object built from it.
+
+type Account {
+  owner: String!
+  let balance: Int! = 10
+
+  # A method calling a sibling declared after it.
+  summary: String! { describe }
+
+  # A field default building another object from a field.
+  let ledger: Ledger! = Ledger(owner)
+
+  describe(prefix: String! = "account"): String! {
+    prefix + " of " + owner + ": " + `${balance}`
+  }
+
+  deposit(amount: Int! = 5): Account! {
+    balance += amount
+    self
+  }
+
+  doubled: Int! { self.balance * 2 }
+}
+
+type Ledger {
+  let owner: String!
+
+  entry: String! { "ledger for " + owner }
+}
+
+let alice = Account("alice")
+assert("a method calls a later sibling") { alice.summary == "account of alice: 10" }
+assert("a method's default applies") { alice.describe == "account of alice: 10" }
+assert("an argument overrides the default") { alice.describe("acct") == "acct of alice: 10" }
+assert("a method with a default argument returns a new generation") { alice.deposit.balance == 15 }
+assert("the receiver is unchanged") { alice.balance == 10 }
+assert("methods chain") { alice.deposit(1).deposit.doubled == 32 }
+assert("a computed field holds another object") { alice.ledger.entry == "ledger for alice" }
+
+# Each object gets its own methods: one built later doesn't see another's fields.
+let bob = Account("bob")
+assert("each object's methods read its own fields") { bob.describe == "account of bob: 10" }
+assert("an earlier object keeps its own") { alice.describe == "account of alice: 10" }
+
+type Counter {
+  let count: Int!
+
+  new(start: Int!) {
+    count = start
+    self
+  }
+
+  next: Counter! { Counter(count + 1) }
+  value: Int! { count }
+}
+
+assert("methods work on an object built by new()") { Counter(1).next.next.value == 3 }
+
+print("object body methods test passed!")
