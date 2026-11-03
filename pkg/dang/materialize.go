@@ -1009,7 +1009,10 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 //   - A schema input object's constructor is plain data, built from the type.
 //   - A top-level type of an imported Dang module was bound by that module's
 //     own evaluation, which runs once per module instance, so it is found
-//     there, wherever (and whether) the importer's import has run.
+//     there, wherever (and whether) the importer's import has run. A decode
+//     that is part of that evaluation (the module's own top-level code) finds
+//     it through its scope chain instead, which reaches the module's root:
+//     asking for the module's value scope there would wait on itself.
 //   - Any other type was bound by its declaration in a scope enclosing the
 //     decode (checkDecodeTarget guarantees it): the module's top level, or the
 //     function, block or type body declaring it. Each evaluation, call and
@@ -1020,7 +1023,7 @@ func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable,
 	if mod.Kind == InputKind && mod.constructorType != nil {
 		return InputObjectConstructor{TypeName: mod.Named, TypeScope: mod, FnType: mod.constructorType}, nil
 	}
-	if home := mod.homeModule; mod.localFrame == nil && home != nil && home.dang != nil {
+	if home := mod.homeModule; mod.localFrame == nil && home != nil && home.dang != nil && home.dang != evaluatingModule(ctx) {
 		values, err := home.dang.valueScope(ctx)
 		if err != nil {
 			return nil, err

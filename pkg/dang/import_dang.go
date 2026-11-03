@@ -155,7 +155,7 @@ func (m *dangModule) valueScope(ctx context.Context) (ValueScope, error) {
 		vs := NewValueScope(m.typeScope)
 		// Give the module its own eval context so runtime errors point at the
 		// module's files rather than the importer's.
-		mctx := WithEvalContext(ctx, NewEvalContext(m.dir, ""))
+		mctx := WithEvalContext(withEvaluatingModule(ctx, m), NewEvalContext(m.dir, ""))
 		if err := evaluateDirectoryFiles(mctx, m.blocks, vs); err != nil {
 			m.err = err
 			return
@@ -163,6 +163,24 @@ func (m *dangModule) valueScope(ctx context.Context) (ValueScope, error) {
 		m.value = vs
 	})
 	return m.value, m.err
+}
+
+type evaluatingModuleKey struct{}
+
+// withEvaluatingModule marks ctx as running m's top-level code (valueScope).
+// A decode there into one of m's own types must not ask m for its value scope,
+// which is the one being built: see evaluatingModule and constructorFor.
+func withEvaluatingModule(ctx context.Context, m *dangModule) context.Context {
+	return context.WithValue(ctx, evaluatingModuleKey{}, m)
+}
+
+// evaluatingModule returns the imported module whose top-level code ctx is
+// running, or nil. Imports are acyclic, so code running under one module's
+// evaluation can only reach its own types and those of modules it imports,
+// which finished evaluating first (or are evaluated on demand, apart from it).
+func evaluatingModule(ctx context.Context) *dangModule {
+	m, _ := ctx.Value(evaluatingModuleKey{}).(*dangModule)
+	return m
 }
 
 // parseModuleBlocks parses a native Dang module's .dang files with an import
