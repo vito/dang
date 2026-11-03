@@ -95,6 +95,7 @@ func (m *FileBlock) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	}
 
 	// Use phased evaluation to match the inference order
+	hoistLocalTypes(ctx, forms, newScope)
 	return EvaluateFormsWithPhases(ctx, forms, newScope)
 }
 

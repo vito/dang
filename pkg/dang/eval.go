@@ -85,13 +85,6 @@ type ValueScope interface {
 	// Derive returns a fresh child scope. Local bindings shadow this scope.
 	// If sealed, Update stays in the child rather than walking into parents.
 	Derive(sealed bool) ValueScope
-	// BindConstructor records c as the constructor of t's values in this
-	// scope. Constructors are keyed by type identity, not name, so a binding
-	// shadowing the type's name never hides them; decoding into a type finds
-	// them with LookupConstructor (see constructorFor).
-	BindConstructor(t *Type, c Callable)
-	// LookupConstructor resolves t's constructor through the scope chain.
-	LookupConstructor(t *Type) (Callable, bool)
 	// Dynamic scope support for 'self'.
 	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -2375,10 +2368,11 @@ type Object struct {
 	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 
-	// constructors holds the constructors of the types declared in this
-	// frame, keyed by canonical type; nil until one is bound. Guarded by mu.
-	// Imported types are not bound here: constructorFor finds them in their
-	// home module's scope. See BindConstructor.
+	// constructors holds, on a module's root frame (see moduleFrame), the
+	// constructors of the types the module declares at any depth, keyed by
+	// canonical type; nil until one is bound. Guarded by mu. Imported types
+	// are not bound here: constructorFor finds them in their home module's
+	// root. See BindConstructor.
 	constructors map[*Type]Callable
 
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
@@ -2648,6 +2642,13 @@ func (m *Object) Visibility(name string) Visibility {
 	return m.visibilityFrom(name, m.dynamicScope)
 }
 
+// BindConstructor records c as the constructor of t's values. Call it on a
+// module's root frame (moduleFrame): constructors are keyed by type identity,
+// not name, so a binding shadowing the type's name never hides them, and one
+// table per module evaluation serves every type the module declares, however
+// deeply nested, since no type's code captures the scope declaring it
+// (checkTypeCapture). Decoding finds them with LookupConstructor (see
+// constructorFor).
 func (m *Object) BindConstructor(t *Type, c Callable) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -2657,20 +2658,44 @@ func (m *Object) BindConstructor(t *Type, c Callable) {
 	m.constructors[canonicalModule(t)] = c
 }
 
+// LookupConstructor resolves t's constructor in m, a module's root frame, or
+// the builtins frame beneath it (the prelude's types).
 func (m *Object) LookupConstructor(t *Type) (Callable, bool) {
 	t = canonicalModule(t)
-	cell := m.dynamicScope
-	for o := m; o != nil; {
+	for o := m; o != nil; o = o.Parent {
 		o.mu.Lock()
 		c, ok := o.constructors[t]
-		parent, _ := o.nextFrame(cell)
 		o.mu.Unlock()
 		if ok {
 			return c, true
 		}
-		o = parent
 	}
 	return nil, false
+}
+
+// moduleFrame returns the root frame of the module evaluation scope belongs
+// to: the frame its top-level declarations are bound in, just above the
+// builtins. It follows each scope's lexical chain (an overlay's lexical side,
+// a constructor body's closure), never `self`, whose instance frames are not
+// part of it.
+func moduleFrame(scope ValueScope) *Object {
+	for {
+		switch s := scope.(type) {
+		case OverlayValueScope:
+			scope = s.lexical
+		case recordFieldScope:
+			scope = s.lexical
+		case *ConstructorScope:
+			scope = s.closure
+		case *Object:
+			for s.ownParent() {
+				s = s.Parent
+			}
+			return s
+		default:
+			panic(fmt.Sprintf("moduleFrame: unexpected scope %T", scope))
+		}
+	}
 }
 
 func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
@@ -2794,12 +2819,6 @@ func (m *Object) snapshotReceiver() *Object {
 		}
 		for name, vis := range f.Visibilities {
 			snap.Visibilities[name] = vis
-		}
-		for t, c := range f.constructors {
-			if snap.constructors == nil {
-				snap.constructors = make(map[*Type]Callable)
-			}
-			snap.constructors[t] = c
 		}
 		f.mu.Unlock()
 	}
@@ -3946,6 +3965,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 		}
 
 		composite := CreateOverlayValueScope(valueScope, importsScope)
+		hoistLocalTypes(ctx, rest, composite)
 		fileScopes = append(fileScopes, fileEvalScope{
 			classified: classifyForms(rest),
 			scope:      composite,

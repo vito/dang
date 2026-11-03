@@ -155,12 +155,11 @@ func returnMismatch(declared, inferred hm.Type, cause error) error {
 	return fmt.Errorf("return type mismatch: declared %s, inferred %s", declared, inferred)
 }
 
-// env is the function body's environment, where its result materializes.
-func inferReturnTypeWithEarlyReturns(env hm.Env, body Node, bodyType hm.Type, declaredType hm.Type, target *InferControlTarget) (hm.Type, error) {
+func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType hm.Type, target *InferControlTarget) (hm.Type, error) {
 	returns := collectReturnStatements(body, target)
 
 	if declaredType != nil {
-		subs, err := assignableForValue(env, bodyType, declaredType, body)
+		subs, err := assignableForValue(bodyType, declaredType, body)
 		if err != nil {
 			return nil, NewInferError(
 				withUnionProvenance(returnMismatch(declaredType, bodyType, err), bodyType),
@@ -176,7 +175,7 @@ func inferReturnTypeWithEarlyReturns(env hm.Env, body Node, bodyType hm.Type, de
 			if retType == nil {
 				continue
 			}
-			retSubs, err := assignableForValue(env, retType, declaredType, ret.Value)
+			retSubs, err := assignableForValue(retType, declaredType, ret.Value)
 			if err != nil {
 				return nil, NewInferError(
 					withUnionProvenance(returnMismatch(declaredType, retType, err), retType),

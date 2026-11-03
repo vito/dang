@@ -461,6 +461,7 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 		ctx := ioctx.StdoutToContext(evalCtx, &stdoutBuf)
 		ctx = ioctx.StderrToContext(ctx, &stdoutBuf)
 
+		dang.HoistLocalTypes(ctx, forms, valueScope)
 		for _, node := range forms {
 			val, err := dang.EvalNode(ctx, valueScope, node)
 

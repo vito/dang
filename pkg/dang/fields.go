@@ -420,7 +420,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 
 		if definedType != nil {
-			if _, err := assignableForValue(env, inferredType, definedType, s.Value); err != nil {
+			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
 				return nil, WrapInferError(err, s.Value)
 			}
 			s.defaultType = inferredType
@@ -428,7 +428,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		} else if !isParam && s.declaredType != nil {
 			// Declared (hoisted) from an earlier inference of the value:
 			// keep that type, whose unknown parts others may already use.
-			if _, err := assignableForValue(env, inferredType, s.declaredType, s.Value); err != nil {
+			if _, err := assignableForValue(inferredType, s.declaredType, s.Value); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
 			definedType = s.declaredType
@@ -575,6 +575,13 @@ type ObjectDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
+
+	// local marks a type declared in a function, block or type body rather
+	// than at its module's top level: hoistLocalTypes enters a constructor
+	// for it in its module's table before its declaration has run. Set at
+	// Hoist; without a top-level frame in ctx (an un-instrumented entry
+	// point), nothing is marked and only the declaration enters one.
+	local bool
 
 	ctorFn *FunctionBase
 }
@@ -747,14 +754,7 @@ func declareLocalType(ctx context.Context, env TypeScope, name string, kind Kind
 	// same-module access from foreign access. Nil ctx module (un-instrumented
 	// entry point) leaves it nil, which disables enforcement for this type.
 	mod.homeModule = moduleScopeFromContext(ctx)
-	// Mark a type declared below its module's top level with the frame
-	// declaring it (see Type.localFrame). Without a top-level frame in ctx
-	// (an un-instrumented entry point), nothing is marked, like homeModule.
-	if top := topLevelFrameFrom(ctx); top != nil {
-		if frame := envFrame(env); frame != nil && !isTopLevelFrame(frame, top) {
-			mod.localFrame = frame
-		}
-	}
+	mod.declared = true
 	env.AddObject(name, mod)
 	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
 	// scalar's namespace: staple Dang's members onto its type.
@@ -890,8 +890,8 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	meta := instanceType.MetaType()
 	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
-	// Statics are sealed like the rest of the type's code, in a frame of
-	// their own: their locals are scoped to the meta-type.
+	// Statics are the type's code, in a frame of their own: their locals are
+	// scoped to the meta-type.
 	typeFr := effFrameFrom(ctx)
 	keepReads := 0
 	if typeFr != nil {
@@ -952,6 +952,9 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 	c.Inferred = object
 	c.SetInferredType(object)
+	if top := topLevelFrameFrom(ctx); top != nil {
+		c.local = !isTopLevelFrame(envFrame(env), top)
+	}
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
 		object.SetTypeDocString(c.DocString)
@@ -985,7 +988,6 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return err
 	}
 	c.ConstructorFnType = constructorType
-	object.constructorType = constructorType
 
 	// Add the constructor function type to the environment, carrying the
 	// declaration's visibility so the type name is exported (or kept private)
@@ -1122,8 +1124,8 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	// Infer body forms (excluding new() which is handled separately).
 	// Field defaults are scoped like constructor parameter defaults; methods
-	// leave that scope again (see withTypeBody). All of the type's code is
-	// sealed: it can't write, or call anything that writes, outside it.
+	// leave that scope again (see withTypeBody). None of the type's code
+	// captures the scope declaring it (checkTypeCapture).
 	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
 	typeFr := effFrameFrom(ctx)
 	bodyForms := c.bodyFormsWithoutNew()
@@ -1441,39 +1443,15 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			panic(fmt.Errorf("ObjectDecl.Eval: object %q has not been inferred", c.Name.Name))
 		}
 
-		// Find explicit new() or derive constructor from fields
-		newDecl := c.findNewConstructor()
-		var constructorParams []*FieldDecl
-		var constructorBlockParam *FieldDecl
-		var newBody *Block
-		if newDecl != nil {
-			constructorParams = newDecl.Args
-			constructorBlockParam = newDecl.BlockParam
-			newBody = newDecl.BodyBlock
-		} else {
-			constructorParams = c.extractConstructorParameters()
-		}
-
-		var blockParamName string
-		if constructorBlockParam != nil {
-			blockParamName = constructorBlockParam.Name.Name
-		}
-
-		// Create a constructor function that evaluates the object body when called
-		constructor := &ConstructorFunction{
-			Closure:         scope,
-			ObjectName:      c.Name.Name,
-			Parameters:      constructorParams,
-			BlockParamName:  blockParamName,
-			ObjectType:      c.Inferred,
-			ObjectBodyForms: c.bodyFormsWithoutNew(),
-			FnType:          c.ConstructorFnType,
-			NewBody:         newBody,
-		}
-
-		// Add the constructor to the evaluation environment
+		// Bind the constructor by name, and enter it in its module's table,
+		// where decoding finds it by identity from anywhere. A type declared
+		// in a function, block or type body enters a new one each time its
+		// declaration runs, replacing the last (or the one hoistLocalTypes
+		// made before any had run); its code captures nothing
+		// (checkTypeCapture), so they all behave alike.
+		constructor := c.newConstructor(scope)
 		scope.Bind(c.Name.Name, constructor, c.Visibility)
-		scope.BindConstructor(c.Inferred, constructor)
+		moduleFrame(scope).BindConstructor(c.Inferred, constructor)
 
 		// Evaluate static members (self { } blocks) into the type's statics
 		// namespace. Bound after the constructor so a static may reference the
@@ -1484,6 +1462,136 @@ func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 
 		return constructor, nil
 	})
+}
+
+// newConstructor makes the constructor of c's values, evaluating the object
+// body in closure when called.
+func (c *ObjectDecl) newConstructor(closure ValueScope) *ConstructorFunction {
+	// Find explicit new() or derive constructor from fields
+	newDecl := c.findNewConstructor()
+	var constructorParams []*FieldDecl
+	var constructorBlockParam *FieldDecl
+	var newBody *Block
+	if newDecl != nil {
+		constructorParams = newDecl.Args
+		constructorBlockParam = newDecl.BlockParam
+		newBody = newDecl.BodyBlock
+	} else {
+		constructorParams = c.extractConstructorParameters()
+	}
+
+	var blockParamName string
+	if constructorBlockParam != nil {
+		blockParamName = constructorBlockParam.Name.Name
+	}
+
+	return &ConstructorFunction{
+		Closure:         closure,
+		ObjectName:      c.Name.Name,
+		Parameters:      constructorParams,
+		BlockParamName:  blockParamName,
+		ObjectType:      c.Inferred,
+		ObjectBodyForms: c.bodyFormsWithoutNew(),
+		FnType:          c.ConstructorFnType,
+		NewBody:         newBody,
+	}
+}
+
+// HoistLocalTypes prepares top-level forms, inferred with InferTopLevel, for
+// evaluating one by one in scope with EvalNode, as a REPL or literate session
+// does: see hoistLocalTypes.
+func HoistLocalTypes(ctx context.Context, forms []Node, scope ValueScope) {
+	hoistLocalTypes(ctx, forms, scope)
+}
+
+// hoistLocalTypes enters in the module table of scope (moduleFrame) a
+// constructor for every object type declared below the top level of forms (a
+// module's top-level forms, evaluated in scope) before any of them runs, so a
+// type can be decoded wherever its values reach even where its declaration
+// never ran: a field of another type, say, which decoding fills in instead of
+// running the field's default. The type captures nothing
+// (checkTypeCapture), so its constructor needs only the top level and the
+// types declared around it: each block around a local object type gets a
+// scope over its parent's binding the object types it declares, its enums
+// and its imports, the closure of their constructors. (A Dang module imported
+// there is evaluated now, earlier than the block would; errors are reported
+// when the block runs.) Local scalars, interfaces and unions are not bound
+// there, nor statics evaluated: a value built by a hoisted constructor whose
+// code reaches one of those before its declaration has run fails at that
+// reference. Once the declaration runs, the constructor it enters replaces
+// this one.
+//
+// Every entry point evaluating a module's top-level forms calls it, through
+// HoistLocalTypes for those outside this package (the REPL, literate docs).
+func hoistLocalTypes(ctx context.Context, forms []Node, scope ValueScope) {
+	root := moduleFrame(scope)
+	var visit func(n Node, s ValueScope)
+	visitBlock := func(b *Block, s ValueScope) {
+		var decls []*ObjectDecl
+		var enums []*EnumDecl
+		var imports []*ImportDecl
+		for _, form := range b.Forms {
+			switch decl := form.(type) {
+			case *ObjectDecl:
+				if decl.local && decl.Inferred != nil {
+					decls = append(decls, decl)
+				}
+			case *EnumDecl:
+				if decl.Inferred != nil {
+					enums = append(enums, decl)
+				}
+			case *ImportDecl:
+				imports = append(imports, decl)
+			}
+		}
+		if len(decls) > 0 || ((len(imports) > 0 || len(enums) > 0) && declaresLocalTypes(b)) {
+			s = s.Derive(false)
+			blockCtx := withLocalDecls(ctx, b.Forms)
+			for _, decl := range imports {
+				// A failing import fails again, and is reported, where the
+				// block runs.
+				_, _ = EvalNode(blockCtx, s, decl)
+			}
+			for _, decl := range enums {
+				// Pure: it binds the enum's namespace of values.
+				_, _ = decl.Eval(blockCtx, s)
+			}
+			for _, decl := range decls {
+				constructor := decl.newConstructor(s)
+				s.Bind(decl.Name.Name, constructor, decl.Visibility)
+				root.BindConstructor(decl.Inferred, constructor)
+			}
+		}
+		for _, form := range b.Forms {
+			visit(form, s)
+		}
+	}
+	visit = func(n Node, s ValueScope) {
+		n.Walk(func(m Node) bool {
+			if b, ok := m.(*Block); ok {
+				visitBlock(b, s)
+				return false
+			}
+			return true
+		})
+	}
+	for _, form := range forms {
+		visit(form, scope)
+	}
+}
+
+// declaresLocalTypes reports whether a local object type is declared anywhere
+// within b: whether its imports and enums may be reached by a constructor
+// hoistLocalTypes makes.
+func declaresLocalTypes(b *Block) bool {
+	found := false
+	b.Walk(func(n Node) bool {
+		if decl, ok := n.(*ObjectDecl); ok && decl.local {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 func (c *ObjectDecl) Walk(fn func(Node) bool) {

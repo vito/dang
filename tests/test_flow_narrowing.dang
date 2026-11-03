@@ -461,37 +461,18 @@ assert("case conditions") {
   caseConditions(null) == 0 and caseConditions(5) == 10 and caseConditions(1) == 2
 }
 
-# A local type's code may read a narrowed name nothing sets to null later.
-let localTypeReads(a: Int): Int! {
-  let x = a
-  if (x == null) { return 0 }
-  type T {
-    v: Int! = x + 1
-
-    new {
-      self.v = v + x
-      self
-    }
-  }
-  T.v
-}
-
-assert("local type reading a narrowed name") { localTypeReads(1) == 3 }
-
-# A static field is computed as its type is declared, while the name is
-# still narrowed.
-let staticReads(a: Int): Int! {
-  let x = a
-  if (x == null) { return 0 }
-  type T {
+# A static field is computed as its type is declared, while a top-level name
+# it reads is still narrowed.
+let topNarrowed: Int = 1
+if (topNarrowed != null) {
+  type S {
     v: Int! = 0
 
     self {
-      k: Int! = x + 1
+      k: Int! = topNarrowed + 1
     }
   }
-  x = null
-  T.k
-}
 
-assert("static field reading a narrowed name") { staticReads(1) == 2 }
+  assert("static field reading a narrowed name") { S.k == 2 }
+  topNarrowed = null
+}

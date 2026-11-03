@@ -261,13 +261,16 @@ with "must be pure" reasons once discovered).
    `self` writes fork per call like an instance method's. Consequence: **named
    functions and methods never write shared state** — their only writes are
    locals and their own `self` fork (methods/constructors own their receiver
-   frame, `methodSelfFrame`). For a type (object or scalar) declared inside a
-   function body that takes one more rule: its code (methods, `new()`, field
-   defaults, statics)
-   is **sealed** (`effFrame.sealed`, `withTypeBodyEffFrame`) — it can't write
-   or call anything writing outside the type, and an outer block param it
-   calls must be pure — since its values can be stored, returned and used
-   concurrently like any other.
+   frame, `methodSelfFrame`). A type (object or scalar) declared in a function,
+   block or another type's body takes one more rule: its code (methods,
+   `new()`, field defaults, statics) **captures nothing**
+   (`checkTypeCapture`, from `Symbol.Infer`; `effFrame.sealed` marks a type's
+   code) — like a top-level type's, it may use its own members, the top level
+   and other types' names, but no binding of the scope around it. So all of a
+   type's constructors in one module evaluation behave alike: each is entered
+   in the module's table (`moduleFrame`, filled up front by
+   `hoistLocalTypes`), and decoding finds it there by identity from anywhere
+   (`constructorFor`).
    Top-level declarations are lazy fields forced on first read, maybe inside a
    `{{ }}` field, and all run before any top-level statement. Two syntactic
    rules (`toplevel_order.go`) make that safe without following function

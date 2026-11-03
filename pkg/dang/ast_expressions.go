@@ -514,7 +514,7 @@ func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fre
 		return value, nil, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
-	subs, err := assignableForValue(env, it, dt, value)
+	subs, err := assignableForValue(it, dt, value)
 	if err != nil {
 		return value, it, nil, NewInferError(err, value)
 	}
@@ -852,6 +852,11 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		t = readNarrowed(ctx, env, s.Name, s, t)
 		t = hm.ResolveWeak(t)
 		noteTopRead(ctx, env, s.Name, s)
+		if err := checkTypeCapture(ctx, env, s.Name, s); err != nil {
+			if err := reportEffectError(ctx, err); err != nil {
+				return nil, err
+			}
+		}
 		if s.AutoCall {
 			var err error
 			var called bool
@@ -2128,7 +2133,7 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      field.Loc,
-		}).Infer(outsideTypeBodies(ctx), rec, fresh)
+		}).Infer(receiverMember(outsideTypeBodies(ctx)), rec, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -3590,9 +3595,6 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil
-			if decodeErr := checkDecodeTarget(env, hintType); decodeErr != nil {
-				return nil, NewInferError(decodeErr, t.Expr)
-			}
 		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)

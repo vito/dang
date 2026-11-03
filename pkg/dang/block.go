@@ -471,9 +471,13 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		var typ hm.Type
 		var err error
-		for _, form := range forms {
+		for i, form := range forms {
 			if inferer, ok := form.(hm.Inferer); ok {
-				typ, err = inferer.Infer(ctx, newEnv, fresh)
+				formCtx := ctx
+				if declaresTypeCode(form) {
+					formCtx = withLaterDecls(ctx, forms[i+1:])
+				}
+				typ, err = inferer.Infer(formCtx, newEnv, fresh)
 				if err != nil {
 					errs.Add(err)
 				}

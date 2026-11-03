@@ -1,0 +1,11 @@
+# A type declared in a function captures nothing from it: its code can use
+# its own members, the top level and other types, but not the function's
+# parameters or locals.
+make(prefix: String!): String! {
+  type Greeting {
+    name: String!
+
+    text: String! { prefix + name }
+  }
+  Greeting(name: "Dang").text
+}

@@ -1,0 +1,11 @@
+[1m[31mError:[0m Greeting cannot use `prefix`, which is declared in the scope around Greeting: a type's code can only use its own members, the top level and other types; pass `prefix` in as a field or argument instead
+  [2m[34m--> errors/local_type_capture.dang:8:21[0m
+ [2m    |[0m
+ [2m  6 |     name: String![0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0m    text: String! { prefix + name }
+[2m                           [31m^^^^^^[0m
+ [2m  9 |   }[0m
+ [2m 10 |   Greeting(name: "Dang").text[0m
+ [2m    |[0m
+

@@ -1,0 +1,17 @@
+# A type declared in another type's body captures nothing from it: its code
+# can't read or reassign the outer type's fields, which belong to an instance
+# it doesn't have.
+type Outer {
+  level: Int! = 1
+
+  type Inner {
+    doubled: Int! { level * 2 }
+
+    bump: Int! {
+      level = 2
+      0
+    }
+  }
+
+  make: Int! { Inner.doubled }
+}

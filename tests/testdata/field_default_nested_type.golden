@@ -1,40 +1,40 @@
 3 inference errors:
 
 Error 1:
-[1m[31mError:[0m `B` is declared in A's body, so it can't use `read`, a method of A: A is still being built when B is created; declare B outside A and pass it what it needs
-  [2m[34m--> errors/field_default_nested_type.dang:15:17[0m
+[1m[31mError:[0m B cannot use `read`, which is declared in the scope around B: a type's code can only use its own members, the top level and other types; pass `read` in as a field or argument instead
+  [2m[34m--> errors/field_default_nested_type.dang:14:17[0m
  [2m    |[0m
- [2m 13 |     n: Int! = 2[0m
- [2m 14 | [0m
- [2m[34m[1m 15 | [0m    get: Int! { read(n) }
+ [2m 12 |     n: Int! = 2[0m
+ [2m 13 | [0m
+ [2m[34m[1m 14 | [0m    get: Int! { read(n) }
 [2m                       [31m^^^^[0m
- [2m 16 |   }[0m
- [2m 17 | [0m
+ [2m 15 |   }[0m
+ [2m 16 | [0m
  [2m    |[0m
 
 
 Error 2:
-[1m[31mError:[0m `C` is declared in A's body, so it can't use `total`, a computed field of A: A is still being built when C is created; declare C outside A and pass it what it needs
-  [2m[34m--> errors/field_default_nested_type.dang:19:21[0m
+[1m[31mError:[0m C cannot use `total`, which is declared in the scope around C: a type's code can only use its own members, the top level and other types; pass `total` in as a field or argument instead
+  [2m[34m--> errors/field_default_nested_type.dang:18:21[0m
  [2m    |[0m
- [2m 17 | [0m
- [2m 18 |   type C {[0m
- [2m[34m[1m 19 | [0m    let sum: Int! = total
+ [2m 16 | [0m
+ [2m 17 |   type C {[0m
+ [2m[34m[1m 18 | [0m    let sum: Int! = total
 [2m                           [31m^^^^^[0m
- [2m 20 |   }[0m
- [2m 21 | [0m
+ [2m 19 |   }[0m
+ [2m 20 | [0m
  [2m    |[0m
 
 
 Error 3:
-[1m[31mError:[0m `D` is declared in A's body, so it can't use `bonus`, a field only A's new() sets: A is still being built when D is created; declare D outside A and pass it what it needs
-  [2m[34m--> errors/field_default_nested_type.dang:23:36[0m
+[1m[31mError:[0m D cannot use `bonus`, which is declared in the scope around D: a type's code can only use its own members, the top level and other types; pass `bonus` in as a field or argument instead
+  [2m[34m--> errors/field_default_nested_type.dang:22:36[0m
  [2m    |[0m
- [2m 21 | [0m
- [2m 22 |   type D {[0m
- [2m[34m[1m 23 | [0m    withBonus(x: Int!): Int! { x + bonus }
+ [2m 20 | [0m
+ [2m 21 |   type D {[0m
+ [2m[34m[1m 22 | [0m    withBonus(x: Int!): Int! { x + bonus }
 [2m                                          [31m^^^^^[0m
- [2m 24 |   }[0m
- [2m 25 | [0m
+ [2m 23 |   }[0m
+ [2m 24 | [0m
  [2m    |[0m
 

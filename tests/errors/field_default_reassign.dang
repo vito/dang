@@ -42,19 +42,6 @@ type Dial {
   }
 }
 
-# A type declared in another type's body can't reassign its fields, even from
-# a method.
-type Outer {
-  level: Int! = 1
-
-  type Inner {
-    bump: Int! {
-      level = 2
-      level
-    }
-  }
-}
-
 # A `self { }` block can't reassign its statics.
 type Registry {
   self {

@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m Inner cannot use `level`, which is declared in the scope around Inner: a type's code can only use its own members, the top level and other types; pass `level` in as a field or argument instead
+  [2m[34m--> errors/nested_type_capture.dang:8:21[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 |   type Inner {[0m
+ [2m[34m[1m  8 | [0m    doubled: Int! { level * 2 }
+[2m                           [31m^^^^^[0m
+ [2m  9 | [0m
+ [2m 10 |     bump: Int! {[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m Inner cannot use `level`, which is declared in the scope around Inner: a type's code can only use its own members, the top level and other types; pass `level` in as a field or argument instead
+  [2m[34m--> errors/nested_type_capture.dang:11:7[0m
+ [2m    |[0m
+ [2m  9 | [0m
+ [2m 10 |     bump: Int! {[0m
+ [2m[34m[1m 11 | [0m      level = 2
+[2m             [31m^^^^^[0m
+ [2m 12 |       0[0m
+ [2m 13 |     }[0m
+ [2m    |[0m
+

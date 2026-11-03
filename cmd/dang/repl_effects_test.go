@@ -34,6 +34,7 @@ func (s *testReplSession) enter(input string) (dang.Value, error) {
 		return nil, err
 	}
 	var last dang.Value
+	dang.HoistLocalTypes(context.Background(), forms, s.valueScope)
 	for _, node := range forms {
 		last, err = dang.EvalNode(context.Background(), s.valueScope, node)
 		require.NoError(s.t, err)
@@ -60,6 +61,22 @@ func TestReplRejectsFunctionWritesToSessionBindings(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.enter("bump: Int! { count += 1; count }")
 	require.ErrorContains(t, err, "cannot assign to `count`: top-level bindings are immutable")
+}
+
+// Types declared below the top level capture nothing at the prompt either,
+// and decode wherever their values reach, even before their declaration ran.
+func TestReplLocalTypesCaptureNothing(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("type Outer { pub level: Int! = 1; type Inner { doubled: Int! { level * 2 } } }")
+	require.ErrorContains(t, err, "Inner cannot use `level`")
+
+	_, err = s.enter(`type Box { type Inner { value: String! }; make: Inner! { Inner(value: "built") } }`)
+	require.NoError(t, err)
+	_, err = s.enter("type Holder { pub inner = Box.make }")
+	require.NoError(t, err)
+	v, err := s.enter(`let held: Holder! = JSON.decode("{\"inner\": {\"value\": \"decoded\"}}"); held.inner.value`)
+	require.NoError(t, err)
+	require.Equal(t, `"decoded"`, dang.Repr(v))
 }
 
 func TestReplChecksFieldPurity(t *testing.T) {

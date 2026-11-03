@@ -261,17 +261,14 @@ type Type struct {
 	// which visibility is never enforced. See moduleScope.
 	homeModule *moduleScope
 
-	// localFrame is the frame declaring this type when that is a function,
-	// block or type body rather than its module's top level; nil otherwise.
-	// Such a type gets a constructor per evaluation of its declaring scope
-	// (per call, per instance), so only code inside that scope can decode
-	// into it: see checkDecodeTarget. Stamped once at declareLocalType.
-	localFrame TypeScope
+	// declared marks a type made by a Dang declaration (declareLocalType),
+	// whose own frame holds its members: a type body, not an import or a
+	// builtin. checkTypeCapture reads it, whatever the entry point.
+	declared bool
 
-	// constructorType is an object type's constructor signature, recorded
-	// when its declaration is hoisted, or a schema input object's, recorded
-	// when its schema is loaded. checkDecodeTarget reads its parameters (the
-	// fields decoding constructs), and decoding builds input objects from it.
+	// constructorType is a schema input object's constructor signature,
+	// recorded when its schema is loaded: decoding builds input objects from
+	// it (see constructorFor).
 	constructorType *hm.FunctionType
 }
 

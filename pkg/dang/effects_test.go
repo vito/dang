@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -400,11 +401,24 @@ func TestStatementStateInImportedModule(t *testing.T) {
 	}
 }
 
-// A type declared in a function body is a value like any other: it can be
-// stored, returned and used concurrently, so its methods, constructor and
-// field defaults may not write (or call anything writing) outside the type.
-func TestLocalTypesSealed(t *testing.T) {
+// A type declared in a function, block or type body captures nothing: its
+// methods, constructor, field defaults and statics may use its own members,
+// the top level and other types, but no binding of the scope around it.
+func TestLocalTypesCaptureNothing(t *testing.T) {
+	const captures = "cannot use `%s`, which is declared in the scope around %s"
 	runEffectCases(t, []effectCase{
+		{
+			name: "method reading an enclosing local",
+			src: `
+				interface Getter { get: Int! }
+				make: Getter! {
+					let n = 0
+					type T implements Getter { get: Int! { n } }
+					T
+				}
+			`,
+			want: fmt.Sprintf(captures, "n", "T"),
+		},
 		{
 			name: "method writing an enclosing local",
 			src: `
@@ -415,18 +429,17 @@ func TestLocalTypesSealed(t *testing.T) {
 					T
 				}
 			`,
-			want: "cannot assign to `n`: it is declared outside T",
+			want: fmt.Sprintf(captures, "n", "T"),
 		},
 		{
-			name: "field default writing an enclosing local",
+			name: "field default reading a parameter",
 			src: `
-				run: Int! {
-					let n = 0
-					type T { a: Int! = { n = 5; 1 } }
-					T.a + n
+				run(n: Int!): Int! {
+					type T { a: Int! = n }
+					T.a
 				}
 			`,
-			want: "cannot assign to `n`: it is declared outside T",
+			want: fmt.Sprintf(captures, "n", "T"),
 		},
 		{
 			name: "constructor writing an enclosing local",
@@ -437,30 +450,29 @@ func TestLocalTypesSealed(t *testing.T) {
 					T.a + n
 				}
 			`,
-			want: "cannot assign to `n`: it is declared outside T",
+			want: fmt.Sprintf(captures, "n", "T"),
 		},
 		{
-			name: "method calling an impure enclosing closure",
+			name: "static reading an enclosing local",
 			src: `
 				run: Int! {
-					let n = 0
-					bump: Int! { n += 1; n }
-					type T { go: Int! { bump } }
+					let n = 1
+					type T { self { k: Int! = n + 1 } }
+					T.k
+				}
+			`,
+			want: fmt.Sprintf(captures, "n", "T"),
+		},
+		{
+			name: "method calling an enclosing function",
+			src: `
+				run: Int! {
+					helper: Int! { 1 }
+					type T { go: Int! { helper } }
 					T.go
 				}
 			`,
-			want: "`bump` writes `n`, which is declared outside T",
-		},
-		{
-			name: "method passing an impure block to a builtin",
-			src: `
-				run: Int! {
-					let n = 0
-					type T { go: Int! { [1, 2].each { x => n += x }; 0 } }
-					T.go
-				}
-			`,
-			want: "this block writes `n`, which is declared outside T",
+			want: fmt.Sprintf(captures, "helper", "T"),
 		},
 		{
 			name: "method calling an enclosing block parameter",
@@ -469,21 +481,69 @@ func TestLocalTypesSealed(t *testing.T) {
 					type T { go: Int! { cb } }
 					T.go
 				}
-				run: Int! {
-					let k = 0
-					wrap { k += 1; k }
-				}
 			`,
-			want: "`T.go` calls `cb`, and T's methods, constructor and field defaults run wherever its values are used",
+			want: fmt.Sprintf(captures, "cb", "T"),
 		},
 		{
-			name: "method passing an enclosing pure block parameter",
+			name: "nested type reading its outer type's field",
 			src: `
-				wrap(&cb: Int!): Int! {
-					type T { go: Int! { cb } }
-					T.go
+				type Outer {
+					level: Int! = 1
+					type Inner { x: Int! { level } }
+					go: Int! { Inner.x }
 				}
-				run: Int! { wrap { 1 } }
+			`,
+			want: fmt.Sprintf(captures, "level", "Inner"),
+		},
+		{
+			name: "local scalar method reading an enclosing local",
+			src: `
+				run: String! {
+					let n = 0
+					scalar S { bump: Int! { n } }
+					"a"
+				}
+			`,
+			want: fmt.Sprintf(captures, "n", "S"),
+		},
+		{
+			name: "method reading a top-level name a later local shadows",
+			src: `
+				let x = 10
+				run: Int! {
+					type T { w: Int! { x } }
+					let x = 20
+					T.w + x
+				}
+			`,
+			want: "T cannot use `x`, which a block around T declares after it",
+		},
+		{
+			name: "top level, other types, builtins and own members are fine",
+			src: `
+				let base = 10
+				helper(x: Int!): Int! { x * 2 }
+				type Outer {
+					type Inner { value: Int! = base }
+					type Inner2 { i: Inner! = Inner }
+					make: Int! { Inner2.i.value }
+				}
+				run: Int! {
+					type A { v: Int! = helper(base) }
+					type B {
+						a: A! = A
+						total: Int! = 0
+						add(x: Int!): B! {
+							let local = 0
+							bump: Int! { local += 1; total += x; local }
+							[1, 2].each { y => bump }
+							self
+						}
+						w: Int! { a.v + [1].length + Outer.make }
+						self { k: Int! = base + 1 }
+					}
+					B.add(1).w + B.k
+				}
 			`,
 		},
 		{
@@ -496,36 +556,6 @@ func TestLocalTypesSealed(t *testing.T) {
 				run: Int! {
 					type U { self { total: Int! = { let k = 0; k += 1; k } } }
 					T.total + U.total
-				}
-			`,
-		},
-		{
-			name: "local scalar method writing an enclosing local",
-			src: `
-				run: String! {
-					let n = 0
-					scalar S { bump: Int! { n += 1; n } }
-					"a"
-				}
-			`,
-			want: "cannot assign to `n`: it is declared outside S",
-		},
-		{
-			name: "own state, reads and nested closures are fine",
-			src: `
-				run: Int! {
-					let k = 2
-					scale(x: Int!): Int! { x * k }
-					type T {
-						total: Int! = 0
-						add(x: Int!): T! {
-							let local = 0
-							bump: Int! { local += 1; total += scale(x); local }
-							[1, 2].each { y => bump }
-							self
-						}
-					}
-					T.add(1).total
 				}
 			`,
 		},

@@ -104,9 +104,8 @@ func isLiteralExpr(n Node) bool {
 // AssignableWithCoercion in the two coercible situations: the value is a
 // syntactic literal (which may refine into a scalar/enum), or its type
 // carries a custom scalar (which may degrade into String). Use at
-// value-handoff boundaries where wrapCoerce will materialize the result. env
-// is the environment the value is handed off in, for checkDecodeTarget.
-func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, error) {
+// value-handoff boundaries where wrapCoerce will materialize the result.
+func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 	subs, err := hm.Assignable(have, want)
 	if err == nil {
 		return subs, nil
@@ -120,9 +119,6 @@ func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, er
 		}
 	}
 	if assignableDecoded(have, want) {
-		if err := checkDecodeTarget(env, want); err != nil {
-			return nil, err
-		}
 		return hm.NewSubs(), nil
 	}
 	if nullErr := nullIntoRigid(have, want, value); nullErr != nil {
@@ -233,131 +229,6 @@ func assignableDecoded(have, want hm.Type) bool {
 		}
 	}
 	return false
-}
-
-// checkDecodeTarget rejects decoding into want at a site inferred in env when
-// materializing want would construct an object type the site cannot reach: a
-// type declared in a function, block or type body (Type.localFrame) whose
-// declaring scope does not enclose the site. Such a type has a constructor per
-// call or per instance of its declaring scope, found by identity in the
-// decoding scope (constructorFor), so from outside that scope there is none
-// to call, nor one right one to pick. Its value can still get out (an `if`
-// expression, a method's result), so the type can appear here by inference.
-//
-// The walk mirrors materializeDecoded: through non-null, unions, lists and
-// maps, an anonymous record's fields, and a named object's constructor
-// parameters, except those every codec ignores (they are never decoded). A
-// parameter with a default is walked: decoding builds it whenever the data has
-// its key.
-func checkDecodeTarget(env hm.Env, want hm.Type) error {
-	seen := map[*Type]bool{}
-	// via is the field path from want down to t ("Holder.inner"), for the
-	// error, or "" while still at want itself.
-	var walk func(t hm.Type, via string) error
-	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) error {
-		for _, field := range fields {
-			if ignoredByAllCodecs(mod, field.Key) {
-				continue
-			}
-			ft, mono := field.Value.Type()
-			if !mono {
-				continue
-			}
-			next := field.Key
-			if via != "" {
-				next = via + "." + field.Key
-			} else if mod.Named != "" {
-				next = mod.Named + "." + field.Key
-			}
-			if err := walk(ft, next); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	walk = func(t hm.Type, via string) error {
-		if nn, ok := t.(hm.NonNullType); ok {
-			return walk(nn.Type, via)
-		}
-		if union, ok := t.(*hm.UnionType); ok {
-			for _, option := range union.Options {
-				if err := walk(option, via); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if elem, ok := listElementTarget(t); ok {
-			return walk(elem, via)
-		}
-		if val, ok := mapValueTarget(t); ok {
-			return walk(val, via)
-		}
-		v, ok := t.(*Type)
-		if !ok {
-			return nil
-		}
-		mod := canonicalModule(v)
-		if seen[mod] || mod.Kind != ObjectKind {
-			return nil
-		}
-		seen[mod] = true
-		if mod.Named == "" {
-			return walkFields(mod, mod.AsRecord().Fields, via)
-		}
-		if mod.localFrame != nil && !envEncloses(env, mod.localFrame) {
-			const why = "is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here"
-			if via != "" {
-				return fmt.Errorf("cannot decode %s here: its type %s %s", via, mod.Name(), why)
-			}
-			return fmt.Errorf("cannot decode into %s here: it %s", mod.Name(), why)
-		}
-		if mod.constructorType != nil {
-			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
-				return walkFields(mod, args.Fields, via)
-			}
-		}
-		return nil
-	}
-	return walk(want, "")
-}
-
-// ignoredByAllCodecs reports whether every codec ignores field of mod
-// (@JSON.ignore, @YAML.ignore and @TOML.ignore), so no decode ever reads it.
-// The static check cannot tell which codec decoded data comes from.
-func ignoredByAllCodecs(mod *Type, field string) bool {
-	for _, c := range codecs() {
-		if _, ignore := c.fieldKey(mod, field); !ignore {
-			return false
-		}
-	}
-	return true
-}
-
-// envEncloses reports whether frame is env's own frame or one of the frames
-// env resolves through.
-func envEncloses(env hm.Env, frame TypeScope) bool {
-	seen := map[hm.Env]bool{}
-	var walk func(e hm.Env) bool
-	walk = func(e hm.Env) bool {
-		if e == nil || seen[e] {
-			return false
-		}
-		seen[e] = true
-		switch s := e.(type) {
-		case *OverlayTypeScope:
-			return walk(s.primary) || walk(s.lexical)
-		case *Type:
-			if TypeScope(s) == frame {
-				return true
-			}
-			if s.Parent != nil {
-				return walk(s.Parent)
-			}
-		}
-		return false
-	}
-	return walk(env)
 }
 
 // containsDecoded reports whether t carries DecodedType, on its own or within
@@ -1004,36 +875,37 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 // constructorFor finds the constructor that builds values of mod, by type
 // identity rather than name, so a local binding shadowing the type's name
 // cannot hijack construction, and a type reached only qualified (`Lib.T`) is
-// still found. Where it lives follows where mod was declared:
+// still found. A Dang type's constructor is bound in its module's table
+// (moduleFrame) by its declaration, at whatever depth it is written: no
+// type's code captures the scope declaring it (checkTypeCapture), so one
+// constructor per module evaluation serves every decode.
 //
 //   - A schema input object's constructor is plain data, built from the type.
-//   - A top-level type of an imported Dang module was bound by that module's
-//     own evaluation, which runs once per module instance, so it is found
-//     there, wherever (and whether) the importer's import has run. A decode
-//     that is part of that evaluation (the module's own top-level code) finds
-//     it through its scope chain instead, which reaches the module's root:
-//     asking for the module's value scope there would wait on itself.
-//   - Any other type was bound by its declaration in a scope enclosing the
-//     decode (checkDecodeTarget guarantees it): the module's top level, or the
-//     function, block or type body declaring it. Each evaluation, call and
-//     instance binds its own, so evaluations of a prepared program never see
-//     each other's, and a type declared in a function body uses that call's.
+//   - A type of an imported Dang module was bound by that module's own
+//     evaluation, which runs once per module instance, so it is found in that
+//     module's table, wherever (and whether) the importer's import has run. A
+//     decode that is part of that evaluation (the module's own top-level code)
+//     finds it through its own scope instead: asking for the module's value
+//     scope there would wait on itself.
+//   - Any other type is the decoding module's own, found in its table. Each
+//     evaluation of a prepared program has its own, so they never see each
+//     other's.
 func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable, error) {
 	mod = canonicalModule(mod)
 	if mod.Kind == InputKind && mod.constructorType != nil {
 		return InputObjectConstructor{TypeName: mod.Named, TypeScope: mod, FnType: mod.constructorType}, nil
 	}
-	if home := mod.homeModule; mod.localFrame == nil && home != nil && home.dang != nil && home.dang != evaluatingModule(ctx) {
+	if home := mod.homeModule; home != nil && home.dang != nil && home.dang != evaluatingModule(ctx) {
 		values, err := home.dang.valueScope(ctx)
 		if err != nil {
 			return nil, err
 		}
 		scope = values
 	}
-	if callable, ok := scope.LookupConstructor(mod); ok {
+	if callable, ok := moduleFrame(scope).LookupConstructor(mod); ok {
 		return callable, nil
 	}
-	return nil, fmt.Errorf("constructor for %s not found", mod.Name())
+	return nil, fmt.Errorf("constructor for %s not found: its declaration has not run yet", mod.Name())
 }
 
 func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {

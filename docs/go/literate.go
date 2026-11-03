@@ -272,6 +272,7 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 	ctx := ioctx.StdoutToContext(base, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
+	dang.HoistLocalTypes(ctx, forms, valueScope)
 	for _, node := range forms {
 		if _, err := dang.EvalNode(ctx, valueScope, node); err != nil {
 			return strings.TrimRight(out.String(), "\n"), "eval", err
@@ -335,6 +336,7 @@ func literateEvalCtx(base context.Context, source string, sess *literateSession)
 
 	var last dang.Node
 	var lastVal dang.Value
+	dang.HoistLocalTypes(ctx, forms, sess.valueScope)
 	for _, node := range forms {
 		val, err := dang.EvalNode(ctx, sess.valueScope, node)
 		if err != nil {

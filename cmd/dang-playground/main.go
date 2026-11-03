@@ -228,6 +228,7 @@ func evalSource(source, token string) map[string]any {
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	var last dang.Value
+	dang.HoistLocalTypes(ctx, forms, valueScope)
 	for _, node := range forms {
 		val, err := dang.EvalNode(ctx, valueScope, node)
 		if err != nil {
@@ -298,6 +299,7 @@ func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, val
 
 	var lastNode dang.Node
 	var last dang.Value
+	dang.HoistLocalTypes(ctx, forms, valueScope)
 	for _, node := range forms {
 		val, err := dang.EvalNode(ctx, valueScope, node)
 		if err != nil {

@@ -1,0 +1,59 @@
+# A local type's code may use the names an import in the block around it
+# brings in: they are the imported module's, not the block's.
+let pending = if (true) {
+  import Test
+
+  type Lookup {
+    status: Status!
+
+    names: [String!]! {
+      usersByStatus(status: status).{{name}}.map { u => u.name }
+    }
+  }
+
+  Lookup(status: Status.PENDING).names
+} else {
+  []
+}
+
+assert { pending.length > 0 }
+
+# Even in a value decoded before the block declaring its type ever ran.
+let skipped = if (false) {
+  import Test
+
+  type Probe {
+    status: Status!
+
+    count: Int! { usersByStatus(status: status).{{name}}.length }
+  }
+
+  Probe(status: Status.ACTIVE)
+} else {
+  null
+}
+
+skipped = JSON.decode("{\"status\": \"PENDING\"}")
+assert { skipped!.count == pending.length }
+
+# Or with the import in a block around the one declaring the type.
+let nested = if (false) {
+  import Test
+
+  if (true) {
+    type Deep {
+      status: Status!
+
+      count: Int! { usersByStatus(status: status).{{name}}.length }
+    }
+
+    Deep(status: Status.ACTIVE)
+  } else {
+    null
+  }
+} else {
+  null
+}
+
+nested = JSON.decode("{\"status\": \"PENDING\"}")
+assert { nested!.count == pending.length }

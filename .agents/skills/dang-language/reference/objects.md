@@ -155,7 +155,7 @@ Errors:
 - `` field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field ``.
 - `` new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body ``.
 - **No field reassignment in the type body** (bare, `+=`, or in a default's block; locals declared in a default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A `self { }` block can't reassign its statics either.
-- A type declared in another type's body is part of that body: it can't use (or reassign) the outer type's methods, computed fields or `new()`-only fields, even from its methods.
+- A type declared in another type's body, or in a function or block, **captures nothing** from the scope around it: its code (methods, `new()`, field defaults, statics) can use its own members, the top level (imports, builtins) and other types, but none of the outer type's members, nor the function's params or locals: `` Inner cannot use `level`, which is declared in the scope around Inner: … pass `level` in as a field or argument instead ``. In exchange such a type decodes anywhere its values reach.
 
 So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
 
