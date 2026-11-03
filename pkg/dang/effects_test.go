@@ -541,7 +541,25 @@ func TestLocalTypesCaptureNothing(t *testing.T) {
 					}
 				}
 			`,
-			want: "`name` is checked for null outside T, but a type's code runs wherever its values go",
+			want: "return type mismatch: declared String!, inferred String",
+		},
+		{
+			// It may check the name again itself.
+			name: "type code rechecking a name narrowed around its type",
+			src: `
+				pub name: String = null
+				run: String! {
+					if (name != null) {
+						type T {
+							shout: String! { if (name != null) { name.toUpper } else { "" } }
+							self { k: String! = name ?? "none" }
+						}
+						T.shout + T.k
+					} else {
+						""
+					}
+				}
+			`,
 		},
 		{
 			// The type's item scope binds only the types declared before

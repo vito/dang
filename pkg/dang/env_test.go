@@ -1,6 +1,7 @@
 package dang
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 func requireEvalGet(t *testing.T, scope ValueScope, name string) (Value, bool) {
@@ -386,16 +388,20 @@ type Test {
 }
 
 // DeclareDir declares only the top level: the code of types nested in their
-// bodies is never inferred, so such a type gets an item only when it needs
-// none of that code (a nested object type or enum, not a scalar's methods or
-// a static method). Loading never fails on them, and a top-level constructor
-// works when its nested types have items.
+// bodies is never inferred, or even validated, so such a type gets an item
+// only when making it evaluates none of that code (a nested object type
+// without statics, or an enum; not a scalar or a type with statics). Loading
+// never runs or trips on that code, and a top-level constructor works when
+// its nested types have items.
 func TestDeclareDirSkipsNestedTypes(t *testing.T) {
 	declare := func(src string) ValueScope {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
-		env, err := DeclareDir(context.Background(), dir, false)
+		var out bytes.Buffer
+		ctx := ioctx.StdoutToContext(context.Background(), &out)
+		env, err := DeclareDir(ctx, dir, false)
 		require.NoError(t, err)
+		require.Empty(t, out.String())
 		return env
 	}
 
@@ -405,6 +411,14 @@ type Outer {
 
   scalar Tag {
     shout: String! { toString(self) + "!" }
+  }
+
+  scalar Unchecked {
+    let x = { print("uninferred code ran"); 1 }
+  }
+
+  scalar NoArg {
+    new { "x" }
   }
 
   type Inner {

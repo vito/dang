@@ -1719,12 +1719,15 @@ func (w *itemWalker) typeBody(ctx context.Context, body *Block, s ValueScope) {
 // checked its code, which a top-level type's can't capture anyway: if it
 // captured a binding, its item scope would silently resolve the name
 // elsewhere. Under DeclareDir (topOnly), which infers no type's code below
-// the top level, such a type gets an item when it can have one without that
-// code (an object type without static methods, an enum, ...), and none
-// otherwise, failing only where it is used.
+// the top level, such a type gets an item only when making it evaluates none
+// of that code (declaredOnly), and none otherwise, failing only where it is
+// used.
 func (w *itemWalker) makeItem(ctx context.Context, decl typeDecl, s ValueScope, top bool) {
 	t, name, vis := decl.itemDecl()
 	if t == nil || w.err != nil {
+		return
+	}
+	if !top && w.topOnly && !declaredOnly(decl) {
 		return
 	}
 	if !top && !w.topOnly && !captureChecked(decl) {
@@ -1742,15 +1745,26 @@ func (w *itemWalker) makeItem(ctx context.Context, decl typeDecl, s ValueScope, 
 	}
 	item, err := decl.newItem(ctx, s)
 	if err != nil {
-		if w.topOnly && !top {
-			return
-		}
 		w.err = err
 		return
 	}
 	s.Bind(name, item.value, vis)
 	w.root.bindItem(t, item)
 	w.items = append(w.items, item)
+}
+
+// declaredOnly reports whether decl's item can be made from its declaration
+// alone, evaluating none of its code: an enum, interface or union, or an
+// object type without statics (its constructor runs its body only when
+// called). A scalar's methods and hook, and statics, are its code.
+func declaredOnly(decl typeDecl) bool {
+	switch decl := decl.(type) {
+	case *ScalarDecl:
+		return false
+	case *ObjectDecl:
+		return len(selfBlocksIn(decl.Value)) == 0
+	}
+	return true
 }
 
 // captureChecked reports whether checkTypeCapture covered decl's code: it

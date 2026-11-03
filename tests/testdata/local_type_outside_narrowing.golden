@@ -1,10 +1,10 @@
-[1m[31mError:[0m `name` is checked for null outside Greeting, but a type's code runs wherever its values go rather than where the type is declared (its statics as the module starts, before any statement), so it may be null here; check it inside Greeting
+[1m[31mError:[0m cannot use String as String!
   [2m[34m--> errors/local_type_outside_narrowing.dang:9:23[0m
  [2m    |[0m
  [2m  7 |   type Greeting {[0m
  [2m  8 |     self {[0m
  [2m[34m[1m  9 | [0m      text: String! = name.toUpper
-[2m                             [31m^^^^[0m
+[2m                             [31m^^^^^^^^^^^^[0m
  [2m 10 |     }[0m
  [2m 11 |   }[0m
  [2m    |[0m

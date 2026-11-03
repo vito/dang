@@ -299,13 +299,10 @@ func readNarrowed(ctx context.Context, env hm.Env, name string, node Node, t hm.
 	}
 	// A type's code runs wherever its item is used, not where the type is
 	// declared — its statics as its module starts, its methods on values
-	// decoded anywhere — so it can't rely on a refinement made outside it.
+	// decoded anywhere — so a refinement made outside it doesn't hold there.
+	// (It may check the name again itself.)
 	if fr := typeCodeFrame(reader); fr != nil && fr.logStart >= n.pos {
-		owner := fr.sealed.Named
-		log.errs = append(log.errs, narrowError{node: node, msg: fmt.Sprintf(
-			"`%s` is checked for null outside %s, but a type's code runs wherever its values go rather than where the type is declared (its statics as the module starts, before any statement), so it may be null here; check it inside %s",
-			n.Symbol, owner, owner)})
-		return t
+		return n.declared
 	}
 	// Record the read with every enclosing closure the refinement was made
 	// outside of.

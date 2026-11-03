@@ -469,7 +469,9 @@ into every builtins frame (`preludeItems`).
   class bodies): its declarations bind, never make, items.
   `EvaluateDeclaredFormsWithPhases` (`DeclareDir`), which infers no code
   below the top level, walks no function or method body, and gives a type
-  nested in a type body an item only if making it needs none of that code.
+  nested in a type body an item only if making it evaluates none of that
+  code (`declaredOnly`: enums, interfaces, unions, object types without
+  statics).
 - **Only checked types get items.** A type below the top level gets an item
   only if it was inferred with a top-level frame in ctx
   (`ObjectDecl`/`ScalarDecl.captureChecked`), i.e. `checkTypeCapture` ran;
@@ -485,8 +487,9 @@ into every builtins frame (`preludeItems`).
   in a block — inferred in source order — gets a scope of its own over the
   previous one. So a name a block declares after a type never changes what
   the type's code means, and no "declared later" rule is needed. Since a
-  type's code runs wherever its item is used, it also can't rely on a null
-  check made around its declaration (`readNarrowed` reports it).
+  type's code runs wherever its item is used, a null check made around its
+  declaration doesn't hold in it (`readNarrowed` drops the refinement); it
+  may check the name again itself.
 - **Statics are lazy.** `installStatics` binds a type's computed statics as
   lazy fields and holds back its `self { }` statements; a module evaluation
   finishes them (`forceStatics`) in its variables phase, after installing
