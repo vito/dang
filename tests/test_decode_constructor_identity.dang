@@ -90,3 +90,21 @@ type Outer {
 let outer = Outer("{\"value\": \"made\"}")
 assert { outer.label == "made" }
 assert { outer.relabel("{\"value\": \"again\"}") == "again" }
+
+# A field every codec ignores is never decoded, so its type need not be
+# decodable here, though it is declared in another type's body.
+type Maker {
+  type Made {
+    value: String!
+  }
+  make: Made! { Made(value: "made") }
+}
+
+type Wrapper {
+  name: String!
+  pub made @JSON.ignore @YAML.ignore @TOML.ignore = Maker.make
+}
+
+let wrapped: Wrapper! = JSON.decode("{\"name\": \"w\"}")
+assert { wrapped.name == "w" }
+assert { wrapped.made.value == "made" }

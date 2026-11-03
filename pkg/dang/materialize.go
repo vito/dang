@@ -246,27 +246,52 @@ func assignableDecoded(have, want hm.Type) bool {
 //
 // The walk mirrors materializeDecoded: through non-null, unions, lists and
 // maps, an anonymous record's fields, and a named object's constructor
-// parameters.
+// parameters, except those every codec ignores (they are never decoded). A
+// parameter with a default is walked: decoding builds it whenever the data has
+// its key.
 func checkDecodeTarget(env hm.Env, want hm.Type) error {
 	seen := map[*Type]bool{}
-	var walk func(t hm.Type) error
-	walk = func(t hm.Type) error {
+	// via is the field path from want down to t ("Holder.inner"), for the
+	// error, or "" while still at want itself.
+	var walk func(t hm.Type, via string) error
+	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) error {
+		for _, field := range fields {
+			if ignoredByAllCodecs(mod, field.Key) {
+				continue
+			}
+			ft, mono := field.Value.Type()
+			if !mono {
+				continue
+			}
+			next := field.Key
+			if via != "" {
+				next = via + "." + field.Key
+			} else if mod.Named != "" {
+				next = mod.Named + "." + field.Key
+			}
+			if err := walk(ft, next); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	walk = func(t hm.Type, via string) error {
 		if nn, ok := t.(hm.NonNullType); ok {
-			return walk(nn.Type)
+			return walk(nn.Type, via)
 		}
 		if union, ok := t.(*hm.UnionType); ok {
 			for _, option := range union.Options {
-				if err := walk(option); err != nil {
+				if err := walk(option, via); err != nil {
 					return err
 				}
 			}
 			return nil
 		}
 		if elem, ok := listElementTarget(t); ok {
-			return walk(elem)
+			return walk(elem, via)
 		}
 		if val, ok := mapValueTarget(t); ok {
-			return walk(val)
+			return walk(val, via)
 		}
 		v, ok := t.(*Type)
 		if !ok {
@@ -278,32 +303,35 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 		}
 		seen[mod] = true
 		if mod.Named == "" {
-			for _, field := range mod.AsRecord().Fields {
-				if ft, mono := field.Value.Type(); mono {
-					if err := walk(ft); err != nil {
-						return err
-					}
-				}
-			}
-			return nil
+			return walkFields(mod, mod.AsRecord().Fields, via)
 		}
 		if mod.localFrame != nil && !envEncloses(env, mod.localFrame) {
-			return fmt.Errorf("cannot decode into %s here: it is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here", mod.Name())
+			const why = "is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here"
+			if via != "" {
+				return fmt.Errorf("cannot decode %s here: its type %s %s", via, mod.Name(), why)
+			}
+			return fmt.Errorf("cannot decode into %s here: it %s", mod.Name(), why)
 		}
 		if mod.constructorType != nil {
 			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
-				for _, field := range args.Fields {
-					if ft, mono := field.Value.Type(); mono {
-						if err := walk(ft); err != nil {
-							return err
-						}
-					}
-				}
+				return walkFields(mod, args.Fields, via)
 			}
 		}
 		return nil
 	}
-	return walk(want)
+	return walk(want, "")
+}
+
+// ignoredByAllCodecs reports whether every codec ignores field of mod
+// (@JSON.ignore, @YAML.ignore and @TOML.ignore), so no decode ever reads it.
+// The static check cannot tell which codec decoded data comes from.
+func ignoredByAllCodecs(mod *Type, field string) bool {
+	for _, c := range codecs() {
+		if _, ignore := c.fieldKey(mod, field); !ignore {
+			return false
+		}
+	}
+	return true
 }
 
 // envEncloses reports whether frame is env's own frame or one of the frames
