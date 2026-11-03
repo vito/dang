@@ -155,6 +155,25 @@ func TestReplRebindingInitializers(t *testing.T) {
 	require.Equal(t, "x\ny\nz\nstatic\n", out.String())
 }
 
+func TestReplRepeatedFreshDeclarations(t *testing.T) {
+	for _, replacement := range []string{"let x = 2", "let x: Int! = 2", "let x = 1 + 1"} {
+		t.Run(replacement, func(t *testing.T) {
+			s := newTestReplSession(t)
+			_, err := s.enter(`let x = { raise "stop"; 1 }; ` + replacement + `; x`)
+			require.ErrorContains(t, err, "stop")
+
+			s = newTestReplSession(t)
+			forms, err := s.infer(`let x = { print("first"); 1 }; ` + replacement + `; x`)
+			require.NoError(t, err)
+			var out bytes.Buffer
+			v, err := dang.EvalTopLevel(ioctx.StdoutToContext(context.Background(), &out), forms, s.valueScope, nil)
+			require.NoError(t, err)
+			require.Equal(t, "first\n", out.String())
+			require.Equal(t, "1", dang.Repr(v), "fresh duplicate declarations retain the first binding")
+		})
+	}
+}
+
 func TestReplRepairsFailedInitialization(t *testing.T) {
 	for _, src := range []string{
 		`let x: Int! = { raise "stop"; 1 }`,

@@ -345,10 +345,10 @@ func isConstantValue(value Node) bool {
 // functions, lazy variables, then statics (including self { } statements).
 // Variables are forced before the entry's statements, as in a module.
 //
-// Redefinitions and declarations shadowing outer bindings are the exception to
-// lazy installation: they evaluate once, in source order, before statics, with
-// the previous bindings still visible to their initializers. New lazy variables
-// are available to them.
+// Redefinitions, declarations shadowing outer bindings and repeated names are
+// the exception to lazy installation: they evaluate once, in source order,
+// before statics, with the previous bindings still visible to their initializers.
+// New lazy variables are available to them.
 //
 // After initialization, each successful form is reported in source order to
 // yield, if non-nil. Declarations report their cached values; statements run at
@@ -376,13 +376,20 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 		return ctx.Err()
 	}
 	// Keep prior bindings visible to initializers that shadow them, including
-	// builtins and bindings in a derived session's parent. Decide before any
-	// installation, so a new lazy doesn't mistake itself for a prior binding.
+	// builtins and bindings in a derived session's parent. Repeated names must
+	// also stay in source order: hoisting a later constant must not suppress
+	// an earlier initializer. Decide before installing any new bindings.
+	counts := make(map[string]int)
+	for _, phase := range [][]Node{classified.Constants, classified.Variables} {
+		for _, form := range phase {
+			counts[form.(*FieldDecl).Name.Name]++
+		}
+	}
 	eager := make(map[Node]bool)
 	for _, phase := range [][]Node{classified.Constants, classified.Variables} {
 		for _, form := range phase {
 			field := form.(*FieldDecl)
-			eager[form] = field.rebind || scope.Has(field.Name.Name)
+			eager[form] = field.rebind || scope.Has(field.Name.Name) || counts[field.Name.Name] > 1
 		}
 	}
 	for _, phase := range [][]Node{classified.Imports, classified.Directives, classified.Constants} {

@@ -506,10 +506,10 @@ into every builtins frame (`preludeItems`).
   for an empty entry), and optionally calls `yield(Node, Value) error` for
   each form in source order. Imports, directives, constants, items, functions
   and lazy variables are installed first; statics and variables finish before
-  statements run, just as in a module. Rebindings and declarations shadowing
-  outer bindings are the deliberate exception: new lazy variables are installed
-  first, then these declarations evaluate once in source order with their
-  previous bindings still visible, before statics.
+  statements run, just as in a module. Rebindings, declarations shadowing
+  outer bindings and repeated names are the deliberate exception: new lazy
+  variables are installed first, then these declarations evaluate once in source
+  order with their previous bindings still visible, before statics.
   Callbacks report cached declaration results, never rerun initializers.
   An initialization error reports no forms; a statement/callback error or
   cancellation stops the entry. Partial bindings remain, and callers must

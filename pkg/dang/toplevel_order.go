@@ -32,10 +32,10 @@ import (
 //
 // Both are syntactic. W lives on the effect solver, so it spans every file of
 // a directory module, and, since each REPL, literate-doc or playground entry
-// is inferred with a solver of its own, one entry. Those sessions evaluate
-// each entry's forms eagerly, in source order, so neither hazard arises
-// there; the rules still apply, so what a session accepts, a script accepts
-// too.
+// is inferred with a solver of its own, one entry. EvalTopLevel initializes
+// declarations before statements too. Rebindings, shadowing and repeated names
+// are its explicit eager-initialization exception, preserving prior-binding
+// reads and source order; the same safety rules apply throughout.
 
 // topForm is the top-level form being inferred: a declaration's initializer
 // (decl is its name) or a statement (decl == ""), of the module whose
