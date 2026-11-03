@@ -1,6 +1,7 @@
 package dang
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 func requireEvalGet(t *testing.T, scope ValueScope, name string) (Value, bool) {
@@ -383,6 +385,85 @@ type Test {
 	print, found := testCtor.ObjectType.LocalSchemeOf("print")
 	require.True(t, found)
 	require.Same(t, StringType, functionReturnType(t, print))
+}
+
+// DeclareDir declares only the top level: the code of types nested in their
+// bodies is never inferred, or even validated, so such a type gets an item
+// only when making it evaluates none of that code (a nested object type
+// without statics, or an enum; not a scalar or a type with statics). Loading
+// never runs or trips on that code, and a top-level constructor works when
+// its nested types have items.
+func TestDeclareDirSkipsNestedTypes(t *testing.T) {
+	declare := func(src string) ValueScope {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
+		var out bytes.Buffer
+		ctx := ioctx.StdoutToContext(context.Background(), &out)
+		env, err := DeclareDir(ctx, dir, false)
+		require.NoError(t, err)
+		require.Empty(t, out.String())
+		return env
+	}
+
+	declare(`
+type Outer {
+  pub v: Int! = 1
+
+  scalar Tag {
+    shout: String! { toString(self) + "!" }
+  }
+
+  scalar Unchecked {
+    let x = { print("uninferred code ran"); 1 }
+  }
+
+  scalar NoArg {
+    new { "x" }
+  }
+
+  type Inner {
+    self {
+      twice(x: Int!): Int! { x * 2 }
+    }
+  }
+
+  self {
+    k: Int! = 2
+
+    scalar Code {
+      new(raw: String!) { raw }
+    }
+
+    type WithStatics {
+      self {
+        n: Int! = 3
+      }
+    }
+  }
+}
+`)
+
+	env := declare(`
+type Outer {
+  pub v: Int! = 1
+
+  enum Mood {
+    HAPPY
+    SAD
+  }
+
+  type Plain {
+    pub w: Int! = 2
+  }
+}
+`)
+	outer, found := requireEvalGet(t, env, "Outer")
+	require.True(t, found)
+	ctor, ok := outer.(*ConstructorFunction)
+	require.True(t, ok)
+	built, err := ctor.Call(context.Background(), env, map[string]Value{})
+	require.NoError(t, err)
+	require.IsType(t, &Object{}, built)
 }
 
 func TestDeclareDirResolvesPositionalDirectiveArgs(t *testing.T) {

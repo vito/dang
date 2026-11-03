@@ -1,4 +1,4 @@
-7 inference errors:
+6 inference errors:
 
 Error 1:
 [1m[31mError:[0m fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new()
@@ -56,69 +56,56 @@ Error 3:
 
 
 Error 4:
-[1m[31mError:[0m `Inner` is declared in Outer's body, so it can't reassign `level`, a field of Outer: Outer is still being built when Inner is created; declare Inner outside Outer and pass it what it needs
-  [2m[34m--> errors/field_default_reassign.dang:52:7[0m
+[1m[31mError:[0m statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `size` a different default
+  [2m[34m--> errors/field_default_reassign.dang:50:5[0m
  [2m    |[0m
- [2m 50 |   type Inner {[0m
- [2m 51 |     bump: Int! {[0m
- [2m[34m[1m 52 | [0m      level = 2
-[2m             [31m^^^^^^^^^[0m
- [2m 53 |       level[0m
- [2m 54 |     }[0m
+ [2m 48 |     size: Int! = 0[0m
+ [2m 49 | [0m
+ [2m[34m[1m 50 | [0m    size = 5
+[2m           [31m^^^^^^^^[0m
+ [2m 51 |   }[0m
+ [2m 52 | }[0m
  [2m    |[0m
 
 
 Error 5:
-[1m[31mError:[0m statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `size` a different default
-  [2m[34m--> errors/field_default_reassign.dang:63:5[0m
- [2m    |[0m
- [2m 61 |     size: Int! = 0[0m
- [2m 62 | [0m
- [2m[34m[1m 63 | [0m    size = 5
-[2m           [31m^^^^^^^^[0m
- [2m 64 |   }[0m
- [2m 65 | }[0m
- [2m    |[0m
-
-
-Error 6:
 2 inference errors:
 
 Error 1:
 [1m[31mError:[0m statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `size` a different default
-  [2m[34m--> errors/field_default_reassign.dang:76:7[0m
+  [2m[34m--> errors/field_default_reassign.dang:63:7[0m
  [2m    |[0m
- [2m 74 | [0m
- [2m 75 |     let n: Int! = {[0m
- [2m[34m[1m 76 | [0m      self.size = 9
+ [2m 61 | [0m
+ [2m 62 |     let n: Int! = {[0m
+ [2m[34m[1m 63 | [0m      self.size = 9
 [2m             [31m^^^^^^^^^^^^^[0m
- [2m 77 |       size[0m
- [2m 78 |     }[0m
+ [2m 64 |       size[0m
+ [2m 65 |     }[0m
  [2m    |[0m
 
 
 Error 2:
 [1m[31mError:[0m statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `tags` a different default
-  [2m[34m--> errors/field_default_reassign.dang:73:5[0m
+  [2m[34m--> errors/field_default_reassign.dang:60:5[0m
  [2m    |[0m
- [2m 71 |     tags: [Int!]! = [][0m
- [2m 72 | [0m
- [2m[34m[1m 73 | [0m    self.tags += [1]
+ [2m 58 |     tags: [Int!]! = [][0m
+ [2m 59 | [0m
+ [2m[34m[1m 60 | [0m    self.tags += [1]
 [2m           [31m^^^^^^^^^^^^^^^^[0m
- [2m 74 | [0m
- [2m 75 |     let n: Int! = {[0m
+ [2m 61 | [0m
+ [2m 62 |     let n: Int! = {[0m
  [2m    |[0m
 
 
-Error 7:
+Error 6:
 [1m[31mError:[0m new()'s parameter defaults can't reassign `level`: they only read the fields' values; set it in new()'s body
-  [2m[34m--> errors/field_default_reassign.dang:86:19[0m
+  [2m[34m--> errors/field_default_reassign.dang:73:19[0m
  [2m    |[0m
- [2m 84 |   level: Int! = 1[0m
- [2m 85 | [0m
- [2m[34m[1m 86 | [0m  new(k: Int! = { level = 2; level }) {
+ [2m 71 |   level: Int! = 1[0m
+ [2m 72 | [0m
+ [2m[34m[1m 73 | [0m  new(k: Int! = { level = 2; level }) {
 [2m                         [31m^^^^^^^^^[0m
- [2m 87 |     self[0m
- [2m 88 |   }[0m
+ [2m 74 |     self[0m
+ [2m 75 |   }[0m
  [2m    |[0m
 

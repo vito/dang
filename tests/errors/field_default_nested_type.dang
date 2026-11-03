@@ -1,6 +1,5 @@
-# Types declared in A's body are created while A is being built, so their
-# code, methods included, can't use A's methods, computed fields, or fields
-# only A's new() sets.
+# Types declared in A's body capture nothing from it, so their code, methods
+# included, can't use A's members: its methods, computed fields, or fields.
 type A {
   level: Int! = 1
   bonus: Int!

@@ -25,18 +25,14 @@ func evalForError(t *testing.T, src string) error {
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	fresh := hm.NewSimpleFresher()
-	_, err = InferFormsWithPhases(context.Background(), file.Forms, typeScope, fresh)
+	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, fresh)
 	require.NoError(t, err, "infer")
 
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(context.Background(), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
-	for _, node := range file.Forms {
-		if _, err := EvalNode(ctx, valueScope, node); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = EvalTopLevel(ctx, file.Forms, valueScope, nil)
+	return err
 }
 
 // raisedFrom unwraps the evaluation error to the *RaisedError wrapper.

@@ -227,13 +227,9 @@ func evalSource(source, token string) map[string]any {
 	ctx := ioctx.StdoutToContext(baseCtx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	var last dang.Value
-	for _, node := range forms {
-		val, err := dang.EvalNode(ctx, valueScope, node)
-		if err != nil {
-			return result("", strings.TrimRight(out.String(), "\n"), err.Error(), "eval")
-		}
-		last = val
+	last, err := dang.EvalTopLevel(ctx, forms, valueScope, nil)
+	if err != nil {
+		return result("", strings.TrimRight(out.String(), "\n"), err.Error(), "eval")
 	}
 
 	value := ""
@@ -296,22 +292,16 @@ func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, val
 		return "", false, err, "type"
 	}
 
-	var lastNode dang.Node
-	var last dang.Value
-	for _, node := range forms {
-		val, err := dang.EvalNode(ctx, valueScope, node)
-		if err != nil {
-			return "", false, err, "eval"
-		}
-		lastNode = node
-		last = val
+	last, err := dang.EvalTopLevel(ctx, forms, valueScope, nil)
+	if err != nil {
+		return "", false, err, "eval"
 	}
 
 	value := ""
 	lastIsDecl := false
 	if last != nil {
 		value = dang.Repr(last)
-		lastIsDecl = len(lastNode.DeclaredSymbols()) > 0
+		lastIsDecl = len(forms[len(forms)-1].DeclaredSymbols()) > 0
 	}
 	return value, lastIsDecl, nil, ""
 }

@@ -21,15 +21,13 @@ func prepareScopeChainProgram(tb testing.TB, src string) (context.Context, Value
 
 	ctx := context.Background()
 	typeScope, valueScope := BuildScopesFromImports("", nil)
-	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
+	_, err = InferTopLevel(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(tb, err, "infer")
 
 	ctx = WithEvalContext(ctx, NewEvalContext("scope_chain_test", src))
 	last := len(file.Forms) - 1
-	for _, node := range file.Forms[:last] {
-		_, err := EvalNode(ctx, valueScope, node)
-		require.NoError(tb, err)
-	}
+	_, err = EvalTopLevel(ctx, file.Forms[:last], valueScope, nil)
+	require.NoError(tb, err)
 	return ctx, valueScope, file.Forms[last]
 }
 

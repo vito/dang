@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"runtime"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // testReplSession drives entries through the REPL's inference and evaluation path
@@ -27,18 +29,20 @@ func newTestReplSession(t *testing.T) *testReplSession {
 // enter runs one entry, returning the last value or the type error.
 func (s *testReplSession) enter(input string) (dang.Value, error) {
 	s.t.Helper()
+	forms, err := s.infer(input)
+	if err != nil {
+		return nil, err
+	}
+	return dang.EvalTopLevel(context.Background(), forms, s.valueScope, nil)
+}
+
+func (s *testReplSession) infer(input string) ([]dang.Node, error) {
+	s.t.Helper()
 	parsed, err := dang.ParseWithRecovery("repl", []byte(input))
 	require.NoError(s.t, err)
 	forms := parsed.(*dang.FileBlock).Forms
-	if _, err := inferReplForms(context.Background(), forms, s.typeScope, hm.NewSimpleFresher()); err != nil {
-		return nil, err
-	}
-	var last dang.Value
-	for _, node := range forms {
-		last, err = dang.EvalNode(context.Background(), s.valueScope, node)
-		require.NoError(s.t, err)
-	}
-	return last, nil
+	_, err = inferReplForms(context.Background(), forms, s.typeScope, hm.NewSimpleFresher())
+	return forms, err
 }
 
 func TestReplReassignsTopLevelBindings(t *testing.T) {
@@ -60,6 +64,211 @@ func TestReplRejectsFunctionWritesToSessionBindings(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.enter("bump: Int! { count += 1; count }")
 	require.ErrorContains(t, err, "cannot assign to `count`: top-level bindings are immutable")
+}
+
+// Types declared below the top level capture nothing at the prompt either,
+// and decode wherever their values reach, even before their declaration ran.
+func TestReplLocalTypesCaptureNothing(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("type Outer { pub level: Int! = 1; type Inner { doubled: Int! { level * 2 } } }")
+	require.ErrorContains(t, err, "Inner cannot use `level`")
+
+	_, err = s.enter(`type Box { type Inner { value: String! }; make: Inner! { Inner(value: "built") } }`)
+	require.NoError(t, err)
+	_, err = s.enter("type Holder { pub inner = Box.make }")
+	require.NoError(t, err)
+	v, err := s.enter(`let held: Holder! = JSON.decode("{\"inner\": {\"value\": \"decoded\"}}"); held.inner.value`)
+	require.NoError(t, err)
+	require.Equal(t, `"decoded"`, dang.Repr(v))
+}
+
+// At the prompt, statics finish before statements and may use functions and
+// lazy variables the same entry declares after them.
+func TestReplStatics(t *testing.T) {
+	s := newTestReplSession(t)
+	v, err := s.enter(`type Cfg { self { k: Int! = helper(41) } }; helper(n: Int!): Int! { n + 1 }; run: Int! { type Local { self { k: Int! = Cfg.k * 2 } }; Local.k }; run`)
+	require.NoError(t, err)
+	require.Equal(t, "84", dang.Repr(v))
+}
+
+func TestReplStaticLifecycle(t *testing.T) {
+	s := newTestReplSession(t)
+	forms, err := s.infer(`
+		print("statement")
+		type Cfg { self { k: Int! = helper(seed); print("static statement") } }
+		helper(n: Int!): Int! { print("helper"); n + 1 }
+		let seed: Int! = { print("seed"); 41 }
+		run: Int! { type Local { self { print("local static") } }; 1 }
+		Cfg.k
+	`)
+	require.NoError(t, err)
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	last, err := dang.EvalTopLevel(ctx, forms, s.valueScope, nil)
+	require.NoError(t, err)
+	require.Equal(t, "42", dang.Repr(last))
+	require.Equal(t, "seed\nhelper\nstatic statement\nlocal static\nstatement\n", out.String())
+	cfg, found, err := s.valueScope.Lookup(ctx, "Cfg")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	// An unrelated entry, repeated constructors and repeated local declarations
+	// neither rebuild the item nor run its statics again.
+	out.Reset()
+	forms, err = s.infer("Cfg(); Cfg(); run; run; Cfg.k")
+	require.NoError(t, err)
+	last, err = dang.EvalTopLevel(ctx, forms, s.valueScope, nil)
+	require.NoError(t, err)
+	require.Equal(t, "42", dang.Repr(last))
+	require.Empty(t, out.String())
+	again, found, err := s.valueScope.Lookup(ctx, "Cfg")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Same(t, cfg, again)
+}
+
+func TestReplRebindingInitializers(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let x = 1; let y = 10")
+	require.NoError(t, err)
+	v, err := s.enter("let x = x + 1; x")
+	require.NoError(t, err)
+	require.Equal(t, "2", dang.Repr(v))
+	v, err = s.enter("let x = x + 1; let x = x + 1; x")
+	require.NoError(t, err)
+	require.Equal(t, "4", dang.Repr(v))
+	_, err = s.enter("let x = 2")
+	require.NoError(t, err)
+	forms, err := s.infer(`
+		let x = { print("x"); x + 1 }
+		let y = { print("y"); x + y }
+		let z: Int! = { print("z"); x + y }
+		type Snapshot { self { value: Int! = z; print("static") } }
+		[x, y, z, Snapshot.value]
+	`)
+	require.NoError(t, err)
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	v, err = dang.EvalTopLevel(ctx, forms, s.valueScope, nil)
+	require.NoError(t, err)
+	require.Equal(t, "[3, 13, 16, 16]", dang.Repr(v))
+	require.Equal(t, "x\ny\nz\nstatic\n", out.String())
+}
+
+func TestReplRepeatedFreshDeclarations(t *testing.T) {
+	for _, replacement := range []string{"let x = 2", "let x: Int! = 2", "let x = 1 + 1"} {
+		t.Run(replacement, func(t *testing.T) {
+			s := newTestReplSession(t)
+			_, err := s.enter(`let x = { raise "stop"; 1 }; ` + replacement + `; x`)
+			require.ErrorContains(t, err, "stop")
+
+			s = newTestReplSession(t)
+			forms, err := s.infer(`let x = { print("first"); 1 }; ` + replacement + `; x`)
+			require.NoError(t, err)
+			var out bytes.Buffer
+			v, err := dang.EvalTopLevel(ioctx.StdoutToContext(context.Background(), &out), forms, s.valueScope, nil)
+			require.NoError(t, err)
+			require.Equal(t, "first\n", out.String())
+			require.Equal(t, "1", dang.Repr(v), "fresh duplicate declarations retain the first binding")
+		})
+	}
+}
+
+func TestReplRepeatedFunctionDeclarations(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter(`helper(n: Int!): Int! { n }; let f = { raise "stop"; &helper }; f(n: Int!): Int! { n + 2 }; f(1)`)
+	require.ErrorContains(t, err, "stop")
+
+	s = newTestReplSession(t)
+	forms, err := s.infer(`helper(n: Int!): Int! { n }; let f = { print("first"); &helper }; f(n: Int!): Int! { n + 2 }; f(1)`)
+	require.NoError(t, err)
+	var out bytes.Buffer
+	v, err := dang.EvalTopLevel(ioctx.StdoutToContext(context.Background(), &out), forms, s.valueScope, nil)
+	require.NoError(t, err)
+	require.Equal(t, "first\n", out.String())
+	require.Equal(t, "1", dang.Repr(v))
+
+	s = newTestReplSession(t)
+	v, err = s.enter(`helper(n: Int!): Int! { n }; f(n: Int!): Int! { n + 2 }; let f = { raise "unreached"; &helper }; f(1)`)
+	require.NoError(t, err)
+	require.Equal(t, "3", dang.Repr(v))
+}
+
+func TestReplFunctionRebindingsStayInOrder(t *testing.T) {
+	for _, replacement := range []string{`f: Int! { 2 }`, `f: Int! { raise "new f"; 2 }`} {
+		s := newTestReplSession(t)
+		_, err := s.enter("f: Int! { 1 }; let x = 0")
+		require.NoError(t, err)
+		v, err := s.enter("let x = f; " + replacement + "; x")
+		require.NoError(t, err)
+		require.Equal(t, "1", dang.Repr(v))
+	}
+}
+
+func TestReplRepairsFailedInitialization(t *testing.T) {
+	for _, src := range []string{
+		`let x: Int! = { raise "stop"; 1 }`,
+		`let fail: Int! = { raise "stop"; 1 }; let x: Int! = { print("abandoned"); 2 }`,
+	} {
+		s := newTestReplSession(t)
+		_, err := s.enter(src)
+		require.ErrorContains(t, err, "stop")
+		_, err = s.enter("let x = 42")
+		require.NoError(t, err)
+		forms, err := s.infer("x")
+		require.NoError(t, err)
+		var out bytes.Buffer
+		v, err := dang.EvalTopLevel(ioctx.StdoutToContext(context.Background(), &out), forms, s.valueScope, nil)
+		require.NoError(t, err)
+		require.Equal(t, "42", dang.Repr(v))
+		require.Empty(t, out.String())
+	}
+}
+
+func TestReplEntryOutputAndErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		src     string
+		logs    []string
+		results int
+		failure bool
+	}{
+		{"results", `let x = { print("init"); 1 }; print("statement"); x`, []string{"init", "statement"}, 3, false},
+		{"static failure", `type Fail { self { print("initializing"); raise "stop" } }; print("unreached")`, []string{"initializing"}, 1, true},
+		{"variable failure", `let x = { print("initializing"); raise "stop" }; print("unreached")`, []string{"initializing"}, 1, true},
+		{"rebind failure", `let x = { print("rebinding"); raise "stop" }; type Fail { self { print("unreached") } }`, []string{"rebinding"}, 1, true},
+		{"statement failure", `1; { print("statement"); raise "stop" }; print("unreached")`, []string{"statement"}, 2, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestReplSession(t)
+			if tc.name == "rebind failure" {
+				_, err := s.enter("let x = 1")
+				require.NoError(t, err)
+			}
+			forms, err := s.infer(tc.src)
+			require.NoError(t, err)
+			logs, results, cancelled := evalReplEntry(context.Background(), forms, s.valueScope, false)
+			require.False(t, cancelled)
+			require.Equal(t, tc.logs, logs)
+			require.Len(t, results, tc.results)
+			if tc.failure {
+				require.Contains(t, results[len(results)-1], "evaluation error:")
+				require.Contains(t, results[len(results)-1], "stop")
+			}
+		})
+	}
+}
+
+func TestReplEntryCancelled(t *testing.T) {
+	s := newTestReplSession(t)
+	forms, err := s.infer(`type Cfg { self { print("unreached") } }; 1`)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	logs, results, cancelled := evalReplEntry(ctx, forms, s.valueScope, false)
+	require.True(t, cancelled)
+	require.Empty(t, logs)
+	require.Empty(t, results)
 }
 
 func TestReplChecksFieldPurity(t *testing.T) {

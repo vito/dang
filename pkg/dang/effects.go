@@ -172,10 +172,13 @@ type effFrame struct {
 	// toDang marks a block passed to a Dang-defined function.
 	toDang bool
 	// sealed is set for the code of a type: its methods and constructor, and
-	// its body (field defaults, statics). That code runs wherever the type's
-	// values go — they can be stored, returned and used concurrently — so it
-	// may not write, or call anything that writes, outside the type, and an
-	// outer parameter it calls must be pure.
+	// its body (field defaults, statics). That code captures nothing: it may
+	// use the type's own members, the top level and other types, but no
+	// binding of the function, block or type body declaring the type (see
+	// checkTypeCapture). It runs wherever the type's item is used, not where
+	// the type is declared, so it sees no null refinement made outside it
+	// (readNarrowed), and a top-level statement around it doesn't make it
+	// statement code (noteTopRead).
 	sealed *Type
 	// typeBody marks a type's body (field defaults, statics), as opposed
 	// to its methods and constructor.
@@ -234,8 +237,8 @@ func withEffFrame(ctx context.Context, eff *Effect, env hm.Env, self *Type) (con
 
 // withTypeBodyEffFrame enters a body of type object whose bindings are
 // declared in frame (the type itself, or its meta-type for statics; env is
-// the body scope): field defaults and statics run when the type is used, not
-// where it is declared, so they are sealed like its methods.
+// the body scope): field defaults and statics are the type's code, like its
+// methods.
 func withTypeBodyEffFrame(ctx context.Context, object, frame *Type, env hm.Env) context.Context {
 	ctx, fr := withEffFrame(ctx, newClosureEffect(object.Named), env, frame)
 	fr.sealed = object
@@ -243,9 +246,123 @@ func withTypeBodyEffFrame(ctx context.Context, object, frame *Type, env hm.Env) 
 	return ctx
 }
 
-// sealedWhy explains, for messages, why a type's code can't reach outside it.
-func sealedWhy(t *Type) string {
-	return fmt.Sprintf("%s's methods, constructor and field defaults run wherever its values are used, maybe after this scope is gone or concurrently", t.Named)
+// typeCodeFrame returns the frame of the type whose code fr is in (see
+// effFrame.sealed), or nil outside any type's code.
+func typeCodeFrame(fr *effFrame) *effFrame {
+	for ; fr != nil; fr = fr.parent {
+		if fr.sealed != nil {
+			return fr
+		}
+	}
+	return nil
+}
+
+// checkTypeCapture rejects a reference (at node) to name, resolved in env,
+// from a type's code — its methods, new(), field defaults and statics — to a
+// binding of the function, block or type body declaring the type. A type
+// declared there captures nothing, like a top-level one: its code uses its own
+// members, the top level (and imports and builtins) and other types, whose
+// names are bound in those scopes but behave as items. So a type has one
+// meaning per module evaluation, however often its declaration runs: one item
+// (typeItem), whose item scope binds only the types declared around it, so
+// its values work alike wherever they go and decoding can build it anywhere.
+// Without a top-level frame in ctx (an un-instrumented entry point) nothing
+// is checked.
+func checkTypeCapture(ctx context.Context, env hm.Env, name string, node Node) error {
+	top := topLevelFrameFrom(ctx)
+	if top == nil || isReceiverMember(ctx) {
+		return nil
+	}
+	frame := resolveBinding(env, name)
+	var owner *Type
+	for fr := effFrameFrom(ctx); fr != nil; fr = fr.parent {
+		if frame != nil && fr.inside(frame) {
+			return nil
+		}
+		if fr.sealed != nil {
+			owner = fr.sealed
+			break
+		}
+	}
+	if owner == nil || (frame != nil && withinType(frame, owner)) {
+		return nil
+	}
+	if frame == nil || isTopLevelFrame(frame, top) || !belowTopLevel(frame, top) {
+		return nil
+	}
+	if _, isType := frame.LocalNamedType(name); isType {
+		return nil
+	}
+	// An import's names are the imported module's, not the scope's own.
+	if origin, ok := frame.LocalValueOrigin(name); ok && origin.Kind == BindingOriginImport {
+		return nil
+	}
+	if s, ok := ctx.Value(effSolverKey{}).(*effectSolver); ok {
+		if s.captures[node] {
+			return nil
+		}
+		if s.captures == nil {
+			s.captures = map[Node]bool{}
+		}
+		s.captures[node] = true
+	}
+	return NewInferError(fmt.Errorf(
+		"%s cannot use `%s`, which is declared in the scope around %s: a type's code can only use its own members, the top level and other types; pass `%s` in as a field or argument instead",
+		owner.Named, name, owner.Named, name), node)
+}
+
+type receiverMemberKey struct{}
+
+// receiverMember marks a name inferred against a receiver's type rather than
+// in scope, such as a `{{ }}` selection's field: it is the receiver's member,
+// not a binding a type's code could capture.
+func receiverMember(ctx context.Context) context.Context {
+	return context.WithValue(ctx, receiverMemberKey{}, true)
+}
+
+func isReceiverMember(ctx context.Context) bool {
+	is, _ := ctx.Value(receiverMemberKey{}).(bool)
+	return is
+}
+
+// belowTopLevel reports whether frame belongs to code below its module's top
+// level top: a function or block body (a frame cloned from the top level), or
+// a type's body or statics, or a frame inside one. Builtins, the prelude and
+// imports are none of these.
+func belowTopLevel(frame, top TypeScope) bool {
+	for cur := frame; cur != nil; {
+		t, ok := cur.(*Type)
+		if !ok {
+			return false
+		}
+		if t != frame && isTopLevelFrame(t, top) {
+			return true
+		}
+		if t.declared || (t.metaOf != nil && t.metaOf.declared) {
+			return true
+		}
+		if t.Parent == nil {
+			return false
+		}
+		cur = t.Parent
+	}
+	return false
+}
+
+// withinType reports whether frame is t, its meta-type (statics), or a frame
+// inside one of them.
+func withinType(frame TypeScope, t *Type) bool {
+	for cur := frame; cur != nil; {
+		if cur == TypeScope(t) || (t.meta != nil && cur == TypeScope(t.meta)) {
+			return true
+		}
+		ct, ok := cur.(*Type)
+		if !ok || ct.Parent == nil {
+			return false
+		}
+		cur = ct.Parent
+	}
+	return false
 }
 
 // scalarBodyType returns the scalar when env is a scalar's body scope, i.e.
@@ -306,11 +423,9 @@ func absorbWrite(ctx context.Context, target effTarget, node Node) {
 		return
 	}
 	if fr.sealed != nil {
-		if !fieldReported {
-			_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
-				"cannot assign to `%s`: it is declared outside %s, and %s; return the new value instead",
-				target.name, fr.sealed.Named, sealedWhy(fr.sealed)), node))
-		}
+		// A type's code writes nothing outside the type: a top-level binding
+		// is reported by checkTopLevelWrite, anything else by
+		// checkTypeCapture.
 		return
 	}
 	if fr.eff.targets == nil {
@@ -340,18 +455,12 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 	case effParam:
 		if callee.owner != fr.eff {
 			fr.eff.addParam(callee)
-			if fr.sealed != nil {
-				requirePure(callee, false, fmt.Sprintf("`%s` calls `%s`, and %s", fr.eff.name, callee.name, sealedWhy(fr.sealed)))
-			}
 		}
 	case effClosure:
-		var escaping []effTarget
 		for t, w := range callee.targets {
-			if fr.inside(t.frame) {
-				continue
-			}
-			if fr.sealed != nil {
-				escaping = append(escaping, t)
+			// A type's code writes nothing outside the type (see
+			// absorbWrite), so neither does what it calls.
+			if fr.inside(t.frame) || fr.sealed != nil {
 				continue
 			}
 			if fr.eff.targets == nil {
@@ -370,36 +479,12 @@ func absorbCall(ctx context.Context, callee *Effect, node Node, name string) {
 			}
 			fr.eff.nullTargets[t] = true
 		}
-		if len(escaping) > 0 {
-			reportSealedCall(ctx, fr.sealed, callee, escaping, node, name)
-		}
 		for p := range callee.params {
 			if p.owner != fr.eff {
 				fr.eff.addParam(p)
-				if fr.sealed != nil {
-					requirePure(p, false, fmt.Sprintf("`%s` calls `%s`, which calls `%s`, and %s", fr.eff.name, name, p.name, sealedWhy(fr.sealed)))
-				}
 			}
 		}
 	}
-}
-
-// reportSealedCall reports a call (at node) from a sealed type's code to a
-// closure writing escaping, bindings declared outside the type.
-func reportSealedCall(ctx context.Context, sealed *Type, callee *Effect, escaping []effTarget, node Node, name string) {
-	sort.Slice(escaping, func(i, j int) bool { return escaping[i].name < escaping[j].name })
-	t := escaping[0]
-	subject, self := "`"+name+"`", name
-	if _, isBlock := node.(*BlockArg); isBlock {
-		subject, self = "this block", callee.name
-	}
-	writes := fmt.Sprintf("writes `%s`", t.name)
-	if w := callee.targets[t]; w != "" && w != self {
-		writes = fmt.Sprintf("writes `%s` (via `%s`)", t.name, w)
-	}
-	_ = reportEffectError(ctx, NewInferError(fmt.Errorf(
-		"%s %s, which is declared outside %s, and %s",
-		subject, writes, sealed.Named, sealedWhy(sealed)), node))
 }
 
 func (e *Effect) addParam(p *Effect) {
@@ -528,6 +613,10 @@ type effectSolver struct {
 	// top holds the top-level initialization rules' state
 	// (toplevel_order.go).
 	top topOrder
+	// captures holds the references checkTypeCapture reported, so a node
+	// inferred more than once (a compound assignment's target) is reported
+	// once.
+	captures map[Node]bool
 }
 
 // escapes reports whether closure eff is bound to a parameter that escapes.

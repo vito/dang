@@ -454,42 +454,41 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	ectx.RequestRender(false)
 
 	go func() {
-		var logs []string
-		var results []string
-
-		var stdoutBuf bytes.Buffer
-		ctx := ioctx.StdoutToContext(evalCtx, &stdoutBuf)
-		ctx = ioctx.StderrToContext(ctx, &stdoutBuf)
-
-		for _, node := range forms {
-			val, err := dang.EvalNode(ctx, valueScope, node)
-
-			if evalCtx.Err() != nil {
-				r.finishEval(ectx, ev, nil, nil, true)
-				return
-			}
-
-			if stdoutBuf.Len() > 0 {
-				logs = append(logs, strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n")...)
-				stdoutBuf.Reset()
-			}
-
-			if err != nil {
-				results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
-				r.finishEval(ectx, ev, logs, results, false)
-				return
-			}
-
-			// Echo the result as a highlighted Dang literal (quoted strings,
-			// same grammar as the input), behind a green "=> " marker.
-			results = append(results, resultStyle.Render("=> ")+highlightCode(dang.Repr(val)))
-			if debug {
-				results = append(results, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
-			}
-		}
-
-		r.finishEval(ectx, ev, logs, results, false)
+		logs, results, cancelled := evalReplEntry(evalCtx, forms, valueScope, debug)
+		r.finishEval(ectx, ev, logs, results, cancelled)
 	}()
+}
+
+// evalReplEntry captures initialization and per-form output alike. Drain again
+// after EvalTopLevel returns: an initializer or failed statement has no result
+// callback, but its output must still be shown with its error.
+func evalReplEntry(ctx context.Context, forms []dang.Node, scope dang.ValueScope, debug bool) (logs, results []string, cancelled bool) {
+	var stdoutBuf bytes.Buffer
+	ctx = ioctx.StdoutToContext(ctx, &stdoutBuf)
+	ctx = ioctx.StderrToContext(ctx, &stdoutBuf)
+	drain := func() {
+		if stdoutBuf.Len() > 0 {
+			logs = append(logs, strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n")...)
+			stdoutBuf.Reset()
+		}
+	}
+	_, err := dang.EvalTopLevel(ctx, forms, scope, func(_ dang.Node, val dang.Value) error {
+		drain()
+		// Echo each form, including cached declarations, as a Dang literal.
+		results = append(results, resultStyle.Render("=> ")+highlightCode(dang.Repr(val)))
+		if debug {
+			results = append(results, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
+		}
+		return nil
+	})
+	if ctx.Err() != nil {
+		return nil, nil, true
+	}
+	drain()
+	if err != nil {
+		results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
+	}
+	return logs, results, false
 }
 
 func (r *replComponent) finishEval(ctx tuist.Context, ev *entryView, logs, results []string, cancelled bool) {

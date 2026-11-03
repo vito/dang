@@ -261,13 +261,14 @@ with "must be pure" reasons once discovered).
    `self` writes fork per call like an instance method's. Consequence: **named
    functions and methods never write shared state** — their only writes are
    locals and their own `self` fork (methods/constructors own their receiver
-   frame, `methodSelfFrame`). For a type (object or scalar) declared inside a
-   function body that takes one more rule: its code (methods, `new()`, field
-   defaults, statics)
-   is **sealed** (`effFrame.sealed`, `withTypeBodyEffFrame`) — it can't write
-   or call anything writing outside the type, and an outer block param it
-   calls must be pure — since its values can be stored, returned and used
-   concurrently like any other.
+   frame, `methodSelfFrame`). A type (object or scalar) declared in a function,
+   block or another type's body takes one more rule: its code (methods,
+   `new()`, field defaults, statics) **captures nothing**
+   (`checkTypeCapture`, from `Symbol.Infer`; `effFrame.sealed` marks a type's
+   code) — like a top-level type's, it may use its own members, the top level
+   and other types' names, but no binding of the scope around it. So it is a
+   top-level type whose name is visible in a smaller area, with one item per
+   module evaluation (see "Type items" below).
    Top-level declarations are lazy fields forced on first read, maybe inside a
    `{{ }}` field, and all run before any top-level statement. Two syntactic
    rules (`toplevel_order.go`) make that safe without following function
@@ -306,10 +307,9 @@ with "must be pure" reasons once discovered).
    checks (`withNewParams` in `inferNewConstructor`), and at runtime
    `ConstructorFunction.Call` evaluates them over the instance after its field
    defaults, with earlier params on top. A `self { }` block is marked with
-   `withStaticsBody`: only the write check applies there. Code of a type
-   declared in such a body (its methods included)
-   stays under the outer body's scope, since it is created while the outer
-   object is built. A `{{ }}` selection's field names belong to the receiver,
+   `withStaticsBody`: only the write check applies there. A type declared in
+   such a body can't use the outer type's members at all (`checkTypeCapture`
+   reports it). A `{{ }}` selection's field names belong to the receiver,
    so `inferFieldType` resolves them outside every type body
    (`outsideTypeBodies`), and infers its arguments in the enclosing scope,
    where they are evaluated. What a default reads
@@ -427,11 +427,13 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
 - **The `new()` hook is deliberately `IsDynamic=false`**: the naked-self
   redirect keys on the *caller's* dynamic scope, so a dynamic hook invoked
   inside an object method would rebind to that object. Methods, by
-  contrast, are forced `IsDynamic=true` in `ScalarDecl.Eval` so bare
+  contrast, are forced `IsDynamic=true` in `ScalarDecl.newItem` so bare
   sibling calls redirect.
-- **Hook runs at materialization** (`materializeStringValue` /
-  `materializeDecoded`), stored on the `*Type` (`SetScalarHook`) — written
-  once at `ScalarDecl.Eval`, frozen after.
+- **Methods and hook live in the scalar's item** (see "Type items"), found
+  from the value's type and its home module (`typeItemFor`), so values carry
+  no pointer to them. The hook runs at materialization
+  (`materializeStringValue` / `materializeDecoded`). Builtin Go scalars keep
+  a Go-native hook on the `*Type` (`SetGoScalarHook`, Regexp).
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first
@@ -442,6 +444,78 @@ builtin registry must `loadPrelude()` first or the prelude will infer
 against an empty registry. Prelude-raised errors render embedded source via
 `preludeSource` in `uncaught.go`.
 
+## Type items
+
+A Dang type's runtime side is its **item** (`typeItem`, fields.go): what its
+name evaluates to (constructor, namespace, enum values) plus the state its
+code shares (statics, a scalar's methods and `new()` hook). Every type has
+exactly one item per module evaluation, entered in the module root frame's
+table (`Object.items`, `moduleFrame`) keyed by `*Type`, and found by
+identity from anywhere its values go (`typeItemFor`, which resolves an
+imported Dang module's types in that module's own evaluation). Each
+evaluation of a prepared program (`PrepareDir`) makes its own, so they share
+no state; only builtin Go types keep state on the `*Type` (`GoStatics`,
+`GoScalarHook`), and the Dang-source prelude's items are made once and bound
+into every builtins frame (`preludeItems`).
+
+- **Made once, up front.** `evalTypeItems` is a module evaluation's types
+  phase (`FileBlock.Eval` via `evaluateForms(evalModule)`,
+  `evaluateDirectoryFiles`), and `EvalTopLevel` owns it for REPL-like
+  entry points (the evaluation counterpart of `InferTopLevel`).
+  It makes the items of every type the forms declare, at any depth, running no
+  user code. A declaration's `Eval` only binds its name to its item
+  (`bindTypeItem`); a missing item is an error, never made on the spot.
+  `EvaluateFormsWithPhases` is the body evaluator (the Dagger SDK uses it for
+  class bodies): its declarations bind, never make, items.
+  `EvaluateDeclaredFormsWithPhases` (`DeclareDir`), which infers no code
+  below the top level, walks no function or method body, and gives a type
+  nested in a type body an item only if making it evaluates none of that
+  code (`declaredOnly`: enums, interfaces, unions, object types without
+  statics).
+- **Only checked types get items.** A type below the top level gets an item
+  only if it was inferred with a top-level frame in ctx
+  (`ObjectDecl`/`ScalarDecl.captureChecked`), i.e. `checkTypeCapture` ran;
+  otherwise its item scope could silently resolve a captured name elsewhere,
+  so `makeItem` fails instead. Test helpers infer with `InferTopLevel`. A
+  scalar declared in a block runs its own `Hoist` pass 1 from `Infer` (as an
+  object type does), so its body is validated (methods, `new()`, `self { }`
+  only) and making its methods runs no user code.
+- **Item scopes mirror what the checker saw.** A top-level type closes over
+  the module scope; the types and imports of a type body, or of its
+  `self { }` blocks (merged, as `staticForms` merges them for the checker),
+  are hoisted and share one scope over their parent's; each type (and import)
+  in a block — inferred in source order — gets a scope of its own over the
+  previous one. So a name a block declares after a type never changes what
+  the type's code means, and no "declared later" rule is needed. Since a
+  type's code runs wherever its item is used, a null check made around its
+  declaration doesn't hold in it (`readNarrowed` drops the refinement); it
+  may check the name again itself.
+- **Statics are lazy.** `installStatics` binds a type's computed statics as
+  lazy fields and holds back its `self { }` statements; a module evaluation
+  finishes them (`forceStatics`) in its variables phase, after installing
+  the top-level variables and before forcing them, so statics run before
+  any statement and may use functions, variables and each other in any
+  order. Every type's statics are forced, including those of a type in a
+  function that never runs, so a failing static fails every evaluation of
+  its module, like a failing top-level `let`. A type's body is walked
+  before its item is made (`makeItem`), since making a scalar's methods and
+  installing statics bind the types declared there. `EvalTopLevel` finishes
+  statics too, before forcing the entry's variables and running its statements.
+- **Prompt lifecycle is centralized.** `EvalTopLevel(ctx, forms, scope, yield)`
+  accepts inferred forms and an existing scope, returns the last value (nil
+  for an empty entry), and optionally calls `yield(Node, Value) error` for
+  each form in source order. Imports, directives, constants, items, functions
+  and lazy variables are installed first; statics and variables finish before
+  statements run, just as in a module. Rebindings, declarations shadowing
+  outer bindings and repeated names are the deliberate exception: new lazy
+  variables are installed first, then these declarations evaluate once in source
+  order with their previous bindings still visible, before statics.
+  Callbacks report cached declaration results, never rerun initializers.
+  An initialization error reports no forms; a statement/callback error or
+  cancellation stops the entry. Partial bindings remain, and callers must
+  drain captured output even on error (initialization has no callback).
+  `EvalNode` stays the recursive low-level evaluator, not a prompt entry point.
+
 ## When adding a new type-like declaration
 
 Checklist:
@@ -451,10 +525,12 @@ Checklist:
    through `Id` / `ReservedName` (see "Names" in the `testing` skill).
 3. `classifyForms()` case in `pkg/dang/block.go` → `Types`.
 4. `Hoist` with the pass 0 / pass 1 split.
-5. `ModuleKind` constant in `pkg/dang/env.go` if it's a distinct kind.
-6. Formatter case in `pkg/dang/format.go`, writing names with `f.ident` /
+5. `typeDecl` methods (`itemDecl`, `newItem`) for its item, with `Eval`
+   calling `bindTypeItem`.
+6. `ModuleKind` constant in `pkg/dang/env.go` if it's a distinct kind.
+7. Formatter case in `pkg/dang/format.go`, writing names with `f.ident` /
    `f.fieldName`, never raw.
-7. Editor syntaxes — see the `editor-syntaxes` skill for the three files
+8. Editor syntaxes — see the `editor-syntaxes` skill for the three files
    that need keyword updates, and the `language-versions` skill's "adding a
    keyword" checklist for the grammar side.
 

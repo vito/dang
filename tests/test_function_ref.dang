@@ -32,19 +32,19 @@ assert {
 
 # Selecting a function through a receiver can also be captured without auto-call.
 assert {
-  let dynamicValue = 3
-
   type DynamicMethodRefBox {
+    value: Int!
+
     currentValue: Int! {
-      dynamicValue
+      value
     }
   }
 
-  let foo = DynamicMethodRefBox
+  let foo = DynamicMethodRefBox(value: 3)
   let fooGetter = &foo.currentValue
-  let first = fooGetter
-  dynamicValue += 1
-  first == 3 and fooGetter == 4
+  let storedGetter: Int! { 0 }
+  storedGetter = &foo.currentValue
+  fooGetter == 3 and storedGetter == 3
 }
 
 print("Function ref tests passed!")

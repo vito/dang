@@ -113,12 +113,10 @@ func TestFreshVarsAcrossFreshers(t *testing.T) {
 		parsed, err := ParseWithRecovery("generic_call_test", []byte(src))
 		require.NoError(t, err)
 		forms := parsed.(*FileBlock).Forms
-		_, err = InferFormsWithPhases(ctx, forms, typeScope, hm.NewSimpleFresher())
+		_, err = InferTopLevel(ctx, forms, typeScope, hm.NewSimpleFresher())
 		require.NoError(t, err, src)
-		for _, node := range forms {
-			_, err := EvalNode(ctx, valueScope, node)
-			require.NoError(t, err)
-		}
+		_, err = EvalTopLevel(ctx, forms, valueScope, nil)
+		require.NoError(t, err)
 	}
 	require.Equal(t, "0\n1\n", out.String())
 }

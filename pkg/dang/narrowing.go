@@ -297,6 +297,13 @@ func readNarrowed(ctx context.Context, env hm.Env, name string, node Node, t hm.
 			return n.declared
 		}
 	}
+	// A type's code runs wherever its item is used, not where the type is
+	// declared — its statics as its module starts, its methods on values
+	// decoded anywhere — so a refinement made outside it doesn't hold there.
+	// (It may check the name again itself.)
+	if fr := typeCodeFrame(reader); fr != nil && fr.logStart >= n.pos {
+		return n.declared
+	}
 	// Record the read with every enclosing closure the refinement was made
 	// outside of.
 	for fr := reader; fr != nil; fr = fr.parent {

@@ -514,7 +514,7 @@ func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fre
 		return value, nil, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
-	subs, err := assignableForValue(env, it, dt, value)
+	subs, err := assignableForValue(it, dt, value)
 	if err != nil {
 		return value, it, nil, NewInferError(err, value)
 	}
@@ -852,6 +852,11 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		t = readNarrowed(ctx, env, s.Name, s, t)
 		t = hm.ResolveWeak(t)
 		noteTopRead(ctx, env, s.Name, s)
+		if err := checkTypeCapture(ctx, env, s.Name, s); err != nil {
+			if err := reportEffectError(ctx, err); err != nil {
+				return nil, err
+			}
+		}
 		if s.AutoCall {
 			var err error
 			var called bool
@@ -1280,7 +1285,14 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		// receiver — evaluating it would auto-construct an instance and miss the
 		// static entirely.
 		if d.staticOwner != nil {
-			statics := d.staticOwner.Statics()
+			statics := d.staticOwner.GoStatics()
+			if statics == nil {
+				item, err := typeItemFor(ctx, scope, d.staticOwner)
+				if err != nil {
+					return nil, err
+				}
+				statics = item.statics
+			}
 			if statics == nil {
 				return nil, fmt.Errorf("static %q of %s is unavailable", d.Field.Name, d.staticOwner.Named)
 			}
@@ -1358,7 +1370,8 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			case ScalarValue:
 				// Methods on custom scalar values (e.g. Path) dispatch through
 				// the builtin registry, keyed by the scalar's named type, then
-				// through the scalar's Dang-defined methods (scalar bodies).
+				// through the scalar's Dang-defined methods (scalar bodies),
+				// in its item.
 				if mod, ok := rec.ScalarType.(*Type); ok {
 					methodKey := GetMethodKey(mod, d.Field.Name)
 					if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
@@ -1368,12 +1381,18 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 						}
 					}
-					if methods := mod.ScalarMethods(); methods != nil {
-						if val, found, err := methods.Lookup(ctx, d.Field.Name); err != nil {
+					if canonicalModule(mod).declared {
+						item, err := typeItemFor(ctx, scope, mod)
+						if err != nil {
 							return nil, err
-						} else if found {
-							if fnVal, ok := val.(FunctionValue); ok {
-								return BoundScalarMethod{Method: fnVal, Receiver: rec}, nil
+						}
+						if item.methods != nil {
+							if val, found, err := item.methods.Lookup(ctx, d.Field.Name); err != nil {
+								return nil, err
+							} else if found {
+								if fnVal, ok := val.(FunctionValue); ok {
+									return BoundScalarMethod{Method: fnVal, Receiver: rec}, nil
+								}
 							}
 						}
 					}
@@ -2128,7 +2147,7 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      field.Loc,
-		}).Infer(outsideTypeBodies(ctx), rec, fresh)
+		}).Infer(receiverMember(outsideTypeBodies(ctx)), rec, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -3590,9 +3609,6 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil
-			if decodeErr := checkDecodeTarget(env, hintType); decodeErr != nil {
-				return nil, NewInferError(decodeErr, t.Expr)
-			}
 		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)

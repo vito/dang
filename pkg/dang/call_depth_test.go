@@ -24,19 +24,15 @@ func evalWithContext(t *testing.T, ctx context.Context, src string) (string, err
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	fresh := hm.NewSimpleFresher()
-	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, fresh)
+	_, err = InferTopLevel(ctx, file.Forms, typeScope, fresh)
 	require.NoError(t, err, "infer")
 
 	var out bytes.Buffer
 	ctx = WithEvalContext(ctx, NewEvalContext("call_depth_test", src))
 	ctx = ioctx.StdoutToContext(ctx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
-	for _, node := range file.Forms {
-		if _, err := EvalNode(ctx, valueScope, node); err != nil {
-			return out.String(), err
-		}
-	}
-	return out.String(), nil
+	_, err = EvalTopLevel(ctx, file.Forms, valueScope, nil)
+	return out.String(), err
 }
 
 func requireStackOverflow(t *testing.T, err error, maxDepth int) {

@@ -78,17 +78,15 @@ func evalExample(src string) error {
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	fresh := hm.NewSimpleFresher()
-	if _, err := InferFormsWithPhases(context.Background(), file.Forms, typeScope, fresh); err != nil {
+	if _, err := InferTopLevel(context.Background(), file.Forms, typeScope, fresh); err != nil {
 		return fmt.Errorf("type: %w", err)
 	}
 
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(context.Background(), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
-	for _, node := range file.Forms {
-		if _, err := EvalNode(ctx, valueScope, node); err != nil {
-			return fmt.Errorf("eval: %w", err)
-		}
+	if _, err := EvalTopLevel(ctx, file.Forms, valueScope, nil); err != nil {
+		return fmt.Errorf("eval: %w", err)
 	}
 	return nil
 }

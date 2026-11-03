@@ -30,3 +30,36 @@ parseExplicit(data: String!): String! {
 }
 
 assert { parseExplicit("{\"input\":\"hello\"}") == "hello!" }
+
+# A type declared in a block, function or type body captures nothing, so it
+# decodes anywhere its values reach, outside its declaring scope too.
+let made = if (true) {
+  type Local {
+    value: String!
+  }
+  Local(value: "built")
+} else {
+  null
+}
+made = JSON.decode("{\"value\": \"from a block\"}")
+assert { made!.value == "from a block" }
+
+type Outer {
+  type Inner {
+    value: String!
+  }
+
+  make: Inner! { Inner(value: "built") }
+}
+
+let inner = Outer.make
+inner = JSON.decode("{\"value\": \"from a type body\"}")
+assert { inner.value == "from a type body" }
+
+# Decoding a type builds its fields, of whatever type.
+type Holder {
+  pub inner = Outer.make
+}
+
+let held: Holder! = JSON.decode("{\"inner\": {\"value\": \"held\"}}")
+assert { held.inner.value == "held" }

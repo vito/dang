@@ -31,43 +31,29 @@ shadowed(data: String!): String! {
 
 assert { shadowed("{\"value\": \"hi\"}") == "HI" }
 
-# A type declared in a function body still uses that call's constructor.
-localDefault(suffix: String!, data: String!): String! {
-  type Tagged {
-    value: String!
-    tag: String! = suffix
-  }
-  let decoded: Tagged! = JSON.decode(data)
-  decoded.value + decoded.tag
-}
-
-assert { localDefault("!", "{\"value\": \"a\"}") == "a!" }
-assert { localDefault("?", "{\"value\": \"b\"}") == "b?" }
-
+# A type declared in a function body decodes with its own constructor, even in
+# a nested function where its name is shadowed.
 type Shadow {
   value: String!
 }
 
-# Each call decodes with its own constructor, even through a shadowed name
-# and after a nested call declared the same type again.
-tagAround(suffix: String!, inner: String, data: String!): String! {
+localDefault(data: String!): String! {
   type Tagged {
     value: String!
-    tag: String! = suffix
+    tag: String! = "!"
   }
-  let innerResult = if (inner != null) { tagAround(inner!, null, data) } else { "" }
   decodeHere(json: String!): String! {
     let Tagged = &Shadow
     let decoded: Tagged! = JSON.decode(json)
     decoded.value + decoded.tag
   }
-  innerResult + decodeHere(data)
+  decodeHere(data)
 }
 
-assert { tagAround("!", "?", "{\"value\": \"a\"}") == "a?a!" }
+assert { localDefault("{\"value\": \"a\"}") == "a!" }
 
 # A type declared in another type's body decodes in that type's new() and
-# methods, with the enclosing instance's constructor.
+# methods.
 type Outer {
   label: String!
 
@@ -91,12 +77,12 @@ let outer = Outer("{\"value\": \"made\"}")
 assert { outer.label == "made" }
 assert { outer.relabel("{\"value\": \"again\"}") == "again" }
 
-# A field every codec ignores is never decoded, so its type need not be
-# decodable here, though it is declared in another type's body.
+# A field every codec ignores is never decoded: it keeps its default.
 type Maker {
   type Made {
     value: String!
   }
+
   make: Made! { Made(value: "made") }
 }
 

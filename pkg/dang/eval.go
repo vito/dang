@@ -85,13 +85,6 @@ type ValueScope interface {
 	// Derive returns a fresh child scope. Local bindings shadow this scope.
 	// If sealed, Update stays in the child rather than walking into parents.
 	Derive(sealed bool) ValueScope
-	// BindConstructor records c as the constructor of t's values in this
-	// scope. Constructors are keyed by type identity, not name, so a binding
-	// shadowing the type's name never hides them; decoding into a type finds
-	// them with LookupConstructor (see constructorFor).
-	BindConstructor(t *Type, c Callable)
-	// LookupConstructor resolves t's constructor through the scope chain.
-	LookupConstructor(t *Type) (Callable, bool)
 	// Dynamic scope support for 'self'.
 	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -140,6 +133,12 @@ type ScalarConstructor struct {
 	ScalarType *Type
 	FnType     *hm.FunctionType
 	ArgName    string
+
+	// hook is a Dang scalar's new() hook, from its item: the constructor
+	// carries it, as an object type's constructor carries its closure, so
+	// it works wherever it is called from (a callback stored in another
+	// module's object, say). Nil for a builtin's Go-native hook.
+	hook *FunctionValue
 }
 
 func (c ScalarConstructor) Type() hm.Type        { return c.FnType }
@@ -155,8 +154,10 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 	if !ok {
 		return nil, fmt.Errorf("%s: argument %q must be String!, got %T", c.ScalarType.Named, c.ArgName, args[c.ArgName])
 	}
-	// The hook lives on the type (set before this constructor was built), so
-	// this handles both Dang new() and Go-native hooks uniformly.
+	if c.hook != nil {
+		return runScalarHook(ctx, scope, c.ScalarType, *c.hook, raw.Val)
+	}
+	// A builtin's hook is Go-native, on the type.
 	v, hooked, err := applyScalarHook(ctx, scope, c.ScalarType, raw.Val)
 	if err != nil {
 		return nil, err
@@ -170,7 +171,8 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 // applyScalarHook materializes raw into scalarType through its new() hook —
 // Go-native or Dang-defined — wrapping the canonical string into a
 // ScalarValue. ok is false when the scalar has no hook and the caller should
-// wrap raw unchanged.
+// wrap raw unchanged. A Dang scalar's hook is in its item (typeItemFor),
+// found from scope.
 func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, raw string) (v Value, ok bool, err error) {
 	if hook := scalarType.GoScalarHook(); hook != nil {
 		canonical, err := hook(raw)
@@ -179,18 +181,25 @@ func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, ra
 		}
 		return ScalarValue{Val: canonical, ScalarType: scalarType}, true, nil
 	}
-	if hook, argName, ok := scalarType.ScalarHook(); ok {
-		v, err := runScalarHook(ctx, scope, scalarType, hook, argName, raw)
-		return v, true, err
+	if !canonicalModule(scalarType).declared {
+		return nil, false, nil
 	}
-	return nil, false, nil
+	item, err := typeItemFor(ctx, scope, scalarType)
+	if err != nil {
+		return nil, true, err
+	}
+	if item.hook == nil {
+		return nil, false, nil
+	}
+	v, err = runScalarHook(ctx, scope, scalarType, *item.hook, raw)
+	return v, true, err
 }
 
 // runScalarHook runs a scalar's new() hook on raw and wraps the resulting
 // canonical string into a ScalarValue. Shared by the derived constructor and
 // materialization (literals, casts, decode).
-func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, hook FunctionValue, argName, raw string) (Value, error) {
-	result, err := hook.Call(ctx, scope, map[string]Value{argName: StringValue{Val: raw}})
+func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, hook FunctionValue, raw string) (Value, error) {
+	result, err := hook.Call(ctx, scope, map[string]Value{hook.Args[0]: StringValue{Val: raw}})
 	if err != nil {
 		return nil, err
 	}
@@ -503,8 +512,8 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	for _, kv := range preludeBindings {
 		builtinsFrame.Bind(kv.Key, kv.Value, PublicVisibility)
 	}
-	for t, c := range preludeConstructors {
-		builtinsFrame.BindConstructor(t, c)
+	for t, item := range preludeItems {
+		builtinsFrame.bindItem(t, item)
 	}
 
 	return builtinsFrame.Derive(false)
@@ -2375,11 +2384,12 @@ type Object struct {
 	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 
-	// constructors holds the constructors of the types declared in this
-	// frame, keyed by canonical type; nil until one is bound. Guarded by mu.
-	// Imported types are not bound here: constructorFor finds them in their
-	// home module's scope. See BindConstructor.
-	constructors map[*Type]Callable
+	// items holds, on a module's root frame (see moduleFrame), the runtime
+	// state of the types the module declares at any depth, keyed by
+	// canonical type; nil until one is bound. Guarded by mu. Imported types
+	// are not bound here: typeItemFor finds them in their home module's
+	// root. See typeItem.
+	items map[*Type]*typeItem
 
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
 	// Its effective parent is not Parent but the current value of its `self`
@@ -2640,6 +2650,9 @@ func (m *Object) lookupValueFrom(name string, cell *DynamicScope) (Value, bool) 
 func (m *Object) Bind(name string, value Value, visibility Visibility) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Publishing a replacement must also discard a failed or never-forced
+	// initializer left by an earlier, incomplete session entry.
+	delete(m.Pending, name)
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
 }
@@ -2648,29 +2661,57 @@ func (m *Object) Visibility(name string) Visibility {
 	return m.visibilityFrom(name, m.dynamicScope)
 }
 
-func (m *Object) BindConstructor(t *Type, c Callable) {
+// bindItem enters item as t's in m, a module's root frame (moduleFrame):
+// items are keyed by type identity, not name, so a binding shadowing the
+// type's name never hides them, and one table per module evaluation serves
+// every type the module declares, however deeply nested (see typeItem).
+func (m *Object) bindItem(t *Type, item *typeItem) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.constructors == nil {
-		m.constructors = make(map[*Type]Callable)
+	if m.items == nil {
+		m.items = make(map[*Type]*typeItem)
 	}
-	m.constructors[canonicalModule(t)] = c
+	m.items[canonicalModule(t)] = item
 }
 
-func (m *Object) LookupConstructor(t *Type) (Callable, bool) {
+// lookupItem resolves t's item in m, a module's root frame, or the builtins
+// frame beneath it (the prelude's types).
+func (m *Object) lookupItem(t *Type) (*typeItem, bool) {
 	t = canonicalModule(t)
-	cell := m.dynamicScope
-	for o := m; o != nil; {
+	for o := m; o != nil; o = o.Parent {
 		o.mu.Lock()
-		c, ok := o.constructors[t]
-		parent, _ := o.nextFrame(cell)
+		item, ok := o.items[t]
 		o.mu.Unlock()
 		if ok {
-			return c, true
+			return item, true
 		}
-		o = parent
 	}
 	return nil, false
+}
+
+// moduleFrame returns the root frame of the module evaluation scope belongs
+// to: the frame its top-level declarations are bound in, just above the
+// builtins. It follows each scope's lexical chain (an overlay's lexical side,
+// a constructor body's closure), never `self`, whose instance frames are not
+// part of it.
+func moduleFrame(scope ValueScope) *Object {
+	for {
+		switch s := scope.(type) {
+		case OverlayValueScope:
+			scope = s.lexical
+		case recordFieldScope:
+			scope = s.lexical
+		case *ConstructorScope:
+			scope = s.closure
+		case *Object:
+			for s.ownParent() {
+				s = s.Parent
+			}
+			return s
+		default:
+			panic(fmt.Sprintf("moduleFrame: unexpected scope %T", scope))
+		}
+	}
 }
 
 func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
@@ -2794,12 +2835,6 @@ func (m *Object) snapshotReceiver() *Object {
 		}
 		for name, vis := range f.Visibilities {
 			snap.Visibilities[name] = vis
-		}
-		for t, c := range f.constructors {
-			if snap.constructors == nil {
-				snap.constructors = make(map[*Type]Callable)
-			}
-			snap.constructors[t] = c
 		}
 		f.mu.Unlock()
 	}
@@ -2950,7 +2985,7 @@ func (m *Object) cowCopy() *Object {
 		Parent:       m.Parent,
 		IsForked:     m.IsForked,
 		dynamicScope: m.dynamicScope,
-		constructors: maps.Clone(m.constructors),
+		items:        maps.Clone(m.items),
 	}
 	m.mu.Unlock()
 	if next.Values == nil {
@@ -3927,6 +3962,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 // bodies that reference imported symbols continue to resolve.
 func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope ValueScope) error {
 	type fileEvalScope struct {
+		forms      []Node
 		classified ClassifiedForms
 		scope      ValueScope
 	}
@@ -3947,14 +3983,16 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 
 		composite := CreateOverlayValueScope(valueScope, importsScope)
 		fileScopes = append(fileScopes, fileEvalScope{
+			forms:      rest,
 			classified: classifyForms(rest),
 			scope:      composite,
 		})
 	}
 
 	// Phase order matches EvaluateFormsWithPhases (minus imports, which we
-	// already ran per file above): directives, constants, types, functions,
-	// variables (as lazy fields), then non-declarations.
+	// already ran per file above): directives, constants, types (their
+	// items), functions, variables (as lazy fields, forced after the types'
+	// statics), then non-declarations.
 	for _, fs := range fileScopes {
 		for _, form := range fs.classified.Directives {
 			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
@@ -3969,12 +4007,13 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 			}
 		}
 	}
+	var items []*typeItem
 	for _, fs := range fileScopes {
-		for _, form := range fs.classified.Types {
-			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
-				return fmt.Errorf("type evaluation failed: %w", err)
-			}
+		fileItems, err := evalTypeItems(ctx, fs.forms, fs.scope)
+		if err != nil {
+			return fmt.Errorf("type evaluation failed: %w", err)
 		}
+		items = append(items, fileItems...)
 	}
 	for _, fs := range fileScopes {
 		for _, form := range fs.classified.Functions {
@@ -3998,6 +4037,9 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 				return EvalNode(ctx, scope, field.Value)
 			}, field.Visibility)
 		}
+	}
+	if err := forceStatics(ctx, items); err != nil {
+		return fmt.Errorf("variable evaluation failed: %w", err)
 	}
 	for _, fs := range fileScopes {
 		for _, form := range fs.classified.Variables {

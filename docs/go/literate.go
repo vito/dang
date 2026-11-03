@@ -272,10 +272,8 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 	ctx := ioctx.StdoutToContext(base, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	for _, node := range forms {
-		if _, err := dang.EvalNode(ctx, valueScope, node); err != nil {
-			return strings.TrimRight(out.String(), "\n"), "eval", err
-		}
+	if _, err := dang.EvalTopLevel(ctx, forms, valueScope, nil); err != nil {
+		return strings.TrimRight(out.String(), "\n"), "eval", err
 	}
 	return strings.TrimRight(out.String(), "\n"), "", nil
 }
@@ -333,19 +331,13 @@ func literateEvalCtx(base context.Context, source string, sess *literateSession)
 	ctx := ioctx.StdoutToContext(base, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	var last dang.Node
-	var lastVal dang.Value
-	for _, node := range forms {
-		val, err := dang.EvalNode(ctx, sess.valueScope, node)
-		if err != nil {
-			return "", "", err
-		}
-		last = node
-		lastVal = val
+	lastVal, err := dang.EvalTopLevel(ctx, forms, sess.valueScope, nil)
+	if err != nil {
+		return strings.TrimRight(out.String(), "\n"), "", err
 	}
 
 	value := ""
-	if lastVal != nil && (last == nil || len(last.DeclaredSymbols()) == 0) {
+	if lastVal != nil && len(forms[len(forms)-1].DeclaredSymbols()) == 0 {
 		value = dang.Repr(lastVal)
 	}
 	return strings.TrimRight(out.String(), "\n"), value, nil

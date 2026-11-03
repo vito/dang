@@ -51,9 +51,9 @@ func newDecodeBench(tb testing.TB, entries int) *decodeBench {
 
 	ctx := context.Background()
 	typeScope, valueScope := BuildScopesFromImports("", nil)
-	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
+	_, err = InferTopLevel(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(tb, err, "infer")
-	_, err = EvaluateFormsWithPhases(WithEvalContext(ctx, NewEvalContext("decode_bench", src)), file.Forms, valueScope)
+	_, err = evaluateForms(WithEvalContext(ctx, NewEvalContext("decode_bench", src)), file.Forms, valueScope, evalModule)
 	require.NoError(tb, err, "eval")
 
 	// The SDK decodes under the engine's request context, which carries no

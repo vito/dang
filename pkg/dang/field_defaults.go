@@ -163,10 +163,9 @@ func unavailableInDefaults(forms []Node, explicitNew bool) map[string]memberKind
 }
 
 // checkDefaultName rejects name, resolved in env, when it is a member of a
-// type whose body is being inferred that its field defaults can't use. That
-// includes code in a type declared in such a body, methods and all: they are
-// created while the enclosing object is being built, and would keep using
-// it.
+// type whose body is being inferred that its field defaults can't use. Code
+// of a type declared in such a body can't use any of its members: that is
+// checkTypeCapture's to report.
 func checkDefaultName(ctx context.Context, env hm.Env, name string) error {
 	for tb := typeBodyFrom(ctx); tb != nil; tb = tb.outer {
 		kind, ok := tb.unavailable[name]
@@ -175,15 +174,7 @@ func checkDefaultName(ctx context.Context, env hm.Env, name string) error {
 		}
 		owner := tb.object.Named
 		if inner, ok := selfTypeFrame(env).(*Type); ok && inner != tb.object {
-			what := fmt.Sprintf("a method of %s", owner)
-			switch kind {
-			case computedMember:
-				what = fmt.Sprintf("a computed field of %s", owner)
-			case newOnlyMember:
-				what = fmt.Sprintf("a field only %s's new() sets", owner)
-			}
-			return fmt.Errorf("`%s` is declared in %s's body, so it can't use `%s`, %s: %s is still being built when %s is created; declare %s outside %s and pass it what it needs",
-				inner.Named, owner, name, what, owner, inner.Named, inner.Named, owner)
+			return nil
 		}
 		switch kind {
 		case methodMember:
@@ -212,9 +203,10 @@ func checkDefaultSelf(ctx context.Context, env hm.Env) error {
 }
 
 // checkDefaultWrite rejects an assignment (target) to a field of a type
-// whose body is being inferred, outside its methods: directly in the body,
-// in a default's block, or in a type declared there. Locals declared there
-// can still be written; methods, computed fields and new() leave the body.
+// whose body is being inferred, outside its methods: directly in the body or
+// in a default's block (a type declared there can't reach the field at all:
+// see checkTypeCapture). Locals declared there can still be written; methods,
+// computed fields and new() leave the body.
 func checkDefaultWrite(ctx context.Context, env hm.Env, target Node) error {
 	name, isSelf, first, ok := assignmentRoot(target)
 	if !ok {
@@ -235,13 +227,11 @@ func checkDefaultWrite(ctx context.Context, env hm.Env, target Node) error {
 		if resolveBinding(env, name) != TypeScope(tb.object) {
 			continue
 		}
-		owner := tb.object.Named
 		if tb.statics {
 			return fmt.Errorf("statics can't be reassigned in their `self { }` block: they are initialized once, from their defaults; give `%s` a different default", name)
 		}
 		if inner, ok := selfTypeFrame(env).(*Type); ok && inner != tb.object {
-			return fmt.Errorf("`%s` is declared in %s's body, so it can't reassign `%s`, a field of %s: %s is still being built when %s is created; declare %s outside %s and pass it what it needs",
-				inner.Named, owner, name, owner, owner, inner.Named, inner.Named, owner)
+			return nil
 		}
 		if tb.params {
 			return fmt.Errorf("new()'s parameter defaults can't reassign `%s`: they only read the fields' values; set it in new()'s body", name)

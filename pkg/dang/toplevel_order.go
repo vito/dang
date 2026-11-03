@@ -32,10 +32,10 @@ import (
 //
 // Both are syntactic. W lives on the effect solver, so it spans every file of
 // a directory module, and, since each REPL, literate-doc or playground entry
-// is inferred with a solver of its own, one entry. Those sessions evaluate
-// each entry's forms eagerly, in source order, so neither hazard arises
-// there; the rules still apply, so what a session accepts, a script accepts
-// too.
+// is inferred with a solver of its own, one entry. EvalTopLevel initializes
+// declarations before statements too. Rebindings, shadowing and repeated names
+// are its explicit eager-initialization exception, preserving prior-binding
+// reads and source order; the same safety rules apply throughout.
 
 // topForm is the top-level form being inferred: a declaration's initializer
 // (decl is its name) or a statement (decl == ""), of the module whose
@@ -177,11 +177,13 @@ func noteStatementWrite(ctx context.Context, target effTarget, node Node) {
 
 // noteTopRead records a read (at node) of name, resolved in env, from code
 // that isn't statement code: a declaration's initializer, or the body of a
-// function, method, constructor or type (field defaults, statics).
+// function, method, constructor or type (field defaults, statics). A type
+// declared in a statement is no statement code either: its item is made, and
+// its statics run, before any statement (see typeItem).
 func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 	o := topOrderFrom(ctx)
 	f := topFormFrom(ctx)
-	if o == nil || (f != nil && f.decl == "") || isWriteRoot(ctx, node) {
+	if o == nil || (f != nil && f.decl == "" && typeCodeFrame(effFrameFrom(ctx)) == nil) || isWriteRoot(ctx, node) {
 		return
 	}
 	frame := resolveBinding(env, name)
@@ -189,7 +191,7 @@ func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 		return
 	}
 	r := outsideRead{target: effTarget{frame: frame, name: name}, node: node}
-	if f != nil && !inFunctionBody(ctx) {
+	if f != nil && f.decl != "" && !inFunctionBody(ctx) {
 		r.reader, r.kind = f.decl, readerDecl
 	} else {
 		r.reader, r.kind = "this code", readerFunction
@@ -238,7 +240,7 @@ func outsideReadMessage(r outsideRead, write Node) string {
 			r.reader, name, at, name)
 	case readerType:
 		return fmt.Sprintf(
-			"the body of `%s` reads `%s`, which a top-level statement writes (%s), but field defaults may run while top-level declarations are initialized, before any statement, so they could see the value from before the write; pass `%s` in as an argument instead",
+			"the body of `%s` reads `%s`, which a top-level statement writes (%s), but a type's field defaults may run while top-level declarations are initialized, and its statics run then, before any statement, so they could see the value from before the write; pass `%s` in as an argument instead",
 			r.reader, name, at, name)
 	default:
 		return fmt.Sprintf(

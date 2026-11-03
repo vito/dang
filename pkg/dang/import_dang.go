@@ -169,7 +169,7 @@ type evaluatingModuleKey struct{}
 
 // withEvaluatingModule marks ctx as running m's top-level code (valueScope).
 // A decode there into one of m's own types must not ask m for its value scope,
-// which is the one being built: see evaluatingModule and constructorFor.
+// which is the one being built: see evaluatingModule and typeItemFor.
 func withEvaluatingModule(ctx context.Context, m *dangModule) context.Context {
 	return context.WithValue(ctx, evaluatingModuleKey{}, m)
 }

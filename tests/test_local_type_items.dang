@@ -1,0 +1,191 @@
+# A type declared in a block, function or type body is a top-level type whose
+# name is visible in a smaller area: one item per module evaluation, made
+# before any code runs.
+
+# Decoding builds a type whose declaration never ran, with its code using a
+# sibling scalar's hook and methods, and its own statics.
+let held = if (false) {
+  scalar Tag {
+    new(raw: String!) { raw.toUpper }
+
+    shout: String! { toString(self) + "!" }
+  }
+
+  type Probe {
+    name: String!
+    tag: Tag!
+
+    describe: String! { name + " " + tag.shout + " " + Probe.prefix }
+
+    self {
+      prefix: String! = "p" + Tag("x").shout
+    }
+  }
+
+  Probe(name: "built", tag: "a")
+} else {
+  null
+}
+
+held = JSON.decode("{\"name\": \"decoded\", \"tag\": \"hi\"}")
+assert { held!.describe == "decoded HI! pX!" }
+
+# Likewise for a type declared in another type's body, using its siblings: an
+# enum, a scalar, an interface, and its own statics.
+type Outer {
+  enum Mood {
+    HAPPY
+    SAD
+  }
+
+  scalar Label {
+    new(raw: String!) { raw.toLower }
+
+    quoted: String! { "'" + toString(self) + "'" }
+  }
+
+  interface Named {
+    name: String!
+  }
+
+  type Inner implements Named {
+    name: String!
+    mood: Mood!
+    label: Label!
+
+    describe(other: Named!): String! {
+      name + "/" + other.name + " " + toString(mood) + " " + label.quoted + " " + Inner.suffix
+    }
+
+    self {
+      suffix: String! = toString(Mood.HAPPY) + Label("X").quoted
+    }
+  }
+
+  make: Inner! { Inner(name: "built", mood: Mood.HAPPY, label: Label("b")) }
+}
+
+type Holder {
+  pub inner = Outer.make
+}
+
+let decoded: Holder! = JSON.decode("{\"inner\": {\"name\": \"n\", \"mood\": \"SAD\", \"label\": \"HI\"}}")
+assert { decoded.inner.describe(decoded.inner) == "n/n SAD 'hi' HAPPY'x'" }
+
+# A name a block declares after a type doesn't change what the type's code
+# means: `x` is the top-level one, as it was when checked.
+let x = 10
+
+shadowed: Int! {
+  type Reader {
+    read: Int! { x }
+  }
+
+  let x = 20
+  Reader.read + x
+}
+
+assert { shadowed == 30 }
+
+# Each run of a declaration binds the same item, so a recursive call
+# redeclaring a type leaves the outer call's statics and scalar methods alone.
+depth(n: Int!): String! {
+  scalar Tag {
+    shout: String! { toString(self) + "!" }
+
+    self {
+      prefix: String! = "<"
+    }
+  }
+
+  type Level {
+    self {
+      name: String! = "level"
+    }
+  }
+
+  let tag = "t" :: Tag!
+  let inner = if (n > 0) { depth(n - 1) } else { "" }
+  Tag.prefix + tag.shout + Level.name + inner
+}
+
+assert { depth(2) == "<t!level<t!level<t!level" }
+
+# Statics may use top-level functions and variables, and other types'
+# statics, in any order.
+helper(n: Int!): Int! { n + 1 }
+
+let base: Int! = helper(1)
+
+type First {
+  self {
+    total: Int! = Second.start + base + helper(0)
+  }
+}
+
+type Second {
+  self {
+    start: Int! = 100
+  }
+}
+
+assert { First.total == 103 }
+
+# A type declared in a self { } block, used by its statics.
+type WithStaticType {
+  self {
+    type Unit {
+      v: Int! = 1
+    }
+
+    k: Int! = Unit.v + 1
+  }
+}
+
+scalar Code {
+  self {
+    type Part {
+      p: String! = "c"
+    }
+
+    prefix: String! = Part.p
+  }
+}
+
+assert { WithStaticType.k == 2 }
+assert { Code.prefix == "c" }
+
+# A self { } block's statements run with its computed fields, when top-level
+# functions are bound.
+unreached: Int! {
+  type Checked {
+    self {
+      assert { helper(1) == 2 }
+    }
+  }
+
+  1
+}
+
+# Several self { } blocks are one set of statics.
+type Split {
+  z: Int! = 0
+
+  self {
+    type A {
+      get: Int! { B.v }
+    }
+  }
+
+  self {
+    type B {
+      v: Int! = 7
+    }
+
+    k: Int! = A.get
+  }
+}
+
+assert { Split.k == 7 }
+
+print("Local type item tests passed!")

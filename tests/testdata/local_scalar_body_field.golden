@@ -1,0 +1,11 @@
+[1m[31mError:[0m scalar member "x" must be a method; scalars carry no fields beyond their underlying string
+  [2m[34m--> errors/local_scalar_body_field.dang:7:5[0m
+ [2m    |[0m
+ [2m  5 | never: Int! {[0m
+ [2m  6 |   scalar Tag {[0m
+ [2m[34m[1m  7 | [0m    x: Int! = helper(1)
+[2m           [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 |   }[0m
+ [2m  9 | [0m
+ [2m    |[0m
+

@@ -58,14 +58,12 @@ func prepareRecursion(t testing.TB, src string, depth int) (ValueScope, Node) {
 	require.True(t, ok, "unexpected parse result %T", parsed)
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
-	_, err = InferFormsWithPhases(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher())
+	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(t, err, "infer")
 
 	forms := file.Forms
-	for _, node := range forms[:len(forms)-1] {
-		_, err := EvalNode(context.Background(), valueScope, node)
-		require.NoError(t, err, "setup")
-	}
+	_, err = EvalTopLevel(context.Background(), forms[:len(forms)-1], valueScope, nil)
+	require.NoError(t, err, "setup")
 	return valueScope, forms[len(forms)-1]
 }
 

@@ -28,9 +28,10 @@ var (
 	// functions and the like), bound builtin-style into every fresh value
 	// scope by NewValueScope.
 	preludeBindings []Keyed[Value]
-	// preludeConstructors are the constructors of the prelude's types, bound
-	// into every fresh value scope alongside preludeBindings.
-	preludeConstructors map[*Type]Callable
+	// preludeItems are the runtime state of the prelude's types (see
+	// typeItem), bound into every fresh value scope alongside
+	// preludeBindings.
+	preludeItems map[*Type]*typeItem
 )
 
 // PreludeModule returns the module holding the Dang-source prelude's
@@ -91,10 +92,10 @@ func preludeSource(filename string) (string, bool) {
 }
 
 // loadPrelude evaluates the embedded Dang-source prelude once. Everything it
-// produces — the layered type scope, the value bindings, and any state hung
-// off the declared *Types (scalar methods, new() hooks) — is frozen after
-// this returns and shared process-wide, under the same never-mutate
-// discipline as Prelude itself.
+// produces — the layered type scope, the value bindings, and its types'
+// items (scalar methods, new() hooks, statics) — is frozen after this
+// returns and shared process-wide, under the same never-mutate discipline as
+// Prelude itself.
 //
 // Failures panic: the prelude is a build artifact, so a broken prelude is a
 // broken interpreter, not a user error.
@@ -155,7 +156,7 @@ func loadPrelude() {
 			}
 			preludeBindings = append(preludeBindings, Keyed[Value]{Key: name, Value: val})
 		}
-		preludeConstructors = maps.Clone(scope.constructors)
+		preludeItems = maps.Clone(scope.items)
 
 		preludeModule = mod
 		preludeChain = chain
