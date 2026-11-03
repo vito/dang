@@ -58,7 +58,7 @@ func prepareRecursion(t testing.TB, src string, depth int) (ValueScope, Node) {
 	require.True(t, ok, "unexpected parse result %T", parsed)
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
-	_, err = InferFormsWithPhases(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher())
+	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(t, err, "infer")
 
 	forms := file.Forms

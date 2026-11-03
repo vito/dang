@@ -401,6 +401,26 @@ func TestStatementStateInImportedModule(t *testing.T) {
 	}
 }
 
+// Inferred without a top-level frame, nothing checks that a local type's code
+// captures nothing, so its item can't be trusted to mean what the code says:
+// making it fails rather than resolve a captured name elsewhere.
+func TestUncheckedLocalTypeHasNoItem(t *testing.T) {
+	parsed, err := ParseWithRecovery("unchecked", []byte(`
+		let n = 100
+		f(n: Int!): Int! {
+			type T { pub get: Int! = n }
+			T.get
+		}
+	`))
+	require.NoError(t, err)
+	forms := parsed.(*FileBlock).Forms
+	typeScope, valueScope := BuildScopesFromImports("", nil)
+	_, err = InferFormsWithPhases(context.Background(), forms, typeScope, hm.NewSimpleFresher())
+	require.NoError(t, err)
+	err = EvalTypeItems(context.Background(), forms, valueScope)
+	require.ErrorContains(t, err, "type T was inferred without a top-level frame")
+}
+
 // A type declared in a function, block or type body captures nothing: its
 // methods, constructor, field defaults and statics may use its own members,
 // the top level and other types, but no binding of the scope around it.
@@ -521,7 +541,7 @@ func TestLocalTypesCaptureNothing(t *testing.T) {
 					}
 				}
 			`,
-			want: "return type mismatch: declared String!, inferred String",
+			want: "`name` is checked for null outside T, but a type's code runs wherever its values go",
 		},
 		{
 			// The type's item scope binds only the types declared before

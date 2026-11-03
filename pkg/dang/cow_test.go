@@ -97,7 +97,7 @@ func TestCopyOnWriteKeepsChainsShallow(t *testing.T) {
 	}
 	file := parsed.(*FileBlock)
 	typeScope, valueScope := BuildScopesFromImports("", nil)
-	if _, err := InferFormsWithPhases(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher()); err != nil {
+	if _, err := InferTopLevel(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher()); err != nil {
 		t.Fatalf("infer: %v", err)
 	}
 	var out bytes.Buffer

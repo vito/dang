@@ -1,0 +1,11 @@
+# A scalar declared in a block is checked like a top-level one: its body may
+# only declare methods, new() and a self { } block.
+helper(n: Int!): Int! { n + 1 }
+
+never: Int! {
+  scalar Tag {
+    x: Int! = helper(1)
+  }
+
+  1
+}

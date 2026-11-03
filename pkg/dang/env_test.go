@@ -385,12 +385,21 @@ type Test {
 	require.Same(t, StringType, functionReturnType(t, print))
 }
 
-// DeclareDir declares only the top level, so it makes only the top-level
-// types' items: the code of types nested in their bodies, never inferred, is
-// not evaluated (a scalar's methods, a type's static methods).
+// DeclareDir declares only the top level: the code of types nested in their
+// bodies is never inferred, so such a type gets an item only when it needs
+// none of that code (a nested object type or enum, not a scalar's methods or
+// a static method). Loading never fails on them, and a top-level constructor
+// works when its nested types have items.
 func TestDeclareDirSkipsNestedTypes(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+	declare := func(src string) ValueScope {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(src), 0o600))
+		env, err := DeclareDir(context.Background(), dir, false)
+		require.NoError(t, err)
+		return env
+	}
+
+	declare(`
 type Outer {
   pub v: Int! = 1
 
@@ -408,13 +417,29 @@ type Outer {
     k: Int! = 2
   }
 }
-`), 0o600))
+`)
 
-	env, err := DeclareDir(context.Background(), dir, false)
-	require.NoError(t, err)
+	env := declare(`
+type Outer {
+  pub v: Int! = 1
+
+  enum Mood {
+    HAPPY
+    SAD
+  }
+
+  type Plain {
+    pub w: Int! = 2
+  }
+}
+`)
 	outer, found := requireEvalGet(t, env, "Outer")
 	require.True(t, found)
-	require.IsType(t, &ConstructorFunction{}, outer)
+	ctor, ok := outer.(*ConstructorFunction)
+	require.True(t, ok)
+	built, err := ctor.Call(context.Background(), env, map[string]Value{})
+	require.NoError(t, err)
+	require.IsType(t, &Object{}, built)
 }
 
 func TestDeclareDirResolvesPositionalDirectiveArgs(t *testing.T) {

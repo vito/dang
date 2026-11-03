@@ -25,7 +25,7 @@ func evalForError(t *testing.T, src string) error {
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	fresh := hm.NewSimpleFresher()
-	_, err = InferFormsWithPhases(context.Background(), file.Forms, typeScope, fresh)
+	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, fresh)
 	require.NoError(t, err, "infer")
 
 	var out bytes.Buffer

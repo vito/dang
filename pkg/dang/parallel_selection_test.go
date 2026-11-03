@@ -224,7 +224,7 @@ func runProgram(t *testing.T, typeScope TypeScope, valueScope ValueScope, src st
 	require.True(t, ok, "unexpected parse result %T", parsed)
 
 	fresh := hm.NewSimpleFresher()
-	_, err = InferFormsWithPhases(context.Background(), file.Forms, typeScope, fresh)
+	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, fresh)
 	require.NoError(t, err)
 
 	var result Value

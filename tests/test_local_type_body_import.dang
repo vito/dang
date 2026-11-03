@@ -1,0 +1,37 @@
+# A type nested in another type's body, or in its self { } block, may use the
+# names an import there brings in, even in a value decoded where the outer
+# type was never built.
+type Outer {
+  import Test
+
+  type Inner {
+    status: Status!
+
+    count: Int! { usersByStatus(status: status).{{name}}.length }
+  }
+
+  make: Inner! { Inner(status: Status.ACTIVE) }
+}
+
+type Holder {
+  pub inner = Outer.make
+}
+
+let held: Holder! = JSON.decode("{\"inner\": {\"status\": \"PENDING\"}}")
+assert { held.inner.count > 0 }
+
+type WithStatics {
+  self {
+    import Test
+
+    type Probe {
+      status: Status!
+
+      count: Int! { usersByStatus(status: status).{{name}}.length }
+    }
+
+    pending: Int! = Probe(status: Status.PENDING).count
+  }
+}
+
+assert { WithStatics.pending == held.inner.count }

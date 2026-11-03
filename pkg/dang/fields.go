@@ -576,6 +576,10 @@ type ObjectDecl struct {
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
 
+	// captureChecked records that Infer ran with a top-level frame in ctx, so
+	// checkTypeCapture covered the type's code (see makeItem).
+	captureChecked bool
+
 	ctorFn *FunctionBase
 }
 
@@ -1045,6 +1049,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// is a control-flow boundary: `return`/`break`/`continue` in a field
 	// default can't reach an enclosing function or loop.
 	ctx = withFunctionBody(contextWithInferFunctionControlBoundary(ctx))
+	c.captureChecked = topLevelFrameFrom(ctx) != nil
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
@@ -1529,7 +1534,7 @@ func bindTypeItem(scope ValueScope, d typeDecl) (Value, error) {
 	}
 	item, ok := moduleFrame(scope).lookupItem(t)
 	if !ok {
-		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or make its items with EvalTypeItems first", name)
+		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or make its items with EvalTypeItems first (DeclareDir makes none for a nested type whose code it never inferred)", name)
 	}
 	scope.Bind(name, item.value, vis)
 	return item.value, nil
@@ -1594,7 +1599,9 @@ func evalTypeItems(ctx context.Context, forms []Node, scope ValueScope) ([]*type
 }
 
 // evalTopTypeItems is evalTypeItems for DeclareDir, which declares only the
-// top level: the types below it, whose code was never inferred, get no item.
+// top level: it walks no function or method body, and the types nested in
+// type bodies, whose code it never inferred, get an item only when making
+// one needs none of that code (see makeItem).
 func evalTopTypeItems(ctx context.Context, forms []Node, scope ValueScope) error {
 	w := &itemWalker{root: moduleFrame(scope), topOnly: true}
 	w.forms(ctx, forms, scope, true, true)
@@ -1610,38 +1617,49 @@ type itemWalker struct {
 
 // forms makes the items of the types forms declare, in s (top) or in item
 // scopes over it, then walks into each form. Hoisted forms (a module's, a
-// type body's) see all of their types; a block's see each type only after
-// its declaration.
+// type body's, its self { } blocks') see all of their types and imports; a
+// block's see each only after its declaration. A module's own imports are
+// evaluated by the module; others, in an item scope, when a type's code may
+// use them. (A failing import fails again, and is reported, where its forms
+// run.)
 func (w *itemWalker) forms(ctx context.Context, forms []Node, s ValueScope, hoisted, top bool) {
+	ctx = withLocalDecls(ctx, forms)
 	if hoisted {
 		var decls []typeDecl
+		var imports []*ImportDecl
 		for _, form := range forms {
-			if decl, ok := form.(typeDecl); ok {
-				decls = append(decls, decl)
+			switch form := form.(type) {
+			case typeDecl:
+				decls = append(decls, form)
+			case *ImportDecl:
+				imports = append(imports, form)
 			}
 		}
-		if len(decls) > 0 && !top {
+		if top || !formsDeclareTypeCode(forms) {
+			imports = nil
+		}
+		if (len(decls) > 0 || len(imports) > 0) && !top {
 			s = s.Derive(false)
 		}
+		for _, imp := range imports {
+			_, _ = EvalNode(ctx, s, imp)
+		}
 		for _, decl := range decls {
-			w.makeItem(ctx, decl, s)
+			w.makeItem(ctx, decl, s, top)
 		}
 		for _, form := range forms {
 			w.node(ctx, form, s)
 		}
 		return
 	}
-	ctx = withLocalDecls(ctx, forms)
 	for _, form := range forms {
 		switch decl := form.(type) {
 		case typeDecl:
 			s = s.Derive(false)
-			w.makeItem(ctx, decl, s)
+			w.makeItem(ctx, decl, s, false)
 		case *ImportDecl:
 			if formsDeclareTypeCode(forms) {
 				s = s.Derive(false)
-				// A failing import fails again, and is reported, where
-				// the block runs.
 				_, _ = EvalNode(ctx, s, decl)
 			}
 		}
@@ -1675,25 +1693,20 @@ func (w *itemWalker) node(ctx context.Context, n Node, s ValueScope) {
 
 // typeBody walks the body of a type declared in s, making the items of the
 // types it declares, which the type's own item may bind as it is made: its
-// members (unless topOnly) see the types the body declares, while its
-// self { } blocks see only s, as they were checked (hoistStatics).
+// members see the types the body declares, while its self { } blocks, merged
+// as the checker merges them (staticForms), see only s (hoistStatics).
 func (w *itemWalker) typeBody(ctx context.Context, body *Block, s ValueScope) {
 	if body == nil {
 		return
 	}
+	w.forms(ctx, staticForms(body), s, true, false)
 	var members []Node
 	for _, form := range body.Forms {
-		if sb, ok := form.(*SelfBlockDecl); ok {
-			if sb.BodyBlock != nil {
-				w.forms(ctx, sb.BodyBlock.Forms, s, true, false)
-			}
-			continue
+		if _, ok := form.(*SelfBlockDecl); !ok {
+			members = append(members, form)
 		}
-		members = append(members, form)
 	}
-	if !w.topOnly {
-		w.forms(ctx, members, s, true, false)
-	}
+	w.forms(ctx, members, s, true, false)
 }
 
 // makeItem makes decl's item in s, binds its name there and enters it in the
@@ -1701,9 +1714,21 @@ func (w *itemWalker) typeBody(ctx context.Context, body *Block, s ValueScope) {
 // methods and installing statics bind the types declared there. A
 // declaration that was never inferred (a function body under DeclareDir) has
 // none.
-func (w *itemWalker) makeItem(ctx context.Context, decl typeDecl, s ValueScope) {
+//
+// A type below the top level (not top) gets one only when checkTypeCapture
+// checked its code, which a top-level type's can't capture anyway: if it
+// captured a binding, its item scope would silently resolve the name
+// elsewhere. Under DeclareDir (topOnly), which infers no type's code below
+// the top level, such a type gets an item when it can have one without that
+// code (an object type without static methods, an enum, ...), and none
+// otherwise, failing only where it is used.
+func (w *itemWalker) makeItem(ctx context.Context, decl typeDecl, s ValueScope, top bool) {
 	t, name, vis := decl.itemDecl()
 	if t == nil || w.err != nil {
+		return
+	}
+	if !top && !w.topOnly && !captureChecked(decl) {
+		w.err = fmt.Errorf("type %s was inferred without a top-level frame, so nothing checked that its code captures nothing; infer its module with an entry point that marks its top level (InferTopLevel, InferDirectoryFiles, FileBlock)", name)
 		return
 	}
 	switch decl := decl.(type) {
@@ -1717,12 +1742,28 @@ func (w *itemWalker) makeItem(ctx context.Context, decl typeDecl, s ValueScope) 
 	}
 	item, err := decl.newItem(ctx, s)
 	if err != nil {
+		if w.topOnly && !top {
+			return
+		}
 		w.err = err
 		return
 	}
 	s.Bind(name, item.value, vis)
 	w.root.bindItem(t, item)
 	w.items = append(w.items, item)
+}
+
+// captureChecked reports whether checkTypeCapture covered decl's code: it
+// was inferred with a top-level frame in ctx. Types without code of their
+// own have nothing to check.
+func captureChecked(decl typeDecl) bool {
+	switch decl := decl.(type) {
+	case *ObjectDecl:
+		return decl.captureChecked
+	case *ScalarDecl:
+		return decl.captureChecked
+	}
+	return true
 }
 
 // formsDeclareTypeCode reports whether forms declare, at any depth, a type
@@ -1919,6 +1960,12 @@ type ScalarDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType // set when the body declares new()
+
+	// hoisted records that Hoist pass 1 ran, which a scalar declared in a
+	// block doesn't get before Infer (see Infer); captureChecked is as for
+	// ObjectDecl.
+	hoisted        bool
+	captureChecked bool
 }
 
 var _ Node = &ScalarDecl{}
@@ -2099,6 +2146,9 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
+	if pass > 0 {
+		s.hoisted = true
+	}
 
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
@@ -2174,9 +2224,19 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// scalar is used, not where it is declared: `return`/`break`/`continue`
 	// in it can't reach an enclosing function or loop.
 	ctx = contextWithInferFunctionControlBoundary(ctx)
+	s.captureChecked = topLevelFrameFrom(ctx) != nil
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
+	}
+
+	// A block infers its declarations in source order rather than through
+	// the hoisting phases: declare the scalar's constructor and members, and
+	// validate its body, before inferring it, as ObjectDecl.Infer does.
+	if !s.hoisted {
+		if err := s.Hoist(ctx, env, fresh, 1); err != nil {
+			return nil, err
+		}
 	}
 
 	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)

@@ -78,7 +78,7 @@ func evalExample(src string) error {
 
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	fresh := hm.NewSimpleFresher()
-	if _, err := InferFormsWithPhases(context.Background(), file.Forms, typeScope, fresh); err != nil {
+	if _, err := InferTopLevel(context.Background(), file.Forms, typeScope, fresh); err != nil {
 		return fmt.Errorf("type: %w", err)
 	}
 

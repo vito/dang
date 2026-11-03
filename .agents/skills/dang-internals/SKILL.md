@@ -460,20 +460,33 @@ into every builtins frame (`preludeItems`).
 
 - **Made once, up front.** `evalTypeItems` is a module evaluation's types
   phase (`FileBlock.Eval` via `evaluateForms(evalModule)`,
-  `evaluateDirectoryFiles`; `EvaluateDeclaredFormsWithPhases`, for
-  `DeclareDir`, makes only the top level's), and REPL-like
+  `evaluateDirectoryFiles`), and REPL-like
   entry points call it as `EvalTypeItems` before evaluating forms one by one.
   It makes the items of every type the forms declare, at any depth, running no
   user code. A declaration's `Eval` only binds its name to its item
   (`bindTypeItem`); a missing item is an error, never made on the spot.
   `EvaluateFormsWithPhases` is the body evaluator (the Dagger SDK uses it for
   class bodies): its declarations bind, never make, items.
+  `EvaluateDeclaredFormsWithPhases` (`DeclareDir`), which infers no code
+  below the top level, walks no function or method body, and gives a type
+  nested in a type body an item only if making it needs none of that code.
+- **Only checked types get items.** A type below the top level gets an item
+  only if it was inferred with a top-level frame in ctx
+  (`ObjectDecl`/`ScalarDecl.captureChecked`), i.e. `checkTypeCapture` ran;
+  otherwise its item scope could silently resolve a captured name elsewhere,
+  so `makeItem` fails instead. Test helpers infer with `InferTopLevel`. A
+  scalar declared in a block runs its own `Hoist` pass 1 from `Infer` (as an
+  object type does), so its body is validated (methods, `new()`, `self { }`
+  only) and making its methods runs no user code.
 - **Item scopes mirror what the checker saw.** A top-level type closes over
-  the module scope; the types of a type body or `self { }` block (hoisted)
-  share one scope over their parent's binding them; each type (and import)
+  the module scope; the types and imports of a type body, or of its
+  `self { }` blocks (merged, as `staticForms` merges them for the checker),
+  are hoisted and share one scope over their parent's; each type (and import)
   in a block — inferred in source order — gets a scope of its own over the
   previous one. So a name a block declares after a type never changes what
-  the type's code means, and no "declared later" rule is needed.
+  the type's code means, and no "declared later" rule is needed. Since a
+  type's code runs wherever its item is used, it also can't rely on a null
+  check made around its declaration (`readNarrowed` reports it).
 - **Statics are lazy.** `installStatics` binds a type's computed statics as
   lazy fields and holds back its `self { }` statements; a module evaluation
   finishes them (`forceStatics`) in its variables phase, after installing

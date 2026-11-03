@@ -18,7 +18,7 @@ let held = if (false) {
     describe: String! { name + " " + tag.shout + " " + Probe.prefix }
 
     self {
-      prefix: String! = "p" + ("x" :: Tag!).shout
+      prefix: String! = "p" + Tag("x").shout
     }
   }
 
@@ -167,19 +167,25 @@ unreached: Int! {
   1
 }
 
-# A block's scalar whose body declares a type.
-scalarNested: Int! {
-  scalar Tag {
-    type Inner {
-      v: Int! = 1
-    }
+# Several self { } blocks are one set of statics.
+type Split {
+  z: Int! = 0
 
-    get: Int! { Inner.v }
+  self {
+    type A {
+      get: Int! { B.v }
+    }
   }
 
-  ("x" :: Tag!).get
+  self {
+    type B {
+      v: Int! = 7
+    }
+
+    k: Int! = A.get
+  }
 }
 
-assert { scalarNested == 1 }
+assert { Split.k == 7 }
 
 print("Local type item tests passed!")

@@ -21,7 +21,7 @@ func prepareScopeChainProgram(tb testing.TB, src string) (context.Context, Value
 
 	ctx := context.Background()
 	typeScope, valueScope := BuildScopesFromImports("", nil)
-	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
+	_, err = InferTopLevel(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(tb, err, "infer")
 
 	ctx = WithEvalContext(ctx, NewEvalContext("scope_chain_test", src))
