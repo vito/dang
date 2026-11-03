@@ -1,11 +1,14 @@
 package dang
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // Evaluation classifies an object body after inference has wrapped each typed
@@ -49,4 +52,130 @@ type Counter {
 	require.Equal(t, []string{"next", "doubled"}, names(classified.Functions))
 	require.Equal(t, []string{"total"}, names(classified.Variables))
 	require.Equal(t, []string{"start", "step"}, names(classified.Constants))
+}
+
+func TestEvalTopLevelResults(t *testing.T) {
+	ctx := context.Background()
+	types, scope := BuildScopesFromImports("", nil)
+	parsed, err := ParseWithRecovery("entry", []byte(`
+		print("statement")
+		let x = { print("initializer"); 1 }
+		x = 2
+		x
+	`))
+	require.NoError(t, err)
+	forms := parsed.(*FileBlock).Forms
+	_, err = InferTopLevel(ctx, forms, types, hm.NewSimpleFresher())
+	require.NoError(t, err)
+	var out bytes.Buffer
+	ctx = ioctx.StdoutToContext(ctx, &out)
+	var nodes []Node
+	var values []string
+	last, err := EvalTopLevel(ctx, forms, scope, func(node Node, value Value) error {
+		nodes = append(nodes, node)
+		values = append(values, Repr(value))
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, forms, nodes)
+	require.Equal(t, "1", values[1], "declaration reports its original value, not a second evaluation")
+	require.Equal(t, "2", Repr(last))
+	require.Equal(t, "initializer\nstatement\n", out.String())
+
+	last, err = EvalTopLevel(ctx, nil, scope, func(Node, Value) error {
+		t.Fatal("empty entry called yield")
+		return nil
+	})
+	require.NoError(t, err)
+	require.Nil(t, last)
+}
+
+type cancelOnWrite struct {
+	bytes.Buffer
+	cancel context.CancelFunc
+}
+
+func (w *cancelOnWrite) Write(p []byte) (int, error) {
+	w.cancel()
+	return w.Buffer.Write(p)
+}
+
+func TestEvalTopLevelInitializationCancelled(t *testing.T) {
+	for _, src := range []string{
+		`type T { self { print("cancel"); print("unreached") } }; 1`,
+		`let x = { print("cancel"); 1 }; let y = { print("unreached"); 2 }; 1`,
+	} {
+		ctx, cancel := context.WithCancel(context.Background())
+		types, scope := BuildScopesFromImports("", nil)
+		parsed, err := ParseWithRecovery("entry", []byte(src))
+		require.NoError(t, err)
+		forms := parsed.(*FileBlock).Forms
+		_, err = InferTopLevel(ctx, forms, types, hm.NewSimpleFresher())
+		require.NoError(t, err)
+		out := &cancelOnWrite{cancel: cancel}
+		ctx = ioctx.StdoutToContext(ctx, out)
+		last, err := EvalTopLevel(ctx, forms, scope, func(Node, Value) error {
+			t.Fatal("initialization was cancelled: no results should be reported")
+			return nil
+		})
+		cancel()
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, last)
+		require.Equal(t, "cancel\n", out.String())
+	}
+}
+
+func TestEvalTopLevelStops(t *testing.T) {
+	for _, mode := range []string{"before", "during", "yield error", "statement error"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			types, scope := BuildScopesFromImports("", nil)
+			src := `1; print("unreached")`
+			if mode == "statement error" {
+				src = `1; { print("before error"); raise "stop" }; print("unreached")`
+			}
+			parsed, err := ParseWithRecovery("entry", []byte(src))
+			require.NoError(t, err)
+			forms := parsed.(*FileBlock).Forms
+			_, err = InferTopLevel(ctx, forms, types, hm.NewSimpleFresher())
+			require.NoError(t, err)
+			var out bytes.Buffer
+			ctx = ioctx.StdoutToContext(ctx, &out)
+			if mode == "before" {
+				cancel()
+			}
+			stop := errors.New("yield stopped")
+			calls := 0
+			last, err := EvalTopLevel(ctx, forms, scope, func(Node, Value) error {
+				calls++
+				if mode == "during" {
+					cancel()
+				}
+				if mode == "yield error" {
+					return stop
+				}
+				return nil
+			})
+			require.Nil(t, last)
+			switch mode {
+			case "before", "during":
+				require.ErrorIs(t, err, context.Canceled)
+			case "yield error":
+				require.ErrorIs(t, err, stop)
+			case "statement error":
+				require.ErrorContains(t, err, "stop")
+			}
+			if mode == "before" {
+				require.Zero(t, calls)
+			} else {
+				require.Equal(t, 1, calls)
+			}
+			if mode == "statement error" {
+				require.Equal(t, "before error\n", out.String())
+			} else {
+				require.Empty(t, out.String())
+			}
+		})
+	}
 }

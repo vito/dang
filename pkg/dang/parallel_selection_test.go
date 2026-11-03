@@ -227,11 +227,7 @@ func runProgram(t *testing.T, typeScope TypeScope, valueScope ValueScope, src st
 	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, fresh)
 	require.NoError(t, err)
 
-	var result Value
-	require.NoError(t, EvalTypeItems(context.Background(), file.Forms, valueScope))
-	for _, node := range file.Forms {
-		result, err = EvalNode(context.Background(), valueScope, node)
-		require.NoError(t, err)
-	}
+	result, err := EvalTopLevel(context.Background(), file.Forms, valueScope, nil)
+	require.NoError(t, err)
 	return result
 }

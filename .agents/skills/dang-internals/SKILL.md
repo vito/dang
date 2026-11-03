@@ -460,8 +460,8 @@ into every builtins frame (`preludeItems`).
 
 - **Made once, up front.** `evalTypeItems` is a module evaluation's types
   phase (`FileBlock.Eval` via `evaluateForms(evalModule)`,
-  `evaluateDirectoryFiles`), and REPL-like
-  entry points call it as `EvalTypeItems` before evaluating forms one by one.
+  `evaluateDirectoryFiles`), and `EvalTopLevel` owns it for REPL-like
+  entry points (the evaluation counterpart of `InferTopLevel`).
   It makes the items of every type the forms declare, at any depth, running no
   user code. A declaration's `Eval` only binds its name to its item
   (`bindTypeItem`); a missing item is an error, never made on the spot.
@@ -499,8 +499,21 @@ into every builtins frame (`preludeItems`).
   function that never runs, so a failing static fails every evaluation of
   its module, like a failing top-level `let`. A type's body is walked
   before its item is made (`makeItem`), since making a scalar's methods and
-  installing statics bind the types declared there. Under `EvalTypeItems`
-  statics are forced on first read (and `self { }` statements don't run).
+  installing statics bind the types declared there. `EvalTopLevel` finishes
+  statics too, before forcing the entry's variables and running its statements.
+- **Prompt lifecycle is centralized.** `EvalTopLevel(ctx, forms, scope, yield)`
+  accepts inferred forms and an existing scope, returns the last value (nil
+  for an empty entry), and optionally calls `yield(Node, Value) error` for
+  each form in source order. Imports, directives, constants, items, functions
+  and lazy variables are installed first; statics and variables finish before
+  statements run, just as in a module. Rebindings are the deliberate exception:
+  new lazy variables are installed first, then rebindings evaluate once in
+  source order with their previous bindings still visible, before statics.
+  Callbacks report cached declaration results, never rerun initializers.
+  An initialization error reports no forms; a statement/callback error or
+  cancellation stops the entry. Partial bindings remain, and callers must
+  drain captured output even on error (initialization has no callback).
+  `EvalNode` stays the recursive low-level evaluator, not a prompt entry point.
 
 ## When adding a new type-like declaration
 

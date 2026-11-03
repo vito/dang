@@ -103,13 +103,8 @@ func TestCopyOnWriteKeepsChainsShallow(t *testing.T) {
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(context.Background(), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
-	if err := EvalTypeItems(ctx, file.Forms, valueScope); err != nil {
+	if _, err := EvalTopLevel(ctx, file.Forms, valueScope, nil); err != nil {
 		t.Fatalf("eval: %v", err)
-	}
-	for _, node := range file.Forms {
-		if _, err := EvalNode(ctx, valueScope, node); err != nil {
-			t.Fatalf("eval: %v", err)
-		}
 	}
 
 	// Instance root + a write generation, plus at most a method's receiver

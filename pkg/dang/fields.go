@@ -1539,7 +1539,7 @@ func bindTypeItem(ctx context.Context, scope ValueScope, d typeDecl) (Value, err
 		if declarationOnly(ctx) {
 			return NullValue{}, nil
 		}
-		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or make its items with EvalTypeItems first", name)
+		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or its prompt with EvalTopLevel", name)
 	}
 	scope.Bind(name, item.value, vis)
 	return item.value, nil
@@ -1579,15 +1579,6 @@ func typeItemFor(ctx context.Context, scope ValueScope, t *Type) (*typeItem, err
 		return item, nil
 	}
 	return nil, fmt.Errorf("type %s has no runtime item here", t.Name())
-}
-
-// EvalTypeItems makes the items of the types top-level forms declare, at any
-// depth, so the forms can be evaluated one by one in scope with EvalNode, as a
-// REPL or literate session does after InferTopLevel (see evalTypeItems).
-// Their statics are evaluated on first read.
-func EvalTypeItems(ctx context.Context, forms []Node, scope ValueScope) error {
-	_, err := evalTypeItems(ctx, forms, scope)
-	return err
 }
 
 // evalTypeItems makes the item of every type forms declare, at any depth —
@@ -1819,6 +1810,9 @@ func formsDeclareTypeCode(forms []Node) bool {
 // fields (unless a read already has) and runs their statements.
 func forceStatics(ctx context.Context, items []*typeItem) error {
 	for _, item := range items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if item.statics == nil {
 			continue
 		}

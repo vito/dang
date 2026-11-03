@@ -417,7 +417,7 @@ func TestUncheckedLocalTypeHasNoItem(t *testing.T) {
 	typeScope, valueScope := BuildScopesFromImports("", nil)
 	_, err = InferFormsWithPhases(context.Background(), forms, typeScope, hm.NewSimpleFresher())
 	require.NoError(t, err)
-	err = EvalTypeItems(context.Background(), forms, valueScope)
+	_, err = EvalTopLevel(context.Background(), forms, valueScope, nil)
 	require.ErrorContains(t, err, "type T was inferred without a top-level frame")
 }
 
