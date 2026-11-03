@@ -206,6 +206,7 @@ func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope Va
 	classified := classifyForms(forms)
 	// Unqualified imports don't claim the names these forms declare.
 	ctx = withLocalDecls(ctx, forms)
+	ctx = withDeclarationOnly(ctx)
 
 	eval := func(group []Node) error {
 		for _, form := range group {

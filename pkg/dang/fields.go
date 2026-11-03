@@ -1421,7 +1421,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 
 func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
-		return bindTypeItem(scope, c)
+		return bindTypeItem(ctx, scope, c)
 	})
 }
 
@@ -1526,18 +1526,36 @@ var (
 )
 
 // bindTypeItem binds d's name, where d's declaration runs (scope), to its
-// item, which its module's evaluation made up front.
-func bindTypeItem(scope ValueScope, d typeDecl) (Value, error) {
+// item, which its module's evaluation made up front. Under DeclareDir
+// (declarationOnly), a nested type whose code was never inferred has none
+// (see makeItem): its name stays unbound, failing only where it is used.
+func bindTypeItem(ctx context.Context, scope ValueScope, d typeDecl) (Value, error) {
 	t, name, vis := d.itemDecl()
 	if t == nil {
 		panic(fmt.Errorf("%T.Eval: %q has not been inferred", d, name))
 	}
 	item, ok := moduleFrame(scope).lookupItem(t)
 	if !ok {
-		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or make its items with EvalTypeItems first (DeclareDir makes none for a nested type whose code it never inferred)", name)
+		if declarationOnly(ctx) {
+			return NullValue{}, nil
+		}
+		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or make its items with EvalTypeItems first", name)
 	}
 	scope.Bind(name, item.value, vis)
 	return item.value, nil
+}
+
+type declarationOnlyKey struct{}
+
+// withDeclarationOnly marks ctx as evaluating only declarations
+// (EvaluateDeclaredFormsWithPhases, for DeclareDir).
+func withDeclarationOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, declarationOnlyKey{}, true)
+}
+
+func declarationOnly(ctx context.Context) bool {
+	only, _ := ctx.Value(declarationOnlyKey{}).(bool)
+	return only
 }
 
 // typeItemFor returns t's item in the module evaluation that declares it, as
@@ -1921,7 +1939,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 }
 
 func (e *EnumDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	return bindTypeItem(scope, e)
+	return bindTypeItem(ctx, scope, e)
 }
 
 func (e *EnumDecl) itemDecl() (*Type, string, Visibility) {
@@ -2311,7 +2329,7 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		return bindTypeItem(scope, s)
+		return bindTypeItem(ctx, scope, s)
 	})
 }
 
@@ -2374,6 +2392,7 @@ func (s *ScalarDecl) newItem(ctx context.Context, scope ValueScope) (*typeItem, 
 			ScalarType: s.Inferred,
 			FnType:     s.ConstructorFnType,
 			ArgName:    argName,
+			hook:       item.hook,
 		}
 		return item, nil
 	}
@@ -2669,7 +2688,7 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 }
 
 func (i *InterfaceDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	return bindTypeItem(scope, i)
+	return bindTypeItem(ctx, scope, i)
 }
 
 func (i *InterfaceDecl) itemDecl() (*Type, string, Visibility) {
@@ -2833,7 +2852,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 }
 
 func (u *UnionDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	return bindTypeItem(scope, u)
+	return bindTypeItem(ctx, scope, u)
 }
 
 func (u *UnionDecl) itemDecl() (*Type, string, Visibility) {

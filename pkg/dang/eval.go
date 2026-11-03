@@ -133,6 +133,12 @@ type ScalarConstructor struct {
 	ScalarType *Type
 	FnType     *hm.FunctionType
 	ArgName    string
+
+	// hook is a Dang scalar's new() hook, from its item: the constructor
+	// carries it, as an object type's constructor carries its closure, so
+	// it works wherever it is called from (a callback stored in another
+	// module's object, say). Nil for a builtin's Go-native hook.
+	hook *FunctionValue
 }
 
 func (c ScalarConstructor) Type() hm.Type        { return c.FnType }
@@ -148,8 +154,10 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 	if !ok {
 		return nil, fmt.Errorf("%s: argument %q must be String!, got %T", c.ScalarType.Named, c.ArgName, args[c.ArgName])
 	}
-	// The hook is the type's (Go-native) or its item's (Dang new()), so this
-	// handles both uniformly.
+	if c.hook != nil {
+		return runScalarHook(ctx, scope, c.ScalarType, *c.hook, raw.Val)
+	}
+	// A builtin's hook is Go-native, on the type.
 	v, hooked, err := applyScalarHook(ctx, scope, c.ScalarType, raw.Val)
 	if err != nil {
 		return nil, err

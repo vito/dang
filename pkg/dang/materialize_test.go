@@ -51,3 +51,23 @@ assert { Lib.decodeLater("{\"name\": \"later\"}") == "later" }
 		t.Fatal("decoding into the module's own type at its top level hung")
 	}
 }
+
+// A scalar's constructor carries its new() hook, so it works wherever it is
+// called from, such as another module's code holding a reference to it.
+func TestScalarConstructorCalledFromElsewhere(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`scalar Tag {
+  new(raw: String!) { raw.toUpper }
+}
+`), 0o600))
+	ctx := context.Background()
+	values, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+	tag, found, err := values.Lookup(ctx, "Tag")
+	require.NoError(t, err)
+	require.True(t, found)
+	elsewhere := NewValueScope(NewPreludeTypeScope(""))
+	made, err := tag.(Callable).Call(ctx, elsewhere, map[string]Value{"raw": StringValue{Val: "abc"}})
+	require.NoError(t, err)
+	require.Equal(t, "ABC", made.(ScalarValue).Val)
+}

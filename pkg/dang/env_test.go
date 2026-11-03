@@ -429,6 +429,16 @@ type Outer {
 
   self {
     k: Int! = 2
+
+    scalar Code {
+      new(raw: String!) { raw }
+    }
+
+    type WithStatics {
+      self {
+        n: Int! = 3
+      }
+    }
   }
 }
 `)
