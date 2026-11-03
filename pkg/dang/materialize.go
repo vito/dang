@@ -104,8 +104,9 @@ func isLiteralExpr(n Node) bool {
 // AssignableWithCoercion in the two coercible situations: the value is a
 // syntactic literal (which may refine into a scalar/enum), or its type
 // carries a custom scalar (which may degrade into String). Use at
-// value-handoff boundaries where wrapCoerce will materialize the result.
-func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
+// value-handoff boundaries where wrapCoerce will materialize the result. env
+// is the environment the value is handed off in, for checkDecodeTarget.
+func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, error) {
 	subs, err := hm.Assignable(have, want)
 	if err == nil {
 		return subs, nil
@@ -119,6 +120,9 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 		}
 	}
 	if assignableDecoded(have, want) {
+		if err := checkDecodeTarget(env, want); err != nil {
+			return nil, err
+		}
 		return hm.NewSubs(), nil
 	}
 	if nullErr := nullIntoRigid(have, want, value); nullErr != nil {
@@ -229,6 +233,103 @@ func assignableDecoded(have, want hm.Type) bool {
 		}
 	}
 	return false
+}
+
+// checkDecodeTarget rejects decoding into want at a site inferred in env when
+// materializing want would construct an object type the site cannot reach: a
+// type declared in a function, block or type body (Type.localFrame) whose
+// declaring scope does not enclose the site. Such a type has a constructor per
+// call or per instance of its declaring scope, found by identity in the
+// decoding scope (constructorFor), so from outside that scope there is none
+// to call, nor one right one to pick. Its value can still get out (an `if`
+// expression, a method's result), so the type can appear here by inference.
+//
+// The walk mirrors materializeDecoded: through non-null, unions, lists and
+// maps, an anonymous record's fields, and a named object's constructor
+// parameters.
+func checkDecodeTarget(env hm.Env, want hm.Type) error {
+	seen := map[*Type]bool{}
+	var walk func(t hm.Type) error
+	walk = func(t hm.Type) error {
+		if nn, ok := t.(hm.NonNullType); ok {
+			return walk(nn.Type)
+		}
+		if union, ok := t.(*hm.UnionType); ok {
+			for _, option := range union.Options {
+				if err := walk(option); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if elem, ok := listElementTarget(t); ok {
+			return walk(elem)
+		}
+		if val, ok := mapValueTarget(t); ok {
+			return walk(val)
+		}
+		v, ok := t.(*Type)
+		if !ok {
+			return nil
+		}
+		mod := canonicalModule(v)
+		if seen[mod] || mod.Kind != ObjectKind {
+			return nil
+		}
+		seen[mod] = true
+		if mod.Named == "" {
+			for _, field := range mod.AsRecord().Fields {
+				if ft, mono := field.Value.Type(); mono {
+					if err := walk(ft); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}
+		if mod.localFrame != nil && !envEncloses(env, mod.localFrame) {
+			return fmt.Errorf("cannot decode into %s here: it is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here", mod.Name())
+		}
+		if mod.constructorType != nil {
+			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
+				for _, field := range args.Fields {
+					if ft, mono := field.Value.Type(); mono {
+						if err := walk(ft); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+		return nil
+	}
+	return walk(want)
+}
+
+// envEncloses reports whether frame is env's own frame or one of the frames
+// env resolves through.
+func envEncloses(env hm.Env, frame TypeScope) bool {
+	seen := map[hm.Env]bool{}
+	var walk func(e hm.Env) bool
+	walk = func(e hm.Env) bool {
+		if e == nil || seen[e] {
+			return false
+		}
+		seen[e] = true
+		switch s := e.(type) {
+		case *OverlayTypeScope:
+			return walk(s.primary) || walk(s.lexical)
+		case *Type:
+			if TypeScope(s) == frame {
+				return true
+			}
+			if s.Parent != nil {
+				return walk(s.Parent)
+			}
+		}
+		return false
+	}
+	return walk(env)
 }
 
 // containsDecoded reports whether t carries DecodedType, on its own or within

@@ -1,0 +1,11 @@
+# A type declared in another type's body gets a constructor per instance of
+# that type, so decoding into it outside the body has no constructor to use.
+type Outer {
+  type Inner {
+    value: String!
+  }
+  make: Inner! { Inner(value: "built") }
+}
+
+let d = Outer().make
+d = JSON.decode("{\"value\": \"decoded\"}")

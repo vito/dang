@@ -514,7 +514,7 @@ func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fre
 		return value, nil, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
-	subs, err := assignableForValue(it, dt, value)
+	subs, err := assignableForValue(env, it, dt, value)
 	if err != nil {
 		return value, it, nil, NewInferError(err, value)
 	}
@@ -3590,6 +3590,9 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil
+			if decodeErr := checkDecodeTarget(env, hintType); decodeErr != nil {
+				return nil, NewInferError(decodeErr, t.Expr)
+			}
 		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)

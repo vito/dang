@@ -260,6 +260,18 @@ type Type struct {
 	// not created that way (builtins, schema-derived, anonymous records), for
 	// which visibility is never enforced. See moduleScope.
 	homeModule *moduleScope
+
+	// localFrame is the frame declaring this type when that is a function,
+	// block or type body rather than its module's top level; nil otherwise.
+	// Such a type gets a constructor per evaluation of its declaring scope
+	// (per call, per instance), so only code inside that scope can decode
+	// into it: see checkDecodeTarget. Stamped once at declareLocalType.
+	localFrame TypeScope
+
+	// constructorType is an object type's constructor signature, recorded
+	// when its declaration is hoisted. checkDecodeTarget reads its
+	// parameters: the fields decoding into the type constructs.
+	constructorType *hm.FunctionType
 }
 
 func NewType(name string, kind Kind) *Type {

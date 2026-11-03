@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot decode into Inner here: it is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here
+  [2m[34m--> errors/decode_escaped_field_type.dang:14:18[0m
+ [2m    |[0m
+ [2m 12 | }[0m
+ [2m 13 | [0m
+ [2m[34m[1m 14 | [0mlet h: Holder! = JSON.decode("{\"inner\": {\"value\": \"decoded\"}}")
+[2m                        [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 15 | [0m
+ [2m    |[0m
+

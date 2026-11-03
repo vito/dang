@@ -420,7 +420,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 
 		if definedType != nil {
-			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
+			if _, err := assignableForValue(env, inferredType, definedType, s.Value); err != nil {
 				return nil, WrapInferError(err, s.Value)
 			}
 			s.defaultType = inferredType
@@ -428,7 +428,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		} else if !isParam && s.declaredType != nil {
 			// Declared (hoisted) from an earlier inference of the value:
 			// keep that type, whose unknown parts others may already use.
-			if _, err := assignableForValue(inferredType, s.declaredType, s.Value); err != nil {
+			if _, err := assignableForValue(env, inferredType, s.declaredType, s.Value); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
 			definedType = s.declaredType
@@ -747,6 +747,14 @@ func declareLocalType(ctx context.Context, env TypeScope, name string, kind Kind
 	// same-module access from foreign access. Nil ctx module (un-instrumented
 	// entry point) leaves it nil, which disables enforcement for this type.
 	mod.homeModule = moduleScopeFromContext(ctx)
+	// Mark a type declared below its module's top level with the frame
+	// declaring it (see Type.localFrame). Without a top-level frame in ctx
+	// (an un-instrumented entry point), nothing is marked, like homeModule.
+	if top := topLevelFrameFrom(ctx); top != nil {
+		if frame := envFrame(env); frame != nil && !isTopLevelFrame(frame, top) {
+			mod.localFrame = frame
+		}
+	}
 	env.AddObject(name, mod)
 	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
 	// scalar's namespace: staple Dang's members onto its type.
@@ -977,6 +985,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return err
 	}
 	c.ConstructorFnType = constructorType
+	object.constructorType = constructorType
 
 	// Add the constructor function type to the environment, carrying the
 	// declaration's visibility so the type name is exported (or kept private)
