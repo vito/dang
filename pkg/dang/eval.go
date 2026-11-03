@@ -92,9 +92,6 @@ type ValueScope interface {
 	BindConstructor(t *Type, c Callable)
 	// LookupConstructor resolves t's constructor through the scope chain.
 	LookupConstructor(t *Type) (Callable, bool)
-	// Constructors returns every constructor visible from this scope, for
-	// an import to make its module's constructors visible to the importer.
-	Constructors() map[*Type]Callable
 	// Dynamic scope support for 'self'.
 	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -667,7 +664,6 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				FnType:    fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
-			env.BindConstructor(constructor.TypeScope, constructor)
 		}
 
 		for _, f := range t.Fields {
@@ -2676,23 +2672,6 @@ func (m *Object) LookupConstructor(t *Type) (Callable, bool) {
 	return nil, false
 }
 
-func (m *Object) Constructors() map[*Type]Callable {
-	all := map[*Type]Callable{}
-	cell := m.dynamicScope
-	for o := m; o != nil; {
-		o.mu.Lock()
-		for t, c := range o.constructors {
-			if _, nearer := all[t]; !nearer {
-				all[t] = c
-			}
-		}
-		parent, _ := o.nextFrame(cell)
-		o.mu.Unlock()
-		o = parent
-	}
-	return all
-}
-
 func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
 	for o := m; o != nil; {
 		o.mu.Lock()
@@ -3963,14 +3942,6 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 			if _, err := EvalNode(ctx, importsScope, imp); err != nil {
 				return err
 			}
-		}
-		// Imported names stay per file, but the constructors of imported
-		// types are keyed by identity, so they can live in the directory
-		// scope: a type declared in one file may have fields of a type
-		// another file imported, and the module's importers decode through
-		// the directory scope too.
-		for t, c := range importsScope.Constructors() {
-			valueScope.BindConstructor(t, c)
 		}
 
 		composite := CreateOverlayValueScope(valueScope, importsScope)

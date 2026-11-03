@@ -960,7 +960,7 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
 	}
 
-	callable, err := constructorFor(scope, mod)
+	callable, err := constructorFor(ctx, scope, mod)
 	if err != nil {
 		return nil, materializeDeferredError(path, "%s", err.Error())
 	}
@@ -973,15 +973,32 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 	return callable.Call(ctx, scope, args)
 }
 
-// constructorFor finds the constructor that builds values of mod: the one
-// bound for mod in scope by its declaration, or by the import that brought it
-// in (see BindConstructor). Constructors are keyed by type identity rather
-// than name, so a local binding shadowing the type's name cannot hijack
-// construction, and a type reached only qualified (`Lib.T`) is still found.
-// Each scope holds its own evaluation's constructors, so a type declared in a
-// function body uses that call's constructor, and evaluations of a prepared
-// program never see each other's.
-func constructorFor(scope ValueScope, mod *Type) (Callable, error) {
+// constructorFor finds the constructor that builds values of mod, by type
+// identity rather than name, so a local binding shadowing the type's name
+// cannot hijack construction, and a type reached only qualified (`Lib.T`) is
+// still found. Where it lives follows where mod was declared:
+//
+//   - A schema input object's constructor is plain data, built from the type.
+//   - A top-level type of an imported Dang module was bound by that module's
+//     own evaluation, which runs once per module instance, so it is found
+//     there, wherever (and whether) the importer's import has run.
+//   - Any other type was bound by its declaration in a scope enclosing the
+//     decode (checkDecodeTarget guarantees it): the module's top level, or the
+//     function, block or type body declaring it. Each evaluation, call and
+//     instance binds its own, so evaluations of a prepared program never see
+//     each other's, and a type declared in a function body uses that call's.
+func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable, error) {
+	mod = canonicalModule(mod)
+	if mod.Kind == InputKind && mod.constructorType != nil {
+		return InputObjectConstructor{TypeName: mod.Named, TypeScope: mod, FnType: mod.constructorType}, nil
+	}
+	if home := mod.homeModule; mod.localFrame == nil && home != nil && home.dang != nil {
+		values, err := home.dang.valueScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		scope = values
+	}
 	if callable, ok := scope.LookupConstructor(mod); ok {
 		return callable, nil
 	}

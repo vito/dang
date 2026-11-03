@@ -129,14 +129,6 @@ func installImportedValueScope(parentScope ValueScope, importName string, import
 	// can clobber local declarations and races with shared/static type modules.
 	parentScope.Bind(importName, importValueScope, importedBindingVisibility)
 
-	// Decoding into any type the import brings in, qualified or not, finds
-	// its constructor by identity (see constructorFor). Every constructor
-	// the import can see goes, not just its public ones: a public type's
-	// fields may be of the module's private types, or its own imports'.
-	for t, c := range importValueScope.Constructors() {
-		parentScope.BindConstructor(t, c)
-	}
-
 	installUnqualifiedImportValues(parentScope, importValueScope, importName, shadowed)
 }
 

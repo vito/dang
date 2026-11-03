@@ -1,0 +1,19 @@
+import Test
+
+# Decoding builds GraphQL input objects, usable wherever one is expected.
+let sort: UserSort! = JSON.decode("{\"field\": \"NAME\", \"direction\": \"DESC\"}")
+let sorted = sortedUsers(sort: sort).{{name}}
+assert { sorted[0].name == "Jane Smith" }
+
+# Qualified, and with an omitted nullable field.
+let input: Test.CreateUserInput! = JSON.decode("{\"name\": \"Ada\", \"email\": \"ada@example.com\"}")
+assert { input.name == "Ada" }
+assert { input.age == null }
+
+# A local binding shadowing the input object's name does not hijack decoding.
+decodeShadowed(data: String!): Boolean! {
+  let UserSort = "not a constructor"
+  let decoded: UserSort! = JSON.decode(data)
+  decoded.direction == SortDirection.ASC
+}
+assert { decodeShadowed("{\"field\": \"NAME\", \"direction\": \"ASC\"}") }

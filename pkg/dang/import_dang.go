@@ -134,7 +134,7 @@ func (m *dangModule) compile(ctx context.Context) error {
 	typeScope := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
 
-	subCtx = withModuleScope(subCtx, &moduleScope{label: "module:" + m.dir})
+	subCtx = withModuleScope(subCtx, &moduleScope{label: "module:" + m.dir, dang: m})
 
 	if err := InferDirectoryFiles(subCtx, blocks, typeScope, fresh); err != nil {
 		return ConvertInferError(err)

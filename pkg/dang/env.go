@@ -269,8 +269,9 @@ type Type struct {
 	localFrame TypeScope
 
 	// constructorType is an object type's constructor signature, recorded
-	// when its declaration is hoisted. checkDecodeTarget reads its
-	// parameters: the fields decoding into the type constructs.
+	// when its declaration is hoisted, or a schema input object's, recorded
+	// when its schema is loaded. checkDecodeTarget reads its parameters (the
+	// fields decoding constructs), and decoding builds input objects from it.
 	constructorType *hm.FunctionType
 }
 
@@ -617,11 +618,16 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			sub, found := schemaTypes[t.Name]
 			if found {
 				args := NewRecordType("")
+				// The constructor evaluation binds (populateSchemaFunctions)
+				// keeps defaulted fields non-null; decoding builds input
+				// objects with the same signature.
+				decodeArgs := NewRecordType("")
 				for _, f := range t.InputFields {
 					fieldType, err := gqlInputToTypeNode(env, f)
 					if err != nil {
 						continue
 					}
+					decodeArgs.Add(f.Name, hm.NewScheme(nil, fieldType))
 					if f.DefaultValue != nil {
 						if nn, ok := fieldType.(hm.NonNullType); ok {
 							fieldType = nn.Type
@@ -632,6 +638,10 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 				constructorType := hm.NewFnType(args, NonNull(sub))
 				env.Add(t.Name, hm.NewScheme(nil, constructorType))
 				env.SetVisibility(t.Name, PublicVisibility)
+				// Decoding builds input objects from this (see constructorFor).
+				if subMod, ok := sub.(*Type); ok {
+					subMod.constructorType = hm.NewFnType(decodeArgs, NonNull(sub))
+				}
 			}
 		}
 	}

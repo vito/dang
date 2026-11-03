@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"maps"
 	"reflect"
 	"slices"
 
@@ -520,12 +519,6 @@ func (c OverlayValueScope) LookupConstructor(t *Type) (Callable, bool) {
 	return c.lexical.LookupConstructor(t)
 }
 
-func (c OverlayValueScope) Constructors() map[*Type]Callable {
-	all := c.lexical.Constructors()
-	maps.Copy(all, c.primary.Constructors())
-	return all
-}
-
 func (c OverlayValueScope) Update(name string, value Value) {
 	// Reassign the binding where reads find it: primary first, then lexical.
 	// A name only the lexical scope binds (e.g. a top-level binding written
@@ -732,16 +725,6 @@ func (e *ConstructorScope) LookupConstructor(t *Type) (Callable, bool) {
 		}
 	}
 	return e.closure.LookupConstructor(t)
-}
-
-func (e *ConstructorScope) Constructors() map[*Type]Callable {
-	all := e.closure.Constructors()
-	if inst, ok := e.instance(); ok {
-		maps.Copy(all, inst.Constructors())
-	}
-	maps.Copy(all, e.args.Constructors())
-	maps.Copy(all, e.locals.Constructors())
-	return all
 }
 
 func (e *ConstructorScope) Update(name string, value Value) {

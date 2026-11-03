@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 )
@@ -154,7 +155,7 @@ func loadPrelude() {
 			}
 			preludeBindings = append(preludeBindings, Keyed[Value]{Key: name, Value: val})
 		}
-		preludeConstructors = scope.Constructors()
+		preludeConstructors = maps.Clone(scope.constructors)
 
 		preludeModule = mod
 		preludeChain = chain
