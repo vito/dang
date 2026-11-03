@@ -155,6 +155,26 @@ func TestReplRebindingInitializers(t *testing.T) {
 	require.Equal(t, "x\ny\nz\nstatic\n", out.String())
 }
 
+func TestReplRepairsFailedInitialization(t *testing.T) {
+	for _, src := range []string{
+		`let x: Int! = { raise "stop"; 1 }`,
+		`let fail: Int! = { raise "stop"; 1 }; let x: Int! = { print("abandoned"); 2 }`,
+	} {
+		s := newTestReplSession(t)
+		_, err := s.enter(src)
+		require.ErrorContains(t, err, "stop")
+		_, err = s.enter("let x = 42")
+		require.NoError(t, err)
+		forms, err := s.infer("x")
+		require.NoError(t, err)
+		var out bytes.Buffer
+		v, err := dang.EvalTopLevel(ioctx.StdoutToContext(context.Background(), &out), forms, s.valueScope, nil)
+		require.NoError(t, err)
+		require.Equal(t, "42", dang.Repr(v))
+		require.Empty(t, out.String())
+	}
+}
+
 func TestReplEntryOutputAndErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

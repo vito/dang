@@ -2650,6 +2650,9 @@ func (m *Object) lookupValueFrom(name string, cell *DynamicScope) (Value, bool) 
 func (m *Object) Bind(name string, value Value, visibility Visibility) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Publishing a replacement must also discard a failed or never-forced
+	// initializer left by an earlier, incomplete session entry.
+	delete(m.Pending, name)
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
 }

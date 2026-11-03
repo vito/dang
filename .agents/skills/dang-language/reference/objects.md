@@ -159,7 +159,7 @@ Errors:
 
 So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
 
-Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` members are evaluated once, immutable, and may use other statics and `self`). Statics are initialized like top-level declarations: before any top-level statement runs (at a REPL prompt, on first read), so they may use top-level functions, variables with a declared type and other types' statics in any order.
+Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` members are evaluated once, immutable, and may use other statics and `self`). Statics are initialized like top-level declarations: before any top-level statement runs, including at a REPL prompt, so they may use top-level functions, variables with a declared type and other types' statics in any order.
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.

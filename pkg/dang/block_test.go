@@ -54,6 +54,27 @@ type Counter {
 	require.Equal(t, []string{"start", "step"}, names(classified.Constants))
 }
 
+func TestEvalTopLevelShadowing(t *testing.T) {
+	ctx := context.Background()
+	types, scope := BuildScopesFromImports("", nil)
+	enter := func(src string, env hm.Env, values ValueScope) Value {
+		t.Helper()
+		parsed, err := ParseWithRecovery("entry", []byte(src))
+		require.NoError(t, err)
+		forms := parsed.(*FileBlock).Forms
+		_, err = InferTopLevel(ctx, forms, env, hm.NewSimpleFresher())
+		require.NoError(t, err)
+		v, err := EvalTopLevel(ctx, forms, values, nil)
+		require.NoError(t, err)
+		return v
+	}
+	require.Equal(t, `"42"`, Repr(enter("let toString = toString(42); toString", types, scope)))
+	enter("let x = 1", types, scope)
+	child := scope.Derive(true)
+	require.Equal(t, "2", Repr(enter("let x = x + 1; x", types.Clone(), child)))
+	require.Equal(t, "1", Repr(enter("x", types, scope)))
+}
+
 func TestEvalTopLevelResults(t *testing.T) {
 	ctx := context.Background()
 	types, scope := BuildScopesFromImports("", nil)

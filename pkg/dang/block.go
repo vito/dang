@@ -345,9 +345,10 @@ func isConstantValue(value Node) bool {
 // functions, lazy variables, then statics (including self { } statements).
 // Variables are forced before the entry's statements, as in a module.
 //
-// Session redefinitions are the exception to lazy installation: they evaluate
-// once, in source order, before statics, with their previous bindings still
-// visible to their initializers. New lazy variables are available to them.
+// Redefinitions and declarations shadowing outer bindings are the exception to
+// lazy installation: they evaluate once, in source order, before statics, with
+// the previous bindings still visible to their initializers. New lazy variables
+// are available to them.
 //
 // After initialization, each successful form is reported in source order to
 // yield, if non-nil. Declarations report their cached values; statements run at
@@ -374,14 +375,19 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 		values[form] = val
 		return ctx.Err()
 	}
-	// Rebindings keep the previous value available until their turn below.
-	isRebind := func(form Node) bool {
-		field, ok := form.(*FieldDecl)
-		return ok && field.rebind && field.funDecl() == nil
+	// Keep prior bindings visible to initializers that shadow them, including
+	// builtins and bindings in a derived session's parent. Decide before any
+	// installation, so a new lazy doesn't mistake itself for a prior binding.
+	eager := make(map[Node]bool)
+	for _, phase := range [][]Node{classified.Constants, classified.Variables} {
+		for _, form := range phase {
+			field := form.(*FieldDecl)
+			eager[form] = field.rebind || scope.Has(field.Name.Name)
+		}
 	}
 	for _, phase := range [][]Node{classified.Imports, classified.Directives, classified.Constants} {
 		for _, form := range phase {
-			if !isRebind(form) {
+			if !eager[form] {
 				if err := eval(form); err != nil {
 					return nil, err
 				}
@@ -401,13 +407,13 @@ func EvalTopLevel(ctx context.Context, forms []Node, scope ValueScope, yield fun
 	}
 	var variables []Node
 	for _, form := range classified.Variables {
-		if !isRebind(form) {
+		if !eager[form] {
 			variables = append(variables, form)
 		}
 	}
 	installLazyVariables(variables, scope)
 	for _, form := range forms {
-		if isRebind(form) {
+		if eager[form] {
 			if err := eval(form); err != nil {
 				return nil, err
 			}
