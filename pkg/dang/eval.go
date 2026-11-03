@@ -2375,9 +2375,10 @@ type Object struct {
 	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 
-	// constructors holds the constructors of the types declared (or
-	// imported) in this frame, keyed by canonical type; nil until one is
-	// bound. Guarded by mu. See BindConstructor.
+	// constructors holds the constructors of the types declared in this
+	// frame, keyed by canonical type; nil until one is bound. Guarded by mu.
+	// Imported types are not bound here: constructorFor finds them in their
+	// home module's scope. See BindConstructor.
 	constructors map[*Type]Callable
 
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
