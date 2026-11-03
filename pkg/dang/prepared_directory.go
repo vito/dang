@@ -11,15 +11,16 @@ import (
 )
 
 // ErrUnpreparableDirectory means a directory uses declarations whose evaluation
-// still writes into the inferred type graph. Callers can use RunDir instead.
+// can't be repeated from a prepared snapshot. Callers can use RunDir instead.
 var ErrUnpreparableDirectory = errors.New("directory cannot be prepared")
 
 // PreparedDirectory is a fully inferred source snapshot. Evaluation creates new
-// values, closures, services and import bindings each time. No evaluated module
+// values, closures, services, import bindings and type items (constructors,
+// statics, scalar methods and hooks) each time. No evaluated module
 // environment or GraphQL client is retained by the prepared source.
 //
-// This experimental API deliberately excludes scalar hooks, static namespaces
-// and native Dang imports until their runtime state is separated from types.
+// This experimental API deliberately excludes native Dang imports, which are
+// evaluated once per module instance.
 type PreparedDirectory struct {
 	dir    string
 	blocks []*FileBlock
@@ -44,9 +45,6 @@ func PrepareDir(ctx context.Context, dir string) (*PreparedDirectory, error) {
 	}
 	if len(blocks) == 0 {
 		return nil, fmt.Errorf("no .dang files found in directory: %s", dir)
-	}
-	if err := checkPreparable(blocks); err != nil {
-		return nil, err
 	}
 	module := &moduleScope{label: "dir:" + dir}
 	types := NewPreludeTypeScope("")
@@ -77,13 +75,8 @@ func checkPreparable(blocks []*FileBlock) error {
 			if err != nil {
 				return false
 			}
-			switch n := node.(type) {
-			case *ScalarDecl, *SelfBlockDecl:
-				err = fmt.Errorf("%w: %T", ErrUnpreparableDirectory, node)
-			case *ImportDecl:
-				if n.dangMod != nil {
-					err = fmt.Errorf("%w: native import %s", ErrUnpreparableDirectory, n.Name.Name)
-				}
+			if imp, ok := node.(*ImportDecl); ok && imp.dangMod != nil {
+				err = fmt.Errorf("%w: native import %s", ErrUnpreparableDirectory, imp.Name.Name)
 			}
 			return err == nil
 		})

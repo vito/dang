@@ -27,7 +27,7 @@ func evalFileWithTimeout(t *testing.T, typeScope TypeScope, valueScope ValueScop
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := EvaluateFormsWithPhases(context.Background(), file.Forms, valueScope)
+		_, err := evaluateForms(context.Background(), file.Forms, valueScope, evalModule)
 		done <- err
 	}()
 	select {

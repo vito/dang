@@ -1285,7 +1285,14 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		// receiver — evaluating it would auto-construct an instance and miss the
 		// static entirely.
 		if d.staticOwner != nil {
-			statics := d.staticOwner.Statics()
+			statics := d.staticOwner.GoStatics()
+			if statics == nil {
+				item, err := typeItemFor(ctx, scope, d.staticOwner)
+				if err != nil {
+					return nil, err
+				}
+				statics = item.statics
+			}
 			if statics == nil {
 				return nil, fmt.Errorf("static %q of %s is unavailable", d.Field.Name, d.staticOwner.Named)
 			}
@@ -1363,7 +1370,8 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			case ScalarValue:
 				// Methods on custom scalar values (e.g. Path) dispatch through
 				// the builtin registry, keyed by the scalar's named type, then
-				// through the scalar's Dang-defined methods (scalar bodies).
+				// through the scalar's Dang-defined methods (scalar bodies),
+				// in its item.
 				if mod, ok := rec.ScalarType.(*Type); ok {
 					methodKey := GetMethodKey(mod, d.Field.Name)
 					if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
@@ -1373,12 +1381,18 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 						}
 					}
-					if methods := mod.ScalarMethods(); methods != nil {
-						if val, found, err := methods.Lookup(ctx, d.Field.Name); err != nil {
+					if canonicalModule(mod).declared {
+						item, err := typeItemFor(ctx, scope, mod)
+						if err != nil {
 							return nil, err
-						} else if found {
-							if fnVal, ok := val.(FunctionValue); ok {
-								return BoundScalarMethod{Method: fnVal, Receiver: rec}, nil
+						}
+						if item.methods != nil {
+							if val, found, err := item.methods.Lookup(ctx, d.Field.Name); err != nil {
+								return nil, err
+							} else if found {
+								if fnVal, ok := val.(FunctionValue); ok {
+									return BoundScalarMethod{Method: fnVal, Receiver: rec}, nil
+								}
 							}
 						}
 					}

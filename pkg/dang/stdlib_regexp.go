@@ -160,7 +160,7 @@ func registerRegexp() {
 // no Dang body, so instead of a self { } block its statics are wired directly:
 // the scheme lands on the meta-type's own table (where Select's static-first
 // resolution consults StaticScheme/StaticVisibility) and the runtime value in a
-// statics namespace object (where Select.Eval reads via Statics()). This is the
+// statics namespace object (where Select.Eval reads via GoStatics()). This is the
 // Go-native equivalent of the `self { }` machinery in fields.go.
 //
 // escape is the motivating case (type-statics.md): it quotes regexp
@@ -195,7 +195,7 @@ func registerRegexpStatics() {
 		},
 	}, PublicVisibility)
 
-	RegexpType.SetStatics(statics)
+	RegexpType.SetGoStatics(statics)
 }
 
 func registerRegexpStringMethods() {

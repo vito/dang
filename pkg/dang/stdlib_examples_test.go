@@ -85,6 +85,9 @@ func evalExample(src string) error {
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(context.Background(), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
+	if err := EvalTypeItems(ctx, file.Forms, valueScope); err != nil {
+		return fmt.Errorf("eval: %w", err)
+	}
 	for _, node := range file.Forms {
 		if _, err := EvalNode(ctx, valueScope, node); err != nil {
 			return fmt.Errorf("eval: %w", err)

@@ -217,16 +217,9 @@ type Type struct {
 	// session.go): which later entries' redefinitions earlier code depends on.
 	session *sessionState
 
-	// Scalar-body runtime hooks: Dang-defined methods and the new()
-	// materialization hook for scalars declared with a body. Written once by
-	// ScalarDecl.Eval and frozen afterwards (see SetScalarMethods).
-	scalarMethods *Object
-	scalarHook    FunctionValue
-	scalarHookArg string
-	hasScalarHook bool
-	// goScalarHook is the Go-native counterpart of scalarHook, for builtin
-	// scalars whose validation cannot be expressed in Dang (Regexp's compile
-	// check). Registered once at stdlib init.
+	// goScalarHook is a builtin scalar's Go-native new() hook, for validation
+	// that cannot be expressed in Dang (Regexp's compile check). Registered
+	// once at stdlib init. A Dang scalar's hook is in its item (typeItem).
 	goScalarHook func(raw string) (string, error)
 
 	// Interface tracking
@@ -248,9 +241,9 @@ type Type struct {
 	// scheme table, distinct from instance members on T, so `T.static` and
 	// `value.instance` resolve separately and can never collide. See the
 	// type-statics design.
-	meta    *Type   // companion meta-type; lazily created via MetaType
-	metaOf  *Type   // non-nil iff THIS is a meta-type, pointing to the instance type it describes
-	statics *Object // runtime namespace of static members; nil until a self { } block is evaluated
+	meta      *Type   // companion meta-type; lazily created via MetaType
+	metaOf    *Type   // non-nil iff THIS is a meta-type, pointing to the instance type it describes
+	goStatics *Object // a builtin type's Go-native static members (Regexp's); a Dang type's are in its item
 
 	// homeModule identifies the compilation unit (directory module, single
 	// file, or the prelude) this type was declared in. It powers module-level
@@ -1222,40 +1215,12 @@ func (e *Type) HomeModule() *moduleScope {
 	return nil
 }
 
-// SetStatics records the runtime namespace object holding a type's evaluated
-// static members. Written once when a self { } block is evaluated.
-func (e *Type) SetStatics(statics *Object) { e.statics = statics }
+// SetGoStatics records a builtin type's Go-native static members, written
+// once at stdlib init. A Dang type's statics are in its item (typeItem).
+func (e *Type) SetGoStatics(statics *Object) { e.goStatics = statics }
 
-// Statics returns the runtime namespace of static members, or nil.
-func (e *Type) Statics() *Object { return e.statics }
-
-// SetScalarMethods records the runtime methods object for a scalar declared
-// with a body. Select.Eval dispatches ScalarValue receivers through it.
-// Written once during the scalar declaration's Eval and treated as frozen
-// afterwards (shared-Prelude discipline applies for prelude scalars).
-func (e *Type) SetScalarMethods(methods *Object) {
-	e.scalarMethods = methods
-}
-
-// ScalarMethods returns the scalar's Dang-defined methods object, or nil.
-func (e *Type) ScalarMethods() *Object {
-	return e.scalarMethods
-}
-
-// SetScalarHook records the scalar's new() hook: a String! -> String!
-// function run at every materialization of the scalar (literals, casts,
-// decode, and the derived constructor). argName is the hook's parameter name.
-func (e *Type) SetScalarHook(hook FunctionValue, argName string) {
-	e.scalarHook = hook
-	e.scalarHookArg = argName
-	e.hasScalarHook = true
-}
-
-// ScalarHook returns the scalar's new() hook and its parameter name;
-// ok is false when the scalar has no hook.
-func (e *Type) ScalarHook() (hook FunctionValue, argName string, ok bool) {
-	return e.scalarHook, e.scalarHookArg, e.hasScalarHook
-}
+// GoStatics returns a builtin type's Go-native static members, or nil.
+func (e *Type) GoStatics() *Object { return e.goStatics }
 
 // SetGoScalarHook records a Go-native new() hook: like a Dang new() hook it
 // validates raw and returns the canonical underlying string, and it runs at

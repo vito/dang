@@ -199,26 +199,34 @@ func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh
 // EvaluateDeclaredFormsWithPhases evaluates only the declaration forms made
 // safe by DeclareFormsWithPhases. Function and method bodies are captured as
 // closures but not executed; variables and non-declarations are skipped.
+// Top-level types get their items (evalTopTypeItems), whose statics are
+// evaluated on first read.
 func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
 	var result Value = NullValue{}
 	classified := classifyForms(forms)
 	// Unqualified imports don't claim the names these forms declare.
 	ctx = withLocalDecls(ctx, forms)
 
-	for _, group := range [][]Node{
-		classified.Imports,
-		classified.Directives,
-		classified.Constants,
-		classified.Types,
-		classified.Functions,
-	} {
+	eval := func(group []Node) error {
 		for _, form := range group {
 			val, err := EvalNode(ctx, scope, form)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			result = val
 		}
+		return nil
+	}
+	for _, group := range [][]Node{classified.Imports, classified.Directives, classified.Constants} {
+		if err := eval(group); err != nil {
+			return nil, err
+		}
+	}
+	if err := evalTopTypeItems(ctx, forms, scope); err != nil {
+		return nil, err
+	}
+	if err := eval(classified.Functions); err != nil {
+		return nil, err
 	}
 
 	return result, nil
@@ -331,10 +339,34 @@ func isConstantValue(value Node) bool {
 }
 
 // EvaluateFormsWithPhases evaluates forms using the same phased approach as
-// inference. Computed variables are installed as lazy fields, forced on first
-// read, and then forced in source order before non-declarations run. This is
-// used for both module top-levels and object bodies.
+// inference: a type body's, or a module's top-level forms whose types already
+// have their items (EvalTypeItems). Type declarations bind their items.
+// Computed variables are installed as lazy fields, forced on first read, and
+// then forced in source order before non-declarations run.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
+	return evaluateForms(ctx, forms, scope, evalBody)
+}
+
+// evalMode is what evaluateForms evaluates.
+type evalMode int
+
+const (
+	// evalBody is a type body, evaluated per instance (or forms whose
+	// types have items already): its type declarations bind the items
+	// their module made.
+	evalBody evalMode = iota
+	// evalModule is a module's top level (FileBlock.Eval): its types phase
+	// makes the items of every type the forms declare (evalTypeItems), and
+	// its variables phase forces their statics before its variables.
+	evalModule
+	// evalStatics is a type's self { } members, evaluated once per module
+	// evaluation (installStatics): like a body, but its computed fields
+	// stay lazy and its statements wait, for the module to finish them
+	// (forceStatics).
+	evalStatics
+)
+
+func evaluateForms(ctx context.Context, forms []Node, scope ValueScope, mode evalMode) (Value, error) {
 	// An entry point: look through a context without a frame once, rather
 	// than in every EvalNode below.
 	ctx, _ = ensureFrame(ctx)
@@ -371,11 +403,20 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope
 		}
 	}
 
-	// Phase 4: Evaluate types (objects)
-	for _, form := range classified.Types {
-		_, err = EvalNode(ctx, scope, form)
+	// Phase 4: Evaluate types. A module makes their items; elsewhere a
+	// declaration binds the item made for it.
+	var items []*typeItem
+	if mode == evalModule {
+		items, err = evalTypeItems(ctx, forms, scope)
 		if err != nil {
 			return nil, fmt.Errorf("type evaluation failed: %w", err)
+		}
+	} else {
+		for _, form := range classified.Types {
+			_, err = EvalNode(ctx, scope, form)
+			if err != nil {
+				return nil, fmt.Errorf("type evaluation failed: %w", err)
+			}
 		}
 	}
 
@@ -387,18 +428,33 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope
 		}
 	}
 
-	// Phase 6: Install lazy fields for computed variables, then force them in
-	// source order. Forward references hidden behind constructors or function
-	// calls are resolved by the force-on-read mechanism; the source-order pass
-	// guarantees side effects still happen.
-	if len(classified.Variables) > 0 {
-		if err := installAndForceLazyVariables(ctx, classified.Variables, scope); err != nil {
-			return nil, fmt.Errorf("variable evaluation failed: %w", err)
-		}
+	// Phase 6: Install lazy fields for computed variables, then force the
+	// types' statics and the variables in source order. Forward references
+	// hidden behind constructors or function calls are resolved by the
+	// force-on-read mechanism; the source-order pass guarantees side effects
+	// still happen.
+	installLazyVariables(classified.Variables, scope)
+	if mode == evalStatics {
+		// The rest waits until the module forces the type's statics.
+		return result, nil
+	}
+	if err := forceStatics(ctx, items); err != nil {
+		return nil, fmt.Errorf("variable evaluation failed: %w", err)
+	}
+	return finishForms(ctx, classified, scope, result)
+}
+
+// finishForms forces forms' computed variables, installed lazily in scope,
+// in source order, then evaluates their non-declarations: the end of
+// evaluateForms, which forceStatics runs for a type's statics.
+func finishForms(ctx context.Context, classified ClassifiedForms, scope ValueScope, result Value) (Value, error) {
+	if err := forceLazyVariables(ctx, classified.Variables, scope); err != nil {
+		return nil, fmt.Errorf("variable evaluation failed: %w", err)
 	}
 
 	// Phase 7: Evaluate non-declarations in original order (assignments, expressions, etc.)
 	for _, form := range classified.NonDeclarations {
+		var err error
 		result, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("non-declaration evaluation failed: %w", err)
@@ -408,7 +464,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope
 	return result, nil
 }
 
-func installAndForceLazyVariables(ctx context.Context, variables []Node, scope ValueScope) error {
+func installLazyVariables(variables []Node, scope ValueScope) {
 	for _, form := range variables {
 		field, ok := form.(*FieldDecl)
 		if !ok {
@@ -420,7 +476,9 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, scope V
 			})
 		}, field.Visibility)
 	}
+}
 
+func forceLazyVariables(ctx context.Context, variables []Node, scope ValueScope) error {
 	for _, form := range variables {
 		field, ok := form.(*FieldDecl)
 		if !ok {
@@ -471,13 +529,9 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		var typ hm.Type
 		var err error
-		for i, form := range forms {
+		for _, form := range forms {
 			if inferer, ok := form.(hm.Inferer); ok {
-				formCtx := ctx
-				if declaresTypeCode(form) {
-					formCtx = withLaterDecls(ctx, forms[i+1:])
-				}
-				typ, err = inferer.Infer(formCtx, newEnv, fresh)
+				typ, err = inferer.Infer(ctx, newEnv, fresh)
 				if err != nil {
 					errs.Add(err)
 				}

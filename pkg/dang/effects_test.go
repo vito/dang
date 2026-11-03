@@ -507,6 +507,26 @@ func TestLocalTypesCaptureNothing(t *testing.T) {
 			want: fmt.Sprintf(captures, "n", "S"),
 		},
 		{
+			// Decoding may build T anywhere, so its methods see no null
+			// check made around it.
+			name: "method reading a name narrowed around its type",
+			src: `
+				pub name: String = null
+				run: String! {
+					if (name != null) {
+						type T { shout: String! { name.toUpper } }
+						T.shout
+					} else {
+						""
+					}
+				}
+			`,
+			want: "return type mismatch: declared String!, inferred String",
+		},
+		{
+			// The type's item scope binds only the types declared before
+			// it, so `x` means the top-level one at runtime too, as it did
+			// when checked.
 			name: "method reading a top-level name a later local shadows",
 			src: `
 				let x = 10
@@ -516,7 +536,6 @@ func TestLocalTypesCaptureNothing(t *testing.T) {
 					T.w + x
 				}
 			`,
-			want: "T cannot use `x`, which a block around T declares after it",
 		},
 		{
 			name: "top level, other types, builtins and own members are fine",
@@ -670,6 +689,32 @@ func TestTopLevelStatementState(t *testing.T) {
 				type Box { v: Int! = sum }
 			`,
 			want: "the body of `Box` reads `sum`",
+		},
+		{
+			// A type declared in a statement is no statement code: its
+			// statics run before any statement.
+			name: "static of a type declared in a statement reading W",
+			src: `
+				let sum = 0
+				sum = 5
+				if (true) {
+					type Box { self { v: Int! = sum } }
+					print(Box.v)
+				}
+			`,
+			want: "the body of `Box` reads `sum`, which a top-level statement writes (line 3)",
+		},
+		{
+			name: "method of a type declared in a statement reading W",
+			src: `
+				let sum = 0
+				sum = 5
+				if (true) {
+					type Box { get: Int! { sum } }
+					print(Box.get)
+				}
+			`,
+			want: "`Box.get` reads `sum`, which a top-level statement writes (line 3)",
 		},
 		{
 			name: "field-path write puts the root in W",

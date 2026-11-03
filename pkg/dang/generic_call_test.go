@@ -115,6 +115,7 @@ func TestFreshVarsAcrossFreshers(t *testing.T) {
 		forms := parsed.(*FileBlock).Forms
 		_, err = InferFormsWithPhases(ctx, forms, typeScope, hm.NewSimpleFresher())
 		require.NoError(t, err, src)
+		require.NoError(t, EvalTypeItems(ctx, forms, valueScope))
 		for _, node := range forms {
 			_, err := EvalNode(ctx, valueScope, node)
 			require.NoError(t, err)

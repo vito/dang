@@ -26,6 +26,7 @@ func prepareScopeChainProgram(tb testing.TB, src string) (context.Context, Value
 
 	ctx = WithEvalContext(ctx, NewEvalContext("scope_chain_test", src))
 	last := len(file.Forms) - 1
+	require.NoError(tb, EvalTypeItems(ctx, file.Forms, valueScope))
 	for _, node := range file.Forms[:last] {
 		_, err := EvalNode(ctx, valueScope, node)
 		require.NoError(tb, err)

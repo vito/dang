@@ -803,7 +803,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			return EnumValue{Val: s, EnumType: mod}, nil
 		case ScalarKind:
 			s, ok := raw.(string)
-			if !ok && mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil {
+			if !ok && mod.SourceSchema != nil && mod.goScalarHook == nil {
 				// A GraphQL scalar's value may be any JSON (see
 				// graphQLResultToValue), so its encoded form decodes back.
 				encoded, err := json.Marshal(raw)
@@ -875,37 +875,21 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 // constructorFor finds the constructor that builds values of mod, by type
 // identity rather than name, so a local binding shadowing the type's name
 // cannot hijack construction, and a type reached only qualified (`Lib.T`) is
-// still found. A Dang type's constructor is bound in its module's table
-// (moduleFrame) by its declaration, at whatever depth it is written: no
-// type's code captures the scope declaring it (checkTypeCapture), so one
-// constructor per module evaluation serves every decode.
-//
-//   - A schema input object's constructor is plain data, built from the type.
-//   - A type of an imported Dang module was bound by that module's own
-//     evaluation, which runs once per module instance, so it is found in that
-//     module's table, wherever (and whether) the importer's import has run. A
-//     decode that is part of that evaluation (the module's own top-level code)
-//     finds it through its own scope instead: asking for the module's value
-//     scope there would wait on itself.
-//   - Any other type is the decoding module's own, found in its table. Each
-//     evaluation of a prepared program has its own, so they never see each
-//     other's.
+// still found. A schema input object's constructor is plain data, built from
+// the type; a Dang type's is in its item (typeItemFor).
 func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable, error) {
 	mod = canonicalModule(mod)
 	if mod.Kind == InputKind && mod.constructorType != nil {
 		return InputObjectConstructor{TypeName: mod.Named, TypeScope: mod, FnType: mod.constructorType}, nil
 	}
-	if home := mod.homeModule; home != nil && home.dang != nil && home.dang != evaluatingModule(ctx) {
-		values, err := home.dang.valueScope(ctx)
-		if err != nil {
-			return nil, err
-		}
-		scope = values
+	item, err := typeItemFor(ctx, scope, mod)
+	if err != nil {
+		return nil, err
 	}
-	if callable, ok := moduleFrame(scope).LookupConstructor(mod); ok {
-		return callable, nil
+	if item.ctor == nil {
+		return nil, fmt.Errorf("%s has no constructor", mod.Name())
 	}
-	return nil, fmt.Errorf("constructor for %s not found: its declaration has not run yet", mod.Name())
+	return item.ctor, nil
 }
 
 func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {

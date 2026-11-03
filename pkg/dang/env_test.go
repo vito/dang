@@ -385,6 +385,38 @@ type Test {
 	require.Same(t, StringType, functionReturnType(t, print))
 }
 
+// DeclareDir declares only the top level, so it makes only the top-level
+// types' items: the code of types nested in their bodies, never inferred, is
+// not evaluated (a scalar's methods, a type's static methods).
+func TestDeclareDirSkipsNestedTypes(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+type Outer {
+  pub v: Int! = 1
+
+  scalar Tag {
+    shout: String! { toString(self) + "!" }
+  }
+
+  type Inner {
+    self {
+      twice(x: Int!): Int! { x * 2 }
+    }
+  }
+
+  self {
+    k: Int! = 2
+  }
+}
+`), 0o600))
+
+	env, err := DeclareDir(context.Background(), dir, false)
+	require.NoError(t, err)
+	outer, found := requireEvalGet(t, env, "Outer")
+	require.True(t, found)
+	require.IsType(t, &ConstructorFunction{}, outer)
+}
+
 func TestDeclareDirResolvesPositionalDirectiveArgs(t *testing.T) {
 	// Regression: the Dagger SDK installs module types from the declaration-only
 	// pass (DeclareDir) when self-calls are enabled, and reads directive

@@ -292,6 +292,12 @@ func readNarrowed(ctx context.Context, env hm.Env, name string, node Node, t hm.
 		return t
 	}
 	reader := effFrameFrom(ctx)
+	// A type's code runs wherever its item is used, not where the type is
+	// declared — its statics as its module starts, its methods on values
+	// decoded anywhere — so it sees no refinement made outside it.
+	if fr := typeCodeFrame(reader); fr != nil && fr.logStart >= n.pos {
+		return n.declared
+	}
 	for _, w := range log.writes {
 		if w.at > n.pos && !log.excluded(w.at) && w.hits(n, reader) {
 			return n.declared

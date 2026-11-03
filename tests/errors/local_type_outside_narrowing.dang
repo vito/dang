@@ -1,0 +1,14 @@
+# A type's code runs wherever its item is used, not where the type is
+# declared: its statics before any statement, its methods on values decoded
+# anywhere. So it sees no null check made around it.
+name: String = null
+
+if (name != null) {
+  type Greeting {
+    self {
+      text: String! = name.toUpper
+    }
+  }
+
+  print(Greeting.text)
+}

@@ -62,6 +62,7 @@ func prepareRecursion(t testing.TB, src string, depth int) (ValueScope, Node) {
 	require.NoError(t, err, "infer")
 
 	forms := file.Forms
+	require.NoError(t, EvalTypeItems(context.Background(), forms, valueScope))
 	for _, node := range forms[:len(forms)-1] {
 		_, err := EvalNode(context.Background(), valueScope, node)
 		require.NoError(t, err, "setup")

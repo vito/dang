@@ -31,6 +31,7 @@ func evalWithContext(t *testing.T, ctx context.Context, src string) (string, err
 	ctx = WithEvalContext(ctx, NewEvalContext("call_depth_test", src))
 	ctx = ioctx.StdoutToContext(ctx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
+	require.NoError(t, EvalTypeItems(ctx, file.Forms, valueScope))
 	for _, node := range file.Forms {
 		if _, err := EvalNode(ctx, valueScope, node); err != nil {
 			return out.String(), err

@@ -177,11 +177,13 @@ func noteStatementWrite(ctx context.Context, target effTarget, node Node) {
 
 // noteTopRead records a read (at node) of name, resolved in env, from code
 // that isn't statement code: a declaration's initializer, or the body of a
-// function, method, constructor or type (field defaults, statics).
+// function, method, constructor or type (field defaults, statics). A type
+// declared in a statement is no statement code either: its item is made, and
+// its statics run, before any statement (see typeItem).
 func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 	o := topOrderFrom(ctx)
 	f := topFormFrom(ctx)
-	if o == nil || (f != nil && f.decl == "") || isWriteRoot(ctx, node) {
+	if o == nil || (f != nil && f.decl == "" && typeCodeFrame(effFrameFrom(ctx)) == nil) || isWriteRoot(ctx, node) {
 		return
 	}
 	frame := resolveBinding(env, name)
@@ -189,7 +191,7 @@ func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 		return
 	}
 	r := outsideRead{target: effTarget{frame: frame, name: name}, node: node}
-	if f != nil && !inFunctionBody(ctx) {
+	if f != nil && f.decl != "" && !inFunctionBody(ctx) {
 		r.reader, r.kind = f.decl, readerDecl
 	} else {
 		r.reader, r.kind = "this code", readerFunction
@@ -238,7 +240,7 @@ func outsideReadMessage(r outsideRead, write Node) string {
 			r.reader, name, at, name)
 	case readerType:
 		return fmt.Sprintf(
-			"the body of `%s` reads `%s`, which a top-level statement writes (%s), but field defaults may run while top-level declarations are initialized, before any statement, so they could see the value from before the write; pass `%s` in as an argument instead",
+			"the body of `%s` reads `%s`, which a top-level statement writes (%s), but a type's field defaults may run while top-level declarations are initialized, and its statics run then, before any statement, so they could see the value from before the write; pass `%s` in as an argument instead",
 			r.reader, name, at, name)
 	default:
 		return fmt.Sprintf(

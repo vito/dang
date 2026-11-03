@@ -83,7 +83,7 @@ func TestPreludeExamples(t *testing.T) {
 }
 
 // A user program declaring its own `scalar Path` must shadow the prelude's,
-// not mutate it: the prelude type keeps its methods and hook afterwards.
+// not mutate it: the prelude type keeps its item, methods and hook afterwards.
 func TestPreludeShadowingDoesNotMutate(t *testing.T) {
 	loadPrelude()
 
@@ -92,8 +92,11 @@ func TestPreludeShadowingDoesNotMutate(t *testing.T) {
 		t.Fatalf("prelude Path type not found")
 	}
 	mod := pathType.(*Type)
-	methodsBefore := mod.ScalarMethods()
-	_, _, hookBefore := mod.ScalarHook()
+	before := preludeItems[mod]
+	if before == nil || before.methods == nil || before.hook == nil {
+		t.Fatalf("prelude Path has no item with methods and a hook")
+	}
+	methodsBefore, hookBefore := before.methods, before.hook
 
 	if err := evalExample(`
 		scalar Path
@@ -104,10 +107,8 @@ func TestPreludeShadowingDoesNotMutate(t *testing.T) {
 		t.Fatalf("shadowing program failed: %v", err)
 	}
 
-	if mod.ScalarMethods() != methodsBefore {
-		t.Fatalf("user program mutated the prelude Path's methods")
-	}
-	if _, _, hookAfter := mod.ScalarHook(); hookAfter != hookBefore {
-		t.Fatalf("user program mutated the prelude Path's hook")
+	after := preludeItems[mod]
+	if after != before || after.methods != methodsBefore || after.hook != hookBefore {
+		t.Fatalf("user program mutated the prelude Path's item")
 	}
 }

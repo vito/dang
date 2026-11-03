@@ -576,13 +576,6 @@ type ObjectDecl struct {
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
 
-	// local marks a type declared in a function, block or type body rather
-	// than at its module's top level: hoistLocalTypes enters a constructor
-	// for it in its module's table before its declaration has run. Set at
-	// Hoist; without a top-level frame in ctx (an un-instrumented entry
-	// point), nothing is marked and only the declaration enters one.
-	local bool
-
 	ctorFn *FunctionBase
 }
 
@@ -650,7 +643,8 @@ func (n *NewConstructorDecl) Eval(ctx context.Context, scope ValueScope) (Value,
 // members, which land on the type's meta-type rather than on instances. Its
 // contents are ordinary declarations (methods, stored fields, let/pub
 // visibility, docstrings) processed against the meta scope by the enclosing
-// type declaration (see hoistStatics / inferStatics / evalStatics). Like
+// type declaration (see hoistStatics / inferStatics) and its item
+// (installStatics). Like
 // NewConstructorDecl, it is handled specially by its container; reaching its own
 // Infer means it appeared outside a type body, which is an error.
 type SelfBlockDecl struct {
@@ -691,8 +685,8 @@ func (s *SelfBlockDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 	return nil, NewInferError(fmt.Errorf("self { } block is only valid inside a type body"), s)
 }
 
-// Eval is a no-op: static members are evaluated into the type's statics object
-// by the enclosing declaration (see evalStatics).
+// Eval is a no-op: static members are evaluated into the statics object of
+// the enclosing type's item (see installStatics).
 func (s *SelfBlockDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return NullValue{}, nil
 }
@@ -892,41 +886,32 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
 	// Statics are the type's code, in a frame of their own: their locals are
 	// scoped to the meta-type.
-	typeFr := effFrameFrom(ctx)
-	keepReads := 0
-	if typeFr != nil {
-		keepReads = len(typeFr.reads)
-	}
 	ctx = withTypeBodyEffFrame(ctx, instanceType, meta, metaScope)
 	_, err := InferFormsWithPhases(withStaticsBody(ctx, meta), forms, metaScope, fresh)
-	// Static fields are computed once, as the declaration runs, so their
-	// reads of outer null narrowings are ordinary reads, not the type's
-	// deferred code (see ObjectDecl.Infer); static methods are checked in
-	// their own frames.
-	if typeFr != nil && typeFr.sealed == instanceType && len(typeFr.reads) > keepReads {
-		typeFr.reads = typeFr.reads[:keepReads]
-	}
 	return err
 }
 
-// evalStatics evaluates a type's static members into a fresh statics namespace
-// object (whose module is the meta-type) and records it on the type. Static
-// methods share the block's closure so bare sibling statics resolve, and self
-// resolves to the statics namespace. Runs during the enclosing declaration's
-// Eval. A no-op when the type declares no statics.
-func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope ValueScope) error {
+// installStatics makes the namespace of a type's static members (its module
+// is the meta-type) in item, closing over scope, the scope declaring the
+// type. Static methods share the block's closure so bare sibling statics
+// resolve, and self resolves to the statics namespace. Like a module's top
+// level, its computed fields are lazy and its statements wait: the module
+// evaluation finishes them in its variables phase (forceStatics), though a
+// read may force a field first. A no-op when the type declares no statics.
+func (item *typeItem) installStatics(ctx context.Context, instanceType *Type, block *Block, scope ValueScope) error {
 	forms := staticForms(block)
 	if len(forms) == 0 {
 		return nil
 	}
-	meta := instanceType.MetaType()
-	statics := NewObject(meta)
+	statics := NewObject(instanceType.MetaType())
 	staticsScope := CreateOverlayValueScope(statics, scope)
 	staticsScope.EnterSelf(statics)
-	if _, err := EvaluateFormsWithPhases(ctx, forms, staticsScope); err != nil {
+	if _, err := evaluateForms(ctx, forms, staticsScope, evalStatics); err != nil {
 		return err
 	}
-	instanceType.SetStatics(statics)
+	item.statics = statics
+	item.staticsScope = staticsScope
+	item.staticForms = classifyForms(forms)
 	return nil
 }
 
@@ -952,9 +937,6 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 	c.Inferred = object
 	c.SetInferredType(object)
-	if top := topLevelFrameFrom(ctx); top != nil {
-		c.local = !isTopLevelFrame(envFrame(env), top)
-	}
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
 		object.SetTypeDocString(c.DocString)
@@ -1127,7 +1109,6 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// leave that scope again (see withTypeBody). None of the type's code
 	// captures the scope declaring it (checkTypeCapture).
 	ctx = withTypeBodyEffFrame(ctx, object, object, inferTypeScope)
-	typeFr := effFrameFrom(ctx)
 	bodyForms := c.bodyFormsWithoutNew()
 	unavailable := unavailableInDefaults(bodyForms, c.findNewConstructor() != nil)
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
@@ -1153,10 +1134,6 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	if newDecl != nil {
 		newBodyErr = c.inferNewConstructor(ctx, newDecl, inferTypeScope, fresh)
 	}
-	// The type's code (field defaults, new(), methods, statics) runs when
-	// its values are made and used, not here: check its reads of outer
-	// null narrowings like a nested function's.
-	exitNarrowBody(ctx, typeFr)
 
 	// Validate interface implementations after fields have been inferred
 	if len(c.Implements) > 0 {
@@ -1439,29 +1416,20 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 
 func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
-		if c.Inferred == nil {
-			panic(fmt.Errorf("ObjectDecl.Eval: object %q has not been inferred", c.Name.Name))
-		}
-
-		// Bind the constructor by name, and enter it in its module's table,
-		// where decoding finds it by identity from anywhere. A type declared
-		// in a function, block or type body enters a new one each time its
-		// declaration runs, replacing the last (or the one hoistLocalTypes
-		// made before any had run); its code captures nothing
-		// (checkTypeCapture), so they all behave alike.
-		constructor := c.newConstructor(scope)
-		scope.Bind(c.Name.Name, constructor, c.Visibility)
-		moduleFrame(scope).BindConstructor(c.Inferred, constructor)
-
-		// Evaluate static members (self { } blocks) into the type's statics
-		// namespace. Bound after the constructor so a static may reference the
-		// type's name (its constructor) through the shared closure.
-		if err := evalStatics(ctx, c.Inferred, c.Value, scope); err != nil {
-			return nil, err
-		}
-
-		return constructor, nil
+		return bindTypeItem(scope, c)
 	})
+}
+
+func (c *ObjectDecl) itemDecl() (*Type, string, Visibility) {
+	return c.Inferred, c.Name.Name, c.Visibility
+}
+
+// newItem makes c's item: its constructor, which evaluates the object body
+// in scope when called, and its statics.
+func (c *ObjectDecl) newItem(ctx context.Context, scope ValueScope) (*typeItem, error) {
+	constructor := c.newConstructor(scope)
+	item := &typeItem{value: constructor, ctor: constructor}
+	return item, item.installStatics(ctx, c.Inferred, c.Value, scope)
 }
 
 // newConstructor makes the constructor of c's values, evaluating the object
@@ -1497,101 +1465,295 @@ func (c *ObjectDecl) newConstructor(closure ValueScope) *ConstructorFunction {
 	}
 }
 
-// HoistLocalTypes prepares top-level forms, inferred with InferTopLevel, for
-// evaluating one by one in scope with EvalNode, as a REPL or literate session
-// does: see hoistLocalTypes.
-func HoistLocalTypes(ctx context.Context, forms []Node, scope ValueScope) {
-	hoistLocalTypes(ctx, forms, scope)
+// A Dang type's runtime side is its item: what its name evaluates to (an
+// object type's constructor, a scalar's constructor or namespace, an enum's
+// values, an interface's or union's namespace) and the state its code shares
+// (statics, a scalar's methods and new() hook). No type's code captures the
+// scope declaring it (checkTypeCapture), so a type declared in a function,
+// block or type body is a top-level type whose name is visible in a smaller
+// area: it means the same thing wherever and however often its declaration
+// runs. So each type has exactly one item per module evaluation, made before
+// any of the type's code can run (evalTypeItems) and entered in the module's
+// table (Object.items on moduleFrame), where its values find it by identity
+// from anywhere they go (typeItemFor): decoding builds them with its
+// constructor, even where its declaration never ran, and a scalar value
+// dispatches its methods and hook through it. A declaration's Eval only binds
+// its name to its item where it runs (bindTypeItem). Each evaluation of a
+// prepared program makes its own items, so they share no state.
+//
+// Builtin types keep their Go-native state on the *Type (GoScalarHook,
+// GoStatics). The Dang-source prelude's items are made once per process and
+// bound into every program's builtins frame (preludeItems).
+type typeItem struct {
+	// value is what the type's name evaluates to.
+	value Value
+	// ctor builds an object type's values, for decoding.
+	ctor Callable
+	// statics is the namespace of the type's self { } members, or nil. Its
+	// computed fields are lazy, and its statements wait: staticForms, in
+	// staticsScope, are what forceStatics finishes (installStatics).
+	statics      *Object
+	staticsScope ValueScope
+	staticForms  ClassifiedForms
+	// methods and hook are a scalar's Dang-defined methods and new() hook,
+	// or nil.
+	methods *Object
+	hook    *FunctionValue
 }
 
-// hoistLocalTypes enters in the module table of scope (moduleFrame) a
-// constructor for every object type declared below the top level of forms (a
-// module's top-level forms, evaluated in scope) before any of them runs, so a
-// type can be decoded wherever its values reach even where its declaration
-// never ran: a field of another type, say, which decoding fills in instead of
-// running the field's default. The type captures nothing
-// (checkTypeCapture), so its constructor needs only the top level and the
-// types declared around it: each block around a local object type gets a
-// scope over its parent's binding the object types it declares, its enums
-// and its imports, the closure of their constructors. (A Dang module imported
-// there is evaluated now, earlier than the block would; errors are reported
-// when the block runs.) Local scalars, interfaces and unions are not bound
-// there, nor statics evaluated: a value built by a hoisted constructor whose
-// code reaches one of those before its declaration has run fails at that
-// reference. Once the declaration runs, the constructor it enters replaces
-// this one.
-//
-// Every entry point evaluating a module's top-level forms calls it, through
-// HoistLocalTypes for those outside this package (the REPL, literate docs).
-func hoistLocalTypes(ctx context.Context, forms []Node, scope ValueScope) {
-	root := moduleFrame(scope)
-	var visit func(n Node, s ValueScope)
-	visitBlock := func(b *Block, s ValueScope) {
-		var decls []*ObjectDecl
-		var enums []*EnumDecl
-		var imports []*ImportDecl
-		for _, form := range b.Forms {
-			switch decl := form.(type) {
-			case *ObjectDecl:
-				if decl.local && decl.Inferred != nil {
-					decls = append(decls, decl)
-				}
-			case *EnumDecl:
-				if decl.Inferred != nil {
-					enums = append(enums, decl)
-				}
-			case *ImportDecl:
-				imports = append(imports, decl)
-			}
-		}
-		if len(decls) > 0 || ((len(imports) > 0 || len(enums) > 0) && declaresLocalTypes(b)) {
-			s = s.Derive(false)
-			blockCtx := withLocalDecls(ctx, b.Forms)
-			for _, decl := range imports {
-				// A failing import fails again, and is reported, where the
-				// block runs.
-				_, _ = EvalNode(blockCtx, s, decl)
-			}
-			for _, decl := range enums {
-				// Pure: it binds the enum's namespace of values.
-				_, _ = decl.Eval(blockCtx, s)
-			}
-			for _, decl := range decls {
-				constructor := decl.newConstructor(s)
-				s.Bind(decl.Name.Name, constructor, decl.Visibility)
-				root.BindConstructor(decl.Inferred, constructor)
-			}
-		}
-		for _, form := range b.Forms {
-			visit(form, s)
-		}
+// typeDecl is a declaration of a type, which has an item.
+type typeDecl interface {
+	Node
+	// itemDecl returns the declared type (nil until inferred), and the name
+	// and visibility its item is bound with.
+	itemDecl() (*Type, string, Visibility)
+	// newItem makes the declaration's item, closing over scope, the item
+	// scope declaring it (see evalTypeItems). It runs no user code.
+	newItem(ctx context.Context, scope ValueScope) (*typeItem, error)
+}
+
+var (
+	_ typeDecl = (*ObjectDecl)(nil)
+	_ typeDecl = (*ScalarDecl)(nil)
+	_ typeDecl = (*EnumDecl)(nil)
+	_ typeDecl = (*InterfaceDecl)(nil)
+	_ typeDecl = (*UnionDecl)(nil)
+)
+
+// bindTypeItem binds d's name, where d's declaration runs (scope), to its
+// item, which its module's evaluation made up front.
+func bindTypeItem(scope ValueScope, d typeDecl) (Value, error) {
+	t, name, vis := d.itemDecl()
+	if t == nil {
+		panic(fmt.Errorf("%T.Eval: %q has not been inferred", d, name))
 	}
-	visit = func(n Node, s ValueScope) {
-		n.Walk(func(m Node) bool {
-			if b, ok := m.(*Block); ok {
-				visitBlock(b, s)
-				return false
+	item, ok := moduleFrame(scope).lookupItem(t)
+	if !ok {
+		return nil, fmt.Errorf("type %s has no runtime item: evaluate its module as a FileBlock or directory, or make its items with EvalTypeItems first", name)
+	}
+	scope.Bind(name, item.value, vis)
+	return item.value, nil
+}
+
+// typeItemFor returns t's item in the module evaluation that declares it, as
+// seen from scope. A type of an imported Dang module has the item that
+// module's own evaluation made, which runs once per module instance, so it is
+// found there, wherever (and whether) the importer's import has run. Code
+// that is part of that evaluation (the module's own top-level code) finds it
+// through its own scope instead: asking for the module's value scope there
+// would wait on itself. Any other type is that of the module whose code
+// scope belongs to, or the prelude's, found in the builtins frame beneath it.
+func typeItemFor(ctx context.Context, scope ValueScope, t *Type) (*typeItem, error) {
+	t = canonicalModule(t)
+	if home := t.homeModule; home != nil && home.dang != nil && home.dang != evaluatingModule(ctx) {
+		values, err := home.dang.valueScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		scope = values
+	}
+	if item, ok := moduleFrame(scope).lookupItem(t); ok {
+		return item, nil
+	}
+	return nil, fmt.Errorf("type %s has no runtime item here", t.Name())
+}
+
+// EvalTypeItems makes the items of the types top-level forms declare, at any
+// depth, so the forms can be evaluated one by one in scope with EvalNode, as a
+// REPL or literate session does after InferTopLevel (see evalTypeItems).
+// Their statics are evaluated on first read.
+func EvalTypeItems(ctx context.Context, forms []Node, scope ValueScope) error {
+	_, err := evalTypeItems(ctx, forms, scope)
+	return err
+}
+
+// evalTypeItems makes the item of every type forms declare, at any depth —
+// forms being a module's top-level forms, evaluated in scope — enters each in
+// the module's table, and returns them in the order made. A module evaluation
+// runs it as its types phase, where top-level type declarations used to run:
+// after its imports, directives and constants, before its functions,
+// variables and statements. Making an item runs no user code: computed
+// statics are lazy, and the module forces them in its variables phase
+// (forceStatics), so they can use whatever top-level variables can, and a
+// type's statics may use another's in any order.
+//
+// Each item closes over an item scope mirroring its type's lexical nesting,
+// binding exactly the type names (and block-level imports) the type's code
+// was checked against, besides the top level's. A top-level type's is the
+// module scope itself; the types of a type body or self { } block, which are
+// hoisted, get one scope over their parent's binding all of them; the types
+// of a block, checked in source order, each get a scope over the previous
+// one binding only themselves, as does each import in it. So a name a block
+// declares after a type never changes what the type's code means. (A Dang
+// module imported in a block is evaluated here, rather than when the block
+// first runs; a failing import is reported where the block runs.)
+func evalTypeItems(ctx context.Context, forms []Node, scope ValueScope) ([]*typeItem, error) {
+	w := &itemWalker{root: moduleFrame(scope)}
+	w.forms(ctx, forms, scope, true, true)
+	return w.items, w.err
+}
+
+// evalTopTypeItems is evalTypeItems for DeclareDir, which declares only the
+// top level: the types below it, whose code was never inferred, get no item.
+func evalTopTypeItems(ctx context.Context, forms []Node, scope ValueScope) error {
+	w := &itemWalker{root: moduleFrame(scope), topOnly: true}
+	w.forms(ctx, forms, scope, true, true)
+	return w.err
+}
+
+type itemWalker struct {
+	root    *Object
+	topOnly bool
+	items   []*typeItem
+	err     error
+}
+
+// forms makes the items of the types forms declare, in s (top) or in item
+// scopes over it, then walks into each form. Hoisted forms (a module's, a
+// type body's) see all of their types; a block's see each type only after
+// its declaration.
+func (w *itemWalker) forms(ctx context.Context, forms []Node, s ValueScope, hoisted, top bool) {
+	if hoisted {
+		var decls []typeDecl
+		for _, form := range forms {
+			if decl, ok := form.(typeDecl); ok {
+				decls = append(decls, decl)
 			}
+		}
+		if len(decls) > 0 && !top {
+			s = s.Derive(false)
+		}
+		for _, decl := range decls {
+			w.makeItem(ctx, decl, s)
+		}
+		for _, form := range forms {
+			w.node(ctx, form, s)
+		}
+		return
+	}
+	ctx = withLocalDecls(ctx, forms)
+	for _, form := range forms {
+		switch decl := form.(type) {
+		case typeDecl:
+			s = s.Derive(false)
+			w.makeItem(ctx, decl, s)
+		case *ImportDecl:
+			if formsDeclareTypeCode(forms) {
+				s = s.Derive(false)
+				// A failing import fails again, and is reported, where
+				// the block runs.
+				_, _ = EvalNode(ctx, s, decl)
+			}
+		}
+		w.node(ctx, form, s)
+	}
+}
+
+// node walks into n, in s, making the items of the types declared within.
+func (w *itemWalker) node(ctx context.Context, n Node, s ValueScope) {
+	if w.topOnly {
+		return
+	}
+	switch n := n.(type) {
+	case *Block:
+		w.forms(ctx, n.Forms, s, false, false)
+		return
+	case *ObjectDecl, *ScalarDecl:
+		// Its body was walked as its item was made (makeItem).
+		return
+	}
+	first := true
+	n.Walk(func(m Node) bool {
+		if first {
+			first = false
 			return true
+		}
+		w.node(ctx, m, s)
+		return false
+	})
+}
+
+// typeBody walks the body of a type declared in s, making the items of the
+// types it declares, which the type's own item may bind as it is made: its
+// members (unless topOnly) see the types the body declares, while its
+// self { } blocks see only s, as they were checked (hoistStatics).
+func (w *itemWalker) typeBody(ctx context.Context, body *Block, s ValueScope) {
+	if body == nil {
+		return
+	}
+	var members []Node
+	for _, form := range body.Forms {
+		if sb, ok := form.(*SelfBlockDecl); ok {
+			if sb.BodyBlock != nil {
+				w.forms(ctx, sb.BodyBlock.Forms, s, true, false)
+			}
+			continue
+		}
+		members = append(members, form)
+	}
+	if !w.topOnly {
+		w.forms(ctx, members, s, true, false)
+	}
+}
+
+// makeItem makes decl's item in s, binds its name there and enters it in the
+// module's table. Its body is walked first (typeBody): making a scalar's
+// methods and installing statics bind the types declared there. A
+// declaration that was never inferred (a function body under DeclareDir) has
+// none.
+func (w *itemWalker) makeItem(ctx context.Context, decl typeDecl, s ValueScope) {
+	t, name, vis := decl.itemDecl()
+	if t == nil || w.err != nil {
+		return
+	}
+	switch decl := decl.(type) {
+	case *ObjectDecl:
+		w.typeBody(ctx, decl.Value, s)
+	case *ScalarDecl:
+		w.typeBody(ctx, decl.Value, s)
+	}
+	if w.err != nil {
+		return
+	}
+	item, err := decl.newItem(ctx, s)
+	if err != nil {
+		w.err = err
+		return
+	}
+	s.Bind(name, item.value, vis)
+	w.root.bindItem(t, item)
+	w.items = append(w.items, item)
+}
+
+// formsDeclareTypeCode reports whether forms declare, at any depth, a type
+// with code of its own (an object type or scalar), which may use a
+// block-level import among them.
+func formsDeclareTypeCode(forms []Node) bool {
+	found := false
+	for _, form := range forms {
+		form.Walk(func(n Node) bool {
+			switch n.(type) {
+			case *ObjectDecl, *ScalarDecl:
+				found = true
+			}
+			return !found
 		})
 	}
-	for _, form := range forms {
-		visit(form, scope)
-	}
+	return found
 }
 
-// declaresLocalTypes reports whether a local object type is declared anywhere
-// within b: whether its imports and enums may be reached by a constructor
-// hoistLocalTypes makes.
-func declaresLocalTypes(b *Block) bool {
-	found := false
-	b.Walk(func(n Node) bool {
-		if decl, ok := n.(*ObjectDecl); ok && decl.local {
-			found = true
+// forceStatics finishes the statics of items, in order: forces their computed
+// fields (unless a read already has) and runs their statements.
+func forceStatics(ctx context.Context, items []*typeItem) error {
+	for _, item := range items {
+		if item.statics == nil {
+			continue
 		}
-		return !found
-	})
-	return found
+		if _, err := finishForms(ctx, item.staticForms, item.staticsScope, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *ObjectDecl) Walk(fn func(Node) bool) {
@@ -1704,6 +1866,15 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 }
 
 func (e *EnumDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return bindTypeItem(scope, e)
+}
+
+func (e *EnumDecl) itemDecl() (*Type, string, Visibility) {
+	return e.Inferred, e.Name.Name, e.Visibility
+}
+
+// newItem makes e's item: the enum's namespace, holding its values.
+func (e *EnumDecl) newItem(ctx context.Context, scope ValueScope) (*typeItem, error) {
 	// Create a module value for the enum
 	enumModule := NewObject(e.Inferred)
 
@@ -1724,10 +1895,7 @@ func (e *EnumDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		ElemType: NonNull(e.Inferred),
 	}
 
-	// Register the enum module in the environment
-	scope.Bind(e.Name.Name, enumModule, e.Visibility)
-
-	return enumModule, nil
+	return &typeItem{value: enumModule}, nil
 }
 
 func (e *EnumDecl) Walk(fn func(Node) bool) {
@@ -2046,9 +2214,9 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	}
 	scalarType.SetDynamicScopeType(hm.NonNullType{Type: scalarType})
 
-	// Like an object type's, a scalar's code is sealed (see ObjectDecl.Infer).
+	// Like an object type's, a scalar's code captures nothing (see
+	// ObjectDecl.Infer).
 	ctx = withTypeBodyEffFrame(ctx, scalarType, scalarType, inferTypeScope)
-	typeFr := effFrameFrom(ctx)
 	if _, err := InferFormsWithPhases(ctx, formsWithoutNew(s.Value), inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
@@ -2063,99 +2231,91 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			return nil, err
 		}
 	}
-	// Check the scalar's reads of outer null narrowings (see ObjectDecl.Infer).
-	exitNarrowBody(ctx, typeFr)
 
 	return scalarType, nil
 }
 
 func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		newDecl := findNewConstructorIn(s.Value)
+		return bindTypeItem(scope, s)
+	})
+}
 
-		var evalScope ValueScope
-		if s.Value != nil {
-			// Evaluate method members into a methods object hung off the *Type,
-			// where Select.Eval dispatches them for ScalarValue receivers. The
-			// members' shared closure overlays the methods object itself, so
-			// sibling methods see each other by bare name.
-			methods := NewObject(s.Inferred)
-			evalScope = CreateOverlayValueScope(methods, scope)
-			for _, form := range formsWithoutNew(s.Value) {
-				if _, err := EvalNode(ctx, evalScope, form); err != nil {
-					return nil, err
-				}
-			}
-			// Methods are dynamic: a bare sibling call inside a method body
-			// re-dispatches through the receiver (see FunctionValue.Call).
-			for _, kv := range methods.Bindings(PrivateVisibility) {
-				if fnVal, ok := kv.Value.(FunctionValue); ok {
-					fnVal.IsDynamic = true
-					methods.Bind(kv.Key, fnVal, PublicVisibility)
-				}
-			}
-			s.Inferred.SetScalarMethods(methods)
-		}
+func (s *ScalarDecl) itemDecl() (*Type, string, Visibility) {
+	return s.Inferred, s.Name.Name, s.Visibility
+}
 
-		// evalScalarStatics evaluates the self { } members into the scalar's
-		// statics namespace. Deferred until after the scalar's name is bound so
-		// a static stored field like `empty: Tag! = Tag("")` can construct the
-		// scalar. Closed over the outer scope, not the instance-methods scope, so
-		// statics never see instance members by bare name.
-		evalScalarStatics := func() error {
-			return evalStatics(ctx, s.Inferred, s.Value, scope)
-		}
-
-		if newDecl != nil {
-			// The new() hook computes the canonical underlying string; the
-			// runtime wraps it (see runScalarHook). It runs with no self —
-			// deliberately not IsDynamic, so a caller's dynamic scope can
-			// never be mistaken for a receiver.
-			argName := newDecl.Args[0].Name.Name
-			hookArgs := NewRecordType("", Keyed[*hm.Scheme]{
-				Key:   argName,
-				Value: hm.NewScheme(nil, hm.NonNullType{Type: StringType}),
-			})
-			hook := FunctionValue{
-				Args:    []string{argName},
-				Body:    newDecl.BodyBlock,
-				Closure: evalScope,
-				FnType:  hm.NewFnType(hookArgs, hm.NonNullType{Type: StringType}),
-			}
-			s.Inferred.SetScalarHook(hook, argName)
-
-			ctor := ScalarConstructor{
-				ScalarType: s.Inferred,
-				FnType:     s.ConstructorFnType,
-				ArgName:    argName,
-			}
-			scope.Bind(s.Name.Name, ctor, s.Visibility)
-			if err := evalScalarStatics(); err != nil {
+// newItem makes s's item: its methods and new() hook, closing over scope,
+// its statics, and its name's value, the constructor with new() or else its
+// namespace.
+func (s *ScalarDecl) newItem(ctx context.Context, scope ValueScope) (*typeItem, error) {
+	item := &typeItem{}
+	var evalScope ValueScope
+	if s.Value != nil {
+		// Evaluate method members into a methods object, where Select.Eval
+		// dispatches them for ScalarValue receivers. The members' shared
+		// closure overlays the methods object itself, so sibling methods
+		// see each other by bare name.
+		methods := NewObject(s.Inferred)
+		evalScope = CreateOverlayValueScope(methods, scope)
+		for _, form := range formsWithoutNew(s.Value) {
+			if _, err := EvalNode(ctx, evalScope, form); err != nil {
 				return nil, err
 			}
-			return ctor, nil
 		}
+		// Methods are dynamic: a bare sibling call inside a method body
+		// re-dispatches through the receiver (see FunctionValue.Call).
+		for _, kv := range methods.Bindings(PrivateVisibility) {
+			if fnVal, ok := kv.Value.(FunctionValue); ok {
+				fnVal.IsDynamic = true
+				methods.Bind(kv.Key, fnVal, PublicVisibility)
+			}
+		}
+		item.methods = methods
+	}
 
-		// No constructor: the scalar's name binds its namespace object. A
-		// scalar whose name matches a builtin scalar (e.g. JSON) doubles as
-		// that scalar's namespace: bind Dang's members onto its runtime object.
-		scalarModule := NewObject(s.Inferred)
-		attachBuiltinMethods(scalarModule, s.Inferred)
-		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
-		if err := evalScalarStatics(); err != nil {
-			return nil, err
+	// Statics close over the outer scope, not the instance-methods scope,
+	// so they never see instance members by bare name.
+	if err := item.installStatics(ctx, s.Inferred, s.Value, scope); err != nil {
+		return nil, err
+	}
+
+	if newDecl := findNewConstructorIn(s.Value); newDecl != nil {
+		// The new() hook computes the canonical underlying string; the
+		// runtime wraps it (see runScalarHook). It runs with no self —
+		// deliberately not IsDynamic, so a caller's dynamic scope can never
+		// be mistaken for a receiver.
+		argName := newDecl.Args[0].Name.Name
+		hookArgs := NewRecordType("", Keyed[*hm.Scheme]{
+			Key:   argName,
+			Value: hm.NewScheme(nil, hm.NonNullType{Type: StringType}),
+		})
+		item.hook = &FunctionValue{
+			Args:    []string{argName},
+			Body:    newDecl.BodyBlock,
+			Closure: evalScope,
+			FnType:  hm.NewFnType(hookArgs, hm.NonNullType{Type: StringType}),
 		}
-		// The name is typed as the scalar's meta-type, which holds its
-		// statics (see Hoist), so as a value it is the statics namespace:
-		// `let ns = Tag; ns.sep` reads it. A builtin scalar's members ride
-		// along.
-		if statics := s.Inferred.Statics(); statics != nil {
-			attachBuiltinMethods(statics, s.Inferred)
-			scope.Bind(s.Name.Name, statics, s.Visibility)
-			return statics, nil
+		item.value = ScalarConstructor{
+			ScalarType: s.Inferred,
+			FnType:     s.ConstructorFnType,
+			ArgName:    argName,
 		}
-		return scalarModule, nil
-	})
+		return item, nil
+	}
+
+	// No constructor: the name is typed as the scalar's meta-type, which
+	// holds its statics (see Hoist), so as a value it is the statics
+	// namespace (`let ns = Tag; ns.sep` reads it), or an empty namespace. A
+	// scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
+	// scalar's namespace: Dang's members ride along.
+	namespace := item.statics
+	if namespace == nil {
+		namespace = NewObject(s.Inferred)
+	}
+	attachBuiltinMethods(namespace, s.Inferred)
+	item.value = namespace
+	return item, nil
 }
 
 func (s *ScalarDecl) Walk(fn func(Node) bool) {
@@ -2435,13 +2595,18 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 }
 
 func (i *InterfaceDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	// Interfaces are pure type declarations - they don't have runtime values
-	// Just register the interface module in the environment. It is the
-	// interface's namespace, typed as its meta-type (see Hoist), so no type
-	// pattern on the interface matches it.
-	interfaceModule := NewObject(i.Inferred.MetaType())
-	scope.Bind(i.Name.Name, interfaceModule, i.Visibility)
-	return interfaceModule, nil
+	return bindTypeItem(scope, i)
+}
+
+func (i *InterfaceDecl) itemDecl() (*Type, string, Visibility) {
+	return i.Inferred, i.Name.Name, i.Visibility
+}
+
+// newItem makes i's item. Interfaces are pure type declarations, with no
+// runtime state: its name is the interface's namespace, typed as its
+// meta-type (see Hoist), so no type pattern on the interface matches it.
+func (i *InterfaceDecl) newItem(ctx context.Context, scope ValueScope) (*typeItem, error) {
+	return &typeItem{value: NewObject(i.Inferred.MetaType())}, nil
 }
 
 func (i *InterfaceDecl) Walk(fn func(Node) bool) {
@@ -2594,12 +2759,18 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 }
 
 func (u *UnionDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	// Unions are pure type declarations - register the union module, the
-	// union's namespace, typed as its meta-type (see Hoist), so no type
-	// pattern matches it.
-	unionModule := NewObject(u.Inferred.MetaType())
-	scope.Bind(u.Name.Name, unionModule, u.Visibility)
-	return unionModule, nil
+	return bindTypeItem(scope, u)
+}
+
+func (u *UnionDecl) itemDecl() (*Type, string, Visibility) {
+	return u.Inferred, u.Name.Name, u.Visibility
+}
+
+// newItem makes u's item. Unions are pure type declarations: its name is the
+// union's namespace, typed as its meta-type (see Hoist), so no type pattern
+// matches it.
+func (u *UnionDecl) newItem(ctx context.Context, scope ValueScope) (*typeItem, error) {
+	return &typeItem{value: NewObject(u.Inferred.MetaType())}, nil
 }
 
 func (u *UnionDecl) Walk(fn func(Node) bool) {

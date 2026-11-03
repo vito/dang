@@ -17,6 +17,7 @@ import (
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/stretchr/testify/require"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 func preparedSource(t *testing.T, source string) string {
@@ -192,15 +193,82 @@ func TestPreparedDirectoryDoesNotCacheFailures(t *testing.T) {
 	require.Equal(t, "retry", result.(StringValue).Val)
 }
 
-func TestPreparedDirectoryUnsupportedRuntimeTypeState(t *testing.T) {
-	for _, source := range []string{
-		`type Thing { self { value: String! = "static" } }`,
-		`scalar Name { new(value: String!): String! { value } }`,
-	} {
-		t.Run(source, func(t *testing.T) {
-			_, err := PrepareDir(context.Background(), preparedSource(t, source))
-			require.ErrorIs(t, err, ErrUnpreparableDirectory)
-		})
+// Each evaluation makes its own type items: statics, scalar methods and hooks,
+// and those of types declared in a function body, see that evaluation's
+// imports, even while other evaluations run concurrently.
+func TestPreparedDirectoryTypeItemsPerEvaluation(t *testing.T) {
+	dir := preparedSource(t, `import Session
+type Thing { self { value: String! = Session.value } }
+scalar Name {
+  new(raw: String!) { raw + "@" + Session.value }
+  tagged: String! { toString(self) + "#" + Session.value }
+}
+local: String! {
+  type Local { self { value: String! = Session.value } }
+  Local.value
+}
+result: String! = Thing.value + " " + Name("n").tagged + " " + local
+`)
+	schema, err := SchemaFromSDL("type Query { value: String! }", "session.graphqls")
+	require.NoError(t, err)
+	ctxFor := func(client graphql.Client) context.Context {
+		return ContextWithImportConfigs(context.Background(), ImportConfig{Name: "Session", Client: client, Schema: schema})
+	}
+	program, err := PrepareDir(ctxFor(blueprintClient("prepare-only")), dir)
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	for index := range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			name := fmt.Sprintf("current-%d", index)
+			ctx := ctxFor(blueprintClient(name))
+			values, err := program.Evaluate(ctx)
+			if !assertPreparedNoError(t, err) {
+				return
+			}
+			result, found, err := values.Lookup(ctx, "result")
+			want := fmt.Sprintf("%[1]s n@%[1]s#%[1]s %[1]s", name)
+			if err != nil || !found || result.(StringValue).Val != want {
+				t.Errorf("type state came from another invocation: %v, %v", result, err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// A type's statics are evaluated once per module evaluation, before its
+// statements, however often (or whether) its declaration runs.
+func TestTypeStaticsOncePerModuleEvaluation(t *testing.T) {
+	dir := preparedSource(t, `make(n: Int!): Int! {
+  type Counter { self { start: Int! = { print("statics"); 10 } } }
+  Counter.start + n
+}
+never: Int! {
+  type Unused { self { k: Int! = { print("unused statics"); 1 } } }
+  Unused.k
+}
+pub total: Int! = make(1) + make(2) + make(3)
+print("statements")
+`)
+	run := func(eval func(ctx context.Context) error) string {
+		var out strings.Builder
+		ctx := ioctx.StdoutToContext(context.Background(), &out)
+		require.NoError(t, eval(ctx))
+		return out.String()
+	}
+	const want = "statics\nunused statics\nstatements\n"
+	require.Equal(t, want, run(func(ctx context.Context) error {
+		_, err := RunDir(ctx, dir, false)
+		return err
+	}))
+	program, err := PrepareDir(context.Background(), dir)
+	require.NoError(t, err)
+	for range 2 {
+		require.Equal(t, want, run(func(ctx context.Context) error {
+			_, err := program.Evaluate(ctx)
+			return err
+		}))
 	}
 }
 
@@ -226,15 +294,24 @@ result: String! = answer.echo
 		require.Equal(t, "current", result.(StringValue).Val)
 	})
 
-	t.Run("unsupported declaration", func(t *testing.T) {
+	t.Run("scalar declaration", func(t *testing.T) {
 		dir := preparedSource(t, `type Echo { echo(value: String!): String! { value } }
 let answer = Echo.{{ echo(value: {
   scalar Name { label: String! { "hello" } }
-  "ok"
+  ("ok" :: Name!).label
 }) }}
+result: String! = answer.echo
 `)
-		_, err := PrepareDir(context.Background(), dir)
-		require.ErrorIs(t, err, ErrUnpreparableDirectory)
+		program, err := PrepareDir(context.Background(), dir)
+		require.NoError(t, err)
+		for range 2 {
+			values, err := program.Evaluate(context.Background())
+			require.NoError(t, err)
+			result, found, err := values.Lookup(context.Background(), "result")
+			require.NoError(t, err)
+			require.True(t, found)
+			require.Equal(t, "hello", result.(StringValue).Val)
+		}
 	})
 }
 

@@ -34,7 +34,7 @@ func (s *testReplSession) enter(input string) (dang.Value, error) {
 		return nil, err
 	}
 	var last dang.Value
-	dang.HoistLocalTypes(context.Background(), forms, s.valueScope)
+	require.NoError(s.t, dang.EvalTypeItems(context.Background(), forms, s.valueScope))
 	for _, node := range forms {
 		last, err = dang.EvalNode(context.Background(), s.valueScope, node)
 		require.NoError(s.t, err)
@@ -77,6 +77,15 @@ func TestReplLocalTypesCaptureNothing(t *testing.T) {
 	v, err := s.enter(`let held: Holder! = JSON.decode("{\"inner\": {\"value\": \"decoded\"}}"); held.inner.value`)
 	require.NoError(t, err)
 	require.Equal(t, `"decoded"`, dang.Repr(v))
+}
+
+// At the prompt, statics are evaluated on first read, and may use what the
+// same entry declares after them.
+func TestReplStatics(t *testing.T) {
+	s := newTestReplSession(t)
+	v, err := s.enter(`type Cfg { self { k: Int! = helper(41) } }; helper(n: Int!): Int! { n + 1 }; run: Int! { type Local { self { k: Int! = Cfg.k * 2 } }; Local.k }; run`)
+	require.NoError(t, err)
+	require.Equal(t, "84", dang.Repr(v))
 }
 
 func TestReplChecksFieldPurity(t *testing.T) {

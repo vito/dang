@@ -18,7 +18,7 @@ func TestParameterTypesWithoutConstructorSignature(t *testing.T) {
 
 // An imported module decoding into its own type from its top-level code finds
 // the constructor while its evaluation is still running, rather than waiting
-// on that evaluation to finish (see constructorFor); its functions, called by
+// on that evaluation to finish (see typeItemFor); its functions, called by
 // the importer after, decode the same way.
 func TestImportedModuleDecodesOwnTypeAtTopLevel(t *testing.T) {
 	dir := t.TempDir()
