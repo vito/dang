@@ -883,6 +883,23 @@ func hoistStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	// self inside a static resolves to the type-object (the statics namespace).
 	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	// Static factories may return imported or later-declared nested types.
+	// Resolve imports and register names before any member signature resolves
+	// annotations, just as the full phased body inference does.
+	classified := classifyForms(forms)
+	ctx = withLocalDecls(ctx, forms)
+	for _, form := range classified.Imports {
+		if _, err := form.Infer(ctx, metaScope, fresh); err != nil {
+			return err
+		}
+	}
+	for _, form := range classified.Types {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, metaScope, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
 	for _, form := range forms {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, metaScope, fresh, 0); err != nil {

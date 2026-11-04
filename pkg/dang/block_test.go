@@ -92,6 +92,15 @@ func TestLocalScalarBodyValidation(t *testing.T) {
 		{"nested instance type", `unused: Int! { scalar S { type T {} }; 0 }`, "scalar bodies may only declare methods"},
 		{"nested self", `unused: Int! { scalar S { self { self {} } }; 0 }`, "self { } cannot be nested"},
 		{"static new", `unused: Int! { scalar S { self { new { self } } }; 0 }`, "new() cannot appear inside a self { } block"},
+		{"static forward factory", `run: Int! {
+			scalar S {
+				self {
+					make: Nested! { Nested() }
+					type Nested { n: Int! = 2 }
+				}
+			}
+			S.make.n
+		}`, ""},
 		{"local constructor and statics", `run: String! {
 			scalar S {
 				new(s: String!) { s.toUpper }

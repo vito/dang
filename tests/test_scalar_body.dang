@@ -94,4 +94,17 @@ assert { (fine :: String!) == "FINE" }
 let bad = Upper("nope") rescue null
 assert { bad == null }
 
+# Local scalar statics keep nested imports usable in factory signatures.
+localFactory: String! {
+  scalar Local {
+    self {
+      import Lib
+      make: Lib.Greeter! { Lib.Greeter(name: "local") }
+    }
+  }
+  Local.make.greeting
+}
+
+assert { localFactory == "Hello, local!" }
+
 print("All scalar body tests passed!")
