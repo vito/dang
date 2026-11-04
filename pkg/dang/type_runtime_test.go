@@ -2,12 +2,14 @@ package dang
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 func TestTypeRuntimeRecursiveStatics(t *testing.T) {
@@ -121,6 +123,100 @@ type Holder {
 }
 assert { toString(Holder("A").make.tag) == "Adefault" }
 `))
+}
+
+// Count leaf equality probes rather than time: checking a collection spine
+// must not repeatedly ask assignability about each remaining whole subtree.
+type scalarCoercionCountedType struct {
+	hm.Type
+	equalities *int
+}
+
+func (t scalarCoercionCountedType) Eq(other hm.Type) bool {
+	(*t.equalities)++
+	return t.Type.Eq(other)
+}
+
+func TestScalarCoercionCollectionWalk(t *testing.T) {
+	home := NewType("", ObjectKind)
+	tag := NewType("Local", ScalarKind)
+	tag.scalarNeedsRuntime = true
+	tag.localFrame = home
+	for _, existing := range []bool{false, true} {
+		for _, depth := range []int{0, 1, 16, 128} {
+			t.Run(fmt.Sprintf("existing=%t/depth=%d", existing, depth), func(t *testing.T) {
+				var equalities int
+				var leaf hm.Type = StringType
+				if existing {
+					leaf = tag
+				}
+				var have hm.Type = scalarCoercionCountedType{Type: leaf, equalities: &equalities}
+				var want hm.Type = tag
+				for level := 0; level < depth; level++ {
+					if level%2 == 0 {
+						have, want = ListType{have}, ListType{want}
+					} else {
+						have, want = MapType{have}, MapType{want}
+					}
+				}
+				err := checkScalarCoercion(NewType("", ObjectKind), have, want)
+				if existing {
+					require.NoError(t, err)
+				} else {
+					require.ErrorContains(t, err, "cannot materialize scalar Local here")
+				}
+				require.Equal(t, 1, equalities, "collection nesting must not repeat leaf comparisons")
+			})
+		}
+	}
+}
+
+func TestScalarCoercionCollectionSemantics(t *testing.T) {
+	home := NewType("", ObjectKind)
+	tag := NewType("Local", ScalarKind)
+	tag.scalarNeedsRuntime = true
+	tag.localFrame = home
+	other := NewType("Other", ScalarKind)
+	for _, tc := range []struct {
+		name         string
+		have         hm.Type
+		want         hm.Type
+		materializes bool
+	}{
+		{"existing", tag, tag, false},
+		{"literal", StringType, tag, true},
+		{"existing union member", tag, hm.NewUnionType(tag, other), false},
+		{"uncoerced union member", StringType, hm.NewUnionType(StringType, tag), false},
+		{"coerced union member", StringType, hm.NewUnionType(tag, other), true},
+	} {
+		for _, nonNull := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nonNull=%t", tc.name, nonNull), func(t *testing.T) {
+				have, want := tc.have, tc.want
+				// Alternate list/map shapes and exercise nullable widening at
+				// collection boundaries without changing the scalar conversion.
+				for level := 0; level < 8; level++ {
+					if nonNull {
+						have = hm.NonNullType{Type: have}
+						if level%2 == 0 {
+							want = hm.NonNullType{Type: want}
+						}
+					}
+					have, want = ListType{MapType{have}}, ListType{MapType{want}}
+				}
+				// Every case is valid with coercion; this helper must only add
+				// the missing-environment error where a new scalar is needed.
+				_, err := hm.AssignableWithCoercion(have, want)
+				require.NoError(t, err)
+				require.NoError(t, checkScalarCoercion(home, have, want))
+				err = checkScalarCoercion(NewType("", ObjectKind), have, want)
+				if tc.materializes {
+					require.ErrorContains(t, err, "cannot materialize scalar Local here")
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
+	}
 }
 
 func TestForwardScalarRuntime(t *testing.T) {

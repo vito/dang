@@ -241,6 +241,26 @@ func assignableDecoded(have, want hm.Type) bool {
 // checkScalarCoercion only checks newly materialized values. A scalar already
 // made in its declaring scope carries its runtime and may escape freely.
 func checkScalarCoercion(env hm.Env, have, want hm.Type) error {
+	// Matching collections have the same scalar-scope requirements as their
+	// elements. Descend before asking Assignable about the remaining types:
+	// checking every whole subtree repeats work at each nesting level. This
+	// helper checks scope, not nullability/type compatibility (checked by the
+	// caller); keep the original leaf and union assignability rules below.
+	for {
+		if elem, ok := listElementTarget(want); ok {
+			if source, ok := listElementTarget(have); ok {
+				have, want = source, elem
+				continue
+			}
+		}
+		if elem, ok := mapValueTarget(want); ok {
+			if source, ok := mapValueTarget(have); ok {
+				have, want = source, elem
+				continue
+			}
+		}
+		break
+	}
 	if _, err := hm.Assignable(have, want); err == nil {
 		return nil
 	}
@@ -254,16 +274,6 @@ func checkScalarCoercion(env hm.Env, have, want hm.Type) error {
 			}
 		}
 		return nil
-	}
-	if elem, ok := listElementTarget(want); ok {
-		if source, ok := listElementTarget(have); ok {
-			return checkScalarCoercion(env, source, elem)
-		}
-	}
-	if elem, ok := mapValueTarget(want); ok {
-		if source, ok := mapValueTarget(have); ok {
-			return checkScalarCoercion(env, source, elem)
-		}
 	}
 	if mod, ok := want.(*Type); ok && mod.Kind == ScalarKind {
 		return checkScalarRuntimeScope(env, canonicalModule(mod))
