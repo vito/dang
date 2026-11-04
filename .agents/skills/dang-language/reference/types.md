@@ -173,8 +173,23 @@ scalar Slug {
   beyond its string. Inside a method, `self` is the non-null scalar; get the
   raw string via degrade (`let s: String! = self`) or `self :: String!`.
   Sibling methods are callable bare or via `self.`.
-- Construction is total only if the hook never raises; equality is semantic
-  when the hook normalizes (`Slug("A b") == Slug("a-b")`).
+- Construction is total only if the hook never raises. **Equality is nominal
+  type plus underlying payload**, ignoring the captured environment. Two values
+  of the same local scalar can compare equal yet return different method results
+  (`"a!"` versus `"b!"` from different enclosing prefixes). A normalizing hook
+  can make `Slug("A b") == Slug("a-b")`; equality is not behavioral equivalence.
+  Encoding retains only the payload, never the closure environment.
+- Local scalar values and constructor references retain their declaring
+  environment. That ownership is fixed, but enclosing reads remain **live**:
+  later assignments by surrounding code are visible, not snapshotted. Existing
+  outward-write/escape/narrowing checks still apply.
+- An escaped scalar value is usable, but does not authorize implicit
+  construction outside its declaration's scope. Literal, `::`, codec, equality
+  and `case` conversions into a local scalar with a body need that scope;
+  comparing existing values needs no new construction. Plain label scalars
+  need no environment. An explicitly passed constructor/factory grants
+  construction with its captured environment. This is scope privacy, **not**
+  security or unforgeability, and encoding does not preserve that environment.
 
 ### `ID!`
 - Its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop). But string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`).

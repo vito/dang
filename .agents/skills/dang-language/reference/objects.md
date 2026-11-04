@@ -128,7 +128,7 @@ type Person {
 - Members are fields or methods, indistinguishable in syntax (name + a type, `= default`, and/or `{ body }`, optionally prefixed with `let`).
 - A typed member is readable outside the type (the default); `let` makes a member readable only inside the type's own methods/defaults.
 - Object bodies and `self { }` static bodies contain **declarations only**: fields, methods, nested types, imports and directives. Object bodies additionally allow `new()` and `self { }`; static bodies do not allow a directly nested `self { }` or `new()`. Put constructor actions (`print`, `assert`, conditionals, loops, reassignment) in `new() { ...; self }`, and static actions in a method or initializer. Naked expressions are rejected even in an unused local type.
-- Declaration-only is not effect-free: field initializer expressions may contain actions, subject to the existing default/capture rules. An unused function's local type initializers do not run.
+- Declaration-only is not effect-free: field initializer expressions may contain actions, subject to the existing default/capture rules. Local statics initialize when the declaration executes, once per declaring evaluation, not once per nominal type. An unused function's local type initializers do not run.
 
 ### Constructor parameters
 Whether a member is a constructor param depends on having **NO default**, not on visibility:
@@ -162,7 +162,7 @@ Errors:
 
 So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
 
-Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` members are evaluated once, immutable, and may use other statics and `self`).
+Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` stored members are evaluated once per declaring evaluation, immutable, and may use other statics and `self`).
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.

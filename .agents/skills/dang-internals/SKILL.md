@@ -451,9 +451,19 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
 - **Hook runs at materialization** (`materializeStringValue` /
   `materializeDecoded`). `ScalarConstructor` retains its record rather than
   looking it up in the caller; `ScalarValue` retains the methods for dispatch
-  after escaping its declaring scope. Runtime records do not affect equality or
-  encoding. Coercion/decode into a local scalar with a body needs its declaring
-  scope, like object decode; plain label scalars need no runtime environment.
+  after escaping its declaring scope. Records are immutable after publication,
+  but their captured scopes are not snapshots: enclosing bindings remain live
+  under the existing effect and narrowing rules.
+- **Equality is nominal type plus payload, not behavior.** The runtime record
+  is ignored by equality and encoding. Equal same-type scalar values with the
+  same payload can return different method results through different captured
+  environments; encoding retains only the payload, never that environment.
+- **Construction scope is not a security boundary.** Coercion/decode into a
+  local scalar with a body needs its declaring scope, like object decode;
+  escaping an existing value does not grant implicit construction. Literal
+  equality/case conversions need the scope too, unlike comparisons of existing
+  values. Explicitly passed constructors/factories grant construction using
+  their captured environment. Plain label scalars need no runtime environment.
   Go-native builtin hooks/statics remain registered once on their builtin types.
 - **Module forward values don't run declarations early.** A methods-only scalar
   materialized before its declaration retains a deferred runtime record pointing

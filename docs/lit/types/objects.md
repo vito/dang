@@ -305,7 +305,13 @@ auto-constructs, so `Color.luminance` reads an instance member:
 Color(r: 1).white
 ```
 
-Static stored fields hold singleton values on the type:
+Static stored fields initialize once **per evaluation of the declaration**.
+A local declaration in a function gets a fresh static environment on each call;
+its initializers do not run if that function is never called. Static methods
+retain that environment and may read live enclosing bindings. There is no eager
+module-wide initialization of unused local types.
+
+Within that declaring evaluation, static stored fields share their values:
 
 ```dang
 type Config {
