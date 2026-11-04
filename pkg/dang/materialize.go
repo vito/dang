@@ -114,7 +114,7 @@ func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, er
 	if isLiteralExpr(value) || containsDegradableScalar(have) {
 		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
 			if err := checkScalarCoercion(env, have.Apply(coerceSubs).(hm.Type), want.Apply(coerceSubs).(hm.Type)); err != nil {
-				return nil, err
+				return nil, NewInferError(err, value)
 			}
 			if err := checkEnumLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
 				return nil, err

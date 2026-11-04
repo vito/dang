@@ -23,6 +23,106 @@ assert { check(3) == "3" }
 `))
 }
 
+func TestLocalScalarRuntimeOwnership(t *testing.T) {
+	require.NoError(t, evalExample(`
+check(n: Int!): String! {
+  scalar Label {
+    new(raw: String!) { toString(n) + raw }
+    label: String! { toString(n) + toString(self) }
+    self { stamp: Int! = n }
+  }
+  let first = Label("!")
+  if (n > 0) { check(n - 1) }
+  assert { Label.stamp == n }
+  assert { first.label == toString(n) + toString(n) + "!" }
+  Label("!").label
+}
+assert { check(3) == "33!" }
+let labels = ["a", "b"].map { prefix =>
+  scalar Label {
+    new(raw: String!) { prefix + raw }
+    label: String! { prefix + toString(self) }
+  }
+  let value = Label("!")
+  prefix += "next"
+  value
+}
+assert { labels[0]!.label == "anexta!" }
+assert { labels[1]!.label == "bnextb!" }
+let ctors = ["a", "b"].map { prefix =>
+  scalar Label {
+    new(raw: String!) { prefix + raw }
+    label: String! { prefix + toString(self) }
+  }
+  &Label
+}
+let first = ctors[0]!
+let second = ctors[1]!
+assert { first("!").label == "aa!" }
+assert { second("!").label == "bb!" }
+# A methods-only value also keeps its own declaring environment.
+let plain = ["a", "b"].map { prefix =>
+  scalar Label { label: String! { prefix + toString(self) } }
+  "!" :: Label!
+}
+assert { plain[0]!.label == "a!" }
+assert { plain[1]!.label == "b!" }
+`))
+}
+
+func TestLocalScalarMaterializationScope(t *testing.T) {
+	const declarations = `type Outer {
+  prefix: String!
+  scalar Tag {
+    new(raw: String!) { prefix + raw }
+    label: String! { prefix }
+  }
+  make: Tag! { Tag("!") }
+}
+let x = Outer("A").make
+`
+	for _, statement := range []string{
+		`x = "!"`,
+		`let y = "!" :: Outer.Tag!`,
+		`if (true) { let y: Outer.Tag! = "!" }`,
+		`let y: [Outer.Tag!]! = ["!"]`,
+		`let y: Outer.Tag! = JSON.decode("\"!\"")`,
+		`let y: {{tag: Outer.Tag!}}! = JSON.decode("{\"tag\":\"!\"}")`,
+		`print(x == "!")`, `print("!" == x)`,
+		`print(x != "!")`, `print("!" != x)`,
+		`let matched = case (x) {
+  "!" => true
+  else => false
+}`,
+	} {
+		t.Run(statement, func(t *testing.T) {
+			require.Contains(t, inferWithEffects(t, declarations+statement), "cannot materialize scalar Tag here")
+		})
+	}
+	// Existing values can pass through coercion boundaries; plain labels need
+	// no environment at all. Defaults run in the constructor's closure.
+	require.NoError(t, evalExample(declarations+`
+if (true) {
+  let y: Outer.Tag! = x
+  assert { y.label == "A" }
+  assert { x == y }
+}
+assert { JSON.encode(x) == "\"A!\"" }
+type Plain { scalar Label }
+if (true) {
+  let plain: Plain.Label! = "ok"
+  assert { plain == "ok" }
+}
+type Holder {
+  prefix: String!
+  scalar Tag { new(raw: String!) { prefix + raw } }
+  type Item { tag: Tag! = "default" }
+  make: Item! { Item() }
+}
+assert { toString(Holder("A").make.tag) == "Adefault" }
+`))
+}
+
 func TestImportedScalarRuntimeCallbacks(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
