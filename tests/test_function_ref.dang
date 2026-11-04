@@ -104,4 +104,23 @@ assert {
   first == 9 and reader.value == 10
 }
 
+# Scalar methods and static methods retain that same live declaring scope.
+assert {
+  let suffix = "a"
+  scalar Tag {
+    new(raw: String!) { raw }
+
+    label: String! { toString(self) + suffix }
+
+    self {
+      current: String! { suffix }
+    }
+  }
+  let tag = Tag("x")
+  let first = tag.label
+  let firstStatic = Tag.current
+  suffix = "b"
+  first == "xa" and firstStatic == "a" and tag.label == "xb" and Tag.current == "b"
+}
+
 print("Function ref tests passed!")
