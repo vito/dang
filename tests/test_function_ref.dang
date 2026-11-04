@@ -47,4 +47,61 @@ assert {
   first == 3 and fooGetter == 4
 }
 
+# Local types keep live lexical reads through enclosing helpers too.
+assert {
+  let current = 5
+  helper: Int! { current }
+  type Reader {
+    value: Int! { helper }
+  }
+  let reader = Reader
+  let first = reader.value
+  current = 6
+  first == 5 and reader.value == 6
+}
+
+interface LiveReader {
+  value: Int!
+}
+
+liveReader(&read: Int!): LiveReader! {
+  type Reader implements LiveReader {
+    value: Int! { read }
+  }
+  Reader
+}
+
+# Captured callbacks may read mutable enclosing locals after the local type
+# escapes its declaring call. Only outward writes are forbidden, not reads.
+assert {
+  let current = 7
+  let reader = liveReader { current }
+  let first = reader.value
+  current = 8
+  first == 7 and reader.value == 8
+}
+
+# Passing a callback through an object's method and another helper does not
+# impose a hidden read-stability requirement on ordinary lexical closures.
+type CallbackBox {
+  read: Int! { 0 }
+}
+
+through(box: CallbackBox!): Int! { box.read }
+
+assert {
+  let current = 9
+  helper: Int! { current }
+  let box = CallbackBox
+  box.read = &helper
+  let finalized = box
+  type Reader {
+    value: Int! { through(finalized) }
+  }
+  let reader = Reader
+  let first = reader.value
+  current = 10
+  first == 9 and reader.value == 10
+}
+
 print("Function ref tests passed!")
