@@ -388,8 +388,9 @@ type Dimmer {
 [Dimmer.out, Dimmer(2).out]
 ```
 
-The type body can't reassign the type's fields either. Give the field a
-different default, or set it in `new()`:
+Type bodies contain declarations only (see [#objects]), so a direct field
+reassignment is rejected. A field default's block can't reassign another
+field either. Give the field a different default, or set it in `new()`:
 
 ```dang-failure
 type Knob {

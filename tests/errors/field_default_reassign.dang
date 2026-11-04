@@ -28,7 +28,10 @@ type Meter {
     level
   }
 
-  tags += ["meter"]
+  let changedTags: [String!]! = {
+    tags += ["meter"]
+    tags
+  }
 }
 
 # A field only new() sets can't be reassigned there either.
@@ -70,7 +73,10 @@ type Ledger {
     size: Int! = 0
     tags: [Int!]! = []
 
-    self.tags += [1]
+    let changedTags: [Int!]! = {
+      self.tags += [1]
+      tags
+    }
 
     let n: Int! = {
       self.size = 9

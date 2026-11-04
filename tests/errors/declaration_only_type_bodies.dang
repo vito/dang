@@ -1,0 +1,23 @@
+type Printed {
+  print("constructor action")
+}
+
+type StaticPrinted {
+  self {
+    print("static action")
+  }
+}
+
+unused: Int! {
+  type Local {
+    assert { true }
+  }
+  0
+}
+
+unusedScalar: Int! {
+  scalar LocalScalar {
+    count: Int! = 0
+  }
+  0
+}

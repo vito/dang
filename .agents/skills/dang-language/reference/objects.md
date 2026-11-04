@@ -27,7 +27,7 @@ z: Int!                   # declaration without value
 - A bare `name = value` mutates an existing field/local/arg. To declare a *new* field instead, give it a type (`total: Int! = 0`, public) or introduce it with `let` (`let total = 0`, local). `+=` for compound update.
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
-- Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself can't reassign fields (see "No field reassignment in the type body" under "Field defaults").
+- Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself contains declarations only (see "Objects" below); default expressions also can't reassign fields (see "Field defaults").
 - Top-level bindings can be reassigned only by top-level statements (and blocks in them); functions, methods, `new()`, closures inside them, and declaration initializers can't write them, and only statements may read what statements write (see "Compile-time rules" below).
 
 ## Functions
@@ -59,6 +59,7 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 - A function stored where another function type is expected must accept everything that type's callers pass (parameters contravariant, result covariant) and name its parameters the same, in the same order — callers name arguments by the target's signature. A block takes on the parameter names of the signature it's passed for; naming a block parameter like a *different* parameter of that signature is an error.
 - A method ref is **lexically bound**: wherever it is stored or called from (even another object's methods), it runs against the `self` where the ref was written, never the caller's.
 - Inside a method, `&helper` and `&self.helper` read `self` **when called**, so they see field writes the method makes after taking the ref (`let f = &helper; n += 5; f(1)` sees the new `n`). A ref through any other receiver (`&r.helper`, with `let r = self` or any other value) holds that value: values are immutable, so later writes (which fork `self`, or rebind `r`) don't reach it.
+- A type declared in a function or block closes over its lexical environment too. Its methods may read enclosing locals, directly or through helpers/callbacks, and observe later assignments by surrounding code. These are live reads, not snapshots or a promise of read stability. Type code still cannot write outside the type or call a closure that does; its own fields and method locals remain mutable under the usual rules.
 - A ref to a closure that writes outer state (a nested function or block writing the enclosing method's locals or `self`) can only be called or passed as an argument — storing, returning, or collecting it is a compile error. Refs to named functions and methods are always storable (see "Compile-time rules"). A field default can't take a ref to the type's own methods at all (see "Field defaults").
 
 ### Nested functions
@@ -126,6 +127,8 @@ type Person {
 ```
 - Members are fields or methods, indistinguishable in syntax (name + a type, `= default`, and/or `{ body }`, optionally prefixed with `let`).
 - A typed member is readable outside the type (the default); `let` makes a member readable only inside the type's own methods/defaults.
+- Object bodies and `self { }` static bodies contain **declarations only**: fields, methods, nested types, imports and directives. Object bodies additionally allow `new()` and `self { }`; static bodies do not allow a directly nested `self { }` or `new()`. Put constructor actions (`print`, `assert`, conditionals, loops, reassignment) in `new() { ...; self }`, and static actions in a method or initializer. Naked expressions are rejected even in an unused local type.
+- Declaration-only is not effect-free: field initializer expressions may contain actions, subject to the existing default/capture rules. Local statics initialize when the declaration executes, once per declaring evaluation, not once per nominal type. An unused function's local type initializers do not run.
 
 ### Constructor parameters
 Whether a member is a constructor param depends on having **NO default**, not on visibility:
@@ -154,12 +157,12 @@ Errors:
 - `` field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new() `` (same shape for `self` and computed fields).
 - `` field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field ``.
 - `` new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body ``.
-- **No field reassignment in the type body** (bare, `+=`, or in a default's block; locals declared in a default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A `self { }` block can't reassign its statics either.
+- **No field reassignment in a default's block** (bare or `+=`; locals declared in that default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A static initializer can't reassign its statics either. Direct reassignment in a type or `self { }` body is rejected by the declaration-only rule before checking defaults.
 - A type declared in another type's body is part of that body: it can't use (or reassign) the outer type's methods, computed fields or `new()`-only fields, even from its methods.
 
 So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
 
-Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` members are evaluated once, immutable, and may use other statics and `self`).
+Not defaults in this sense: method argument defaults (`f(k: Int! = n)`, evaluated at call time against the receiver), and statics (`self { }` stored members are evaluated once per declaring evaluation, immutable, and may use other statics and `self`).
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.

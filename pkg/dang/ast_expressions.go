@@ -1276,11 +1276,14 @@ func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		// Static member: Infer resolved this to a static of a named type. Read
-		// it from the type's statics namespace directly, without evaluating the
+		// it from the declaring environment's statics, without evaluating the
 		// receiver — evaluating it would auto-construct an instance and miss the
 		// static entirely.
 		if d.staticOwner != nil {
-			statics := d.staticOwner.Statics()
+			statics, err := staticsFor(ctx, scope, d.staticOwner)
+			if err != nil {
+				return nil, err
+			}
 			if statics == nil {
 				return nil, fmt.Errorf("static %q of %s is unavailable", d.Field.Name, d.staticOwner.Named)
 			}
@@ -1368,7 +1371,12 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 						}
 					}
-					if methods := mod.ScalarMethods(); methods != nil {
+					runtime, err := rec.methodRuntime(ctx, scope, mod)
+					if err != nil {
+						return nil, err
+					}
+					if runtime != nil && runtime.scalarMethods != nil {
+						methods := runtime.scalarMethods
 						if val, found, err := methods.Lookup(ctx, d.Field.Name); err != nil {
 							return nil, err
 						} else if found {
@@ -3583,6 +3591,9 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
 			if err == nil {
+				if scopeErr := checkScalarCoercion(env, exprType.Apply(subs).(hm.Type), hintType.Apply(subs).(hm.Type)); scopeErr != nil {
+					return nil, NewInferError(scopeErr, t.Expr)
+				}
 				if litErr := checkEnumLiterals(t.Expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
 					return nil, litErr
 				}

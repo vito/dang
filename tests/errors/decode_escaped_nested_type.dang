@@ -4,8 +4,9 @@ type Outer {
   type Inner {
     value: String!
   }
+
   make: Inner! { Inner(value: "built") }
 }
 
-let d = Outer().make
+let d = Outer.make
 d = JSON.decode("{\"value\": \"decoded\"}")

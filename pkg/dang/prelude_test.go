@@ -92,8 +92,9 @@ func TestPreludeShadowingDoesNotMutate(t *testing.T) {
 		t.Fatalf("prelude Path type not found")
 	}
 	mod := pathType.(*Type)
-	methodsBefore := mod.ScalarMethods()
-	_, _, hookBefore := mod.ScalarHook()
+	runtimeBefore := preludeTypeRuntimes[mod]
+	methodsBefore := runtimeBefore.scalarMethods
+	hookBefore := runtimeBefore.hasScalarHook
 
 	if err := evalExample(`
 		scalar Path
@@ -104,10 +105,10 @@ func TestPreludeShadowingDoesNotMutate(t *testing.T) {
 		t.Fatalf("shadowing program failed: %v", err)
 	}
 
-	if mod.ScalarMethods() != methodsBefore {
+	if preludeTypeRuntimes[mod].scalarMethods != methodsBefore {
 		t.Fatalf("user program mutated the prelude Path's methods")
 	}
-	if _, _, hookAfter := mod.ScalarHook(); hookAfter != hookBefore {
+	if preludeTypeRuntimes[mod].hasScalarHook != hookBefore {
 		t.Fatalf("user program mutated the prelude Path's hook")
 	}
 }

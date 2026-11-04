@@ -111,7 +111,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 			} else if err := checkDecodedComparison(b.Left, lt, b.Right, rt); err != nil {
 				return nil, err
 			} else {
-				left, right, err := checkComparable(b.Left, b.Right, lt, rt)
+				left, right, err := checkComparable(env, b.Left, b.Right, lt, rt)
 				if err != nil {
 					return nil, err
 				}
@@ -316,17 +316,23 @@ func hasFreeVar(t hm.Type) bool { return len(t.FreeTypeVar()) > 0 }
 // it does at every other boundary (arguments, `case` patterns): the returned
 // operands wrap it in that conversion, and an enum literal must name one of
 // the enum's values.
-func checkComparable(left, right Node, lt, rt hm.Type) (Node, Node, error) {
+func checkComparable(env hm.Env, left, right Node, lt, rt hm.Type) (Node, Node, error) {
 	if typesComparable(lt, rt) {
 		return left, right, nil
 	}
 	if target, ok := literalComparisonTarget(left, rt); ok {
+		if err := checkScalarCoercion(env, lt, target); err != nil {
+			return nil, nil, err
+		}
 		if err := checkEnumLiterals(unwrapGrouped(left), target); err != nil {
 			return nil, nil, err
 		}
 		return wrapCoerce(left, target, ""), right, nil
 	}
 	if target, ok := literalComparisonTarget(right, lt); ok {
+		if err := checkScalarCoercion(env, rt, target); err != nil {
+			return nil, nil, err
+		}
 		if err := checkEnumLiterals(unwrapGrouped(right), target); err != nil {
 			return nil, nil, err
 		}
@@ -809,7 +815,7 @@ func (e *Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			return nil, err
 		}
 		noteCheck(ctx, e)
-		left, right, err := checkComparable(e.Left, e.Right, lt, rt)
+		left, right, err := checkComparable(env, e.Left, e.Right, lt, rt)
 		if err != nil {
 			return nil, err
 		}
