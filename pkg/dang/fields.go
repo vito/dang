@@ -575,6 +575,7 @@ type ObjectDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
+	bodyInvalid       bool // structural error already reported by Hoist
 
 	ctorFn *FunctionBase
 }
@@ -833,9 +834,18 @@ func staticForms(block *Block) []Node {
 	return forms
 }
 
-// validateStaticForms rejects forms that may not appear inside a self { } block:
-// a nested self { } (one meta level only) and new() (construction is not a
-// static). Called once, during hoisting, so the error is reported a single time.
+// validateObjectBodyForms checks only the body's immediate forms. A declaration
+// initializer may contain actions; declaration-only does not mean effect-free.
+func validateObjectBodyForms(block *Block) error {
+	for _, form := range classifyForms(formsWithoutNew(block)).NonDeclarations {
+		return NewInferError(fmt.Errorf("type bodies may only contain declarations; move constructor actions into new() { ...; self }"), form)
+	}
+	return validateStaticForms(block)
+}
+
+// validateStaticForms rejects statements, nested self { }, and new() inside
+// static bodies. Declarations' initializers and method bodies are not restricted
+// by this structural check.
 func validateStaticForms(block *Block) error {
 	for _, sb := range selfBlocksIn(block) {
 		if sb.BodyBlock == nil {
@@ -848,6 +858,9 @@ func validateStaticForms(block *Block) error {
 			case *NewConstructorDecl:
 				return NewInferError(fmt.Errorf("new() cannot appear inside a self { } block"), form)
 			}
+		}
+		for _, form := range classifyForms(sb.BodyBlock.Forms).NonDeclarations {
+			return NewInferError(fmt.Errorf("self { } bodies may only contain declarations; move actions into a static method or a field initializer"), form)
 		}
 	}
 	return nil
@@ -996,6 +1009,12 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	env.Add(c.Name.Name, constructorScheme)
 	mod.SetVisibility(c.Name.Name, c.Visibility)
 
+	if err := validateObjectBodyForms(c.Value); err != nil {
+		c.bodyInvalid = true
+		return err
+	}
+	c.bodyInvalid = false
+
 	// Link the implementation after all interface type names have been
 	// registered by pass 0.
 	if len(c.Implements) > 0 {
@@ -1073,6 +1092,11 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		if err := c.Hoist(ctx, env, fresh, 1); err != nil {
 			return nil, err
 		}
+	}
+	if c.bodyInvalid {
+		// Hoist reported the structural error; do not infer rejected actions
+		// or duplicate that diagnostic in the resilient body phase.
+		return c.ConstructorFnType, nil
 	}
 
 	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
@@ -1643,6 +1667,8 @@ type ScalarDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType // set when the body declares new()
+	bodyHoisted       bool
+	bodyInvalid       bool // structural error already reported by Hoist
 }
 
 var _ Node = &ScalarDecl{}
@@ -1697,7 +1723,7 @@ func (s *ScalarDecl) validateScalarBodyForms() error {
 					f,
 				)
 			}
-			if _, isFun := f.Value.(*FunDecl); !isFun {
+			if f.funDecl() == nil {
 				return NewInferError(
 					fmt.Errorf("scalar member %q must be a method; scalars carry no fields beyond their underlying string", f.Name.Name),
 					f,
@@ -1853,9 +1879,16 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return nil
 	}
 
+	s.bodyHoisted = true
 	if err := s.validateScalarBodyForms(); err != nil {
+		s.bodyInvalid = true
 		return err
 	}
+	if err := validateStaticForms(s.Value); err != nil {
+		s.bodyInvalid = true
+		return err
+	}
+	s.bodyInvalid = false
 
 	inferTypeScope := &OverlayTypeScope{
 		primary: scalarType,
@@ -1901,6 +1934,17 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
+	}
+
+	// Local declarations bypass the module's hoisting phases. Run pass 1
+	// here too, including scalar/static body validation and signatures.
+	if s.Value != nil && !s.bodyHoisted {
+		if err := s.Hoist(ctx, env, fresh, 1); err != nil {
+			return nil, err
+		}
+	}
+	if s.bodyInvalid {
+		return s.Inferred, nil
 	}
 
 	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)

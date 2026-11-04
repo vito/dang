@@ -32,6 +32,37 @@ Person("Alice").greet
 - declares a type `Person` and a constructor function `Person`
 - members are fields or methods, indistinguishable in syntax (`name` + optional `: Type`, `= default`, or `{ body }`); `let` makes a member private
 
+Type bodies contain **declarations only**: fields, methods, nested types,
+imports, directives, `new()`, and static `self { }` blocks. Naked expressions,
+`print`, `assert`, conditionals, loops, and reassignment belong in a method or
+an explicit constructor, not directly in the type body:
+
+```dang-failure
+type Noisy {
+  print("constructed")
+}
+```
+
+Put constructor actions in `new()`, returning `self`. They run once each time
+the constructor is called:
+
+```dang
+type Announced {
+  new() {
+    print("constructed")
+    self
+  }
+}
+
+Announced()
+```
+
+Declaration-only does not mean effect-free initialization. A field default
+may contain a block with actions, subject to the normal default and capture
+rules (see [#field-defaults]). Methods and constructors may also contain
+statements. Declaring a type inside an unused function does not execute its
+initializers.
+
 ## Public vs. private members
 
 - a bare member is **public** — readable from outside the type; public is the default for a `type`
@@ -238,7 +269,10 @@ author.first = "Augusta"
 ## Static members {#static-members}
 
 A `self { }` block declares statics. They live on the type itself, reached
-as `Type.member`, never on an instance:
+as `Type.member`, never on an instance. Like the instance body, a static body
+contains declarations only; put actions in a static method or a field
+initializer. `new()` and a directly nested `self { }` are not allowed inside
+it:
 
 ```dang
 type Color {

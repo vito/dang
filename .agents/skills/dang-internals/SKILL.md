@@ -45,6 +45,19 @@ when the declaration order shifts.
 `InterfaceDecl.Hoist` and `ClassDecl.Hoist` follow this exact split. New
 type-like decls should too.
 
+### Declaration-only type bodies
+
+`validateObjectBodyForms` and `validateStaticForms` (`fields.go`) reject
+immediate non-declarations in object and `self { }` bodies. They reuse
+`classifyForms`, so nested types, imports and directives remain declarations.
+They do not walk into field initializers, methods or `new()` — those still
+permit actions under their existing checks. Structural validation runs in
+hoist pass 1, including the local `Infer` fallback; rejected bodies are not
+inferred again just to duplicate the error. Scalar `Infer` also takes that
+fallback, so local scalars have the same method-only instance body and static
+body validation as module scalars. No runtime traversal or initialization of
+unused local types is added.
+
 ### The "hoist vs infer timing" gotcha
 
 If forward references break, you're probably accessing a type during pass 0

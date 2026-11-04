@@ -1,0 +1,52 @@
+4 inference errors:
+
+Error 1:
+[1m[31mError:[0m type bodies may only contain declarations; move constructor actions into new() { ...; self }
+  [2m[34m--> errors/declaration_only_type_bodies.dang:2:3[0m
+ [2m    |[0m
+ [2m  1 | type Printed {[0m
+ [2m[34m[1m  2 | [0m  print("constructor action")
+[2m         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m self { } bodies may only contain declarations; move actions into a static method or a field initializer
+  [2m[34m--> errors/declaration_only_type_bodies.dang:7:5[0m
+ [2m    |[0m
+ [2m  5 | type StaticPrinted {[0m
+ [2m  6 |   self {[0m
+ [2m[34m[1m  7 | [0m    print("static action")
+[2m           [31m^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 |   }[0m
+ [2m  9 | }[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m type bodies may only contain declarations; move constructor actions into new() { ...; self }
+  [2m[34m--> errors/declaration_only_type_bodies.dang:13:5[0m
+ [2m    |[0m
+ [2m 11 | unused: Int! {[0m
+ [2m 12 |   type Local {[0m
+ [2m[34m[1m 13 | [0m    assert { true }
+[2m           [31m^^^^^^^^^^^^^^^[0m
+ [2m 14 |   }[0m
+ [2m 15 |   0[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m scalar member "count" must be a method; scalars carry no fields beyond their underlying string
+  [2m[34m--> errors/declaration_only_type_bodies.dang:20:5[0m
+ [2m    |[0m
+ [2m 18 | unusedScalar: Int! {[0m
+ [2m 19 |   scalar LocalScalar {[0m
+ [2m[34m[1m 20 | [0m    count: Int! = 0
+[2m           [31m^^^^^^^^^^^^^^^[0m
+ [2m 21 |   }[0m
+ [2m 22 |   0[0m
+ [2m    |[0m
+

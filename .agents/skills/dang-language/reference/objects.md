@@ -27,7 +27,7 @@ z: Int!                   # declaration without value
 - A bare `name = value` mutates an existing field/local/arg. To declare a *new* field instead, give it a type (`total: Int! = 0`, public) or introduce it with `let` (`let total = 0`, local). `+=` for compound update.
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
-- Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself can't reassign fields (see "No field reassignment in the type body" under "Field defaults").
+- Inside a `type`'s methods, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`. The type body itself contains declarations only (see "Objects" below); default expressions also can't reassign fields (see "Field defaults").
 - Top-level bindings can be reassigned only by top-level statements (and blocks in them); functions, methods, `new()`, closures inside them, and declaration initializers can't write them, and only statements may read what statements write (see "Compile-time rules" below).
 
 ## Functions
@@ -127,6 +127,8 @@ type Person {
 ```
 - Members are fields or methods, indistinguishable in syntax (name + a type, `= default`, and/or `{ body }`, optionally prefixed with `let`).
 - A typed member is readable outside the type (the default); `let` makes a member readable only inside the type's own methods/defaults.
+- Object bodies and `self { }` static bodies contain **declarations only**: fields, methods, nested types, imports and directives. Object bodies additionally allow `new()` and `self { }`; static bodies do not allow a directly nested `self { }` or `new()`. Put constructor actions (`print`, `assert`, conditionals, loops, reassignment) in `new() { ...; self }`, and static actions in a method or initializer. Naked expressions are rejected even in an unused local type.
+- Declaration-only is not effect-free: field initializer expressions may contain actions, subject to the existing default/capture rules. An unused function's local type initializers do not run.
 
 ### Constructor parameters
 Whether a member is a constructor param depends on having **NO default**, not on visibility:
@@ -155,7 +157,7 @@ Errors:
 - `` field defaults can't use `read`, a method of Gauge: they run while the object is being built, so they only see the other fields' values; use a computed field or new() `` (same shape for `self` and computed fields).
 - `` field defaults can't use `bonus`: it has no default, so only Gauge's new() sets it, after the defaults run; use it in new() or a computed field ``.
 - `` new()'s parameter defaults can't use `self`: they run before new()'s body, so they only see the fields' values; use it in new()'s body ``.
-- **No field reassignment in the type body** (bare, `+=`, or in a default's block; locals declared in a default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A `self { }` block can't reassign its statics either.
+- **No field reassignment in a default's block** (bare or `+=`; locals declared in that default are fine): `` fields can't be reassigned in a type body, which runs while the object is being built; give `level` a different default, or set it in new() ``. A static initializer can't reassign its statics either. Direct reassignment in a type or `self { }` body is rejected by the declaration-only rule before checking defaults.
 - A type declared in another type's body is part of that body: it can't use (or reassign) the outer type's methods, computed fields or `new()`-only fields, even from its methods.
 
 So a closure created in a default captures values and can be stored anywhere (`let held = Box.store { x => level + x }`); neither `new()` nor later writes reach it. To use the finished object, write a computed field (`reader: Box! { Box.store { x => read(x) } }`), a method, or `new()`.
