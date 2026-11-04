@@ -123,6 +123,32 @@ assert { toString(Holder("A").make.tag) == "Adefault" }
 `))
 }
 
+func TestForwardScalarRuntime(t *testing.T) {
+	for _, initializer := range []string{`"hello"`, `JSON.decode("\"hello\"")`} {
+		t.Run(initializer, func(t *testing.T) {
+			dir := preparedSource(t, `type Config { self { value: Label! = `+initializer+` } }
+scalar Label { label: String! { toString(self) } }
+assert { Config.value.label == "hello" }
+`)
+			program, err := PrepareDir(context.Background(), dir)
+			require.NoError(t, err)
+			_, err = program.Evaluate(context.Background())
+			require.NoError(t, err)
+		})
+	}
+	for _, test := range []struct{ source, message string }{
+		{`type Config { self { value: Label! = "hello"; early: String! = value.label } }
+scalar Label { label: String! { toString(self) } }`, "scalar Label is not initialized yet"},
+		{`type Config { self { value: Label! = "hello" } }
+scalar Label { new(raw: String!) { raw.toUpper } }`, "runtime environment for scalar Label is unavailable"},
+	} {
+		program, err := PrepareDir(context.Background(), preparedSource(t, test.source))
+		require.NoError(t, err)
+		_, err = program.Evaluate(context.Background())
+		require.ErrorContains(t, err, test.message)
+	}
+}
+
 func TestImportedScalarRuntimeCallbacks(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
@@ -131,6 +157,9 @@ func TestImportedScalarRuntimeCallbacks(t *testing.T) {
 		"other/main.dang": `invoke(&f(raw: String!): a): a { f("!") }`,
 		"lib/main.dang": `import Other
 prefix: String! = "lib"
+type Config { self { value: Label! = "forward" } }
+scalar Label { label: String! { prefix + toString(self) } }
+forward: Label! = Other.invoke { ignored => Config.value }
 scalar Tag {
   new(raw: String!) { Other.invoke { ignored => prefix + raw } }
   label: String! { Tag.stamp + toString(self) }
@@ -141,6 +170,7 @@ made: Tag! = Other.invoke { raw => ctor(raw) }
 `,
 		"main.dang": `import Lib
 assert { Lib.made.label == "staticlib!" }
+assert { Lib.forward.label == "libforward" }
 let direct = Lib.Tag("direct")
 assert { direct.label == "staticlibdirect" }
 let decoded: Lib.Tag! = JSON.decode("\"decoded\"")

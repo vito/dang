@@ -220,6 +220,8 @@ type Type struct {
 	// scalarNeedsRuntime marks a Dang scalar with a body. Its evaluated
 	// methods and hook live in the declaring ValueScope, never on the type.
 	scalarNeedsRuntime bool
+	// Hooks cannot be deferred: they validate/normalize at materialization.
+	scalarHasHook bool
 	// goScalarHook is the Go-native counterpart of scalarHook, for builtin
 	// scalars whose validation cannot be expressed in Dang (Regexp's compile
 	// check). Registered once at stdlib init.

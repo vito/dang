@@ -177,7 +177,7 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 // ScalarValue. ok is false when the scalar has no hook and the caller should
 // wrap raw unchanged.
 func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, raw string) (v Value, ok bool, err error) {
-	runtime, err := typeRuntimeFor(ctx, scope, scalarType)
+	runtime, err := scalarRuntimeForMaterialization(ctx, scope, scalarType)
 	if err != nil {
 		return nil, true, err
 	}

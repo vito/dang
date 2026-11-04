@@ -94,6 +94,9 @@ bumped: Int! = Box().add.value
 func TestPreparedDirectoryTypeRuntimeIsolation(t *testing.T) {
 	dir := preparedSource(t, `import Session
 prefix: String! = Session.value
+type Config { self { value: Label! = "forward" } }
+scalar Label { label: String! { prefix + toString(self) } }
+forward: Label! = Config.value
 scalar Tag {
   new(raw: String!) { prefix + raw }
   label: String! { prefix + toString(self) }
@@ -146,6 +149,22 @@ result: String! = Tag.stamp + Box.stamp + tag.label
 		label, err := (BoundScalarMethod{Method: method.(FunctionValue), Receiver: tag}).Call(ctx, NewValueScope(program.types), nil)
 		require.NoError(t, err)
 		require.Equal(t, name+name+"!", label.String())
+		forward, found, err := scope.Lookup(ctx, "forward")
+		require.NoError(t, err)
+		require.True(t, found)
+		deferred := forward.(ScalarValue)
+		require.NotNil(t, deferred.Runtime.deferredScope)
+		// The caller deliberately holds the SAME nominal type from another
+		// evaluation: only the deferred value's captured environment may win.
+		caller := values[(index+1)%len(values)]
+		runtime, err := deferred.methodRuntime(ctx, caller, deferred.ScalarType.(*Type))
+		require.NoError(t, err)
+		method, found, err = runtime.scalarMethods.Lookup(ctx, "label")
+		require.NoError(t, err)
+		require.True(t, found)
+		label, err = (BoundScalarMethod{Method: method.(FunctionValue), Receiver: deferred}).Call(ctx, caller, nil)
+		require.NoError(t, err)
+		require.Equal(t, name+"forward", label.String())
 	}
 }
 

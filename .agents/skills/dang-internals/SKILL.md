@@ -455,6 +455,12 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   encoding. Coercion/decode into a local scalar with a body needs its declaring
   scope, like object decode; plain label scalars need no runtime environment.
   Go-native builtin hooks/statics remain registered once on their builtin types.
+- **Module forward values don't run declarations early.** A methods-only scalar
+  materialized before its declaration retains a deferred runtime record pointing
+  to that evaluation's scope. Dispatch reads the record published there by normal
+  declaration evaluation, never the caller's scope; before publication it errors
+  without waiting. This does not defer `new()` (normalization must happen when a
+  value is created), or guess a missing local declaration's environment.
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

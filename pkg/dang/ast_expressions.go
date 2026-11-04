@@ -1371,13 +1371,9 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 						}
 					}
-					runtime := rec.Runtime
-					if runtime == nil {
-						var err error
-						runtime, err = typeRuntimeFor(ctx, scope, mod)
-						if err != nil {
-							return nil, err
-						}
+					runtime, err := rec.methodRuntime(ctx, scope, mod)
+					if err != nil {
+						return nil, err
 					}
 					if runtime != nil && runtime.scalarMethods != nil {
 						methods := runtime.scalarMethods

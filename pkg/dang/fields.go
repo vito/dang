@@ -1881,6 +1881,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 	scalarType.scalarNeedsRuntime = s.Value != nil
+	scalarType.scalarHasHook = findNewConstructorIn(s.Value) != nil
 
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
