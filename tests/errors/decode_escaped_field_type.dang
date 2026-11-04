@@ -4,11 +4,12 @@ type Outer {
   type Inner {
     value: String!
   }
+
   make: Inner! { Inner(value: "built") }
 }
 
 type Holder {
-  pub inner = Outer().make
+  pub inner = Outer.make
 }
 
 let h: Holder! = JSON.decode("{\"inner\": {\"value\": \"decoded\"}}")

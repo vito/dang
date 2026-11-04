@@ -2,11 +2,11 @@
 # functions bind before computed variables, as inference orders them, so the
 # function wins.
 
-one(): Int! { 1 }
+one: Int! { 1 }
 
 let chosen = &one
 
-chosen(): Int! { 2 }
+chosen: Int! { 2 }
 
 assert("the function declaration wins") { chosen == 2 }
 
