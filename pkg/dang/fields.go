@@ -577,6 +577,9 @@ type ObjectDecl struct {
 	ConstructorFnType *hm.FunctionType
 	bodyInvalid       bool // structural error already reported by Hoist
 
+	// Scope hoisting to an inference run, not the lifetime of a cached AST.
+	bodyHoistedIn *effectSolver
+
 	ctorFn *FunctionBase
 }
 
@@ -1032,6 +1035,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	env.Add(c.Name.Name, constructorScheme)
 	mod.SetVisibility(c.Name.Name, c.Visibility)
 
+	c.bodyHoistedIn, _ = ctx.Value(effSolverKey{}).(*effectSolver)
 	if err := validateObjectBodyForms(c.Value); err != nil {
 		c.bodyInvalid = true
 		return err
@@ -1111,7 +1115,8 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Function bodies infer declarations in source order rather than through
 	// the module's hoisting phases. Initialize local constructor and member
 	// signatures before inferring their bodies as well.
-	if c.ConstructorFnType == nil {
+	solver, _ := ctx.Value(effSolverKey{}).(*effectSolver)
+	if c.ConstructorFnType == nil || (solver != nil && c.bodyHoistedIn != solver) {
 		if err := c.Hoist(ctx, env, fresh, 1); err != nil {
 			return nil, err
 		}
@@ -1692,6 +1697,9 @@ type ScalarDecl struct {
 	ConstructorFnType *hm.FunctionType // set when the body declares new()
 	bodyHoisted       bool
 	bodyInvalid       bool // structural error already reported by Hoist
+
+	// Scope hoisting to an inference run, not the lifetime of a cached AST.
+	bodyHoistedIn *effectSolver
 }
 
 var _ Node = &ScalarDecl{}
@@ -1904,6 +1912,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 
 	s.bodyHoisted = true
+	s.bodyHoistedIn, _ = ctx.Value(effSolverKey{}).(*effectSolver)
 	if err := s.validateScalarBodyForms(); err != nil {
 		s.bodyInvalid = true
 		return err
@@ -1962,7 +1971,8 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	// Local declarations bypass the module's hoisting phases. Run pass 1
 	// here too, including scalar/static body validation and signatures.
-	if s.Value != nil && !s.bodyHoisted {
+	solver, _ := ctx.Value(effSolverKey{}).(*effectSolver)
+	if s.Value != nil && (!s.bodyHoisted || (solver != nil && s.bodyHoistedIn != solver)) {
 		if err := s.Hoist(ctx, env, fresh, 1); err != nil {
 			return nil, err
 		}

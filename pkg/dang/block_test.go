@@ -112,6 +112,27 @@ func TestLocalScalarBodyValidation(t *testing.T) {
 	})
 }
 
+func TestTypeBodyValidationOnCachedAST(t *testing.T) {
+	for _, src := range []string{
+		`unused: Int! { type T { print("bad") }; 0 }`,
+		`unused: Int! { type T { n: Int! = 0; n = 1 }; 0 }`,
+		`unused: Int! { scalar S { n: Int! = 0 }; 0 }`,
+		`unused: Int! { scalar S { self { print("bad") } }; 0 }`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			parsed, err := ParseWithRecovery("cached_type_body", []byte(src))
+			require.NoError(t, err)
+			file := parsed.(*FileBlock)
+			for i := 0; i < 2; i++ {
+				typeScope, _ := BuildScopesFromImports("", nil)
+				err := InferDirectoryFilesFocused(context.Background(), []*FileBlock{file}, file, typeScope, hm.NewSimpleFresher())
+				require.Error(t, err, "analysis %d must retain the structural diagnostic", i)
+				require.Regexp(t, "may only contain declarations|must be a method", err.Error())
+			}
+		})
+	}
+}
+
 func TestTypeDeclarationActions(t *testing.T) {
 	const src = `
 unused: Int! {
