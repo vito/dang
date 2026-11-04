@@ -519,6 +519,17 @@ func (c OverlayValueScope) LookupConstructor(t *Type) (Callable, bool) {
 	return c.lexical.LookupConstructor(t)
 }
 
+func (c OverlayValueScope) BindTypeRuntime(t *Type, runtime *TypeRuntime) {
+	c.primary.BindTypeRuntime(t, runtime)
+}
+
+func (c OverlayValueScope) LookupTypeRuntime(t *Type) (*TypeRuntime, bool) {
+	if runtime, ok := c.primary.LookupTypeRuntime(t); ok {
+		return runtime, true
+	}
+	return c.lexical.LookupTypeRuntime(t)
+}
+
 func (c OverlayValueScope) Update(name string, value Value) {
 	// Reassign the binding where reads find it: primary first, then lexical.
 	// A name only the lexical scope binds (e.g. a top-level binding written
@@ -725,6 +736,25 @@ func (e *ConstructorScope) LookupConstructor(t *Type) (Callable, bool) {
 		}
 	}
 	return e.closure.LookupConstructor(t)
+}
+
+func (e *ConstructorScope) BindTypeRuntime(t *Type, runtime *TypeRuntime) {
+	e.locals.BindTypeRuntime(t, runtime)
+}
+
+func (e *ConstructorScope) LookupTypeRuntime(t *Type) (*TypeRuntime, bool) {
+	if runtime, ok := e.locals.LookupTypeRuntime(t); ok {
+		return runtime, true
+	}
+	if runtime, ok := e.args.LookupTypeRuntime(t); ok {
+		return runtime, true
+	}
+	if inst, ok := e.instance(); ok {
+		if runtime, ok := inst.LookupTypeRuntime(t); ok {
+			return runtime, true
+		}
+	}
+	return e.closure.LookupTypeRuntime(t)
 }
 
 func (e *ConstructorScope) Update(name string, value Value) {

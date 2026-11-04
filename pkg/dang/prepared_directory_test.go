@@ -91,6 +91,64 @@ bumped: Int! = Box().add.value
 	require.Zero(t, client.calls.Load(), "changed schema reached evaluation")
 }
 
+func TestPreparedDirectoryTypeRuntimeIsolation(t *testing.T) {
+	dir := preparedSource(t, `import Session
+prefix: String! = Session.value
+scalar Tag {
+  new(raw: String!) { prefix + raw }
+  label: String! { prefix + toString(self) }
+  self { stamp: String! = Session.value }
+}
+type Box { self { stamp: String! = Session.value } }
+tag: Tag! = Tag("!")
+result: String! = Tag.stamp + Box.stamp + tag.label
+`)
+	schema, err := SchemaFromSDL("type Query { value: String! }", "session.graphqls")
+	require.NoError(t, err)
+	contextFor := func(name string) context.Context {
+		return ContextWithImportConfigs(context.Background(), ImportConfig{Name: "Session", Client: blueprintClient(name), Schema: schema})
+	}
+	program, err := PrepareDir(contextFor("prepare-only"), dir)
+	require.NoError(t, err)
+	values := make([]ValueScope, 12)
+	var group sync.WaitGroup
+	for index := range values {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			name := fmt.Sprintf("evaluation-%d", index)
+			var err error
+			values[index], err = program.Evaluate(contextFor(name))
+			if err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	group.Wait()
+	for index, scope := range values {
+		if scope == nil {
+			continue
+		}
+		ctx := context.Background()
+		name := fmt.Sprintf("evaluation-%d", index)
+		result, found, err := scope.Lookup(ctx, "result")
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, strings.Repeat(name, 4)+"!", result.String())
+		value, found, err := scope.Lookup(ctx, "tag")
+		require.NoError(t, err)
+		require.True(t, found)
+		tag := value.(ScalarValue)
+		method, found, err := tag.Runtime.scalarMethods.Lookup(ctx, "label")
+		require.NoError(t, err)
+		require.True(t, found)
+		// Dispatch after every evaluation has finished, from a foreign scope.
+		label, err := (BoundScalarMethod{Method: method.(FunctionValue), Receiver: tag}).Call(ctx, NewValueScope(program.types), nil)
+		require.NoError(t, err)
+		require.Equal(t, name+name+"!", label.String())
+	}
+}
+
 func TestPreparedDirectoryReloadedSchema(t *testing.T) {
 	dir := preparedSource(t, "import Session\nresult: String! = Session.value\n")
 	const sdl = `
@@ -192,14 +250,16 @@ func TestPreparedDirectoryDoesNotCacheFailures(t *testing.T) {
 	require.Equal(t, "retry", result.(StringValue).Val)
 }
 
-func TestPreparedDirectoryUnsupportedRuntimeTypeState(t *testing.T) {
+func TestPreparedDirectoryRuntimeTypeState(t *testing.T) {
 	for _, source := range []string{
-		`type Thing { self { value: String! = "static" } }`,
-		`scalar Name { new(value: String!): String! { value } }`,
+		`type Thing { self { value: String! = "static" } }; assert { Thing.value == "static" }`,
+		`scalar Name { new(value: String!) { value } }; assert { Name("ok") == "ok" }`,
 	} {
 		t.Run(source, func(t *testing.T) {
-			_, err := PrepareDir(context.Background(), preparedSource(t, source))
-			require.ErrorIs(t, err, ErrUnpreparableDirectory)
+			program, err := PrepareDir(context.Background(), preparedSource(t, source))
+			require.NoError(t, err)
+			_, err = program.Evaluate(context.Background())
+			require.NoError(t, err)
 		})
 	}
 }
@@ -226,15 +286,17 @@ result: String! = answer.echo
 		require.Equal(t, "current", result.(StringValue).Val)
 	})
 
-	t.Run("unsupported declaration", func(t *testing.T) {
+	t.Run("scalar declaration in argument", func(t *testing.T) {
 		dir := preparedSource(t, `type Echo { echo(value: String!): String! { value } }
 let answer = Echo.{{ echo(value: {
   scalar Name { label: String! { "hello" } }
   "ok"
 }) }}
 `)
-		_, err := PrepareDir(context.Background(), dir)
-		require.ErrorIs(t, err, ErrUnpreparableDirectory)
+		program, err := PrepareDir(context.Background(), dir)
+		require.NoError(t, err)
+		_, err = program.Evaluate(context.Background())
+		require.NoError(t, err)
 	})
 }
 

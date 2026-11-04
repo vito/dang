@@ -10,16 +10,16 @@ import (
 	"github.com/vito/dang/v2/pkg/introspection"
 )
 
-// ErrUnpreparableDirectory means a directory uses declarations whose evaluation
-// still writes into the inferred type graph. Callers can use RunDir instead.
+// ErrUnpreparableDirectory means a directory uses imports whose evaluated
+// module state is retained by the inferred graph. Callers can use RunDir instead.
 var ErrUnpreparableDirectory = errors.New("directory cannot be prepared")
 
 // PreparedDirectory is a fully inferred source snapshot. Evaluation creates new
 // values, closures, services and import bindings each time. No evaluated module
 // environment or GraphQL client is retained by the prepared source.
 //
-// This experimental API deliberately excludes scalar hooks, static namespaces
-// and native Dang imports until their runtime state is separated from types.
+// This experimental API excludes native Dang imports, whose module instances
+// still retain a once-evaluated environment.
 type PreparedDirectory struct {
 	dir    string
 	blocks []*FileBlock
@@ -78,8 +78,6 @@ func checkPreparable(blocks []*FileBlock) error {
 				return false
 			}
 			switch n := node.(type) {
-			case *ScalarDecl, *SelfBlockDecl:
-				err = fmt.Errorf("%w: %T", ErrUnpreparableDirectory, node)
 			case *ImportDecl:
 				if n.dangMod != nil {
 					err = fmt.Errorf("%w: native import %s", ErrUnpreparableDirectory, n.Name.Name)

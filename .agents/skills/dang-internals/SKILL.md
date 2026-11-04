@@ -442,9 +442,19 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   inside an object method would rebind to that object. Methods, by
   contrast, are forced `IsDynamic=true` in `ScalarDecl.Eval` so bare
   sibling calls redirect.
+- **Runtime state belongs to the declaring evaluation.** `TypeRuntime` records
+  live in `ValueScope`, keyed by canonical type identity like object constructors.
+  Evaluating a local declaration again creates a fresh record; it never updates
+  shared inferred `*Type` metadata. Statics resolve through that scope, falling
+  back to the owning imported module only when absent (scope-first avoids waiting
+  on module initialization during a callback).
 - **Hook runs at materialization** (`materializeStringValue` /
-  `materializeDecoded`), stored on the `*Type` (`SetScalarHook`) — written
-  once at `ScalarDecl.Eval`, frozen after.
+  `materializeDecoded`). `ScalarConstructor` retains its record rather than
+  looking it up in the caller; `ScalarValue` retains the methods for dispatch
+  after escaping its declaring scope. Runtime records do not affect equality or
+  encoding. Coercion/decode into a local scalar with a body needs its declaring
+  scope, like object decode; plain label scalars need no runtime environment.
+  Go-native builtin hooks/statics remain registered once on their builtin types.
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

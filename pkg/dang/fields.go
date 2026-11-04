@@ -940,8 +940,8 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 }
 
 // evalStatics evaluates a type's static members into a fresh statics namespace
-// object (whose module is the meta-type) and records it on the type. Static
-// methods share the block's closure so bare sibling statics resolve, and self
+// object (whose module is the meta-type) in the declaring scope. Static methods
+// share the block's closure so bare sibling statics resolve, and self
 // resolves to the statics namespace. Runs during the enclosing declaration's
 // Eval. A no-op when the type declares no statics.
 func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope ValueScope) error {
@@ -949,14 +949,20 @@ func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope Va
 	if len(forms) == 0 {
 		return nil
 	}
-	meta := instanceType.MetaType()
+	// Do not create or mutate inferred metadata during evaluation.
+	meta := instanceType.meta
 	statics := NewObject(meta)
 	staticsScope := CreateOverlayValueScope(statics, scope)
 	staticsScope.EnterSelf(statics)
 	if _, err := EvaluateFormsWithPhases(ctx, forms, staticsScope); err != nil {
 		return err
 	}
-	instanceType.SetStatics(statics)
+	runtime := TypeRuntime{statics: statics}
+	if previous, ok := scope.LookupTypeRuntime(instanceType); ok {
+		runtime = *previous
+		runtime.statics = statics
+	}
+	scope.BindTypeRuntime(instanceType, &runtime)
 	return nil
 }
 
@@ -1866,6 +1872,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
+	scalarType.scalarNeedsRuntime = s.Value != nil
 
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
@@ -2025,11 +2032,12 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		newDecl := findNewConstructorIn(s.Value)
+		runtime := &TypeRuntime{}
 
 		var evalScope ValueScope
 		if s.Value != nil {
-			// Evaluate method members into a methods object hung off the *Type,
-			// where Select.Eval dispatches them for ScalarValue receivers. The
+			// Evaluate method members into this declaration's runtime record,
+			// retained by ScalarValue receivers for Select.Eval dispatch. The
 			// members' shared closure overlays the methods object itself, so
 			// sibling methods see each other by bare name.
 			methods := NewObject(s.Inferred)
@@ -2047,7 +2055,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 					methods.Bind(kv.Key, fnVal, PublicVisibility)
 				}
 			}
-			s.Inferred.SetScalarMethods(methods)
+			runtime.scalarMethods = methods
 		}
 
 		// evalScalarStatics evaluates the self { } members into the scalar's
@@ -2075,10 +2083,14 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 				Closure: evalScope,
 				FnType:  hm.NewFnType(hookArgs, hm.NonNullType{Type: StringType}),
 			}
-			s.Inferred.SetScalarHook(hook, argName)
+			runtime.scalarHook = hook
+			runtime.scalarHookArg = argName
+			runtime.hasScalarHook = true
+			scope.BindTypeRuntime(s.Inferred, runtime)
 
 			ctor := ScalarConstructor{
 				ScalarType: s.Inferred,
+				Runtime:    runtime,
 				FnType:     s.ConstructorFnType,
 				ArgName:    argName,
 			}
@@ -2092,6 +2104,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// No constructor: the scalar's name binds its namespace object. A
 		// scalar whose name matches a builtin scalar (e.g. JSON) doubles as
 		// that scalar's namespace: bind Dang's members onto its runtime object.
+		scope.BindTypeRuntime(s.Inferred, runtime)
 		scalarModule := NewObject(s.Inferred)
 		attachBuiltinMethods(scalarModule, s.Inferred)
 		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
@@ -2102,7 +2115,9 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// statics (see Hoist), so as a value it is the statics namespace:
 		// `let ns = Tag; ns.sep` reads it. A builtin scalar's members ride
 		// along.
-		if statics := s.Inferred.Statics(); statics != nil {
+		if statics, err := staticsFor(ctx, scope, s.Inferred); err != nil {
+			return nil, err
+		} else if statics != nil {
 			attachBuiltinMethods(statics, s.Inferred)
 			scope.Bind(s.Name.Name, statics, s.Visibility)
 			return statics, nil
