@@ -169,6 +169,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 
 ### Serialization
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
+- `JSON.encode(value, indent: String! = "", escapeHTML: Boolean! = true)` — output is compact and escapes `<`, `>`, `&` as `\u003c`/`\u003e`/`\u0026` by default (Go's `json.Marshal`). `indent: "  "` pretty-prints one copy per nesting level (`json.MarshalIndent(v, "", indent)`; spaces/tabs only); `escapeHTML: false` writes `<>&` bare. No trailing newline either way.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
 ### Errors (all recoverable with `rescue`)

@@ -36,13 +36,22 @@ func registerCodecs() {
 	// encode takes an arbitrary value, so it cannot live on the String type
 	// (there is no universal receiver); it belongs to the format's namespace.
 	StaticMethod(JSONModule, "encode").
-		Doc("serializes a value to a JSON string").
-		Example(`JSON.encode([1, 2, 3])`).
-		Params("value", TypeVar('a')).
+		Doc("serializes a value to a JSON string. " +
+			"indent pretty-prints with one copy of it per nesting level (e.g. \"  \"); " +
+			"escapeHTML: false leaves <, >, and & unescaped in strings.").
+		Example(`JSON.encode({{tag: "<b>", ids: [1, 2]}}, indent: "  ", escapeHTML: false)`).
+		Params(
+			"value", TypeVar('a'),
+			"indent", NonNull(StringType), StringValue{Val: ""},
+			"escapeHTML", NonNull(BooleanType), BoolValue{Val: true},
+		).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-			out, err := encodeJSON(val)
+			out, err := encodeJSON(val, jsonOptions{
+				indent:     args.GetString("indent"),
+				escapeHTML: args.GetBool("escapeHTML"),
+			})
 			if err != nil {
 				return nil, fmt.Errorf("JSON.encode: %w", err)
 			}
@@ -79,7 +88,7 @@ func registerCodecs() {
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-			out, err := encodeJSON(val)
+			out, err := encodeJSON(val, defaultJSONOptions)
 			if err != nil {
 				return nil, fmt.Errorf("toJSON: %w", err)
 			}
@@ -173,7 +182,24 @@ func registerCodecs() {
 
 // --- JSON ---
 
-func encodeJSON(val Value) (string, error) {
+// jsonOptions controls JSON.encode's output layout; the zero value is not the
+// default (escapeHTML defaults to true), so use defaultJSONOptions.
+type jsonOptions struct {
+	// indent, when non-empty, pretty-prints the output with one copy of it per
+	// nesting level, like json.MarshalIndent(v, "", indent).
+	indent string
+	// escapeHTML escapes <, >, and & inside strings as \u003c, \u003e, and
+	// \u0026, as json.Marshal does; false writes them verbatim, like a
+	// json.Encoder with SetEscapeHTML(false).
+	escapeHTML bool
+}
+
+var defaultJSONOptions = jsonOptions{escapeHTML: true}
+
+func encodeJSON(val Value, opts jsonOptions) (string, error) {
+	if strings.Trim(opts.indent, " \t") != "" {
+		return "", fmt.Errorf("indent must contain only spaces and tabs, got %q", opts.indent)
+	}
 	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries;
 	// json.Marshal then produces canonical output (json.Number leaves render as
 	// numbers, object keys sort).
@@ -185,7 +211,61 @@ func encodeJSON(val Value) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Layout is applied to the compact output as a whole rather than through
+	// json.MarshalIndent or a json.Encoder, because parts of the tree are
+	// already-encoded json.RawMessage (ordered maps, leaves) that were
+	// HTML-escaped when they were marshaled. Both passes leave every other
+	// byte alone, so the defaults are exactly json.Marshal's output.
+	if !opts.escapeHTML {
+		jsonBytes = unescapeJSONHTML(jsonBytes)
+	}
+	if opts.indent != "" {
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, jsonBytes, "", opts.indent); err != nil {
+			return "", err
+		}
+		jsonBytes = buf.Bytes()
+	}
 	return string(jsonBytes), nil
+}
+
+// unescapeJSONHTML rewrites the \u003c, \u003e, and \u0026 escapes that
+// json.Marshal writes for <, >, and & back into the bare characters, which is
+// what a json.Encoder with SetEscapeHTML(false) writes. src must be valid JSON:
+// escapes only occur inside strings there, and walking them pairwise keeps an
+// escaped backslash followed by "u003c" (the text \u003c) intact.
+func unescapeJSONHTML(src []byte) []byte {
+	if !bytes.Contains(src, []byte(`\u00`)) {
+		return src
+	}
+	out := make([]byte, 0, len(src))
+	for i := 0; i < len(src); i++ {
+		if src[i] != '\\' || i+1 >= len(src) {
+			out = append(out, src[i])
+			continue
+		}
+		if src[i+1] == 'u' && i+6 <= len(src) {
+			switch string(src[i+2 : i+6]) {
+			case "003c", "003C":
+				out = append(out, '<')
+				i += 5
+				continue
+			case "003e", "003E":
+				out = append(out, '>')
+				i += 5
+				continue
+			case "0026":
+				out = append(out, '&')
+				i += 5
+				continue
+			}
+		}
+		// Any other escape: copy both bytes so the second is never mistaken
+		// for the start of an escape.
+		out = append(out, src[i], src[i+1])
+		i++
+	}
+	return out
 }
 
 func decodeJSON(data string) (any, error) {

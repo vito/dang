@@ -165,6 +165,21 @@ let draft = {{ title: "notes", author: null :: String }}
 TOML.encode(42)
 ```
 
+`JSON.encode` writes compact JSON and escapes `<`, `>`, and `&` (as
+`\u003c`, `\u003e`, `\u0026`) so the output is safe to embed in HTML, like
+Go's `json.Marshal`. Pass `indent` to pretty-print with one copy of it per
+nesting level, and `escapeHTML: false` to keep those characters as they are:
+
+```dang
+let link = {{ label: "Tom & Jerry", tags: ["<b>"] }}
+
+[JSON.encode(link), JSON.encode(link, escapeHTML: false)]
+```
+
+```dang
+print(JSON.encode(link, indent: "  ", escapeHTML: false))
+```
+
 `toString(value)` passes strings through and JSON-encodes everything else
 (see [#strings]):
 
