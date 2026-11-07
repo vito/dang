@@ -1,0 +1,86 @@
+# JSON is Dang's untyped JSON value: decoding into it accepts data of any
+# shape and holds it as its JSON text, so data of unknown shape can be kept,
+# walked a level at a time, and encoded back unchanged.
+
+let config = "{\"modules\": [{\"name\": \"a\", \"source\": \"./a\", \"pin\": {\"rev\": 3}}], \"version\": 2}"
+
+# Any value fits, at any depth: here the top level's keys, whatever their
+# values hold.
+let top = JSON.decode(config) :: Map[JSON!]!
+assert { top.keys == ["modules", "version"] }
+assert { toString(top["version"]!) == "2" }
+
+# A JSON value is JSON text: toString and interpolation give that text, and a
+# string is held quoted, never as its bare contents.
+let named = JSON.decode("{\"s\": \"x\", \"html\": \"<b>&</b>\"}") :: Map[JSON!]!
+assert { toString(named["s"]!) == "\"x\"" }
+let s = named["s"]!
+assert { `s is ${s}` == "s is \"x\"" }
+assert { toString(named["html"]!) == "\"<b>&</b>\"" }
+
+# JSON.decode takes a JSON value as well as a String, so walking goes one
+# level deeper by decoding a value again at the type it has there.
+let modules = JSON.decode(top["modules"]!) :: [Map[JSON!]!]!
+assert { modules.length == 1 }
+assert { modules[0]!.keys == ["name", "pin", "source"] }
+let known = ["name", "source"]
+let unknown = modules[0]!.keys.filter { k => !known.contains(k) }
+assert { unknown == ["pin"] }
+assert { (JSON.decode(modules[0]!["name"]!) :: String!) == "a" }
+assert { (JSON.decode(modules[0]!["pin"]!) :: Map[Int!]!)["rev"] == 3 }
+
+# Lists and whole documents work the same way.
+let mixed = JSON.decode("[1, \"two\", {\"three\": 3}, [4], true]") :: [JSON!]!
+assert { mixed.map { v => toString(v) } == ["1", "\"two\"", "{\"three\":3}", "[4]", "true"] }
+let whole = JSON.decode(config) :: JSON!
+assert { toString(whole) == "{\"modules\":[{\"name\":\"a\",\"pin\":{\"rev\":3},\"source\":\"./a\"}],\"version\":2}" }
+
+# Encoding embeds a JSON value as the data it holds, not as a string, so a
+# document round-trips exactly (numbers keep their digits).
+let exact = "{\"a\":[1,2.50,1e3,{\"b\":null}],\"c\":\"x\"}"
+assert { JSON.encode(JSON.decode(exact) :: JSON!) == exact }
+assert { JSON.encode(JSON.decode(exact) :: Map[JSON!]!) == exact }
+assert { JSON.encode({{wrapped: whole}}) == "{\"wrapped\":" + toString(whole) + "}" }
+assert { YAML.encode(JSON.decode("{\"k\": [1, \"v\"]}") :: Map[JSON!]!) == "k:\n    - 1\n    - v" }
+
+# A JSON field of a type takes any value too.
+type Entry {
+  name: String!
+  extra: JSON!
+}
+
+let entry = JSON.decode("{\"name\": \"e\", \"extra\": {\"deep\": [true]}}") :: Entry!
+assert { toString(entry.extra) == "{\"deep\":[true]}" }
+assert { JSON.encode(entry) == "{\"extra\":{\"deep\":[true]},\"name\":\"e\"}" }
+
+# YAML and TOML decode into JSON values as well. YAML numbers that aren't
+# spelled as JSON numbers are held as the number they are.
+let fromYAML = YAML.decode("a: 1\nb: [x, y]\nmode: 0755\nhalf: -.5\nup: +1\n") :: Map[JSON!]!
+assert { toString(fromYAML["b"]!) == "[\"x\",\"y\"]" }
+assert { [fromYAML["mode"]!, fromYAML["half"]!, fromYAML["up"]!].map { v => toString(v) } == ["755", "-0.5", "1"] }
+assert { ((YAML.decode("x: .inf") :: Map[JSON!]!) rescue null) == null }
+let fromTOML = TOML.decode("[server]\nport = 8080\n") :: Map[JSON!]!
+assert { toString(fromTOML["server"]!) == "{\"port\":8080}" }
+
+# toString of a collection holding JSON values renders them as data, the way
+# JSON.encode does, and joining them joins their texts.
+let nested = JSON.decode("{\"a\": {\"b\": 1}, \"s\": \"x\"}") :: Map[JSON!]!
+assert { toString(nested) == "{\"a\":{\"b\":1},\"s\":\"x\"}" }
+assert { toString({{v: nested["a"]!}}) == "{\"v\":{\"b\":1}}" }
+assert { [nested["a"]!, nested["s"]!].join(" ") == "{\"b\":1} \"x\"" }
+
+# null stays null: a nullable JSON takes it, a non-null one rejects it.
+let maybe = JSON.decode("{\"a\": null}") :: Map[JSON]!
+assert { maybe["a"] == null }
+assert {
+  ((JSON.decode("{\"a\": null}") :: Map[JSON!]!) rescue null) == null
+}
+
+# A String cast to JSON is taken as JSON text; encoding text that is not JSON
+# raises rather than emitting it.
+let text: JSON! = "{\"ok\": true}"
+assert { JSON.encode([text]) == "[{\"ok\":true}]" }
+let notJSON: JSON! = "nope"
+assert { (JSON.encode(notJSON) rescue "invalid") == "invalid" }
+
+print("JSON value tests passed!")

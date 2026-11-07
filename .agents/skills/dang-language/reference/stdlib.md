@@ -146,7 +146,7 @@ Equality ignores order (`["a": 1, "b": 2] == ["b": 2, "a": 1]`). `JSON.encode` e
 
 ## JSON, YAML, and TOML
 
-Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods. The names double as scalar types (`:: JSON`) and are owned by Dang, so they work with **no `import`**; an in-scope scalar of the same name (e.g. Dagger's `scalar JSON`) merges with the codec rather than colliding.
+Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods. The names double as scalar types (`:: JSON`) and are owned by Dang, so they work with **no `import`**; a schema's scalar of the same name (e.g. Dagger's `scalar JSON`) gets the codec's `encode`/`decode` grafted on (`Dagger.JSON.encode` works), while unqualified `JSON` stays the builtin.
 
 Parsing is **type-driven** — `JSON.decode` / `YAML.decode` / `TOML.decode` produce values of the *expected* type, which comes from a `::` cast, an annotation, or the parameter/return type at the call site:
 ```dang
@@ -164,8 +164,22 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 
 ### Coercion during parsing
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
-- Custom scalars decode from their string forms.
+- Custom scalars decode from their string forms — except `JSON` (below).
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
+
+### `JSON` values: untyped JSON
+`JSON` is also Dang's "any" type: decoding (JSON, YAML or TOML) into `JSON` accepts a value of **any** shape and holds it as its compact **JSON text** — so data of unknown shape can be kept, inspected a level at a time, and encoded back:
+```dang
+let top = YAML.decode(raw) :: Map[JSON!]!            # any values; check top.keys
+let mods = JSON.decode(top["modules"]!) :: [Map[JSON!]!]!   # walk one level deeper
+let name = JSON.decode(mods[0]!["name"]!) :: String!
+```
+- A decoded JSON value **is JSON text**: `toString(j)` and `${j}` give that text, and a string is held quoted — `"x"` is the text `"x"` (with the quotes), never `x`. Decoding a JSON string into `JSON` used to give the bare string; decode into `String!` for that. JSON and YAML numbers keep their exact digits (TOML's floats go through float64: `2.0` is held as `2`).
+- `JSON.decode(j)` takes a JSON value as well as a `String!` (JSON values degrade to `String`), re-materializing it at the expected type.
+- `JSON.encode` / `YAML.encode` / `TOML.encode` embed a JSON value as the data it holds, not as a string: `JSON.encode(JSON.decode(s) :: JSON!)` is `s` compacted, with object keys sorted (and, as for any string `JSON.encode` writes, `<`, `>` and `&` escaped as `\u003c` etc.). Text that is not JSON raises.
+- A `String` cast to `JSON` (`s :: JSON!`, `let j: JSON! = "..."`) is taken as JSON text as-is, unvalidated (encoding raises if it isn't JSON). Equality compares the text, so a cast `"{\"a\": 1}"` is not `==` the decoded (compacted) `{"a":1}`. JSON `null` stays Dang `null`: use `Map[JSON]!` where values may be null.
+- `toString` of a list, map or record holding JSON values renders them as data too, like `JSON.encode` (but under canonical field names).
+- This is the builtin `JSON` (and a `scalar JSON` you declare yourself). A schema's `scalar JSON` (e.g. `Dagger.JSON`) is a plain schema scalar: servers disagree on its wire form, so its values stay as the server sends them (a string is held bare). Unqualified, `JSON` always names the builtin, since imports never shadow builtins; hand a value to the schema's JSON as text: `(j :: String!) :: Dagger.JSON!`.
 
 ### Serialization
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.

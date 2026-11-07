@@ -49,9 +49,10 @@ func registerCodecs() {
 			return ToValue(out)
 		})
 	// decode returns an opaque value materialized against the expected type
-	// supplied via a `:: T` hint at the call boundary.
+	// supplied via a `:: T` hint at the call boundary. A JSON value degrades
+	// into data (it is JSON text), so decoding one walks data held as JSON.
 	StaticMethod(JSONModule, "decode").
-		Doc("parses a JSON string into an opaque value that is materialized by an expected type").
+		Doc("parses JSON text (a string, or a JSON value) into an opaque value that is materialized by an expected type").
 		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
 		Returns(DecodedType{}).
@@ -174,10 +175,21 @@ func registerCodecs() {
 // --- JSON ---
 
 func encodeJSON(val Value) (string, error) {
+	return encodeJSONWith(val, jsonCodec)
+}
+
+// toJSONText renders a non-string value as toString does: JSON under its
+// canonical field names (no codec directives), with JSON values embedded as
+// the data they hold, like JSON.encode, rather than quoted.
+func toJSONText(val Value) (string, error) {
+	return encodeJSONWith(val, plainJSONCodec)
+}
+
+func encodeJSONWith(val Value, c Codec) (string, error) {
 	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries;
 	// json.Marshal then produces canonical output (json.Number leaves render as
 	// numbers, object keys sort).
-	tree, err := encodeValue(val, jsonCodec)
+	tree, err := encodeValue(val, c)
 	if err != nil {
 		return "", err
 	}
@@ -371,7 +383,7 @@ func encodeValue(val Value, c Codec) (any, error) {
 		// insertion order, which a Go map would lose (encoding/json sorts keys),
 		// so assemble it directly; YAML/TOML sort keys regardless, so a plain map
 		// suffices.
-		if c == jsonCodec {
+		if c.isJSON() {
 			return c.encodeOrderedMap(v)
 		}
 		result := make(map[string]any, len(v.Keys))
@@ -453,14 +465,38 @@ func isEmptyValue(v Value) bool {
 // marshal. YAML/TOML produce a plain Go value (numbers as json.Number) that
 // those encoders can render — they sort map keys regardless.
 func (c Codec) encodeLeaf(val Value) (any, error) {
+	if s, ok := val.(ScalarValue); ok {
+		if mod, ok := s.ScalarType.(*Type); ok && isJSONScalar(mod) {
+			return c.encodeJSONScalar(s)
+		}
+	}
 	jsonBytes, err := json.Marshal(val)
 	if err != nil {
 		return nil, err
 	}
-	if c == jsonCodec {
+	if c.isJSON() {
 		return json.RawMessage(jsonBytes), nil
 	}
 	return jsonBytesToRaw(jsonBytes)
+}
+
+// encodeJSONScalar embeds a JSON value as the data its text spells, not as a
+// string, so decoding into JSON and encoding back round-trips. Text that is
+// not JSON (e.g. a String cast to JSON) is an error rather than output a
+// reader would choke on — except for toString, which shows it as the string
+// it is.
+func (c Codec) encodeJSONScalar(s ScalarValue) (any, error) {
+	raw, err := decodeJSON(s.Val)
+	if err != nil {
+		if c.plain {
+			return s.Val, nil
+		}
+		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
+	}
+	if c.isJSON() {
+		return json.RawMessage(s.Val), nil
+	}
+	return raw, nil
 }
 
 // jsonBytesToRaw decodes JSON bytes into a generic value, preserving numbers as
