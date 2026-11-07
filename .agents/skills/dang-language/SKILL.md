@@ -76,17 +76,27 @@ assert { Counter(0).incr.incr.value == 2 }
 if (v != null) { v } else { "?" }   # v narrowed to T! in the then-branch
 ```
 
+## Idioms
+
+- `xs.find { x => ... }` (nullable) — not `xs.filter { ... }[0]`.
+- `m.values` / `m.keys` — not `m.keys.map { k => m[k] }`.
+- Bare `[]` / `[:]` — they infer from context (args, `??`, branches, `reduce`); no typed "empty" constants.
+- Templates `` `${a} (${i})` `` — not `a + " (" + toString(i) + ")"`.
+- `!x` — not `x == false`.
+- Annotate scalar-typed bindings of literals: `` let re: Regexp! = `\d+` `` (an untyped one is `String!`).
+- Parenthesize an `if`/`case` used as an operand: `a + (if (c) { x } else { y })`.
+
 ## Where to look (routing)
 
 Load the reference file that matches the question:
 
 | File | Covers |
 |---|---|
-| `reference/syntax.md` | file layout, comments, identifiers, keywords (and `$name` to use one as a name), docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
-| `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
+| `reference/syntax.md` | file layout, comments, identifiers, keywords (and `$name` to use one as a name), docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, **gotchas**, the PEG **grammar** |
+| `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** (incl. which ones decode from non-string JSON) |
 | `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write** and its compile-time rules (immutable top-level bindings and statics, closures that write their scope can't escape, `{{ }}` fields can't write outside themselves, defaults see only values), **interfaces** & **unions** + variance |
 | `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`raise`, the postfix `rescue` operator, the `Error` interface, when to raise vs. return null) |
-| `reference/stdlib.md` | top-level builtins (`assert`/`print`/`loop`/`toString`), **`String!` methods** (incl. regex/`Match`, base64), **`Path` scalar + methods**, **list `[T]!` methods**, **`JSON`/`YAML`/`TOML` codec namespaces** (`encode`/`decode`), `Random`, `UUID`, error types |
+| `reference/stdlib.md` | top-level builtins (`assert`/`print`/`loop`/`toString`/`Path`/`Regexp`), **`String!` methods** (incl. regex/`Match`, base64, `truncate`), **`Path` scalar + methods**, **list `[T]!` methods** (incl. `find`), **`Map[T]!` methods**, empty-literal inference, **`JSON`/`YAML`/`TOML` codec namespaces** (`encode`/`decode`), `Random`, `UUID`, error types |
 | `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |
 | `reference/cli.md` | the `dang` CLI, `dang fmt`, the REPL and its `:` commands, exit codes, LSP/editor integration |
 
