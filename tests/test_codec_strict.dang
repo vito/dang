@@ -1,0 +1,172 @@
+# `decode(strict: true)` rejects what a plain decode silently drops: an input
+# key no field of the expected type reads, and (for JSON and YAML) a key
+# repeated within one object. Like Go's yaml.v3 KnownFields(true).
+
+type Source {
+  path: String!
+  table: String @JSON.field(name: "tomlTable") @YAML.field(name: "tomlTable") @TOML.field(name: "tomlTable")
+  cache: String @JSON.ignore @YAML.ignore @TOML.ignore
+}
+
+type Module {
+  name: String!
+  source: Source!
+  labels: Map[String!]
+}
+
+type Config {
+  modules: [Module!]!
+}
+
+# --- Non-strict decoding ignores unknown keys and keeps the last duplicate ---
+let lax: Module! = JSON.decode("""{"name": "a", "name": "b", "source": {"path": "x", "typo": 1}}""")
+assert { lax.name == "b" }
+assert { lax.source.path == "x" }
+let laxYAML: Module! = YAML.decode("name: a\nname: b\nsource: {path: x, typo: 1}")
+assert { laxYAML.name == "b" }
+
+# --- Strict decoding accepts input that only uses known keys ---
+let ok: Config! = JSON.decode(
+  """{"modules": [{"name": "a", "source": {"path": "x", "tomlTable": "t"}, "labels": {"any": "key"}}]}""",
+  strict: true,
+)
+assert { ok.modules[0].source.table == "t" }
+# Map keys are data, not fields: any key is accepted
+assert { ok.modules[0].labels["any"] == "key" }
+
+let okYAML: Config! = YAML.decode(
+  "modules:\n- name: a\n  source:\n    path: x\n    tomlTable: t\n",
+  strict: true,
+)
+assert { okYAML.modules[0].source.table == "t" }
+
+let okTOML: Module! = TOML.decode(
+  "name = \"a\"\n[source]\npath = \"x\"\ntomlTable = \"t\"",
+  strict: true,
+)
+assert { okTOML.source.table == "t" }
+
+# --- Unknown keys name the object's path and the key ---
+let unknownField = (
+  JSON.decode(
+    """{"modules": [{"name": "a", "source": {"path": "x", "tomlTabel": "t"}}]}""",
+    strict: true,
+  ) :: Config!
+) rescue {
+  err: Error => err.message
+}
+assert { unknownField == "modules[0].source: field tomlTabel not found" }
+
+let unknownYAML = (
+  YAML.decode(
+    "modules:\n- name: a\n  source:\n    path: x\n    tomlTabel: t\n",
+    strict: true,
+  ) :: Config!
+) rescue {
+  err: Error => err.message
+}
+assert { unknownYAML == "modules[0].source: field tomlTabel not found" }
+
+let unknownTOML = (
+  TOML.decode("name = \"a\"\nbogus = 1\n[source]\npath = \"x\"", strict: true) :: Module!
+) rescue {
+  err: Error => err.message
+}
+assert { unknownTOML == "field bogus not found" }
+
+# a renamed field is read only under its new key
+let oldName = (JSON.decode("""{"path": "x", "table": "t"}""", strict: true) :: Source!) rescue {
+  err: Error => err.message
+}
+assert { oldName == "field table not found" }
+
+# an ignored field reads no key at all
+let ignored = (JSON.decode("""{"path": "x", "cache": "c"}""", strict: true) :: Source!) rescue {
+  err: Error => err.message
+}
+assert { ignored == "field cache not found" }
+
+# anonymous records are checked too
+let anon = (JSON.decode("""{"a": 1, "b": 2}""", strict: true) :: {{a: Int!}}!) rescue {
+  err: Error => err.message
+}
+assert { anon == "field b not found" }
+
+# a field no constructor parameter sets is still a field: encode writes it, so
+# a value's own encoding decodes back strictly
+type Greeting {
+  name: String!
+  let text: String! = "hi " + name
+}
+
+let greeting = JSON.decode(JSON.encode(Greeting(name: "ada")), strict: true) :: Greeting!
+assert { greeting.text == "hi ada" }
+let yamlGreeting = YAML.decode(YAML.encode(Greeting(name: "ada")), strict: true) :: Greeting!
+assert { yamlGreeting.name == "ada" }
+
+# --- Strictness travels with data left Decoded until later ---
+let deferred = [JSON.decode("""{"path": "y", "nope": 1}""", strict: true)]
+let late = (deferred[0] :: Source!) rescue {
+  err: Error => err.message
+}
+assert { late == "field nope not found" }
+
+# --- Duplicate keys report the object's path and the key's line ---
+let dupJSON = (
+  JSON.decode(
+    "{\"name\": \"a\",\n \"name\": \"b\", \"source\": {\"path\": \"x\"}}",
+    strict: true,
+  ) :: Module!
+) rescue {
+  err: Error => err.message
+}
+assert { dupJSON == "JSON.decode: invalid JSON: line 2: field name already set" }
+
+let dupNested = (
+  JSON.decode("""[{"name": "a", "source": {"path": "x", "path": "y"}}]""", strict: true) :: [Module!]!
+) rescue {
+  err: Error => err.message
+}
+assert { dupNested == "JSON.decode: invalid JSON: [0].source: line 1: field path already set" }
+
+let dupYAML = (
+  YAML.decode(
+    ```yaml
+    modules:
+    - name: a
+      source:
+        path: x
+        tomlTable: t
+      source:
+        path: y
+    ```,
+    strict: true,
+  ) :: Config!
+) rescue {
+  err: Error => err.message
+}
+assert { dupYAML == "YAML.decode: invalid YAML: modules[0]: line 6: field source already set" }
+
+# duplicates are rejected even under a Map, whose keys are otherwise free
+let dupMap = (JSON.decode("""{"a": 1, "a": 2}""", strict: true) :: Map[Int!]!) rescue {
+  err: Error => err.message
+}
+assert { dupMap == "JSON.decode: invalid JSON: line 1: field a already set" }
+
+# a YAML merge key supplies defaults that the mapping's own keys override;
+# that is not a duplicate
+let merged = YAML.decode(
+  "defaults: &d\n  path: x\nsource:\n  <<: *d\n  path: y\n",
+  strict: true,
+) :: {{defaults: Source!, source: Source!}}!
+assert { merged.source.path == "y" }
+
+# ...but a mapping written inline as a merge's value may not repeat a key
+let dupInMerge = (
+  YAML.decode("source:\n  <<: {path: x, path: y}\n", strict: true) :: {{source: Source!}}!
+) rescue {
+  err: Error => err.message
+}
+assert { dupInMerge == "YAML.decode: invalid YAML: source: line 2: field path already set" }
+
+print("strict codec tests passed!")

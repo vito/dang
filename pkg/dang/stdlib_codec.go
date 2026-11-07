@@ -51,16 +51,20 @@ func registerCodecs() {
 	// decode returns an opaque value materialized against the expected type
 	// supplied via a `:: T` hint at the call boundary.
 	StaticMethod(JSONModule, "decode").
-		Doc("parses a JSON string into an opaque value that is materialized by an expected type").
+		Doc("parses a JSON string into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
 		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
-		Params("data", NonNull(StringType)).
+		Params(
+			"data", NonNull(StringType),
+			"strict", BooleanType, BoolValue{Val: false},
+		).
 		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			raw, err := decodeJSON(args.GetString("data"))
+			strict := args.GetBool("strict")
+			raw, err := decodeJSON(args.GetString("data"), strict)
 			if err != nil {
 				return nil, fmt.Errorf("JSON.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
+			return DeferredValue{Raw: raw, Codec: jsonCodec, Strict: strict}, nil
 		})
 
 	// toJSON / fromJSON / fromYAML are the deprecated top-level predecessors of
@@ -93,7 +97,7 @@ func registerCodecs() {
 		Params("data", NonNull(StringType)).
 		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			raw, err := decodeJSON(args.GetString("data"))
+			raw, err := decodeJSON(args.GetString("data"), false)
 			if err != nil {
 				return nil, fmt.Errorf("fromJSON: %w", err)
 			}
@@ -115,16 +119,20 @@ func registerCodecs() {
 			return ToValue(out)
 		})
 	StaticMethod(YAMLModule, "decode").
-		Doc("parses a YAML string into an opaque value that is materialized by an expected type").
+		Doc("parses a YAML string into an opaque value that is materialized by an expected type; with strict, a mapping key no field reads, or one repeated, is an error").
 		Example(`YAML.decode("[1, 2, 3]") :: [Int!]!`).
-		Params("data", NonNull(StringType)).
+		Params(
+			"data", NonNull(StringType),
+			"strict", BooleanType, BoolValue{Val: false},
+		).
 		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			raw, err := decodeYAMLRaw(args.GetString("data"))
+			strict := args.GetBool("strict")
+			raw, err := decodeYAMLRaw(args.GetString("data"), strict)
 			if err != nil {
 				return nil, fmt.Errorf("YAML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
+			return DeferredValue{Raw: raw, Codec: yamlCodec, Strict: strict}, nil
 		})
 	Builtin("fromYAML").
 		Doc("parses a YAML string into an opaque value that is materialized by an expected type. Deprecated: use YAML.decode instead.").
@@ -134,7 +142,7 @@ func registerCodecs() {
 		Params("data", NonNull(StringType)).
 		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			raw, err := decodeYAMLRaw(args.GetString("data"))
+			raw, err := decodeYAMLRaw(args.GetString("data"), false)
 			if err != nil {
 				return nil, fmt.Errorf("fromYAML: %w", err)
 			}
@@ -156,16 +164,19 @@ func registerCodecs() {
 			return ToValue(out)
 		})
 	StaticMethod(TOMLModule, "decode").
-		Doc("parses a TOML string into an opaque value that is materialized by an expected type").
+		Doc("parses a TOML string into an opaque value that is materialized by an expected type; with strict, a key no field reads is an error (TOML never allows repeated keys)").
 		Example("type Settings { count: Int! }\nTOML.decode(\"count = 3\") :: Settings").
-		Params("data", NonNull(StringType)).
+		Params(
+			"data", NonNull(StringType),
+			"strict", BooleanType, BoolValue{Val: false},
+		).
 		Returns(DecodedType{}).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			raw, err := decodeTOML(args.GetString("data"))
 			if err != nil {
 				return nil, fmt.Errorf("TOML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: tomlCodec}, nil
+			return DeferredValue{Raw: raw, Codec: tomlCodec, Strict: args.GetBool("strict")}, nil
 		})
 
 	registerCodecFieldDirectives()
@@ -188,7 +199,7 @@ func encodeJSON(val Value) (string, error) {
 	return string(jsonBytes), nil
 }
 
-func decodeJSON(data string) (any, error) {
+func decodeJSON(data string, strict bool) (any, error) {
 	decoder := json.NewDecoder(strings.NewReader(data))
 	decoder.UseNumber()
 
@@ -205,7 +216,66 @@ func decodeJSON(data string) (any, error) {
 		return nil, fmt.Errorf("invalid JSON: trailing data")
 	}
 
+	if strict {
+		// encoding/json keeps the last of a repeated key without a word, so
+		// strict mode walks the tokens itself to find one.
+		if err := checkJSONDuplicateKeys(data); err != nil {
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
+	}
+
 	return raw, nil
+}
+
+// checkJSONDuplicateKeys reports the first object in data that repeats a key,
+// with its path and line, worded like checkYAMLDuplicateKeys. data must
+// already be known to hold exactly one valid JSON value.
+func checkJSONDuplicateKeys(data string) error {
+	decoder := json.NewDecoder(strings.NewReader(data))
+	decoder.UseNumber()
+	return checkJSONValueDuplicateKeys(decoder, data, "")
+}
+
+func checkJSONValueDuplicateKeys(decoder *json.Decoder, data, path string) error {
+	tok, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	switch tok {
+	case json.Delim('{'):
+		seen := map[string]bool{}
+		for decoder.More() {
+			keyTok, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyTok.(string)
+			if !ok {
+				return fmt.Errorf("unexpected object key %v", keyTok)
+			}
+			if seen[key] {
+				// The offset is just past the key, so on its line.
+				line := 1 + strings.Count(data[:decoder.InputOffset()], "\n")
+				return materializeDeferredError(path, "line %d: field %s already set", line, key)
+			}
+			seen[key] = true
+			if err := checkJSONValueDuplicateKeys(decoder, data, joinFieldPath(path, key)); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token() // '}'
+		return err
+	case json.Delim('['):
+		for i := 0; decoder.More(); i++ {
+			if err := checkJSONValueDuplicateKeys(decoder, data, joinIndexPath(path, i)); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token() // ']'
+		return err
+	default:
+		return nil
+	}
 }
 
 // --- YAML ---
@@ -264,9 +334,9 @@ func quoteYAMLMergeKeys(v any) any {
 
 // decodeYAMLRaw wraps decodeYAML (deferred_yaml.go) with the "invalid YAML:"
 // prefix, matching decodeJSON/decodeTOML so every format reports decode errors
-// the same way.
-func decodeYAMLRaw(data string) (any, error) {
-	raw, err := decodeYAML(data)
+// the same way. strict is decodeYAML's.
+func decodeYAMLRaw(data string, strict bool) (any, error) {
+	raw, err := decodeYAML(data, strict)
 	if err != nil {
 		return nil, fmt.Errorf("invalid YAML: %w", err)
 	}

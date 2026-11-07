@@ -744,7 +744,7 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 		}
 		return val, nil
 	case DeferredValue:
-		return materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec)
+		return materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec, v.Strict)
 	case StringValue:
 		return materializeStringValue(ctx, scope, v, target, path)
 	case ScalarValue:
@@ -818,12 +818,15 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 	}
 }
 
-func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string, codec Codec) (Value, error) {
+// materializeDecoded converts decoded data (raw) to a value of target. codec
+// maps field names to input keys; strict rejects input keys that no field of a
+// target object reads (see rejectUnknownKeys).
+func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string, codec Codec, strict bool) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
 			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
 		}
-		return materializeDecoded(ctx, scope, raw, nn.Type, path, codec)
+		return materializeDecoded(ctx, scope, raw, nn.Type, path, codec, strict)
 	}
 
 	if raw == nil {
@@ -832,11 +835,11 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 
 	switch target.(type) {
 	case hm.TypeVariable, hm.NullableTypeVariable, DecodedType:
-		return DeferredValue{Raw: raw, Codec: codec}, nil
+		return DeferredValue{Raw: raw, Codec: codec, Strict: strict}, nil
 	}
 
 	if union, ok := target.(*hm.UnionType); ok {
-		return materializeDecodedUnion(ctx, scope, raw, union, path, codec)
+		return materializeDecodedUnion(ctx, scope, raw, union, path, codec, strict)
 	}
 
 	if target == StringType {
@@ -886,7 +889,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 		}
 		elements := make([]Value, len(arr))
 		for i, elem := range arr {
-			materialized, err := materializeDecoded(ctx, scope, elem, elemTarget, joinIndexPath(path, i), codec)
+			materialized, err := materializeDecoded(ctx, scope, elem, elemTarget, joinIndexPath(path, i), codec, strict)
 			if err != nil {
 				return nil, err
 			}
@@ -910,7 +913,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 		sort.Strings(keys)
 		entries := make(map[string]Value, len(obj))
 		for _, k := range keys {
-			materialized, err := materializeDecoded(ctx, scope, obj[k], valTarget, joinKeyPath(path, k), codec)
+			materialized, err := materializeDecoded(ctx, scope, obj[k], valTarget, joinKeyPath(path, k), codec, strict)
 			if err != nil {
 				return nil, err
 			}
@@ -956,21 +959,21 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			return ScalarValue{Val: s, ScalarType: mod}, nil
 		case ObjectKind:
 			if mod.Named == "" {
-				return materializeAnonymousObject(ctx, scope, raw, mod, path, codec)
+				return materializeAnonymousObject(ctx, scope, raw, mod, path, codec, strict)
 			}
-			return materializeNamedObject(ctx, scope, raw, mod, path, codec)
+			return materializeNamedObject(ctx, scope, raw, mod, path, codec, strict)
 		case InputKind:
-			return materializeNamedObject(ctx, scope, raw, mod, path, codec)
+			return materializeNamedObject(ctx, scope, raw, mod, path, codec, strict)
 		}
 	}
 
 	return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", target.Name())
 }
 
-func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, union *hm.UnionType, path string, codec Codec) (Value, error) {
+func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, union *hm.UnionType, path string, codec Codec, strict bool) (Value, error) {
 	var lastErr error
 	for _, option := range union.Options {
-		val, err := materializeDecoded(ctx, scope, raw, option, path, codec)
+		val, err := materializeDecoded(ctx, scope, raw, option, path, codec, strict)
 		if err == nil {
 			return val, nil
 		}
@@ -979,10 +982,10 @@ func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, uni
 	if lastErr != nil {
 		return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", union.Name())
 	}
-	return DeferredValue{Raw: raw, Codec: codec}, nil
+	return DeferredValue{Raw: raw, Codec: codec, Strict: strict}, nil
 }
 
-func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec) (Value, error) {
+func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec, strict bool) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
@@ -993,7 +996,7 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 		return nil, materializeDeferredError(path, "%s", err.Error())
 	}
 
-	args, err := materializeConstructorArgs(ctx, scope, obj, mod, callable, path, codec)
+	args, err := materializeConstructorArgs(ctx, scope, obj, mod, callable, path, codec, strict)
 	if err != nil {
 		return nil, err
 	}
@@ -1036,10 +1039,19 @@ func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable,
 	return nil, fmt.Errorf("constructor for %s not found", mod.Name())
 }
 
-func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec) (map[string]Value, error) {
+func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec, strict bool) (map[string]Value, error) {
 	args := map[string]Value{}
 
 	if constructor, ok := callable.(*ConstructorFunction); ok {
+		if strict {
+			names := make([]string, len(constructor.Parameters))
+			for i, param := range constructor.Parameters {
+				names[i] = param.Name.Name
+			}
+			if err := rejectUnknownKeys(obj, mod, names, path, codec); err != nil {
+				return nil, err
+			}
+		}
 		paramTypes := parameterTypes(callable)
 		for _, param := range constructor.Parameters {
 			name := param.Name.Name
@@ -1051,7 +1063,7 @@ func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[s
 			key, ignore := codec.fieldKey(mod, name)
 			if !ignore {
 				if rawVal, found := obj[key]; found {
-					materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath, codec)
+					materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath, codec, strict)
 					if err != nil {
 						return nil, err
 					}
@@ -1074,13 +1086,18 @@ func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[s
 	}
 
 	paramTypes := parameterTypes(callable)
+	if strict {
+		if err := rejectUnknownKeys(obj, mod, callable.ParameterNames(), path, codec); err != nil {
+			return nil, err
+		}
+	}
 	for _, name := range callable.ParameterNames() {
 		paramType := paramTypes[name]
 		fieldPath := joinFieldPath(path, name)
 		key, ignore := codec.fieldKey(mod, name)
 		if !ignore {
 			if rawVal, found := obj[key]; found {
-				materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath, codec)
+				materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath, codec, strict)
 				if err != nil {
 					return nil, err
 				}
@@ -1097,14 +1114,25 @@ func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[s
 	return args, nil
 }
 
-func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec) (Value, error) {
+func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec, strict bool) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
 	}
 
+	fields := mod.AsRecord().Fields
+	if strict {
+		names := make([]string, len(fields))
+		for i, field := range fields {
+			names[i] = field.Key
+		}
+		if err := rejectUnknownKeys(obj, mod, names, path, codec); err != nil {
+			return nil, err
+		}
+	}
+
 	value := NewObject(mod)
-	for _, field := range mod.AsRecord().Fields {
+	for _, field := range fields {
 		name := field.Key
 		fieldType, mono := field.Value.Type()
 		if !mono {
@@ -1114,7 +1142,7 @@ func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, 
 		key, ignore := codec.fieldKey(mod, name)
 		if !ignore {
 			if rawVal, found := obj[key]; found {
-				materialized, err := materializeDecoded(ctx, scope, rawVal, fieldType, fieldPath, codec)
+				materialized, err := materializeDecoded(ctx, scope, rawVal, fieldType, fieldPath, codec, strict)
 				if err != nil {
 					return nil, err
 				}
@@ -1129,6 +1157,43 @@ func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, 
 		return nil, materializeDeferredError(fieldPath, "missing required field")
 	}
 	return value, nil
+}
+
+// rejectUnknownKeys is strict decoding's check on an object being materialized
+// as mod from params (its constructor's parameters, or a record's fields): each
+// key of obj must be the codec key (@FORMAT.field renames it; @FORMAT.ignore
+// means none) of one of params or of one of mod's data fields. The data fields
+// count even when no parameter sets them (a `let` field, or a field a custom
+// new() computes), because encode writes them, so a value's own encoding
+// decodes back strictly. The unknown key reported is the first in sorted
+// order, since decoded objects no longer remember document order. The wording
+// follows yaml.v3's KnownFields.
+func rejectUnknownKeys(obj map[string]any, mod *Type, params []string, path string, codec Codec) error {
+	known := make(map[string]bool, len(params))
+	accept := func(name string) {
+		if key, ignore := codec.fieldKey(mod, name); !ignore {
+			known[key] = true
+		}
+	}
+	for _, name := range params {
+		accept(name)
+	}
+	for name, scheme := range mod.Bindings(PrivateVisibility) {
+		if isCodecDataField(scheme) {
+			accept(name)
+		}
+	}
+	var unknown []string
+	for k := range obj {
+		if !known[k] {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	return materializeDeferredError(path, "field %s not found", unknown[0])
 }
 
 func parameterTypes(val Value) map[string]hm.Type {
