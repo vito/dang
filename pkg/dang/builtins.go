@@ -408,6 +408,13 @@ func (b *MethodBuilder) Replacement(name string) *MethodBuilder {
 	return b
 }
 
+// Check sets a type-check-time validation of each call's resolved
+// signature. See BuiltinDef.Check.
+func (b *MethodBuilder) Check(fn func(*hm.FunctionType) error) *MethodBuilder {
+	b.def.Check = fn
+	return b
+}
+
 // Impl sets the implementation and registers the method
 func (b *MethodBuilder) Impl(fn func(context.Context, Value, Args) (Value, error)) {
 	b.def.Impl = fn
@@ -502,6 +509,15 @@ type BuiltinDef struct {
 	// (e.g. "JSON.encode"). Unlike the prose in Deprecated, it is structured so
 	// tools can rewrite a call mechanically — the LSP offers it as a quick fix.
 	Replacement string
+	// Check, when set, validates a call's signature once its type variables
+	// are resolved by the receiver, the arguments and the block, rejecting
+	// at type-check time what a signature can't express (sortBy's key must
+	// be orderable). Only list methods run it so far: on selection, with
+	// what the receiver resolves, and again in a call that names the method
+	// directly (`xs.sortBy { ... }`). A method taken as a value and called
+	// later (`let f = &xs.sortBy`) is checked on selection only, so what its
+	// block resolves is left to the implementation to reject at runtime.
+	Check func(*hm.FunctionType) error
 }
 
 // ParamDef defines a parameter with optional default value.

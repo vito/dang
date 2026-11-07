@@ -1,0 +1,97 @@
+# Test list.sort, list.sortBy and list.reverse
+
+# Numbers sort numerically, strings by their bytes
+assert { [3, 1, 2].sort == [1, 2, 3] }
+assert { [2.5, -1.0, 0.5].sort == [-1.0, 0.5, 2.5] }
+assert { ["b", "B", "a", "ab"].sort == ["B", "a", "ab", "b"] }
+assert { [true, false, true].sort == [false, true, true] }
+
+# Descending
+assert { [3, 1, 2].sort(descending: true) == [3, 2, 1] }
+
+# Empty and single-element lists
+empty: [Int!]! = []
+assert { empty.sort == [] }
+assert { [7].sort == [7] }
+
+# The receiver is untouched
+original: [Int!]! = [2, 1]
+assert { original.sort == [1, 2] }
+assert { original == [2, 1] }
+
+# Enum values sort in declaration order, not by name
+enum Role { OWNER ADMIN MEMBER }
+assert { [Role.MEMBER, Role.OWNER, Role.ADMIN].sort == [Role.OWNER, Role.ADMIN, Role.MEMBER] }
+
+# Custom scalars sort by their string form
+assert { [Path("b/c"), Path("a")].sort == [Path("a"), Path("b/c")] }
+
+# Lists sort lexicographically; a prefix comes first
+assert { [[1, 2], [1], [0, 9], []].sort == [[], [0, 9], [1], [1, 2]] }
+
+# sortBy orders by the key the block computes
+assert { ["ccc", "a", "bb"].sortBy { s => s.length } == ["a", "bb", "ccc"] }
+assert { [1, 2, 3].sortBy { x => -x } == [3, 2, 1] }
+
+type Member {
+  name: String!
+  role: Role!
+  joined: Int!
+}
+
+members: [Member!]! = [
+  Member("zed", Role.MEMBER, 2),
+  Member("amy", Role.OWNER, 3),
+  Member("max", Role.MEMBER, 1),
+  Member("bob", Role.OWNER, 2),
+  Member("cat", Role.ADMIN, 2),
+]
+
+names(ms: [Member!]!): [String!]! {
+  ms.map { m => m.name }
+}
+
+# Stable: equal keys keep their input order, ascending and descending
+assert { names(members.sortBy { m => m.joined }) == ["max", "zed", "bob", "cat", "amy"] }
+assert { names(members.sortBy(descending: true) { m => m.joined }) == ["amy", "zed", "bob", "cat", "max"] }
+assert { names(members.sortBy { m => m.role }) == ["amy", "bob", "cat", "zed", "max"] }
+
+# A list key compares element by element
+assert { names(members.sortBy { m => [m.joined, m.name.length] }) == ["max", "zed", "bob", "cat", "amy"] }
+
+# A record key mixes types, comparing field by field in the order written
+assert { names(members.sortBy { m => {{role: m.role, joined: m.joined}} }) == ["bob", "amy", "cat", "max", "zed"] }
+assert { names(members.sortBy { m => {{joined: m.joined, role: m.role}} }) == ["max", "bob", "cat", "zed", "amy"] }
+assert { [1, 2, 3].sortBy { x => {{z: a * -1, a: x}} } == [3, 2, 1] }
+
+# Records keep the order written through a generic function
+passThrough(xs: [a]!): [a]! { xs }
+
+let rows = [{{b: 1, a: 1}}, {{b: 0, a: 2}}, {{b: 0, a: 3}}]
+assert { passThrough(rows).sort.map { r => r.a } == [2, 3, 1] }
+
+# Records written with their fields in different orders have no one order
+let shuffled = [{{rank: 1, name: "b"}}, {{name: "a", rank: 2}}]
+assert { (shuffled.sort.map { r => r.name } rescue ["unordered"]) == ["unordered"] }
+assert {
+  ([3, 1].sortBy { x => if (x > 2) { {{a: x, b: 0}} } else { {{b: 0, a: x}} } } rescue []) == []
+}
+
+# The key block runs once per element
+keyCalls: Int! {
+  let calls = 0
+  members.sortBy { m =>
+    calls += 1
+    m.joined
+  }
+  calls
+}
+
+assert { keyCalls == 5 }
+
+# reverse
+assert { [1, 2, 3].reverse == [3, 2, 1] }
+assert { empty.reverse == [] }
+assert { members.sortBy { m => m.joined }.reverse.map { m => m.name } == ["amy", "cat", "bob", "zed", "max"] }
+
+print("List sort tests passed!")
