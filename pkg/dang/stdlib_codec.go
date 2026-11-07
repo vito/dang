@@ -582,9 +582,12 @@ func (e valueEncoder) encode(val Value) (any, error) {
 // objectBindings returns an object's bindings in the order its fields are
 // encoded. By default that order does not matter (they are collected into a
 // map), so they come in whatever order the object holds them. With
-// declaredOrder they follow the order the object's type declares its members
-// — a type's fields, a record literal's fields as written — with anything the
-// type does not declare after them, by name.
+// declaredOrder they follow the order the object's own type declares its
+// members — a type's fields, a record literal's fields as written, a
+// selection's as selected — with anything the type does not declare after
+// them, by name. That is the type the value was built with: a record literal
+// annotated with a record type listing its fields differently keeps the
+// literal's order.
 func (e valueEncoder) objectBindings(obj *Object) []Keyed[Value] {
 	bindings := obj.Bindings(PrivateVisibility)
 	if !e.declaredOrder || obj.Mod == nil {
