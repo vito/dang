@@ -9,6 +9,7 @@ The built-in surface of Dang itself (everything here is available without any
 - `assert(message: String! = null) { Boolean! } -> Null` — optional named `message`.
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
+- `Regexp(pattern: String!) -> Regexp!` — compiles a pattern from any String expression; raises `invalid regexp "...": ...` when it doesn't compile (see `String!` regex methods below).
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; JSON-encode everything else.
 
@@ -28,11 +29,14 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 - `.padLeft(width: Int!)`, `.padRight(width)`, `.center(width)` — space-padded to `width` characters (Unicode code points, like `.length`); no-op if already ≥ width; `center` puts an odd extra space on the right
 - `.split(separator: String!, limit: Int = 0) -> [String!]!` — empty separator splits into characters; `limit` caps parts (last keeps remainder)
 - `.replace(old: String!, new: String!, count: Int = -1) -> String!` — `count = -1` replaces all; empty `old` inserts between characters
+- `.truncate(length: Int!) -> String!` — at most `length` characters (code points, like `.length`); unchanged if already shorter; `length <= 0` yields `""`: `"hello world".truncate(5) == "hello"`
 
 Conversion: `toString(value)` (JSON-encodes non-strings) or `value :: String!` (explicit cast where types align).
 
 ### `String!` regex methods
 Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `` `\d+` ``. Go `regexp/syntax` (RE2); named groups use `(?P<name>...)`.
+
+The coercion is the literal rule (types.md): it happens where a template meets a `Regexp!` slot. A template **bound without a type** is a `String!`, so `` let re = `\d+`; s.containsMatch(re) `` is `cannot use String! as Regexp!` — annotate the binding (`` let re: Regexp! = `\d+` ``) or build it with `Regexp(...)`. `Regexp.escape(s: String!) -> String!` quotes metacharacters so arbitrary text matches literally: `Regexp(Regexp.escape(userInput))`.
 
 - `.containsMatch(pattern: Regexp!) -> Boolean!`
 - `.match(pattern: Regexp!) -> Match` — first match, or null
@@ -76,7 +80,9 @@ and `toString` yield the bare path string.
 - `.extension -> String` — after the last dot in `name`, dot excluded; **null** when none; a leading dot alone (`.bashrc`) is not an extension
 - `.parent -> Path!` — parent of `/` is `/`; of a bare name is `.`
 - `.parts -> [String!]!` — segments, root excluded; `.` has no segments
-- `.isAbsolute -> Boolean!`
+- `.ascend { dir => ... } -> [Path!]!` — the path, then each ancestor up to the root (`Path("/usr/local")` → `[/usr/local, /usr, /]`); a relative path stops at its first segment (`a/b` → `[a/b, a]`), never `.`. Calls the block on each and returns the list; the block is **required** (`{ d => null }` just to get the list)
+- `.descend { dir => ... } -> [Path!]!` — the mirror of `ascend`, root first (`[/, /usr, /usr/local]`); `Path(".")` yields `[.]`
+- `.isAbsolute -> Boolean!`, `.isRoot -> Boolean!` (exactly `/`)
 - `.join(other: Path!) -> Path!` — lexical concat + normalize; chain for multiple; literals coerce (`p.join("bin")`)
 - `.relativeTo(base: Path!) -> Path` — **null** when not expressible (mixed abs/rel, or base escaping via `..`)
 - `.contains(other: Path!) -> Boolean!` — inclusive lexical containment; mixed abs/rel is never containment
@@ -92,7 +98,8 @@ Paths; use `.join` or interpolation.
 Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods](#map-methods) below); there are no sets. Block params shown as `x`/`i`.
 
 ### Construction / access
-- literal `[1, 2, 3]`; empty needs a type hint `[] :: [Int!]!` or annotation `let xs: [Int!]! = []`
+- literal `[1, 2, 3]`; trailing comma allowed (`[1, 2, 3,]`)
+- empty `[]` takes its element type from context — no hint needed in a typed slot or argument (`E(args: [])`, `let xs: [Int!]! = []`, a field default), beside a typed operand (`xs ?? []`, `(m["k"] ?? []) + [1]`), as an `if`/`case` branch (`if (c) { ["a"] } else { [] }`), as a `reduce` initial (`.reduce([]) { ... }`), or as an untyped local the first later use pins (`let out = []; out += ["a"]`). An untyped `let` is **monomorphic**, so one empty binding can't serve two element types: `let e = []; e + [1]; e + ["a"]` → `cannot use [String!]! as [Int!]!` — annotate it (`let e: [Int!]! = []`) or use separate literals. `[] :: [Int!]!` still works but is rarely needed
 - concatenation `[1, 2] + [3, 4]`
 - `xs[0]` — element access; **out-of-bounds yields `null`** (result is `T`, not `T!`); chained `matrix[0][1]`
 - `.length -> Int!`, `.isEmpty -> Boolean!`
@@ -100,6 +107,7 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 ### Transform / select / aggregate
 - `.map { x, i => ... } -> [U]!`
 - `.filter { x => Boolean! } -> [T]!`, `.reject { x => Boolean! } -> [T]!`
+- `.find { x => Boolean! } -> T` — first element the block accepts, or **null** when none does (stops at the first match); prefer it over `.filter { ... }[0]`
 - `.reduce(initial: U) { acc, x => ... } -> U` — `initial` positional or named `initial:`
 - `.uniq -> [T]!` — drop duplicates, keep first-occurrence order; uses Dang equality (works on nested lists)
 - `.each { x, i => ... } -> [T]!` — returns the original list (for chaining / side effects)
@@ -127,7 +135,7 @@ Maps are immutable, keyed by `String!` (only the value type is a parameter: `Map
 
 ### Construction / access
 - literal `["a": 1, "b": 2]`; keys are any `String!` expression (`[name: true]`); a repeated key keeps its first position and last value
-- empty `[:]` needs a type hint, like `[]`: `let m: Map[Int!]! = [:]`
+- empty `[:]` infers its value type from context exactly like `[]` (`E(ds: [:])`, `m ?? [:]`, `.reduce([:]) { acc, k, v => acc.with(k, v) }`); annotate only when one untyped binding must serve two value types
 - `m["a"]` / `.get(key: String!) -> T` (nullable) — **missing key yields `null`**
 - `.has(key: String!) -> Boolean!`
 - `.length -> Int!`, `.isEmpty -> Boolean!`
@@ -165,6 +173,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 ### Coercion during parsing
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
 - Custom scalars decode from their string forms.
+- **Which scalars accept non-string JSON** depends on who owns them. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's `JSON` scalar works. A **Dang-owned** scalar — the builtin `JSON`/`YAML`/`TOML` codec scalars (when no schema scalar of that name is in scope), `Path`, `Regexp`, and any `scalar` you declare — materializes **only from a string**: `JSON.decode("{\"a\":[1]}") :: Map[JSON!]!` raises `["a"]: expected string for scalar JSON, got array` (likewise `expected string for scalar Foo, got number`). Model such a value as a record/`Map` of concrete types instead, or keep the raw text in a `String!`.
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
 ### Serialization

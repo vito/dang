@@ -41,7 +41,7 @@
 - Nullable → non-null casts are checked at **runtime**, rejecting null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
 Two uses to keep distinct:
-- type *hint* — narrowing/disambiguation, e.g. `[] :: [String!]!` binding a type variable.
+- type *hint* — narrowing/disambiguation, e.g. `[] :: [String!]!` pinning a type variable (rarely needed: empty literals usually infer from context — see stdlib.md).
 - type *cast* — coercion, e.g. `myUrl :: URL!`. The runtime-assertion behavior for non-null casts is a footgun.
 
 ## Coercion rules
@@ -138,6 +138,7 @@ scalar JSON
 - List merging is pure/invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!`.
 - Runtime materialization supports `String -> custom scalar` and `custom scalar -> String` only (`42 :: URL!` is a type error).
 - Scalars from GraphQL responses flow naturally; no cast needed.
+- **Decoding** (`JSON`/`YAML`/`TOML.decode`) differs by owner: a scalar from an imported **schema** accepts any JSON value (object, array, number, ...) and holds it as JSON text; a **Dang-owned** scalar — `scalar Foo` you declare (with or without a body), `Path`, `Regexp`, and the builtin `JSON`/`YAML`/`TOML` scalars when no schema supplies one — accepts **only a string** (`expected string for scalar JSON, got array`). Details in stdlib.md "Coercion during parsing".
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
 - Equality, list membership, records/lists all work between values of the same scalar. A string *literal* converts to the scalar (`urlValue == "https://…"`); a non-literal `String` needs a cast (`urlValue == (s :: URL!)` or `(urlValue :: String!) == s`).
 - The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.

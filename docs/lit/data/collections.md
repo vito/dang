@@ -177,7 +177,7 @@ roles
 The value type is inferred (`Map[String!]` here), written `Map[a]` — there is
 no `[a]`-style shorthand for maps. Keys may be any `String!` expression, not
 just literals. The empty map is `[:]`, distinct from the empty list `[]`, and
-like an empty list it needs a type hint:
+like an empty list it takes its value type from context:
 
 ```dang
 let counts: Map[Int!]! = [:]

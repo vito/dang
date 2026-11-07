@@ -176,12 +176,14 @@ Interpolated values are turned into text: strings as-is, `null` as
 [[1, 2], [3]]
 ```
 
-An empty list needs a type hint to pin its element type: `[] :: [String!]!`
-(also `[] :: [String!]`, `[] :: [String]`). It can still be compared
-directly:
+An empty list takes its element type from context: a typed slot or argument,
+the other side of `??` or `+`, the other branch of an `if`, or a later use of
+the binding. A hint (`[] :: [String!]!`) is only needed when one untyped
+binding has to serve two element types. It can be compared directly:
 
 ```dang
-let tags = [] :: [String!]!
+let tags = []
+tags += ["a"]
 
 [tags == [], [1] == []]
 ```

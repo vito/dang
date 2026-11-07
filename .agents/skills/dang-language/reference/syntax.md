@@ -68,8 +68,8 @@ greet(
   - Multi-line: ```` ```...``` ```` — same minimum-indent dedent; fences grow (4+ backticks) to wrap shorter backtick blocks, and the close fence must match the open fence length. Optional language tag (` ```go ... ``` `) is parsed but does not affect the value.
 
 ### Lists
-- `[1, 2, 3]`, `["a", "b"]`, `[]` (empty), nested `[[1, 2], [3]]`.
-- Empty list needs a type hint to pin its element type: `[] :: [String!]!`. It can still be compared directly: `xs == []`.
+- `[1, 2, 3]`, `["a", "b"]`, `[]` (empty), nested `[[1, 2], [3]]`. A trailing comma is fine, in list literals and call arguments alike (`[1, 2,]`, `f(a, b,)`).
+- An empty `[]` (or `[:]`) takes its element type from context — typed slots, arguments, `??`/`+` with a typed operand, `if`/`case` branches, `reduce` initials, a later use of an untyped `let`. A hint is only needed when one untyped binding must serve two element types (see stdlib.md). It can be compared directly: `xs == []`.
 
 ### Records (object literals) — `{{ ... }}`
 - `{{ key: value, other: value }}` — note the **double braces**. Always non-null.
@@ -99,6 +99,12 @@ greet(
 
 - `::` (cast / type hint) is **not** in this chain. It binds only a bare `Term` on its left — wrap compound exprs in parens: `(a + b) :: T!`.
 - Unary/postfix (levels 9–10) bind tighter than every binary operator. `&expr`, `!expr`, `-expr`, `.field`, `[i]`, `(args)` all bind as `Term`.
+- `if`, `case`, and `raise` are `Form`s, not `Term`s, so one used as a binary operand needs parentheses: `a + (if (c) { x } else { y })`. Without them (`a + if (c) ...`) it's a syntax error.
+
+### Gotchas
+- **Untyped template bindings are `String!`**: `` let re = `\d+` `` is a String, not a `Regexp`; the literal-to-scalar coercion happens only where the literal meets a typed slot, so `s.containsMatch(re)` fails with `cannot use String! as Regexp!`. Annotate: `` let re: Regexp! = `\d+` `` (same for `Path!`, `URL!`, ...).
+- **Write `!x`, not `x == false`**, on a `Boolean!`. `!` rejects a nullable `Boolean` (narrow it, or `!(x ?? false)`); `x == false` on one is `false` for null.
+- **Prefer templates to `+` chains**: `` `${name} (${i})` `` over `name + " (" + toString(i) + ")"` — interpolation stringifies any value.
 
 ### Arithmetic
 - `+ - * / %` on `Int`/`Float` (mixed promotes to `Float`). Float `%` is Go's `math.Mod`: the remainder takes the dividend's sign (`-7.5 % 2 == -1.5`).

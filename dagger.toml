@@ -31,7 +31,8 @@ is-module = true
 [modules.go.settings]
 base = "dag+container://base"
 # Runtime-loaded fixtures, editor plugins, and tree-sitter inputs are not Go files.
-includeExtraFiles = ["tests/**", "editors/**", "treesitter/**", "pkg/dang/*.peg"]
+# The skill's stdlib reference is checked against the builtin registry.
+includeExtraFiles = ["tests/**", "editors/**", "treesitter/**", "pkg/dang/*.peg", ".agents/skills/dang-language/reference/stdlib.md"]
 # Zed downloads its own grammar checkout here; it is not a project module.
 lint = ["!editors/zed/grammars"]
 test = ["!editors/zed/grammars"]
