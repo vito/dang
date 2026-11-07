@@ -168,8 +168,8 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
 ### Serialization
-- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
-- `JSON.encode(value, indent: String! = "", escapeHTML: Boolean! = true)` — output is compact and escapes `<`, `>`, `&` as `\u003c`/`\u003e`/`\u0026` by default (Go's `json.Marshal`). `indent: "  "` pretty-prints one copy per nesting level (`json.MarshalIndent(v, "", indent)`; spaces/tabs only); `escapeHTML: false` writes `<>&` bare. No trailing newline either way.
+- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order (`JSON.encode(..., sortKeys: false)` opts out, below). `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
+- `JSON.encode(value, indent: String! = "", escapeHTML: Boolean! = true, sortKeys: Boolean! = true)` — output is compact and escapes `<`, `>`, `&` as `\u003c`/`\u003e`/`\u0026` by default (Go's `json.Marshal`). `indent: "  "` pretty-prints one copy per nesting level (`json.MarshalIndent(v, "", indent)`; spaces/tabs only); `escapeHTML: false` writes `<>&` bare; `sortKeys: false` emits a `type`'s fields in declaration order and a record's in the order written (or selected, or its type's order), like Go struct fields. Maps keep insertion order regardless. No trailing newline either way.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
 ### Errors (all recoverable with `rescue`)

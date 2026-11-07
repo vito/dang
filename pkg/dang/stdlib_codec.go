@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -38,12 +39,15 @@ func registerCodecs() {
 	StaticMethod(JSONModule, "encode").
 		Doc("serializes a value to a JSON string. " +
 			"indent pretty-prints with one copy of it per nesting level (e.g. \"  \"); " +
-			"escapeHTML: false leaves <, >, and & unescaped in strings.").
-		Example(`JSON.encode({{tag: "<b>", ids: [1, 2]}}, indent: "  ", escapeHTML: false)`).
+			"escapeHTML: false leaves <, >, and & unescaped in strings; " +
+			"sortKeys: false emits object and record fields in declaration order instead of alphabetically " +
+			"(maps always keep insertion order).").
+		Example(`JSON.encode({{tag: "<b>", ids: [1, 2]}}, indent: "  ", escapeHTML: false, sortKeys: false)`).
 		Params(
 			"value", TypeVar('a'),
 			"indent", NonNull(StringType), StringValue{Val: ""},
 			"escapeHTML", NonNull(BooleanType), BoolValue{Val: true},
+			"sortKeys", NonNull(BooleanType), BoolValue{Val: true},
 		).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -51,6 +55,7 @@ func registerCodecs() {
 			out, err := encodeJSON(val, jsonOptions{
 				indent:     args.GetString("indent"),
 				escapeHTML: args.GetBool("escapeHTML"),
+				sortKeys:   args.GetBool("sortKeys"),
 			})
 			if err != nil {
 				return nil, fmt.Errorf("JSON.encode: %w", err)
@@ -192,9 +197,13 @@ type jsonOptions struct {
 	// \u0026, as json.Marshal does; false writes them verbatim, like a
 	// json.Encoder with SetEscapeHTML(false).
 	escapeHTML bool
+	// sortKeys emits object and record fields sorted by key, as json.Marshal
+	// does for Go maps; false keeps their declaration order, as it does for
+	// Go structs. Maps keep their insertion order either way.
+	sortKeys bool
 }
 
-var defaultJSONOptions = jsonOptions{escapeHTML: true}
+var defaultJSONOptions = jsonOptions{escapeHTML: true, sortKeys: true}
 
 func encodeJSON(val Value, opts jsonOptions) (string, error) {
 	if strings.Trim(opts.indent, " \t") != "" {
@@ -202,8 +211,8 @@ func encodeJSON(val Value, opts jsonOptions) (string, error) {
 	}
 	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries;
 	// json.Marshal then produces canonical output (json.Number leaves render as
-	// numbers, object keys sort).
-	tree, err := encodeValue(val, jsonCodec)
+	// numbers, object keys sort unless they were assembled in order).
+	tree, err := valueEncoder{codec: jsonCodec, declaredOrder: !opts.sortKeys}.encode(val)
 	if err != nil {
 		return "", err
 	}
@@ -402,12 +411,27 @@ func decodeTOML(data string) (any, error) {
 // numbersToGo). Renames are a codec concern only — Object.MarshalJSON, used for
 // internal state retention, keeps canonical field names.
 func encodeValue(val Value, c Codec) (any, error) {
+	return valueEncoder{codec: c}.encode(val)
+}
+
+// valueEncoder is encodeValue with its options.
+type valueEncoder struct {
+	codec Codec
+	// declaredOrder emits object and record fields in declaration order
+	// rather than sorted by key, like encoding/json does for struct fields.
+	// Only JSON honors it: its objects are assembled as ordered
+	// json.RawMessage, while YAML/TOML render Go maps, which they sort.
+	declaredOrder bool
+}
+
+func (e valueEncoder) encode(val Value) (any, error) {
+	c := e.codec
 	switch v := val.(type) {
 	case NullValue:
 		return nil, nil
 	case *Object:
-		result := make(map[string]any, len(v.Values))
-		for _, kv := range v.Bindings(PrivateVisibility) {
+		var entries []jsonEntry
+		for _, kv := range e.objectBindings(v) {
 			if _, isFn := kv.Value.(FunctionValue); isFn {
 				continue
 			}
@@ -427,18 +451,25 @@ func encodeValue(val Value, c Codec) (any, error) {
 			if opts.omitEmpty && isEmptyValue(kv.Value) {
 				continue
 			}
-			encoded, err := encodeValue(kv.Value, c)
+			encoded, err := e.encode(kv.Value)
 			if err != nil {
 				return nil, err
 			}
-			result[opts.key(kv.Key)] = encoded
+			entries = append(entries, jsonEntry{key: opts.key(kv.Key), val: encoded})
+		}
+		if e.declaredOrder && c == jsonCodec {
+			return marshalJSONObject(entries)
+		}
+		result := make(map[string]any, len(entries))
+		for _, entry := range entries {
+			result[entry.key] = entry.val
 		}
 		return result, nil
 	case ListValue:
 		// Use a non-nil slice so an empty list encodes as [] rather than null.
 		items := make([]any, len(v.Elements))
 		for i, elem := range v.Elements {
-			encoded, err := encodeValue(elem, c)
+			encoded, err := e.encode(elem)
 			if err != nil {
 				return nil, err
 			}
@@ -452,11 +483,19 @@ func encodeValue(val Value, c Codec) (any, error) {
 		// so assemble it directly; YAML/TOML sort keys regardless, so a plain map
 		// suffices.
 		if c == jsonCodec {
-			return c.encodeOrderedMap(v)
+			entries := make([]jsonEntry, len(v.Keys))
+			for i, k := range v.Keys {
+				encoded, err := e.encode(v.Entries[k])
+				if err != nil {
+					return nil, err
+				}
+				entries[i] = jsonEntry{key: k, val: encoded}
+			}
+			return marshalJSONObject(entries)
 		}
 		result := make(map[string]any, len(v.Keys))
 		for _, k := range v.Keys {
-			encoded, err := encodeValue(v.Entries[k], c)
+			encoded, err := e.encode(v.Entries[k])
 			if err != nil {
 				return nil, err
 			}
@@ -470,29 +509,61 @@ func encodeValue(val Value, c Codec) (any, error) {
 	}
 }
 
-// encodeOrderedMap renders a MapValue as a JSON object preserving key insertion
-// order — a Go map would be re-sorted by encoding/json. It mirrors
-// MapValue.MarshalJSON but encodes each value through encodeValue, so field
-// directives reach objects nested as map values. The result is a json.RawMessage
-// so the final json.Marshal emits it verbatim.
-func (c Codec) encodeOrderedMap(m MapValue) (any, error) {
+// objectBindings returns an object's bindings in the order its fields are
+// encoded. By default that order does not matter (they are collected into a
+// map), so they come in whatever order the object holds them. With
+// declaredOrder they follow the order the object's type declares its members
+// — a type's fields, a record literal's fields as written — with anything the
+// type does not declare after them, by name.
+func (e valueEncoder) objectBindings(obj *Object) []Keyed[Value] {
+	bindings := obj.Bindings(PrivateVisibility)
+	if !e.declaredOrder || obj.Mod == nil {
+		return bindings
+	}
+	rank := map[string]int{}
+	for name := range obj.Mod.Bindings(PrivateVisibility) {
+		if _, seen := rank[name]; !seen {
+			rank[name] = len(rank)
+		}
+	}
+	sort.SliceStable(bindings, func(i, j int) bool {
+		ri, iDeclared := rank[bindings[i].Key]
+		rj, jDeclared := rank[bindings[j].Key]
+		switch {
+		case iDeclared && jDeclared:
+			return ri < rj
+		case iDeclared != jDeclared:
+			return iDeclared
+		default:
+			return bindings[i].Key < bindings[j].Key
+		}
+	})
+	return bindings
+}
+
+// jsonEntry is one member of a JSON object assembled in a chosen order.
+type jsonEntry struct {
+	key string
+	val any
+}
+
+// marshalJSONObject renders entries as a JSON object in the order given — a Go
+// map would be re-sorted by encoding/json. The result is a json.RawMessage so
+// the final json.Marshal emits it verbatim.
+func marshalJSONObject(entries []jsonEntry) (any, error) {
 	var buf bytes.Buffer
 	buf.WriteByte('{')
-	for i, k := range m.Keys {
+	for i, entry := range entries {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		keyBytes, err := json.Marshal(k)
+		keyBytes, err := json.Marshal(entry.key)
 		if err != nil {
 			return nil, err
 		}
 		buf.Write(keyBytes)
 		buf.WriteByte(':')
-		encoded, err := encodeValue(m.Entries[k], c)
-		if err != nil {
-			return nil, err
-		}
-		valBytes, err := json.Marshal(encoded)
+		valBytes, err := json.Marshal(entry.val)
 		if err != nil {
 			return nil, err
 		}

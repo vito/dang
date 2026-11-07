@@ -141,8 +141,8 @@ YAML.decode("") :: Options!
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
-a `String!`. Object and record keys come out in alphabetical order (see
-[#literals]):
+a `String!`. Object and record keys come out in alphabetical order by default
+(see [#literals]):
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})
@@ -178,6 +178,21 @@ let link = {{ label: "Tom & Jerry", tags: ["<b>"] }}
 
 ```dang
 print(JSON.encode(link, indent: "  ", escapeHTML: false))
+```
+
+To keep fields in the order they are declared instead, as Go does for struct
+fields, pass `sortKeys: false`. A record's fields keep the order they are
+written in, and a type's the order the type declares them. Maps keep their
+insertion order either way:
+
+```dang
+type Release {
+  name: String!
+  version: String!
+  notes: String @JSON.field(omitNull: true)
+}
+
+[JSON.encode(Release("dang", "2.2")), JSON.encode(Release("dang", "2.2"), sortKeys: false)]
 ```
 
 `toString(value)` passes strings through and JSON-encodes everything else
