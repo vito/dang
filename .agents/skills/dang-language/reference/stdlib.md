@@ -167,6 +167,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Until it reaches an expected type, a decode result has the opaque type `Decoded`: it can be stored, passed, and returned, but `JSON.decode("1") + 1`, `JSON.decode("1") == 1`, `if (JSON.decode("true"))`, and `.field` on it are type errors — cast first. Joins with typed values too: `(JSON.decode(s) :: Int!) rescue 0`.
 - Works for primitives, lists, maps (`Map[T]`, from an object), records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
+- `decode(data, strict: true)` (all three formats; default `false`) rejects instead, like Go yaml.v3's `KnownFields(true)`: an input key that no field of the target type/record reads → `<path>: field <key> not found` (`@FORMAT.field(name:)` renames count, so the declared name is unknown; an `@FORMAT.ignore` field reads no key, so its name is unknown too; `Map[T]` accepts any key). It also rejects a key repeated within one JSON object or YAML mapping (non-strict keeps the last) → `<Format>.decode: invalid <Format>: <path>: line N: field <key> already set`; TOML always rejects repeats. YAML `<<` merges are not repeats. The flag stays with a `Decoded` value until it materializes.
 - YAML anchors/aliases and `<<` merge keys are resolved; a mapping's own keys beat merged ones, and earlier entries of `<<: [*a, *b]` beat later ones.
 - Empty input differs by format: `JSON.decode("")` errors (invalid JSON); `YAML.decode("")` is `null` (an empty YAML document), so it won't materialize into a non-null record; `TOML.decode("")` is an empty table, so it fills declared defaults.
 
@@ -185,6 +186,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - missing required field → `<path>: missing required field`
 - wrong type for field → raises
 - invalid enum value → `<path>: invalid enum value "X" for <Enum>`
+- with `strict: true`: unknown key → `<path>: field <key> not found`; repeated key → `<Format>.decode: invalid <Format>: <path>: line N: field <key> already set`
 
 ## `Random` module
 - `Random.int(min: Int!, max: Int!) -> Int!` — `min` inclusive, `max` exclusive (errors if `min >= max`)
