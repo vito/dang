@@ -7,9 +7,10 @@
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
 `encode` / `decode` static methods. The names double as scalar types (`:: JSON`)
-and are owned by Dang, so they work with no schema import; an in-scope scalar of
-the same name (e.g. Dagger's `JSON`) merges with the codec rather than colliding
-(see [#enums-scalars]).
+and are owned by Dang, so they work with no schema import. A schema's scalar of
+the same name (e.g. Dagger's `JSON`) gets the codec's methods grafted on rather
+than colliding, while unqualified `JSON` stays Dang's own (see
+[#enums-scalars]).
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked

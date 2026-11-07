@@ -681,7 +681,10 @@ func StaticModules() []*Type {
 // builtin one and is grafted the identical members, so the two merge into one
 // entity rather than colliding: the declared scalar is the type, and Dang's
 // members ride along. This is general — any future builtin scalar behaves the
-// same way; encoding is just the first use.
+// same way; encoding is just the first use. Only the members merge: an
+// unqualified name still resolves to the builtin (imports never shadow
+// builtins), and a schema's scalar keeps its own value semantics (see
+// isJSONScalar).
 
 // BuiltinScalarModule returns the builtin scalar module of the given name, if
 // Dang ships one. These are the ScalarKind entries among the static modules.

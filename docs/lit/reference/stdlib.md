@@ -42,7 +42,7 @@
 
 ## `JSON` module
 
-> See [#json-yaml]. `JSON`/`YAML`/`TOML` are codec namespaces: `encode` serializes any value to a string, `decode` materializes a string against the expected type (`:: T`). The names double as scalar types (`:: JSON`) owned by Dang, and merge with a same-named schema scalar such as Dagger's `JSON`.
+> See [#json-yaml]. `JSON`/`YAML`/`TOML` are codec namespaces: `encode` serializes any value to a string, `decode` materializes a string against the expected type (`:: T`). The names double as scalar types (`:: JSON`) owned by Dang; a same-named schema scalar such as Dagger's `JSON` gets `encode`/`decode` grafted on, while unqualified `JSON` stays the builtin. As a type, the builtin `JSON` holds data of any shape (see [#json-values]).
 
 \stdlib-statics{JSON}
 
