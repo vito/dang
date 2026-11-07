@@ -1,0 +1,11 @@
+[1m[31mError:[0m YAML.decode: invalid YAML: [0]: line 3: field source already set
+  [2m[34m--> errors/decode_strict_duplicate_key.dang:6:27[0m
+ [2m    |[0m
+ [2m  4 | }[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mlet modules: [Module!]! = YAML.decode(
+[2m                                 [31m^^^^^^^^^^^^[0m
+ [2m  7 |   """[0m
+ [2m  8 |   - name: one[0m
+ [2m    |[0m
+

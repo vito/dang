@@ -1,0 +1,18 @@
+type Source {
+  path: String!
+}
+
+type Module {
+  name: String!
+  source: Source!
+}
+
+let modules: [Module!]! = YAML.decode(
+  """
+  - name: one
+    source:
+      path: ./one
+      tomlTabel: deps
+  """,
+  strict: true,
+)
