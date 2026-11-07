@@ -52,6 +52,7 @@ type Counter {
   }
 
   next: Counter! { Counter(count + 1) }
+
   value: Int! { count }
 }
 

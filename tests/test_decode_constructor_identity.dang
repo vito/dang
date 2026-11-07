@@ -97,6 +97,7 @@ type Maker {
   type Made {
     value: String!
   }
+
   make: Made! { Made(value: "made") }
 }
 

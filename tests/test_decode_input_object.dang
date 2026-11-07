@@ -16,4 +16,5 @@ decodeShadowed(data: String!): Boolean! {
   let decoded: UserSort! = JSON.decode(data)
   decoded.direction == SortDirection.ASC
 }
+
 assert { decodeShadowed("{\"field\": \"NAME\", \"direction\": \"ASC\"}") }
