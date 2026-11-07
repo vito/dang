@@ -615,6 +615,13 @@ func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 	}
+	// Fields were inferred in dependency order, but the record's fields keep
+	// the order they're written in: sortBy compares records field by field.
+	written := make([]string, len(o.Fields))
+	for i, field := range o.Fields {
+		written[i] = field.Name.Name
+	}
+	mod.orderBindings(written)
 	o.Mod = mod
 	return hm.NonNullType{Type: mod}, nil
 }
