@@ -1609,7 +1609,8 @@ func (e EnumValue) MarshalJSON() ([]byte, error) {
 type ScalarValue struct {
 	// Val is the scalar's string form: the string itself for a string-valued
 	// scalar, and otherwise (Encoded) the JSON encoding of its value. A Dang
-	// JSON value's Val (see isJSONScalar) is always JSON text.
+	// JSON value's Val (see isJSONScalar) is JSON text when decoded, and a
+	// String cast to JSON is taken as text unchecked.
 	Val        string
 	ScalarType hm.Type
 	// Encoded marks a scalar whose GraphQL value is not a string (a number,
