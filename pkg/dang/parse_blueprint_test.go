@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -473,5 +474,47 @@ func TestSyntaxCacheWaiterParsesWhenNothingKept(t *testing.T) {
 	wg.Wait()
 	if got := cache.Stats(); got.Misses != 4 || got.Hits != 0 {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+// The cache's weight estimate is close to the heap its entries hold, so its
+// budget bounds memory without evicting far below it.
+func TestSyntaxCacheWeightMatchesHeap(t *testing.T) {
+	files, err := filepath.Glob("../../tests/*.dang")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("language corpus: %v", err)
+	}
+	var blocks []*FileBlock
+	for _, file := range files {
+		source, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := ParseWithRecovery(file, source, GlobalStore("filePath", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		blocks = append(blocks, parsed.(*FileBlock))
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	blueprints := make([]parseBlueprint, len(blocks))
+	estimated := int64(0)
+	for i, block := range blocks {
+		weight := int64(0)
+		blueprints[i], err = syntaxBlueprintWeighted(reflect.ValueOf(block), &weight, 1<<40)
+		if err != nil {
+			t.Fatal(err)
+		}
+		estimated += weight
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	runtime.KeepAlive(blocks)
+	runtime.KeepAlive(blueprints)
+	held := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	if ratio := float64(estimated) / float64(held); ratio < 0.5 || ratio > 2 {
+		t.Fatalf("estimated %d bytes for %d held on the heap (%.1f×)", estimated, held, ratio)
 	}
 }

@@ -171,7 +171,7 @@ func (cache *SyntaxCache) add(key parseBlueprintKey, create parseBlueprint, weig
 var parseSyntax = ParseWithRecovery
 
 // NewSyntaxCache creates a concurrent cache for syntax reused across RunDir calls.
-// It retains at most 128 entries with a combined estimated weight of 64 MiB.
+// It retains at most 128 entries holding an estimated 64 MiB of syntax.
 func NewSyntaxCache() *SyntaxCache { return newSyntaxCache(128, 64<<20) }
 
 type syntaxCacheKey struct{}
@@ -285,10 +285,10 @@ func (state *syntaxCopyState) remember(value, result reflect.Value, size uintptr
 	}
 }
 
+// copyInto charges what the copy allocates: each pointed-to value, each
+// boxed interface value, each slice's backing array and each string's bytes.
+// Fields and elements are inside their parent's allocation.
 func (state *syntaxCopyState) copyInto(result, value reflect.Value) error {
-	if err := state.charge(128); err != nil {
-		return err
-	}
 	if value.IsZero() {
 		return nil
 	}
@@ -302,10 +302,18 @@ func (state *syntaxCopyState) copyInto(result, value reflect.Value) error {
 			result.Set(copied)
 			return nil
 		}
+		if err := state.charge(int64(typ.Elem().Size())); err != nil {
+			return err
+		}
 		result.Set(reflect.New(typ.Elem()))
 		state.remember(value, result, typ.Elem().Size())
 		return state.copyInto(result.Elem(), value.Elem())
 	case reflect.Interface:
+		if value.Elem().Kind() != reflect.Pointer {
+			if err := state.charge(int64(value.Elem().Type().Size())); err != nil {
+				return err
+			}
+		}
 		concrete := reflect.New(value.Elem().Type()).Elem()
 		if err := state.copyInto(concrete, value.Elem()); err != nil {
 			return err
@@ -336,7 +344,7 @@ func (state *syntaxCopyState) copyInto(result, value reflect.Value) error {
 				return nil
 			}
 		}
-		if err := state.charge(int64(capacity) * 8); err != nil {
+		if err := state.charge(int64(capacity) * int64(typ.Elem().Size())); err != nil {
 			return err
 		}
 		full := reflect.MakeSlice(typ, capacity, capacity)
