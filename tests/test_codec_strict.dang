@@ -92,6 +92,18 @@ let anon = (JSON.decode("""{"a": 1, "b": 2}""", strict: true) :: {{a: Int!}}!) r
 }
 assert { anon == "field b not found" }
 
+# a field no constructor parameter sets is still a field: encode writes it, so
+# a value's own encoding decodes back strictly
+type Greeting {
+  name: String!
+  let text: String! = "hi " + name
+}
+
+let greeting = JSON.decode(JSON.encode(Greeting(name: "ada")), strict: true) :: Greeting!
+assert { greeting.text == "hi ada" }
+let yamlGreeting = YAML.decode(YAML.encode(Greeting(name: "ada")), strict: true) :: Greeting!
+assert { yamlGreeting.name == "ada" }
+
 # --- Strictness travels with data left Decoded until later ---
 let deferred = [JSON.decode("""{"path": "y", "nope": 1}""", strict: true)]
 let late = (deferred[0] :: Source!) rescue {
@@ -148,5 +160,13 @@ let merged = YAML.decode(
   strict: true,
 ) :: {{defaults: Source!, source: Source!}}!
 assert { merged.source.path == "y" }
+
+# ...but a mapping written inline as a merge's value may not repeat a key
+let dupInMerge = (
+  YAML.decode("source:\n  <<: {path: x, path: y}\n", strict: true) :: {{source: Source!}}!
+) rescue {
+  err: Error => err.message
+}
+assert { dupInMerge == "YAML.decode: invalid YAML: source: line 2: field path already set" }
 
 print("strict codec tests passed!")

@@ -65,8 +65,16 @@ func checkYAMLDuplicateKeys(node *yaml.Node, path string) error {
 		seen := make(map[string]bool, len(node.Content)/2)
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
-			if keyNode.Kind != yaml.ScalarNode || keyNode.ShortTag() == "!!merge" {
+			if keyNode.Kind != yaml.ScalarNode {
 				// Non-scalar keys are rejected by yamlNodeToDeferredRaw.
+				continue
+			}
+			if keyNode.ShortTag() == "!!merge" {
+				// Not a key of its own, but a mapping written inline as its
+				// value can still repeat one.
+				if err := checkYAMLDuplicateKeys(node.Content[i+1], path); err != nil {
+					return err
+				}
 				continue
 			}
 			if seen[keyNode.Value] {

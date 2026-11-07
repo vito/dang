@@ -1160,15 +1160,27 @@ func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, 
 }
 
 // rejectUnknownKeys is strict decoding's check on an object being materialized
-// as mod from fields: each key of obj must be one some field reads, under its
-// codec key (@FORMAT.field renames it; @FORMAT.ignore means it reads none).
-// The unknown key reported is the first in sorted order, since decoded objects
-// no longer remember document order. The wording follows yaml.v3's KnownFields.
-func rejectUnknownKeys(obj map[string]any, mod *Type, fields []string, path string, codec Codec) error {
-	known := make(map[string]bool, len(fields))
-	for _, name := range fields {
+// as mod from params (its constructor's parameters, or a record's fields): each
+// key of obj must be the codec key (@FORMAT.field renames it; @FORMAT.ignore
+// means none) of one of params or of one of mod's data fields. The data fields
+// count even when no parameter sets them (a `let` field, or a field a custom
+// new() computes), because encode writes them, so a value's own encoding
+// decodes back strictly. The unknown key reported is the first in sorted
+// order, since decoded objects no longer remember document order. The wording
+// follows yaml.v3's KnownFields.
+func rejectUnknownKeys(obj map[string]any, mod *Type, params []string, path string, codec Codec) error {
+	known := make(map[string]bool, len(params))
+	accept := func(name string) {
 		if key, ignore := codec.fieldKey(mod, name); !ignore {
 			known[key] = true
+		}
+	}
+	for _, name := range params {
+		accept(name)
+	}
+	for name, scheme := range mod.Bindings(PrivateVisibility) {
+		if isCodecDataField(scheme) {
+			accept(name)
 		}
 	}
 	var unknown []string

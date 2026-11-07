@@ -101,7 +101,9 @@ JSON.decode("""{"name": "x", "count": 1, "extra": true}""", strict: true) :: Sum
 
 The check applies at every level of a type or record, under each field's
 `@JSON.field(name:)` key; an `@JSON.ignore` field reads no key, so its name is
-unknown too. A `Map[T]`'s keys are data, so it takes any key:
+unknown too. Every field the type declares counts, including ones its
+constructor doesn't take (a `let` field), so a value's own encoding always
+decodes back. A `Map[T]`'s keys are data, so it takes any key:
 
 ```dang
 let counts = JSON.decode("""{"zed": 1, "amy": 2}""", strict: true) :: Map[Int!]!
