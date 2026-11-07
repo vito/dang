@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/v2/pkg/hm"
@@ -361,5 +362,116 @@ func TestSyntaxCacheStats(t *testing.T) {
 	weighed.add(parseBlueprintKey{digest: [32]byte{2}}, create, 6)
 	if got := weighed.Stats(); got.EvictedForWeight != 1 || got.EvictedForEntries != 0 || got.Entries != 1 || got.Weight != 6 {
 		t.Fatalf("weight eviction: got %+v", got)
+	}
+}
+
+// Loads that miss the same source together parse it once; the others copy
+// that parse's syntax.
+func TestSyntaxCacheParsesASourceOnce(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "main.dang")
+	source := []byte("type Thing { value: String! = \"one\" }\n")
+	if err := os.WriteFile(file, source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var parses atomic.Int64
+	entered, release := make(chan struct{}, 8), make(chan struct{})
+	parse := parseSyntax
+	parseSyntax = func(filename string, source []byte, opts ...Option) (any, error) {
+		parses.Add(1)
+		entered <- struct{}{}
+		<-release
+		return parse(filename, source, opts...)
+	}
+	t.Cleanup(func() { parseSyntax = parse })
+
+	cache := newSyntaxCache(16, 1<<20)
+	ctx := WithSyntaxCache(context.Background(), cache)
+	const loads = 8
+	results := make([]*FileBlock, loads)
+	errs := make([]error, loads)
+	var wg sync.WaitGroup
+	for i := range loads {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = ParseSourceFile(ctx, file)
+		}()
+	}
+	<-entered
+	// Hold the first parse until every other load waits for it or parses.
+	deadline := time.Now().Add(10 * time.Second)
+	for cache.Stats().Waited+parses.Load() < loads {
+		if time.Now().After(deadline) {
+			t.Fatal("loads did not reach the cache")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	wg.Wait()
+
+	if got := parses.Load(); got != 1 {
+		t.Fatalf("parsed %d times, want once", got)
+	}
+	if got := cache.Stats(); got.Misses != 1 || got.Waited != loads-1 || got.Hits != loads-1 {
+		t.Fatalf("got %+v", got)
+	}
+	want, err := ParseWithRecovery(file, source, GlobalStore("filePath", file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, got := range results {
+		if errs[i] != nil {
+			t.Fatal(errs[i])
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("load %d got other syntax", i)
+		}
+		for _, other := range results[:i] {
+			if got == other {
+				t.Fatal("loads share syntax")
+			}
+		}
+	}
+}
+
+// A load that missed a source just before another load cached it finds the
+// cached syntax rather than claiming a parse: it looks and claims at once.
+func TestSyntaxCacheClaimsOnlyUncachedSources(t *testing.T) {
+	cache := newSyntaxCache(4, 1<<20)
+	key := parseBlueprintKey{digest: [32]byte{9}}
+	if _, ok, _, done := cache.lookup(key); ok || done == nil {
+		t.Fatal("an uncached source was not claimed")
+	}
+	// Meanwhile, the claiming load caches its syntax and finishes.
+	if _, _, parsing, done := cache.lookup(key); parsing == nil || done != nil {
+		t.Fatal("a source being parsed was claimed again")
+	}
+	cache.add(key, parseBlueprint{syntax: reflect.ValueOf(1)}, 4)
+	if _, ok, parsing, done := cache.lookup(key); !ok || parsing != nil || done != nil {
+		t.Fatal("a cached source was claimed for parsing")
+	}
+}
+
+// When the parse a load waited for keeps nothing, that load parses itself.
+func TestSyntaxCacheWaiterParsesWhenNothingKept(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "main.dang")
+	if err := os.WriteFile(file, []byte("value: Int! = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache := newSyntaxCache(16, 1) // keeps nothing
+	ctx := WithSyntaxCache(context.Background(), cache)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := ParseSourceFile(ctx, file); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := cache.Stats(); got.Misses != 4 || got.Hits != 0 {
+		t.Fatalf("got %+v", got)
 	}
 }

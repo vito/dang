@@ -59,6 +59,9 @@ type SyntaxCache struct {
 	weight  int64
 	budget  int64
 	stats   SyntaxCacheStats
+	// parsing holds the sources being parsed, each closed when its parse
+	// is done.
+	parsing map[parseBlueprintKey]chan struct{}
 }
 
 // SyntaxCacheStats counts what a SyntaxCache has done since it was created,
@@ -68,6 +71,9 @@ type SyntaxCacheStats struct {
 	Hits int64
 	// Misses are files parsed, including ones that parse with an error.
 	Misses int64
+	// Waited are files that waited for another call parsing the same
+	// source, instead of parsing it too.
+	Waited int64
 	// Uncached are parsed files the cache did not keep: their syntax
 	// exceeds the weight budget or has fields the cache cannot copy.
 	Uncached int64
@@ -113,6 +119,33 @@ func (cache *SyntaxCache) get(key parseBlueprintKey) (parseBlueprint, bool) {
 	return entry.create, ok
 }
 
+// lookup returns key's cached syntax. Otherwise it claims the parse of key,
+// returning done to call when the parse is over, or, when another call is
+// parsing key, returns a channel closed when that parse is over. Looking and
+// claiming under one lock means a call never parses a source another call
+// has just cached.
+func (cache *SyntaxCache) lookup(key parseBlueprintKey) (cached parseBlueprint, ok bool, parsing <-chan struct{}, done func()) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if entry, ok := cache.entries.Get(key); ok {
+		return entry.create, true, nil, nil
+	}
+	if parsing, ok := cache.parsing[key]; ok {
+		return parseBlueprint{}, false, parsing, nil
+	}
+	if cache.parsing == nil {
+		cache.parsing = map[parseBlueprintKey]chan struct{}{}
+	}
+	ch := make(chan struct{})
+	cache.parsing[key] = ch
+	return parseBlueprint{}, false, nil, func() {
+		cache.mu.Lock()
+		delete(cache.parsing, key)
+		cache.mu.Unlock()
+		close(ch)
+	}
+}
+
 func (cache *SyntaxCache) add(key parseBlueprintKey, create parseBlueprint, weight int64) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -133,6 +166,9 @@ func (cache *SyntaxCache) add(key parseBlueprintKey, create parseBlueprint, weig
 		cache.stats.EvictedForWeight++
 	}
 }
+
+// parseSyntax parses a source for the cache; tests replace it.
+var parseSyntax = ParseWithRecovery
 
 // NewSyntaxCache creates a concurrent cache for syntax reused across RunDir calls.
 // It retains at most 128 entries with a combined estimated weight of 64 MiB.
@@ -161,15 +197,28 @@ func parseFileBlueprintWithCache(filename string, version Version, cache *Syntax
 		return nil, err
 	}
 	key := parseBlueprintKey{digest: sha256.Sum256(source), version: version.orCurrent()}
-	if blueprint, ok := cache.get(key); ok {
-		copied, err := blueprint.copy(reflect.ValueOf(filename))
-		if err == nil {
-			cache.count(&cache.stats.Hits)
-			return copied.Interface().(*FileBlock), nil
+	for {
+		// Calls that miss the same source together, such as parallel loads
+		// of one module, parse it once: the others wait and copy its syntax.
+		// If the parse kept nothing, the next waiter parses.
+		blueprint, ok, parsing, done := cache.lookup(key)
+		if ok {
+			copied, err := blueprint.copy(reflect.ValueOf(filename))
+			if err == nil {
+				cache.count(&cache.stats.Hits)
+				return copied.Interface().(*FileBlock), nil
+			}
+			break
 		}
+		if done != nil {
+			defer done()
+			break
+		}
+		cache.count(&cache.stats.Waited)
+		<-parsing
 	}
 	cache.count(&cache.stats.Misses)
-	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename), WithVersion(version))
+	parsed, err := parseSyntax(filename, source, GlobalStore("filePath", filename), WithVersion(version))
 	if err != nil {
 		return nil, err
 	}
