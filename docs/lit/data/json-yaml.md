@@ -181,18 +181,22 @@ print(JSON.encode(link, indent: "  ", escapeHTML: false))
 ```
 
 To keep fields in the order they are declared instead, as Go does for struct
-fields, pass `sortKeys: false`. A record's fields keep the order they are
-written in, and a type's the order the type declares them. Maps keep their
-insertion order either way:
+fields, pass `sortKeys: false`. A type's fields come out in the order the type
+declares them. A record's follow how it was built: a literal's as written
+(even when it is annotated with a record type listing them differently), a
+selection's as selected, and a decoded record's as its type lists them. Maps
+keep their insertion order either way:
 
 ```dang
 type Release {
-  name: String!
   version: String!
+  name: String!
   notes: String @JSON.field(omitNull: true)
 }
 
-[JSON.encode(Release("dang", "2.2")), JSON.encode(Release("dang", "2.2"), sortKeys: false)]
+let release = Release(version: "2.2", name: "dang")
+
+[JSON.encode(release), JSON.encode(release, sortKeys: false)]
 ```
 
 `toString(value)` passes strings through and JSON-encodes everything else
