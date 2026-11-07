@@ -58,6 +58,45 @@ type SyntaxCache struct {
 	entries *simplelru.LRU[parseBlueprintKey, blueprintEntry]
 	weight  int64
 	budget  int64
+	stats   SyntaxCacheStats
+}
+
+// SyntaxCacheStats counts what a SyntaxCache has done since it was created,
+// to tell whether sources that should be reused are parsed again, and why.
+type SyntaxCacheStats struct {
+	// Hits are files copied from cached syntax instead of parsed.
+	Hits int64
+	// Misses are files parsed, including ones that parse with an error.
+	Misses int64
+	// Uncached are parsed files the cache did not keep: their syntax
+	// exceeds the weight budget or has fields the cache cannot copy.
+	Uncached int64
+	// EvictedForEntries and EvictedForWeight are entries removed to stay
+	// within the entry limit and the weight budget.
+	EvictedForEntries int64
+	EvictedForWeight  int64
+	// Entries and Weight are what the cache holds now. Weight is the
+	// estimate the budget limits, not measured memory.
+	Entries int
+	Weight  int64
+	Budget  int64
+}
+
+// Stats returns the cache's counts so far.
+func (cache *SyntaxCache) Stats() SyntaxCacheStats {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	stats := cache.stats
+	stats.Entries = cache.entries.Len()
+	stats.Weight = cache.weight
+	stats.Budget = cache.budget
+	return stats
+}
+
+func (cache *SyntaxCache) count(field *int64) {
+	cache.mu.Lock()
+	*field++
+	cache.mu.Unlock()
 }
 
 func newSyntaxCache(entries int, budget int64) *SyntaxCache {
@@ -78,13 +117,20 @@ func (cache *SyntaxCache) add(key parseBlueprintKey, create parseBlueprint, weig
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	// Concurrent misses may build the same entry; the first one is enough.
-	if cache.entries.Contains(key) || weight > cache.budget {
+	if cache.entries.Contains(key) {
+		return
+	}
+	if weight > cache.budget {
+		cache.stats.Uncached++
 		return
 	}
 	cache.weight += weight
-	cache.entries.Add(key, blueprintEntry{create: create, weight: weight})
+	if cache.entries.Add(key, blueprintEntry{create: create, weight: weight}) {
+		cache.stats.EvictedForEntries++
+	}
 	for cache.weight > cache.budget {
 		cache.entries.RemoveOldest()
+		cache.stats.EvictedForWeight++
 	}
 }
 
@@ -118,9 +164,11 @@ func parseFileBlueprintWithCache(filename string, version Version, cache *Syntax
 	if blueprint, ok := cache.get(key); ok {
 		copied, err := blueprint.copy(reflect.ValueOf(filename))
 		if err == nil {
+			cache.count(&cache.stats.Hits)
 			return copied.Interface().(*FileBlock), nil
 		}
 	}
+	cache.count(&cache.stats.Misses)
 	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename), WithVersion(version))
 	if err != nil {
 		return nil, err
@@ -134,6 +182,7 @@ func parseFileBlueprintWithCache(filename string, version Version, cache *Syntax
 	if err != nil {
 		// Unsupported fields fall back to normal parsing. This result has
 		// not been inferred yet and belongs only to the current call.
+		cache.count(&cache.stats.Uncached)
 		return block, nil
 	}
 	cache.add(key, blueprint, weight)

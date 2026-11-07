@@ -318,3 +318,48 @@ func TestParseSourceFileThroughSyntaxCache(t *testing.T) {
 		t.Fatalf("ParseSourceFile without a cache: %v", err)
 	}
 }
+
+func TestSyntaxCacheStats(t *testing.T) {
+	dir := t.TempDir()
+	files := make([]string, 3)
+	for i := range files {
+		files[i] = filepath.Join(dir, fmt.Sprintf("f%d.dang", i))
+		if err := os.WriteFile(files[i], []byte(fmt.Sprintf("value: Int! = %d\n", i)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := WithSyntaxCache(context.Background(), newSyntaxCache(2, 1<<20))
+	cache := ctx.Value(syntaxCacheKey{}).(*SyntaxCache)
+	for _, file := range []string{files[0], files[0], files[1], files[2], files[0]} {
+		if _, err := ParseSourceFile(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The third file pushes the first out of a two-entry cache, so the
+	// first file is parsed again.
+	got := cache.Stats()
+	want := SyntaxCacheStats{Hits: 1, Misses: 4, EvictedForEntries: 2, Entries: 2, Weight: got.Weight, Budget: 1 << 20}
+	if got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+
+	// A budget smaller than any syntax keeps nothing and counts each parse.
+	tiny := WithSyntaxCache(context.Background(), newSyntaxCache(2, 1))
+	for range 2 {
+		if _, err := ParseSourceFile(tiny, files[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := tiny.Value(syntaxCacheKey{}).(*SyntaxCache).Stats(); got.Misses != 2 || got.Uncached != 2 || got.Hits != 0 || got.Entries != 0 {
+		t.Fatalf("oversized syntax: got %+v", got)
+	}
+
+	// Two entries that together exceed the weight budget evict by weight.
+	weighed := newSyntaxCache(4, 10)
+	create := parseBlueprint{syntax: reflect.ValueOf(1)}
+	weighed.add(parseBlueprintKey{digest: [32]byte{1}}, create, 6)
+	weighed.add(parseBlueprintKey{digest: [32]byte{2}}, create, 6)
+	if got := weighed.Stats(); got.EvictedForWeight != 1 || got.EvictedForEntries != 0 || got.Entries != 1 || got.Weight != 6 {
+		t.Fatalf("weight eviction: got %+v", got)
+	}
+}
