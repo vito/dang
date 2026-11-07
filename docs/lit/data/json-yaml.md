@@ -90,9 +90,40 @@ let lenient: Summary! = JSON.decode("""{"name": "x", "count": 1, "extra": true}"
 lenient.name
 ```
 
+### Strict decoding
+
+Pass `strict: true` to catch typos and stale keys instead. A key that no field
+of the expected type reads is an error, naming the object's path and the key:
+
+```dang-failure
+JSON.decode("""{"name": "x", "count": 1, "extra": true}""", strict: true) :: Summary!
+```
+
+The check applies at every level of a type or record, under each field's
+`@JSON.field(name:)` key; an `@JSON.ignore` field reads no key, so its name is
+unknown too. A `Map[T]`'s keys are data, so it takes any key:
+
+```dang
+let counts = JSON.decode("""{"zed": 1, "amy": 2}""", strict: true) :: Map[Int!]!
+counts["amy"]
+```
+
+Strict decoding also rejects a key repeated within one JSON object or YAML
+mapping, where a plain decode keeps the last one. TOML rejects repeated keys
+either way:
+
+```dang-failure
+YAML.decode("""
+name: x
+count: 1
+name: y
+""", strict: true) :: Summary!
+```
+
 YAML anchors, aliases, and `<<` merge keys are resolved before decoding. A
 mapping's own keys win over merged ones, and earlier mappings in a `<<: [*a,
-*b]` sequence win over later ones:
+*b]` sequence win over later ones (even with `strict: true`, overriding a
+merged key isn't a repeat):
 
 ```dang
 type Server {
