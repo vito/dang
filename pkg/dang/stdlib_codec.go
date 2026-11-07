@@ -63,9 +63,10 @@ func registerCodecs() {
 			return ToValue(out)
 		})
 	// decode returns an opaque value materialized against the expected type
-	// supplied via a `:: T` hint at the call boundary.
+	// supplied via a `:: T` hint at the call boundary. A JSON value degrades
+	// into data (it is JSON text), so decoding one walks data held as JSON.
 	StaticMethod(JSONModule, "decode").
-		Doc("parses a JSON string into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
+		Doc("parses JSON text (a string, or a JSON value) into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
 		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
 		Params(
 			"data", NonNull(StringType),
@@ -605,7 +606,13 @@ func (e valueEncoder) encode(val Value) (any, error) {
 		return result, nil
 	default:
 		// Scalars, enums, and other leaves have no renamable fields of their own,
-		// so they keep their canonical encoding.
+		// so they keep their canonical encoding — except a JSON value, which
+		// is embedded as the data it holds.
+		if s, ok := val.(ScalarValue); ok {
+			if mod, ok := s.ScalarType.(*Type); ok && isJSONScalar(mod) {
+				return e.encodeJSONScalar(s)
+			}
+		}
 		return c.encodeLeaf(val)
 	}
 }
@@ -717,6 +724,25 @@ func (c Codec) encodeLeaf(val Value) (any, error) {
 		return json.RawMessage(jsonBytes), nil
 	}
 	return jsonBytesToRaw(jsonBytes)
+}
+
+// encodeJSONScalar embeds a JSON value as the data its text spells, not as a
+// string, so decoding into JSON and encoding back round-trips. Text that is
+// not JSON (e.g. a String cast to JSON) is an error rather than output a
+// reader would choke on — except for toString, which shows it as the string
+// it is.
+func (e valueEncoder) encodeJSONScalar(s ScalarValue) (any, error) {
+	raw, err := decodeJSON(s.Val, false)
+	if err != nil {
+		if e.rawFields {
+			return s.Val, nil
+		}
+		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
+	}
+	if e.codec == jsonCodec {
+		return json.RawMessage(s.Val), nil
+	}
+	return raw, nil
 }
 
 // jsonBytesToRaw decodes JSON bytes into a generic value, preserving numbers as
