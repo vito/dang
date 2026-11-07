@@ -141,8 +141,8 @@ YAML.decode("") :: Options!
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
-a `String!`. Object and record keys come out in alphabetical order (see
-[#literals]):
+a `String!`. Object and record keys come out in alphabetical order by default
+(see [#literals]):
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})
@@ -163,6 +163,40 @@ let draft = {{ title: "notes", author: null :: String }}
 
 ```dang-failure
 TOML.encode(42)
+```
+
+`JSON.encode` writes compact JSON and escapes `<`, `>`, and `&` (as
+`\u003c`, `\u003e`, `\u0026`) so the output is safe to embed in HTML, like
+Go's `json.Marshal`. Pass `indent` to pretty-print with one copy of it per
+nesting level, and `escapeHTML: false` to keep those characters as they are:
+
+```dang
+let link = {{ label: "Tom & Jerry", tags: ["<b>"] }}
+
+[JSON.encode(link), JSON.encode(link, escapeHTML: false)]
+```
+
+```dang
+print(JSON.encode(link, indent: "  ", escapeHTML: false))
+```
+
+To keep fields in the order they are declared instead, as Go does for struct
+fields, pass `sortKeys: false`. A type's fields come out in the order the type
+declares them. A record's follow how it was built: a literal's as written
+(even when it is annotated with a record type listing them differently), a
+selection's as selected, and a decoded record's as its type lists them. Maps
+keep their insertion order either way:
+
+```dang
+type Release {
+  version: String!
+  name: String!
+  notes: String @JSON.field(omitNull: true)
+}
+
+let release = Release(version: "2.2", name: "dang")
+
+[JSON.encode(release), JSON.encode(release, sortKeys: false)]
 ```
 
 `toString(value)` passes strings through and JSON-encodes everything else

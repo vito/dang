@@ -615,6 +615,13 @@ func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 	}
+	// The record's members are its fields as written, whatever order they
+	// were inferred in (JSON.encode(sortKeys: false) emits them in this order).
+	names := make([]string, len(o.Fields))
+	for i, field := range o.Fields {
+		names[i] = field.Name.Name
+	}
+	mod.orderVars(names)
 	o.Mod = mod
 	return hm.NonNullType{Type: mod}, nil
 }
