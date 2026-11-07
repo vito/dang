@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot sort by {name: String!, rank: Int}!: field rank may be null; supply a default with ??
+  [2m[34m--> errors/list_sort_by_nullable_key.dang:7:16[0m
+ [2m    |[0m
+ [2m  5 | [0m
+ [2m  6 | let players = [Player("b", 2), Player("a")][0m
+ [2m[34m[1m  7 | [0mplayers.sortBy { p => {{rank: p.rank, name: p.name}} }
+[2m                      [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

@@ -121,6 +121,54 @@ equality, so it works on nested lists too:
 [1, 1, 2, 3, 3, 1].uniq
 ```
 
+### Sorting
+
+`.sort` returns the list in ascending order, and `.sortBy` orders it by a key
+the block computes for each element. Both are stable — elements that compare
+equal keep their original order — and take `descending: true` to flip the
+order (still stable). `.reverse` just reverses the list:
+
+```dang
+[[3, 1, 2].sort, [3, 1, 2].sort(descending: true), [3, 1, 2].reverse]
+```
+
+`"banana"` and `"cherry"` tie on length, so they stay in their original order:
+
+```dang
+fruits.sortBy(descending: true) { _.length }
+```
+
+Numbers sort numerically, strings by their bytes (so `"B"` before `"a"`),
+`false` before `true`, enum values in the order they're declared, and custom
+scalars by their string form (numerically, for a scalar whose value is a
+number). Lists compare element by element, a prefix
+first, and `{{ }}` records field by field in the order they're written (so
+records being compared must write their fields in one order) — so a
+compound key is a list when its parts share a type, and a record when they
+don't:
+
+```dang
+let people = [
+  {{name: "Ann", age: 40}},
+  {{name: "Bob", age: 31}},
+  {{name: "Al", age: 40}},
+]
+people.sortBy { {{age: _.age, name: _.name}} }.map { _.name }
+```
+
+A key without an order — an object, or a value that may be null — is a
+compile error where `.sort` or `.sortBy` is called, rather than a surprise
+at runtime:
+
+```dang-failure
+[{{name: "Cy", age: null :: Int}}].sortBy { _.age }
+```
+
+The check needs to know the key's type where the call is written: a list
+whose element type isn't settled yet there (a `reduce` accumulator starting
+from `[]`), or a `.sortBy` taken as a value (`&xs.sortBy`) and called
+later, is checked as it sorts instead.
+
 ### Iterating
 
 `.each` runs a block for its side effects and returns the original list, so
