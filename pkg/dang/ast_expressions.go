@@ -296,6 +296,21 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return nil, NewInferError(fmt.Errorf("function requires a block argument"), c)
 	}
 
+	// A builtin's own constraints on its resolved signature (sortBy's key
+	// must be orderable); a complaint about the block is located there.
+	if sel, ok := unwrapGrouped(c.Fun).(*Select); ok && sel.callCheck != nil {
+		resolved := ft
+		if blockArgSubs != nil {
+			resolved = ft.Apply(blockArgSubs).(*hm.FunctionType)
+		}
+		if err := sel.callCheck(resolved); err != nil {
+			if c.BlockArg != nil {
+				return nil, NewInferError(err, c.BlockArg)
+			}
+			return nil, NewInferError(err, c)
+		}
+	}
+
 	// Apply block arg substitutions to the return type
 	retType := ft.Ret(false)
 	if blockArgSubs != nil {
@@ -943,6 +958,11 @@ type Select struct {
 	staticOwner *Type
 	Loc         *SourceLocation
 
+	// callCheck is the BuiltinDef.Check of the list method this selection
+	// resolved to, for the FunCall calling it to run on its resolved
+	// signature.
+	callCheck func(*hm.FunctionType) error
+
 	// selectedThrough marks an auto-called selection whose result is
 	// immediately selected from. See markSelectedThrough.
 	selectedThrough bool
@@ -1018,6 +1038,8 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
+		d.callCheck = nil
+
 		// Every Select has a receiver: bare names are Symbols.
 		if d.Receiver == nil {
 			return nil, fmt.Errorf("Select.Infer: internal error: %q has no receiver", d.Field.Name)
@@ -1094,6 +1116,18 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			// Build method type with element type substituted for type variable
 			methodType := instantiateListMethod(def, listElemType)
+			d.callCheck = def.Check
+			// Check what the receiver already resolves (sort's elements),
+			// also for a method taken as a value (`&xs.sort`), which no
+			// FunCall checks; a call checks again once its arguments and
+			// block resolve the rest.
+			if def.Check != nil {
+				if ft, ok := methodType.(*hm.FunctionType); ok {
+					if err := def.Check(ft); err != nil {
+						return nil, err
+					}
+				}
+			}
 
 			if d.AutoCall {
 				var err error

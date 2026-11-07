@@ -1014,6 +1014,25 @@ func (e *Type) Remove(name string) hm.Env {
 	return e
 }
 
+// orderBindings moves the named bindings to the front of the binding order
+// (Bindings), in the order given; the rest keep their relative order.
+func (e *Type) orderBindings(names []string) {
+	order := make([]string, 0, len(e.varOrder))
+	placed := make(map[string]bool, len(names))
+	for _, name := range names {
+		if _, ok := e.vars[name]; ok && !placed[name] {
+			placed[name] = true
+			order = append(order, name)
+		}
+	}
+	for _, name := range e.varOrder {
+		if !placed[name] {
+			order = append(order, name)
+		}
+	}
+	e.varOrder = order
+}
+
 // SetDocString sets the documentation string for a symbol
 func (e *Type) SetDocString(name string, docString string) {
 	setIn(&e.docStrings, name, docString)

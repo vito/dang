@@ -102,6 +102,8 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 - `.filter { x => Boolean! } -> [T]!`, `.reject { x => Boolean! } -> [T]!`
 - `.reduce(initial: U) { acc, x => ... } -> U` — `initial` positional or named `initial:`
 - `.uniq -> [T]!` — drop duplicates, keep first-occurrence order; uses Dang equality (works on nested lists)
+- `.sort(descending: Boolean = false) -> [T]!`, `.sortBy(descending: Boolean = false) { x => key } -> [T]!` — **stable** (equal keys keep input order, also when descending); `sortBy` computes each key once. Orderable: `Int!`/`Float!` numerically, `String!` by bytes (`"B" < "a"`), `Boolean!` (`false` first), enums in **declaration order**, custom scalars by string form (numeric scalars numerically), lists lexicographically (prefix first), `{{ }}` records field by field in written order (records written in different field orders raise when compared) — use a list for a same-typed compound key (`[x.major, x.minor]`), a record for mixed types (`{{role: x.role, name: x.name}}`). Anything else — objects, nullable keys (`?? default` them), generic `a` — is a **compile error** where the call is written (a receiver whose element type isn't settled yet, e.g. a `reduce([])` accumulator, or `&xs.sortBy` called later, is checked at runtime instead)
+- `.reverse -> [T]!`
 - `.each { x, i => ... } -> [T]!` — returns the original list (for chaining / side effects)
 - `.any { x => Boolean! } -> Boolean!`, `.all { x => Boolean! } -> Boolean!`
 - `.contains(element: T) -> Boolean!`
