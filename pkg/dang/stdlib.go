@@ -3,7 +3,6 @@ package dang
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -80,11 +79,11 @@ func registerStdlib() {
 			}
 
 			// Otherwise, serialize to JSON
-			jsonBytes, err := json.Marshal(val)
+			text, err := toJSONText(val)
 			if err != nil {
 				return nil, fmt.Errorf("toString: %w", err)
 			}
-			return ToValue(string(jsonBytes))
+			return ToValue(text)
 		})
 
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
@@ -967,11 +966,11 @@ func registerStdlib() {
 				if sv, ok := item.(StringValue); ok {
 					strVal = sv.Val
 				} else {
-					jsonBytes, err := json.Marshal(item)
+					text, err := toJSONText(item)
 					if err != nil {
 						return nil, fmt.Errorf("join: failed to convert element to string: %w", err)
 					}
-					strVal = string(jsonBytes)
+					strVal = text
 				}
 				parts = append(parts, strVal)
 			}

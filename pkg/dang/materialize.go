@@ -1,9 +1,11 @@
 package dang
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -453,13 +455,90 @@ func enumValueNames(enum *Type) []string {
 // isDegradableScalar reports whether mod is a custom scalar whose values may
 // degrade to String at value-handoff boundaries. Every non-primitive scalar
 // value is a string underneath (ScalarValue), so they all qualify — except
-// the codec namespaces (JSON/YAML/TOML): those are scalar-kind static
-// modules whose bare name evaluates to the module object, not a string.
+// the YAML/TOML codec namespaces, scalar-kind static modules with no values
+// of their own. JSON's values are JSON text, so they degrade like any other
+// scalar's (which is how `JSON.decode(j)` re-materializes one).
 func isDegradableScalar(mod *Type) bool {
 	if mod.Kind != ScalarKind || isPrimitiveScalar(mod) {
 		return false
 	}
-	return !builtins.staticModuleSeen[mod]
+	return mod == JSONModule || !builtins.staticModuleSeen[mod]
+}
+
+// isJSONScalar reports whether mod is Dang's JSON value type: the builtin JSON
+// scalar, or a same-named scalar a user declared, which merges with it (see
+// BuiltinScalarModule). A JSON value is untyped JSON data held as its JSON
+// text: decoding into it accepts any value, and encoding embeds it as that
+// value rather than as a string. A declared JSON with a new() hook defines its
+// own values instead, and a schema's `scalar JSON` keeps the behavior of any
+// schema scalar: servers disagree on its wire form (Dagger sends JSON text in
+// a string, graphql-type-json style servers send the value itself), so Dang
+// leaves its values exactly as the server sends them.
+func isJSONScalar(mod *Type) bool {
+	return mod.Kind == ScalarKind && mod.Named == JSONModule.Named &&
+		mod.SourceSchema == nil && !mod.hasScalarHook && mod.goScalarHook == nil
+}
+
+// jsonScalarFromRaw holds decoded data as a value of the JSON scalar mod: its
+// compact JSON text, numbers exactly as decoded.
+func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
+	raw, err := canonicalJSONNumbers(raw)
+	if err != nil {
+		return nil, materializeDeferredError(path, "%s", err)
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	// Keep the text as written: json.Marshal would escape <, > and & in
+	// strings.
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(raw); err != nil {
+		return nil, materializeDeferredError(path, "encoding %s value: %s", mod.Name(), err)
+	}
+	return ScalarValue{Val: strings.TrimSuffix(buf.String(), "\n"), ScalarType: mod}, nil
+}
+
+// canonicalJSONNumbers returns raw with every number spelled as JSON. JSON
+// and TOML decode numbers in JSON form already, but YAML keeps a number's
+// source text (`0755`, `+1`, `-.5`), which is not JSON; those are respelled
+// as the value `:: Int!` or `:: Float!` would read. Containers are copied,
+// never modified: decoded data may be materialized more than once.
+func canonicalJSONNumbers(raw any) (any, error) {
+	switch x := raw.(type) {
+	case json.Number:
+		if json.Valid([]byte(x)) {
+			return x, nil
+		}
+		if i, err := decodedNumberToInt(x); err == nil {
+			return json.Number(strconv.Itoa(i)), nil
+		}
+		f, err := x.Float64()
+		if err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
+			return nil, fmt.Errorf("number %s has no JSON representation", x)
+		}
+		return json.Number(strconv.FormatFloat(f, 'g', -1, 64)), nil
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			c, err := canonicalJSONNumbers(e)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = c
+		}
+		return out, nil
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			c, err := canonicalJSONNumbers(e)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = c
+		}
+		return out, nil
+	default:
+		return raw, nil
+	}
 }
 
 // containsDegradableScalar reports whether t carries a degradable custom
@@ -931,6 +1010,12 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			}
 			return EnumValue{Val: s, EnumType: mod}, nil
 		case ScalarKind:
+			if isJSONScalar(mod) {
+				// JSON is the untyped JSON value: any decoded value fits,
+				// and is held as its JSON text (a string included, so
+				// `"x"` is held as "\"x\"").
+				return jsonScalarFromRaw(raw, mod, path)
+			}
 			s, ok := raw.(string)
 			if !ok && mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil {
 				// A GraphQL scalar's value may be any JSON (see

@@ -17,13 +17,22 @@ import (
 // in exactly one place — the module.
 type Codec struct {
 	module *Type
+	// plain marks a codec that reads no field directives: it encodes values
+	// under their canonical field names, the way toString renders them.
+	plain bool
 }
 
 var (
-	jsonCodec = Codec{JSONModule}
-	yamlCodec = Codec{YAMLModule}
-	tomlCodec = Codec{TOMLModule}
+	jsonCodec = Codec{module: JSONModule}
+	yamlCodec = Codec{module: YAMLModule}
+	tomlCodec = Codec{module: TOMLModule}
+
+	// plainJSONCodec is JSON without field directives, for toString.
+	plainJSONCodec = Codec{module: JSONModule, plain: true}
 )
+
+// isJSON reports whether this codec produces JSON.
+func (c Codec) isJSON() bool { return c.module == JSONModule }
 
 // codecs returns every codec in declaration order, for registration and for
 // validation that must cover all formats.
@@ -93,6 +102,9 @@ func (o codecFieldOpts) key(field string) string {
 // simply ignored.
 func (c Codec) options(directives []*DirectiveApplication) codecFieldOpts {
 	var o codecFieldOpts
+	if c.plain {
+		return o
+	}
 	for _, d := range directives {
 		if d.Scope == nil || d.Scope.Name != c.scope() {
 			continue
