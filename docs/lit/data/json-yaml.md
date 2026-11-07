@@ -184,6 +184,52 @@ type Options {
 YAML.decode("") :: Options!
 ```
 
+## Data of unknown shape {#json-values}
+
+`JSON` is also a type for data whose shape you don't know: decoding into
+`JSON` takes any value and keeps it as its JSON text. A `Map[JSON!]!` reads
+an object without saying anything about its values, so you can check its
+keys:
+
+```dang
+let config = YAML.decode("""
+modules:
+  - name: lint
+    source: ./lint
+    pin: 3
+version: 2
+""") :: Map[JSON!]!
+
+config.keys
+```
+
+A JSON value reads as its text wherever a `String` is expected. A string
+value keeps its quotes, so the text is always JSON:
+
+```dang
+[toString(config["version"]!), `modules: ${config["modules"]!}`]
+```
+
+`JSON.decode` takes a JSON value too, so going a level deeper is decoding
+again, at the type the data has there:
+
+```dang
+let modules = JSON.decode(config["modules"]!) :: [Map[JSON!]!]!
+
+modules[0]!.keys.filter { key => !["name", "source"].contains(key) }
+```
+
+```dang
+JSON.decode(modules[0]!["name"]!) :: String!
+```
+
+Encoding puts a JSON value back as the data it holds, not as a string, so
+it round-trips:
+
+```dang
+JSON.encode({{ first: modules[0]! }})
+```
+
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
@@ -303,8 +349,9 @@ string literal, and two fields cannot map to the same key.
 ## Coercion during parsing
 
 Enum values decode from their names, and custom scalars from their string
-forms. A missing field takes its declared default, and a missing nullable
-field decodes to `null`:
+forms (except `JSON`, which takes any value; see [#json-values]). A missing
+field takes its declared default, and a missing nullable field decodes to
+`null`:
 
 ```dang
 enum Outcome { PASSED FAILED }

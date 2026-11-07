@@ -142,6 +142,8 @@ scalar JSON
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
 - Equality, list membership, records/lists all work between values of the same scalar. A string *literal* converts to the scalar (`urlValue == "https://…"`); a non-literal `String` needs a cast (`urlValue == (s :: URL!)` or `(urlValue :: String!) == s`).
 - The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.
+- The builtin `JSON` is the **untyped JSON value**: decoding into it accepts any value and holds it as its JSON text (a string `"x"` is held as the text `"x"`, quotes included), `JSON.decode(j)` re-materializes it at a type, and encoding embeds it as data rather than a string — see stdlib.md. A schema's `scalar JSON` (e.g. `Dagger.JSON`) is an ordinary schema scalar, below.
+- A scalar from a connected schema whose server returns a non-string value (a number, object, …) holds that value's JSON text, and sends it back as the same value.
 
 ### Scalar bodies: methods and the `new()` hook
 

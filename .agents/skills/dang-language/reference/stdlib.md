@@ -176,9 +176,23 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 
 ### Coercion during parsing
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
-- Custom scalars decode from their string forms.
-- **Which scalars accept non-string JSON** depends on who owns them. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's `JSON` scalar works. A **Dang-owned** scalar — the builtin `JSON`/`YAML`/`TOML` codec scalars (when no schema scalar of that name is in scope), `Path`, `Regexp`, and any `scalar` you declare — materializes **only from a string**: `JSON.decode("{\"a\":[1]}") :: Map[JSON!]!` raises `["a"]: expected string for scalar JSON, got array` (likewise `expected string for scalar Foo, got number`). Model such a value as a record/`Map` of concrete types instead, or keep the raw text in a `String!`.
+- Custom scalars decode from their string forms — except `JSON` (below).
+- **Which scalars accept non-string JSON** depends on who owns them. The builtin `JSON` (and a `scalar JSON` you declare) accepts any value — see below. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's scalar works. Other **Dang-owned** scalars — `YAML`/`TOML`, `Path`, `Regexp`, and any other `scalar` you declare — materialize **only from a string**: decoding a number into `scalar Foo` raises `expected string for scalar Foo, got number`. Model such a value as a record/`Map` of concrete types, as `JSON`, or keep the raw text in a `String!`.
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
+
+### `JSON` values: untyped JSON
+`JSON` is also Dang's "any" type: decoding (JSON, YAML or TOML) into `JSON` accepts a value of **any** shape and holds it as its compact **JSON text** — so data of unknown shape can be kept, inspected a level at a time, and encoded back unchanged:
+```dang
+let top = YAML.decode(raw) :: Map[JSON!]!            # any values; check top.keys
+let mods = JSON.decode(top["modules"]!) :: [Map[JSON!]!]!   # walk one level deeper
+let name = JSON.decode(mods[0]!["name"]!) :: String!
+```
+- A JSON value **is JSON text**, always: `toString(j)` and `${j}` give that text, and a string is held quoted — `"x"` is the text `"x"` (with the quotes), never `x`. Numbers keep their exact digits.
+- `JSON.decode(j)` takes a JSON value as well as a `String!` (JSON values degrade to `String`), re-materializing it at the expected type.
+- `JSON.encode` / `YAML.encode` / `TOML.encode` embed a JSON value as the data it holds, not as a string: `JSON.encode(JSON.decode(s) :: JSON!)` is `s` compacted (object keys sorted). Text that is not JSON raises.
+- A `String` cast to `JSON` (`s :: JSON!`, `let j: JSON! = "..."`) is taken as JSON text as-is. Equality compares the text, so a cast `"{\"a\": 1}"` is not `==` the decoded (compacted) `{"a":1}`. JSON `null` stays Dang `null`: use `Map[JSON]!` where values may be null.
+- `toString` of a list, map or record holding JSON values renders them as data too, like `JSON.encode` (but under canonical field names).
+- This is the builtin `JSON` (and a `scalar JSON` you declare yourself). A schema's `scalar JSON` (e.g. `Dagger.JSON`) is a plain schema scalar: servers disagree on its wire form, so its values stay as the server sends them (a string is held bare). Unqualified, `JSON` always names the builtin, since imports never shadow builtins; hand a value to the schema's JSON as text: `(j :: String!) :: Dagger.JSON!`.
 
 ### Serialization
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)`. `JSON.encode` keeps keys in **declaration order** (below); `YAML.encode`/`TOML.encode` emit them in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
