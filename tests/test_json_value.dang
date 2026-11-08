@@ -51,7 +51,17 @@ type Entry {
 
 let entry = JSON.decode("{\"name\": \"e\", \"extra\": {\"deep\": [true]}}") :: Entry!
 assert { toString(entry.extra) == "{\"deep\":[true]}" }
-assert { JSON.encode(entry) == "{\"extra\":{\"deep\":[true]},\"name\":\"e\"}" }
+assert { JSON.encode(entry) == "{\"name\":\"e\",\"extra\":{\"deep\":[true]}}" }
+
+# JSON.encode's options reach inside JSON values: a cast keeps the key order
+# it was written with until sortKeys sorts it, indent lays its insides out,
+# and escapeHTML decides how its strings' <, > and & come out.
+let written: JSON! = "{\"b\": 1, \"a\": {\"d\": \"<x>\", \"c\": [2, 1]}}"
+assert { JSON.encode(written) == "{\"b\":1,\"a\":{\"d\":\"\\u003cx\\u003e\",\"c\":[2,1]}}" }
+assert { JSON.encode(written, sortKeys: true) == "{\"a\":{\"c\":[2,1],\"d\":\"\\u003cx\\u003e\"},\"b\":1}" }
+assert { JSON.encode(written, escapeHTML: false) == "{\"b\":1,\"a\":{\"d\":\"<x>\",\"c\":[2,1]}}" }
+assert { JSON.encode({{v: written}}, indent: "  ", sortKeys: true, escapeHTML: false) == "{\n  \"v\": {\n    \"a\": {\n      \"c\": [\n        2,\n        1\n      ],\n      \"d\": \"<x>\"\n    },\n    \"b\": 1\n  }\n}" }
+assert { JSON.encode(JSON.decode("{\"z\": 1.50, \"y\": 2}") :: JSON!, sortKeys: true) == "{\"y\":2,\"z\":1.50}" }
 
 # Strict decoding checks keys against a type, so it leaves a JSON value's
 # insides alone: they are data, like a Map's keys. Keys around it are still
