@@ -33,3 +33,5 @@ CLAUDE.local.md
 /docs/js/tree-sitter-bash.wasm
 /docs/js/tree-sitter-go.wasm
 .dev.vars
+# scratch space for agents (PR bodies, context exports)
+/tmp/
