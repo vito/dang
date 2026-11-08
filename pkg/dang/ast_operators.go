@@ -271,18 +271,23 @@ func (b *BinaryOperator) checkOrdering(env hm.Env, lt, rt hm.Type) error {
 				fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt), lt, rt)
 		}
 		lt = lt.Apply(subs).(hm.Type)
+		rt = rt.Apply(subs).(hm.Type)
 	}
-	subs, err := hm.RequireOrdered(lt)
-	if err == nil {
-		err = hm.CommitWeak(subs)
-	}
-	if err != nil {
-		var ce hm.ConstraintError
-		if errors.As(err, &ce) {
-			return withUnionProvenance(
-				fmt.Errorf("operator %s is not defined for type %s: %s", b.OpName, lt, ce.Why), lt)
+	// Both sides: one may be wider than the other (a union the other is
+	// a member of), and each must be Ordered.
+	for _, t := range []hm.Type{lt, rt} {
+		subs, err := hm.RequireOrdered(t)
+		if err == nil {
+			err = hm.CommitWeak(subs)
 		}
-		return err
+		if err != nil {
+			var ce hm.ConstraintError
+			if errors.As(err, &ce) {
+				return withUnionProvenance(
+					fmt.Errorf("operator %s is not defined for type %s: %s", b.OpName, t, ce.Why), t)
+			}
+			return err
+		}
 	}
 	return nil
 }

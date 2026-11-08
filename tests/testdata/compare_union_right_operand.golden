@@ -1,0 +1,12 @@
+[1m[31mError:[0m operator less_than is not defined for type Int! | String!: it mixes types; return one type from every branch
+  - Int! from the then branch at errors/compare_union_right_operand.dang:2:16
+  - String! from the else branch at errors/compare_union_right_operand.dang:2:27
+  [2m[34m--> errors/compare_union_right_operand.dang:5:1[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 | # The wider operand is on the right: it's checked too.[0m
+ [2m[34m[1m  5 | [0m"a" < u
+[2m       [31m^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

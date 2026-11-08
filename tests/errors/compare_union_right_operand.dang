@@ -1,0 +1,5 @@
+pub c = true
+let u = if (c) { 1 } else { "x" }
+
+# The wider operand is on the right: it's checked too.
+"a" < u

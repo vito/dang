@@ -54,6 +54,10 @@ func whyUnordered(t hm.Type, what string, needs *[]hm.OrderedNeed) string {
 		// never null, but no single order covers every member.
 		return fmt.Sprintf("%s mixes types; return one type from every branch", what)
 	}
+	if _, isFn := inner.(*hm.FunctionType); isFn {
+		// A function value is non-null as it is, and has no order.
+		nonNull = true
+	}
 	if !nonNull {
 		return fmt.Sprintf("%s may be null; supply a default with ??", what)
 	}
