@@ -68,6 +68,11 @@ let nested = JSON.decode("{\"a\": {\"b\": 1}, \"s\": \"x\"}") :: Map[JSON!]!
 assert { toString(nested) == "{\"a\":{\"b\":1},\"s\":\"x\"}" }
 assert { toString({{v: nested["a"]!}}) == "{\"v\":{\"b\":1}}" }
 assert { [nested["a"]!, nested["s"]!].join(" ") == "{\"b\":1} \"x\"" }
+assert { [named["html"]!].join("") == "\"<b>&</b>\"" }
+
+# A JSON string compares with a quoted literal.
+assert { named["s"]! == "\"x\"" }
+assert { [named["s"]!].contains("\"x\"") }
 
 # null stays null: a nullable JSON takes it, a non-null one rejects it.
 let maybe = JSON.decode("{\"a\": null}") :: Map[JSON]!
@@ -113,6 +118,7 @@ let castError = (notJSON :: JSON!) rescue {
   e: Error => e.message
 }
 assert { castError == "cannot use \"{nope\" as JSON: invalid JSON: invalid character 'n' looking for beginning of object key string" }
-assert { (takesJSON("1 2") rescue "invalid") == "invalid" }
+let twoValues = "1 2"
+assert { (takesJSON(twoValues :: JSON!) rescue "invalid") == "invalid" }
 
 print("JSON value tests passed!")

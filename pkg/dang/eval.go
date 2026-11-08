@@ -1622,6 +1622,10 @@ type ScalarValue struct {
 	// the server as that same value and reads as the JSON text in String
 	// slots.
 	Encoded bool
+	// jsonKey is a Dang JSON value's canonical form (see canonicalJSONKey),
+	// computed once when the value is made so comparing JSON values as data
+	// needn't parse them again. Empty when unknown (a value a host built).
+	jsonKey string
 }
 
 var _ Value = ScalarValue{}

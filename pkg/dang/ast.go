@@ -274,7 +274,7 @@ func valuesEqual(left, right Value) bool {
 				if mod, ok := l.ScalarType.(*Type); ok && isJSONScalar(mod) {
 					// JSON values are data: key order and spelling don't
 					// matter, only what the text means.
-					return jsonTextEqual(l.Val, r.Val)
+					return jsonValuesEqual(l, r)
 				}
 			}
 			return l.ScalarType == r.ScalarType && l.Encoded == r.Encoded && l.Val == r.Val

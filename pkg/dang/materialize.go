@@ -395,8 +395,9 @@ func containsDecoded(t hm.Type) bool {
 }
 
 // checkEnumLiterals rejects a string literal handed to an enum slot that
-// names none of the enum's values. Its value is known statically, so there
-// is no need to wait for materialization to fail at runtime. It follows
+// names none of the enum's values, or to a JSON slot that is not JSON. Its
+// value is known statically, so there is no need to wait for
+// materialization to fail at runtime. It follows
 // the literal through lists, maps and a block's tail; anything else (a
 // template, a union slot) is left to runtime validation.
 func checkEnumLiterals(value Node, want hm.Type) error {
@@ -420,6 +421,23 @@ func checkEnumLiterals(value Node, want hm.Type) error {
 			}
 		}
 	case *Type:
+		if isJSONScalar(t) {
+			// Likewise a literal handed to a JSON slot must be JSON. A bare
+			// word is most likely a JSON string missing its quotes.
+			if v, ok := value.(*String); ok {
+				if _, err := decodeJSON(v.Value, false); err != nil {
+					quoted, _ := json.Marshal(v.Value)
+					return NewInferError(
+						fmt.Errorf("%q is not JSON (%v); a JSON string is written with its quotes: %q", v.Value, err, string(quoted)),
+						v,
+					)
+				}
+			}
+			if b, ok := value.(*Block); ok && len(b.Forms) > 0 {
+				return checkEnumLiterals(b.Forms[len(b.Forms)-1], want)
+			}
+			return nil
+		}
 		if t.Kind != EnumKind {
 			return nil
 		}
@@ -479,6 +497,12 @@ func isJSONScalar(mod *Type) bool {
 		mod.SourceSchema == nil && !mod.hasScalarHook && mod.goScalarHook == nil
 }
 
+// isJSONValue reports whether v is a value of Dang's JSON type.
+func isJSONValue(v ScalarValue) bool {
+	mod, ok := v.ScalarType.(*Type)
+	return ok && isJSONScalar(mod)
+}
+
 // jsonScalarFromRaw holds decoded data as a value of the JSON scalar mod: its
 // compact JSON text, numbers exactly as decoded.
 func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
@@ -494,21 +518,27 @@ func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
 	if err := enc.Encode(raw); err != nil {
 		return nil, materializeDeferredError(path, "encoding %s value: %s", mod.Name(), err)
 	}
-	return ScalarValue{Val: strings.TrimSuffix(buf.String(), "\n"), ScalarType: mod}, nil
+	return ScalarValue{
+		Val:        strings.TrimSuffix(buf.String(), "\n"),
+		ScalarType: mod,
+		jsonKey:    canonicalJSONKey(raw),
+	}, nil
 }
 
 // compactJSONText validates s as a single JSON value and returns it with
-// insignificant whitespace removed. Everything else stays as written: object
-// keys keep their order, and strings and numbers their spelling.
-func compactJSONText(s string) (string, error) {
-	if _, err := decodeJSON(s, false); err != nil {
-		return "", fmt.Errorf("cannot use %s as JSON: %w", truncateForError(s), err)
+// insignificant whitespace removed, along with the data it holds. Everything
+// else stays as written: object keys keep their order, and strings and
+// numbers their spelling.
+func compactJSONText(s string) (string, any, error) {
+	raw, err := decodeJSON(s, false)
+	if err != nil {
+		return "", nil, fmt.Errorf("cannot use %s as JSON: %w", truncateForError(s), err)
 	}
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, []byte(s)); err != nil {
-		return "", fmt.Errorf("cannot use %s as JSON: invalid JSON: %w", truncateForError(s), err)
+		return "", nil, fmt.Errorf("cannot use %s as JSON: invalid JSON: %w", truncateForError(s), err)
 	}
-	return buf.String(), nil
+	return buf.String(), raw, nil
 }
 
 // truncateForError quotes s for an error message, cut short if it is long.
@@ -520,62 +550,101 @@ func truncateForError(s string) string {
 	return strconv.Quote(s)
 }
 
-// jsonTextEqual reports whether two JSON texts hold the same data: objects
+// jsonValuesEqual reports whether two JSON values hold the same data: objects
 // with the same keys (in any order) and equal values, lists element by
-// element, and numbers by value (`1.50` is `1.5`). Text that does not parse
-// compares as text.
-func jsonTextEqual(a, b string) bool {
-	if a == b {
+// element, strings after unescaping, and numbers by value (`1.50` is `1.5`).
+// It compares their canonical keys, made once per value; a value without one
+// (built by a host) is parsed here, and text that doesn't parse compares as
+// text.
+func jsonValuesEqual(l, r ScalarValue) bool {
+	if l.Val == r.Val {
 		return true
 	}
-	ra, errA := decodeJSON(a, false)
-	rb, errB := decodeJSON(b, false)
-	if errA != nil || errB != nil {
-		return false
+	lk, rk := l.jsonKey, r.jsonKey
+	if lk == "" {
+		lk = jsonKeyOfText(l.Val)
 	}
-	return jsonDataEqual(ra, rb)
+	if rk == "" {
+		rk = jsonKeyOfText(r.Val)
+	}
+	return lk != "" && lk == rk
 }
 
-func jsonDataEqual(a, b any) bool {
-	switch x := a.(type) {
-	case map[string]any:
-		y, ok := b.(map[string]any)
-		if !ok || len(x) != len(y) {
-			return false
-		}
-		for k, xv := range x {
-			yv, ok := y[k]
-			if !ok || !jsonDataEqual(xv, yv) {
-				return false
-			}
-		}
-		return true
-	case []any:
-		y, ok := b.([]any)
-		if !ok || len(x) != len(y) {
-			return false
-		}
-		for i := range x {
-			if !jsonDataEqual(x[i], y[i]) {
-				return false
-			}
-		}
-		return true
-	case json.Number:
-		y, ok := b.(json.Number)
-		if !ok {
-			return false
-		}
-		rx, okX := new(big.Rat).SetString(x.String())
-		ry, okY := new(big.Rat).SetString(y.String())
-		if !okX || !okY {
-			return x == y
-		}
-		return rx.Cmp(ry) == 0
-	default:
-		// string, bool, nil
-		return a == b
+// jsonKeyOfText is canonicalJSONKey of the data text spells, or "" when text
+// is not JSON.
+func jsonKeyOfText(text string) string {
+	raw, err := decodeJSON(text, false)
+	if err != nil {
+		return ""
 	}
+	return canonicalJSONKey(raw)
+}
+
+// canonicalJSONKey renders decoded JSON data so that equal data renders the
+// same: object keys sorted, strings quoted the same way, and numbers by value
+// (as a fraction, so `1.50`, `1.5` and `15e-1` agree).
+func canonicalJSONKey(raw any) string {
+	var b strings.Builder
+	writeCanonicalJSON(&b, raw)
+	return b.String()
+}
+
+func writeCanonicalJSON(b *strings.Builder, raw any) {
+	switch x := raw.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		b.WriteByte('{')
+		for i, k := range keys {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(strconv.Quote(k))
+			b.WriteByte(':')
+			writeCanonicalJSON(b, x[k])
+		}
+		b.WriteByte('}')
+	case []any:
+		b.WriteByte('[')
+		for i, e := range x {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			writeCanonicalJSON(b, e)
+		}
+		b.WriteByte(']')
+	case json.Number:
+		b.WriteString(canonicalNumber(x))
+	case string:
+		b.WriteString(strconv.Quote(x))
+	case bool:
+		b.WriteString(strconv.FormatBool(x))
+	case nil:
+		b.WriteString("null")
+	default:
+		fmt.Fprintf(b, "%v", x)
+	}
+}
+
+// canonicalNumber spells a number by its value. A huge exponent is left as
+// written rather than expanded, which only costs equality across spellings of
+// such numbers.
+func canonicalNumber(n json.Number) string {
+	s := n.String()
+	if i := strings.IndexAny(s, "eE"); i >= 0 {
+		exp, err := strconv.Atoi(strings.TrimPrefix(s[i+1:], "+"))
+		if err != nil || exp > 1000 || exp < -1000 {
+			return "#" + s
+		}
+	}
+	r, ok := new(big.Rat).SetString(s)
+	if !ok {
+		return "#" + s
+	}
+	return r.RatString()
 }
 
 // canonicalJSONNumbers returns raw with every number spelled as JSON. JSON
@@ -967,17 +1036,17 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 		if isJSONScalar(mod) {
 			// A String becomes a JSON value only if it is JSON, held
 			// compact. JSON null is Dang null, as when decoding.
-			text, err := compactJSONText(val.Val)
+			text, raw, err := compactJSONText(val.Val)
 			if err != nil {
 				return nil, materializeError(path, "%s", err.Error())
 			}
-			if text == "null" {
+			if raw == nil {
 				if _, nonNull := target.(hm.NonNullType); nonNull {
 					return nil, materializeError(path, "null is not allowed for %s", target.Name())
 				}
 				return NullValue{}, nil
 			}
-			return ScalarValue{Val: text, ScalarType: mod}, nil
+			return ScalarValue{Val: text, ScalarType: mod, jsonKey: canonicalJSONKey(raw)}, nil
 		}
 		// A scalar with a new() hook — Dang-defined or Go-native (Regexp's
 		// compile check) — computes its canonical string at materialization.
