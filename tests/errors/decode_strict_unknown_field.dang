@@ -13,6 +13,10 @@ let modules: [Module!]! = YAML.decode(
     source:
       path: ./one
       tomlTabel: deps
+  - name: two
+    sauce: ./two
+    source:
+      path: ./two
   """,
   strict: true,
 )

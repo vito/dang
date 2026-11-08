@@ -744,7 +744,7 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 		}
 		return val, nil
 	case DeferredValue:
-		return materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec, v.Strict)
+		return materializeDeferred(ctx, scope, v, target, path)
 	case StringValue:
 		return materializeStringValue(ctx, scope, v, target, path)
 	case ScalarValue:
@@ -819,9 +819,11 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 }
 
 // materializeDecoded converts decoded data (raw) to a value of target. codec
-// maps field names to input keys; strict rejects input keys that no field of a
-// target object reads (see rejectUnknownKeys).
-func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string, codec Codec, strict bool) (Value, error) {
+// maps field names to input keys. strict is nil for a plain decode; for a
+// strict one it collects the input keys no field of a target object reads
+// (see strictDecode), which materializeDeferred reports once the whole value
+// is built.
+func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string, codec Codec, strict *strictDecode) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
 			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
@@ -835,7 +837,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 
 	switch target.(type) {
 	case hm.TypeVariable, hm.NullableTypeVariable, DecodedType:
-		return DeferredValue{Raw: raw, Codec: codec, Strict: strict}, nil
+		return DeferredValue{Raw: raw, Codec: codec, Strict: strict != nil}, nil
 	}
 
 	if union, ok := target.(*hm.UnionType); ok {
@@ -970,22 +972,39 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 	return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", target.Name())
 }
 
-func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, union *hm.UnionType, path string, codec Codec, strict bool) (Value, error) {
+// materializeDecodedUnion materializes raw as the first option it fits. Under
+// strict decoding an option fits cleanly only if it leaves no unknown keys;
+// if none does, the first option that fits at all is taken, with its unknown
+// keys reported, since that is the likeliest reading of the input.
+func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, union *hm.UnionType, path string, codec Codec, strict *strictDecode) (Value, error) {
 	var lastErr error
+	var fallback Value
+	var fallbackStrict *strictDecode
 	for _, option := range union.Options {
-		val, err := materializeDecoded(ctx, scope, raw, option, path, codec, strict)
-		if err == nil {
+		attempt := strict.fork()
+		val, err := materializeDecoded(ctx, scope, raw, option, path, codec, attempt)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt == nil || len(attempt.unknown) == 0 {
 			return val, nil
 		}
-		lastErr = err
+		if fallback == nil {
+			fallback, fallbackStrict = val, attempt
+		}
+	}
+	if fallback != nil {
+		strict.unknown = append(strict.unknown, fallbackStrict.unknown...)
+		return fallback, nil
 	}
 	if lastErr != nil {
 		return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", union.Name())
 	}
-	return DeferredValue{Raw: raw, Codec: codec, Strict: strict}, nil
+	return DeferredValue{Raw: raw, Codec: codec, Strict: strict != nil}, nil
 }
 
-func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec, strict bool) (Value, error) {
+func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec, strict *strictDecode) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
@@ -999,6 +1018,14 @@ func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod 
 	args, err := materializeConstructorArgs(ctx, scope, obj, mod, callable, path, codec, strict)
 	if err != nil {
 		return nil, err
+	}
+
+	if strict.failed() {
+		// The decode will raise its unknown keys, so this value is never
+		// used: don't run the constructor (a custom new() may have effects,
+		// or raise and hide the unknown keys). The arguments were still
+		// walked, collecting the keys nested in them.
+		return NullValue{}, nil
 	}
 
 	return callable.Call(ctx, scope, args)
@@ -1039,18 +1066,16 @@ func constructorFor(ctx context.Context, scope ValueScope, mod *Type) (Callable,
 	return nil, fmt.Errorf("constructor for %s not found", mod.Name())
 }
 
-func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec, strict bool) (map[string]Value, error) {
+func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, mod *Type, callable Callable, path string, codec Codec, strict *strictDecode) (map[string]Value, error) {
 	args := map[string]Value{}
 
 	if constructor, ok := callable.(*ConstructorFunction); ok {
-		if strict {
+		if strict != nil {
 			names := make([]string, len(constructor.Parameters))
 			for i, param := range constructor.Parameters {
 				names[i] = param.Name.Name
 			}
-			if err := rejectUnknownKeys(obj, mod, names, path, codec); err != nil {
-				return nil, err
-			}
+			strict.noteUnknownKeys(obj, mod, names, path, codec)
 		}
 		paramTypes := parameterTypes(callable)
 		for _, param := range constructor.Parameters {
@@ -1086,10 +1111,8 @@ func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[s
 	}
 
 	paramTypes := parameterTypes(callable)
-	if strict {
-		if err := rejectUnknownKeys(obj, mod, callable.ParameterNames(), path, codec); err != nil {
-			return nil, err
-		}
+	if strict != nil {
+		strict.noteUnknownKeys(obj, mod, callable.ParameterNames(), path, codec)
 	}
 	for _, name := range callable.ParameterNames() {
 		paramType := paramTypes[name]
@@ -1114,21 +1137,19 @@ func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[s
 	return args, nil
 }
 
-func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec, strict bool) (Value, error) {
+func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string, codec Codec, strict *strictDecode) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
 	}
 
 	fields := mod.AsRecord().Fields
-	if strict {
+	if strict != nil {
 		names := make([]string, len(fields))
 		for i, field := range fields {
 			names[i] = field.Key
 		}
-		if err := rejectUnknownKeys(obj, mod, names, path, codec); err != nil {
-			return nil, err
-		}
+		strict.noteUnknownKeys(obj, mod, names, path, codec)
 	}
 
 	value := NewObject(mod)
@@ -1159,16 +1180,74 @@ func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, 
 	return value, nil
 }
 
-// rejectUnknownKeys is strict decoding's check on an object being materialized
+// materializeDeferred materializes a decode result at target. A strict decode
+// collects every unknown key across the whole value (see strictDecode) and
+// reports them together, one `<path>: field <key> not found` line each, as
+// yaml.v3's KnownFields does, rather than stopping at the first. Any other
+// error still stops materialization at once and is returned as it is.
+func materializeDeferred(ctx context.Context, scope ValueScope, v DeferredValue, target hm.Type, path string) (Value, error) {
+	if !v.Strict {
+		return materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec, nil)
+	}
+	strict := &strictDecode{}
+	val, err := materializeDecoded(ctx, scope, v.Raw, target, path, v.Codec, strict)
+	if err != nil {
+		return nil, err
+	}
+	if err := strict.err(); err != nil {
+		return nil, err
+	}
+	return val, nil
+}
+
+// strictDecode collects the unknown keys a strict decode meets while one
+// value materializes. A nil *strictDecode is a plain decode.
+type strictDecode struct {
+	// unknown holds one `<path>: field <key> not found` line per key.
+	unknown []string
+	// parent is the collector a fork was made from.
+	parent *strictDecode
+}
+
+// fork returns a collector for a tentative materialization (a union option),
+// whose keys the caller merges back only if it keeps the result.
+func (s *strictDecode) fork() *strictDecode {
+	if s == nil {
+		return nil
+	}
+	return &strictDecode{parent: s}
+}
+
+// failed reports whether an unknown key has been met, here or in the
+// materialization a fork belongs to, so the decode is bound to fail.
+func (s *strictDecode) failed() bool {
+	for ; s != nil; s = s.parent {
+		if len(s.unknown) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// err reports every collected key, one per line, in the order materialization
+// met them: an object's own keys (sorted, since decoded objects no longer
+// remember document order) before those of its fields, fields in declaration
+// order, list elements by index and map entries by key.
+func (s *strictDecode) err() error {
+	if len(s.unknown) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s", strings.Join(s.unknown, "\n"))
+}
+
+// noteUnknownKeys is strict decoding's check on an object being materialized
 // as mod from params (its constructor's parameters, or a record's fields): each
 // key of obj must be the codec key (@FORMAT.field renames it; @FORMAT.ignore
 // means none) of one of params or of one of mod's data fields. The data fields
 // count even when no parameter sets them (a `let` field, or a field a custom
 // new() computes), because encode writes them, so a value's own encoding
-// decodes back strictly. The unknown key reported is the first in sorted
-// order, since decoded objects no longer remember document order. The wording
-// follows yaml.v3's KnownFields.
-func rejectUnknownKeys(obj map[string]any, mod *Type, params []string, path string, codec Codec) error {
+// decodes back strictly. The wording follows yaml.v3's KnownFields.
+func (s *strictDecode) noteUnknownKeys(obj map[string]any, mod *Type, params []string, path string, codec Codec) {
 	known := make(map[string]bool, len(params))
 	accept := func(name string) {
 		if key, ignore := codec.fieldKey(mod, name); !ignore {
@@ -1189,11 +1268,10 @@ func rejectUnknownKeys(obj map[string]any, mod *Type, params []string, path stri
 			unknown = append(unknown, k)
 		}
 	}
-	if len(unknown) == 0 {
-		return nil
-	}
 	sort.Strings(unknown)
-	return materializeDeferredError(path, "field %s not found", unknown[0])
+	for _, k := range unknown {
+		s.unknown = append(s.unknown, materializeDeferredError(path, "field %s not found", k).Error())
+	}
 }
 
 func parameterTypes(val Value) map[string]hm.Type {

@@ -74,6 +74,73 @@ let unknownTOML = (
 }
 assert { unknownTOML == "field bogus not found" }
 
+# every unknown key in the whole value is reported at once, one line each: an
+# object's own keys (sorted) before its fields', in field order, list elements
+# by index and map entries by key. Unknown-key paths are typed paths, so a map
+# entry reads ["key"].
+let everyUnknown = (
+  YAML.decode(
+    ```yaml
+    modules:
+    - name: a
+      zeta: 1
+      alpha: 2
+      source: {path: x, tomlTabel: t}
+      labels: {web: label}
+    - name: b
+      source: {path: y, extra: 1}
+    top: 1
+    ```,
+    strict: true,
+  ) :: Config!
+) rescue {
+  err: Error => err.message
+}
+assert {
+  everyUnknown == [
+    "field top not found",
+    "modules[0]: field alpha not found",
+    "modules[0]: field zeta not found",
+    "modules[0].source: field tomlTabel not found",
+    "modules[1].source: field extra not found",
+  ].join("\n")
+}
+
+let mapEntries = (
+  JSON.decode(
+    """{"web": {"path": "x", "hots": 1}, "db": {"path": "y", "prot": 2}}""",
+    strict: true,
+  ) :: Map[Source!]!
+) rescue {
+  err: Error => err.message
+}
+assert { mapEntries == """["db"]: field prot not found""" + "\n" + """["web"]: field hots not found""" }
+
+# any other error still stops the decode on its own
+let missing = (JSON.decode("""{"typo": 1}""", strict: true) :: Source!) rescue {
+  err: Error => err.message
+}
+assert { missing == "path: missing required field" }
+
+# once a key is unknown the decode will fail, so constructors no longer run:
+# a custom new() raising can't hide the unknown keys
+type Port {
+  n: Int!
+
+  new(n: Int!) {
+    if (n < 1) {
+      raise "bad port"
+    }
+    self.n = n
+    self
+  }
+}
+
+let typoThenBadPort = (JSON.decode("""[{"n": 1, "typo": 5}, {"n": 0}]""", strict: true) :: [Port!]!) rescue {
+  err: Error => err.message
+}
+assert { typoThenBadPort == "[0]: field typo not found" }
+
 # a renamed field is read only under its new key
 let oldName = (JSON.decode("""{"path": "x", "table": "t"}""", strict: true) :: Source!) rescue {
   err: Error => err.message
@@ -152,6 +219,15 @@ let dupMap = (JSON.decode("""{"a": 1, "a": 2}""", strict: true) :: Map[Int!]!) r
   err: Error => err.message
 }
 assert { dupMap == "JSON.decode: invalid JSON: line 1: field a already set" }
+
+# duplicates are found while parsing, before any type is known, so their paths
+# are document paths: a map entry reads `web`, not ["web"]
+let dupInMap = (
+  YAML.decode("web:\n  path: x\n  path: y\n", strict: true) :: Map[Source!]!
+) rescue {
+  err: Error => err.message
+}
+assert { dupInMap == "YAML.decode: invalid YAML: web: line 3: field path already set" }
 
 # a YAML merge key supplies defaults that the mapping's own keys override;
 # that is not a duplicate

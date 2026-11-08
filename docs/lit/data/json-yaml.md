@@ -93,10 +93,16 @@ lenient.name
 ### Strict decoding
 
 Pass `strict: true` to catch typos and stale keys instead. A key that no field
-of the expected type reads is an error, naming the object's path and the key:
+of the expected type reads is an error, naming the object's path and the key.
+Every such key in the whole value is reported at once, one per line:
 
 ```dang-failure
-JSON.decode("""{"name": "x", "count": 1, "extra": true}""", strict: true) :: Summary!
+JSON.decode("""
+{
+  "nightly": {"name": "x", "count": 1, "extra": true},
+  "weekly": {"name": "y", "cuont": 2, "count": 3}
+}
+""", strict: true) :: Map[Summary!]!
 ```
 
 The check applies at every level of a type or record, under each field's
@@ -116,11 +122,18 @@ either way:
 
 ```dang-failure
 YAML.decode("""
-name: x
-count: 1
-name: y
-""", strict: true) :: Summary!
+nightly:
+  name: x
+  count: 1
+  name: y
+""", strict: true) :: Map[Summary!]!
 ```
+
+The two errors locate a problem differently. A repeated key is found while
+parsing, before any type is involved, so its path is the document's (`nightly`)
+and it carries a line number. An unknown key is found while building the
+expected type, so its path is the typed path used by every other decode error,
+where a map entry reads `["nightly"]`.
 
 YAML anchors, aliases, and `<<` merge keys are resolved before decoding. A
 mapping's own keys win over merged ones, and earlier mappings in a `<<: [*a,
