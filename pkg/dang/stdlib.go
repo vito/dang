@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -166,6 +168,28 @@ func registerStdlib() {
 				return nil, fmt.Errorf("fromBase64: %w", err)
 			}
 			return ToValue(string(decoded))
+		})
+
+	// String.toInt method: toInt(base: Int = 10) -> Int!
+	Method(StringType, "toInt").
+		Doc("parses the string as an integer in the given base (2 to 36, default 10), with an optional leading + or -. Raises if the string isn't a valid integer in that base or doesn't fit in an Int.").
+		Example(`"ff".toInt(base: 16)`).
+		Params("base", IntType, IntValue{Val: 10}).
+		Returns(NonNull(IntType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			base := args.GetInt("base")
+			if base < 2 || base > 36 {
+				return nil, fmt.Errorf("toInt: base must be between 2 and 36, got %d", base)
+			}
+			n, err := strconv.ParseInt(str, base, strconv.IntSize)
+			if err != nil {
+				if errors.Is(err, strconv.ErrRange) {
+					return nil, fmt.Errorf("toInt: %q is out of range for Int", str)
+				}
+				return nil, fmt.Errorf("toInt: %q is not a base-%d integer", str, base)
+			}
+			return IntValue{Val: int(n)}, nil
 		})
 
 	// String.trimPrefix method: trimPrefix(prefix: String!) -> String!
@@ -426,6 +450,77 @@ func registerStdlib() {
 				}
 			}
 			return BoolValue{Val: false}, nil
+		})
+
+	// List.indexOf method: indexOf(element: a) -> Int
+	Method(ListTypeModule, "indexOf").
+		Doc("returns the index of the first element equal to the given one, or null if the list doesn't contain it").
+		Example(`["a", "b", "c"].indexOf("b")`).
+		Params("element", TypeVar('a')).
+		Returns(IntType).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			element, _ := args.Get("element")
+
+			for i, item := range list.Elements {
+				if valuesEqual(item, element) {
+					return IntValue{Val: i}, nil
+				}
+			}
+			return NullValue{}, nil
+		})
+
+	// List.flatMap method: flatMap(fn: \(a, Int!) -> [b]!) -> [b]!
+	Method(ListTypeModule, "flatMap").
+		Doc("returns a new list concatenating the lists the block returns for each element").
+		Example(`[1, 2, 3].flatMap { x => [x, x * 10] }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "index",
+				Value: hm.NewScheme(nil, NonNull(IntType)),
+			}),
+			NonNull(ListOf(TypeVar('b'))),
+		)).
+		Returns(NonNull(ListOf(TypeVar('b')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("flatMap requires a block argument")
+			}
+			fn := *args.Block
+
+			// The block's declared return type is [b]!; its element type is
+			// the result's.
+			fnType, ok := fn.Type().(*hm.FunctionType)
+			if !ok {
+				return nil, fmt.Errorf("flatMap expects a function type, got %T", fn.Type())
+			}
+			var resultElemType hm.Type = TypeVar('b')
+			if lt, ok := unwrapNonNull(fnType.ReturnType()).(ListType); ok {
+				resultElemType = lt.Type
+			}
+
+			result := []Value{}
+			for i, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item, IntValue{i})
+				if err != nil {
+					return nil, fmt.Errorf("flatMap function: %w", err)
+				}
+				sub, ok := res.(ListValue)
+				if !ok {
+					return nil, fmt.Errorf("flatMap function must return a list, got %T", res)
+				}
+				result = append(result, sub.Elements...)
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: resultElemType,
+			}, nil
 		})
 
 	// List.uniq method: uniq -> [a]!

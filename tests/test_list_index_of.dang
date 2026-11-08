@@ -1,0 +1,34 @@
+# Test list.indexOf() method
+
+let words: [String!]! = ["a", "b", "c", "b"]
+
+# The index of the first equal element.
+let b: Int = words.indexOf("b")
+assert { b == 1 }
+assert { words.indexOf("a") == 0 }
+
+# Absent elements yield null, not -1.
+assert { words.indexOf("z") == null }
+
+# Empty lists never contain anything.
+let empty: [Int!]! = []
+assert { empty.indexOf(1) == null }
+
+# Dang equality, so nested lists and records match by value.
+assert { [[1], [2, 3]].indexOf([2, 3]) == 1 }
+assert { [{{a: 1}}, {{a: 2}}].indexOf({{a: 2}}) == 1 }
+
+# Nullable elements can be searched for, null included.
+assert { [1, null, 3].indexOf(null) == 1 }
+
+# The result narrows like any nullable Int.
+let i = words.indexOf("c")
+if (i != null) {
+  assert { words[i] == "c" }
+}
+
+# Nullable list receivers propagate null.
+let nullableWords: [String!] = null
+assert { nullableWords.indexOf("a") == null }
+
+print("List indexOf tests passed!")

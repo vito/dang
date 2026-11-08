@@ -41,6 +41,20 @@ let docs = "docs/../README.md" :: Path!
 (docs :: String!).toUpper
 ```
 
+`.toInt` parses an integer, in base 10 unless you pass a `base` from 2 to 36.
+A cast can't do this — `"42" :: Int!` is a type error:
+
+```dang
+["42".toInt, "ff".toInt(base: 16), "101".toInt(base: 2)]
+```
+
+Anything that isn't an integer in that base raises, so `rescue` supplies a
+fallback (see [#errors]):
+
+```dang
+"0x1f".toInt(base: 16) rescue -1
+```
+
 ## Inspection
 
 `.length` counts characters (Unicode code points, not bytes):

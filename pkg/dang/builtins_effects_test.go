@@ -25,6 +25,7 @@ var builtinsCallingFunctions = []string{
 	"List.each",
 	"List.filter",
 	"List.find",
+	"List.flatMap",
 	"List.map",
 	"List.reduce",
 	"List.reject",
