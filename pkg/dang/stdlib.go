@@ -599,6 +599,34 @@ func registerStdlib() {
 			}, nil
 		})
 
+	// List.sum method: sum[a: Numeric] -> a!
+	//
+	// The bound on the element variable checks the receiver's elements at
+	// type-check time (see boundedElems), like sort's. An empty list's sum
+	// is the zero of its runtime element type: 0.0 when the list is known
+	// to hold Floats, 0 otherwise. A [] typed only by its surroundings
+	// (`xs ?? []`) or a list built in a generic body (`xs.map` with a
+	// rigid result) carries no concrete element type at runtime.
+	Method(ListTypeModule, "sum").
+		Doc("adds up a list of numbers (Int! or Float!); an empty list sums to 0, or 0.0 when it is known to hold Floats").
+		Example(`[1, 2, 3, 4].sum`).
+		Returns(NumericVar('a')).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			var total Value = IntValue{Val: 0}
+			if et, _ := stripNonNull(list.ElemType); et == FloatType {
+				total = FloatValue{Val: 0}
+			}
+			for _, item := range list.Elements {
+				var err error
+				total, err = additionEval(total, item)
+				if err != nil {
+					return nil, fmt.Errorf("sum: %w", err)
+				}
+			}
+			return total, nil
+		})
+
 	// List.reverse method: reverse -> [a]!
 	Method(ListTypeModule, "reverse").
 		Doc("returns a new list with the elements in reverse order").

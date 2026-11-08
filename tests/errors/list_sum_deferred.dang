@@ -1,0 +1,4 @@
+# The element type isn't known yet: the bound waits for it.
+let xs = []
+let total = xs.sum
+xs += ["a"]

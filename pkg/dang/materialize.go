@@ -765,7 +765,15 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			}
 			elements[i] = materialized
 		}
-		return ListValue{Elements: elements, ElemType: elemTarget}, nil
+		// A generic target (a [a!]! parameter) says less about the elements
+		// than the list itself may: keep the list's element type then, so a
+		// [Float!]! passed through a type variable is still known to hold
+		// Floats (an empty one's sum is 0.0).
+		elemType := elemTarget
+		if len(elemTarget.FreeTypeVar()) > 0 && v.ElemType != nil {
+			elemType = v.ElemType
+		}
+		return ListValue{Elements: elements, ElemType: elemType}, nil
 	case MapValue:
 		valTarget, ok := mapValueTarget(target)
 		if !ok {

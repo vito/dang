@@ -751,6 +751,13 @@ func OrderedVar(r rune) hm.Type {
 	return BoundedVar(r, orderedConstraint)
 }
 
+// NumericVar creates a type variable bounded by Numeric, like the `a` of
+// `[a: Numeric]`. A list method's element variable `a` bounded so takes its
+// receiver as `[a!]!`: the elements must be Int! or Float!.
+func NumericVar(r rune) hm.Type {
+	return BoundedVar(r, numericConstraint)
+}
+
 // BoundedVar creates a type variable bounded by the given constraints.
 func BoundedVar(r rune, cs ...*BuiltinConstraint) hm.Type {
 	tv := hm.TypeVariable(r)

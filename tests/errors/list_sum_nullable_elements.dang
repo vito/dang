@@ -1,0 +1,2 @@
+let scores = [10, null, 30]
+let total = scores.sum

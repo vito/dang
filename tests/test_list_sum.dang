@@ -1,0 +1,45 @@
+# Test list.sum, bounded by Numeric
+
+assert { [1, 2, 3, 4].sum == 10 }
+let floatTotal: Float! = [1.5, 2.25].sum
+assert { floatTotal == 3.75 }
+assert { ["ab", "cde"].map { s => s.length }.sum == 5 }
+assert { [1, 2, 3].sum == [1, 2, 3].reduce(0) { a, b => a + b } }
+
+# A Numeric type parameter's lists sum too.
+genericSum[a: Numeric](xs: [a!]!): a! { xs.sum }
+
+assert { genericSum([4, 5]) == 9 }
+assert { genericSum([0.5, 0.25]) == 0.75 }
+
+# An empty list sums to 0, or 0.0 when it is known to hold Floats.
+let noInts: [Int!]! = []
+assert { noInts.sum == 0 }
+let floats: [Float!]! = [1.0, 2.0]
+let noFloats = floats.filter { x => x > 5.0 }
+assert { (noFloats.sum + 1) / 2 == 0.5 }
+let annotated: [Float!]! = []
+assert { (annotated.sum + 1) / 2 == 0.5 }
+# Passing through a type variable keeps the list's element type.
+let viaGeneric: Float! = genericSum(annotated)
+assert { (viaGeneric + 1) / 2 == 0.5 }
+
+# The element type may be learned after sum is called.
+let later = []
+later += [3, 4]
+assert { later.sum == 7 }
+
+deferredSum: Float! {
+  let pending = []
+  let before = pending.sum
+  pending += [1.5, 2.5]
+  before + pending.sum
+}
+
+assert { deferredSum == 4.0 }
+
+# Nullable list receivers propagate null.
+let nullableInts: [Int!] = null
+assert { nullableInts.sum == null }
+
+print("List sum tests passed!")
