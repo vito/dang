@@ -497,6 +497,29 @@ func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
 	return ScalarValue{Val: strings.TrimSuffix(buf.String(), "\n"), ScalarType: mod}, nil
 }
 
+// compactJSONText validates s as a single JSON value and returns it with
+// insignificant whitespace removed. Everything else stays as written: object
+// keys keep their order, and strings and numbers their spelling.
+func compactJSONText(s string) (string, error) {
+	if _, err := decodeJSON(s, false); err != nil {
+		return "", fmt.Errorf("cannot use %s as JSON: %w", truncateForError(s), err)
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, []byte(s)); err != nil {
+		return "", fmt.Errorf("cannot use %s as JSON: invalid JSON: %w", truncateForError(s), err)
+	}
+	return buf.String(), nil
+}
+
+// truncateForError quotes s for an error message, cut short if it is long.
+func truncateForError(s string) string {
+	const limit = 60
+	if len(s) > limit {
+		return strconv.Quote(s[:limit]) + "..."
+	}
+	return strconv.Quote(s)
+}
+
 // canonicalJSONNumbers returns raw with every number spelled as JSON. JSON
 // and TOML decode numbers in JSON form already, but YAML keeps a number's
 // source text (`0755`, `+1`, `-.5`), which is not JSON; those are respelled
@@ -882,6 +905,15 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 	case ScalarKind:
 		if isPrimitiveScalar(mod) {
 			return val, nil
+		}
+		if isJSONScalar(mod) {
+			// A String becomes a JSON value only if it is JSON, held
+			// compact so equal text compares equal.
+			text, err := compactJSONText(val.Val)
+			if err != nil {
+				return nil, materializeError(path, "%s", err.Error())
+			}
+			return ScalarValue{Val: text, ScalarType: mod}, nil
 		}
 		// A scalar with a new() hook — Dang-defined or Go-native (Regexp's
 		// compile check) — computes its canonical string at materialization.

@@ -76,11 +76,29 @@ assert {
   ((JSON.decode("{\"a\": null}") :: Map[JSON!]!) rescue null) == null
 }
 
-# A String cast to JSON is taken as JSON text; encoding text that is not JSON
-# raises rather than emitting it.
-let text: JSON! = "{\"ok\": true}"
-assert { JSON.encode([text]) == "[{\"ok\":true}]" }
-let notJSON: JSON! = "nope"
-assert { (JSON.encode(notJSON) rescue "invalid") == "invalid" }
+# A String becomes a JSON value only if it is JSON, compacted: whitespace goes,
+# while object keys keep the order they were written in. So equal data
+# compares equal however it was spaced, and a cast equals a decode.
+let text: JSON! = "{ \"ok\": true,\n  \"n\": [1, 2.50] }"
+assert { toString(text) == "{\"ok\":true,\"n\":[1,2.50]}" }
+assert { JSON.encode([text]) == "[{\"ok\":true,\"n\":[1,2.50]}]" }
+let spaced = "{\"a\": 1}"
+assert { (spaced :: JSON!) == (JSON.decode("{\"a\":1}") :: JSON!) }
+assert { (JSON.decode(spaced) :: JSON!) == "{ \"a\" : 1 }" }
+
+takesJSON(j: JSON!): String! { toString(j) }
+
+assert { takesJSON(" [true] ") == "[true]" }
+assert { takesJSON(`{"n": ${1 + 1}}`) == "{\"n\":2}" }
+let fromList: [JSON!]! = ["1", " \"s\" "]
+assert { fromList.map { j => toString(j) } == ["1", "\"s\""] }
+
+# Text that is not JSON raises where it becomes a JSON value.
+let notJSON = "{nope"
+let castError = (notJSON :: JSON!) rescue {
+  e: Error => e.message
+}
+assert { castError == "cannot use \"{nope\" as JSON: invalid JSON: invalid character 'n' looking for beginning of object key string" }
+assert { (takesJSON("1 2") rescue "invalid") == "invalid" }
 
 print("JSON value tests passed!")

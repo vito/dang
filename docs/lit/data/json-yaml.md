@@ -231,6 +231,20 @@ it round-trips:
 JSON.encode({{ first: modules[0]! }})
 ```
 
+A `String` turns into a JSON value only if it is JSON. It is compacted on
+the way in, keeping its keys in the order written, so equal data compares
+equal however it was spaced:
+
+```dang
+let spaced = """{ "name": "lint" }"""
+
+(spaced :: JSON!) == (JSON.decode(spaced) :: JSON!)
+```
+
+```dang-failure
+"{name: lint}" :: JSON!
+```
+
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
