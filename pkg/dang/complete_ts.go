@@ -27,30 +27,13 @@ func init() {
 // Complete returns completions for the given source text at the given cursor
 // position, using env for type resolution.
 //
-// This is the single entry point for both LSP and REPL completion. It uses
-// tree-sitter to parse the text and classify the cursor context, then resolves
-// types from the provided environment.
+// It uses tree-sitter to parse the text and classify the cursor context (see
+// CompletionContextAt), then resolves types from the provided environment.
 func Complete(ctx context.Context, env TypeScope, text string, line, col int) CompletionResult {
-	source := []byte(text)
-
-	// tree-sitter parsers are not thread-safe; serialize access.
-	tsMu.Lock()
-	tree := tsParser.Parse(source, nil)
-	tsMu.Unlock()
-
-	if tree == nil {
-		return CompletionResult{}
-	}
-	defer tree.Close()
-
-	root := tree.RootNode()
-
-	cc := classifyCursorContext(root, source, uint(line), uint(col))
+	cc, replaceFrom := CompletionContextAt(text, line, col)
 	if cc == nil {
 		return CompletionResult{}
 	}
-
-	replaceFrom := computeReplaceFrom(text, line, col, cc)
 
 	var items []Completion
 	switch cc.Kind {
@@ -66,6 +49,31 @@ func Complete(ctx context.Context, env TypeScope, text string, line, col int) Co
 		Items:       items,
 		ReplaceFrom: replaceFrom,
 	}
+}
+
+// CompletionContextAt classifies the cursor at the given 0-based line and
+// byte column of text: what kind of completion it needs, and what has been
+// typed of it. replaceFrom is the byte offset in text where the token being
+// completed starts. It returns nil where there is nothing to complete, e.g.
+// inside a string literal.
+func CompletionContextAt(text string, line, col int) (cc *CompletionContext, replaceFrom int) {
+	source := []byte(text)
+
+	// tree-sitter parsers are not thread-safe; serialize access.
+	tsMu.Lock()
+	tree := tsParser.Parse(source, nil)
+	tsMu.Unlock()
+
+	if tree == nil {
+		return nil, 0
+	}
+	defer tree.Close()
+
+	cc = classifyCursorContext(tree.RootNode(), source, uint(line), uint(col))
+	if cc == nil {
+		return nil, 0
+	}
+	return cc, computeReplaceFrom(text, line, col, cc)
 }
 
 // computeReplaceFrom calculates the byte offset in text where the partial
