@@ -1642,6 +1642,13 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, objectArgType, ifaceArgType)
 		}
+		// The interface's own type variables stand for any type its callers
+		// pick, which a bounded parameter of the object's method
+		// (`pick[a: Ordered]`) must then accept too.
+		if err := checkImplementationBounds(ifaceArgType, objectArgType); err != nil {
+			return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass any type for %s",
+				fieldName, ifaceArg.Key, err, ifaceArgType)
+		}
 	}
 
 	// Check that any additional arguments in object are optional

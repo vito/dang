@@ -133,6 +133,21 @@ assert { Ranking.minOf(3, 2) == 2 }
 assert { Ranking.minOf("b", "a") == "a" }
 assert { Ranking.emptyCount == 0 }
 
+# A bounded method implements an interface method of an Ordered type
+interface IntPicker {
+  pick(x: Int!, y: Int!): Int!
+}
+
+type Smaller implements IntPicker {
+  pick[a: Ordered](x: a!, y: a!): a! {
+    if (y < x) { y } else { x }
+  }
+}
+
+usePicker(p: IntPicker!): Int! { p.pick(3, 2) }
+
+assert { usePicker(Smaller) == 2 }
+
 # A nested function sees the enclosing function's bounded parameter
 clamp[a: Ordered](x: a!, lo: a!, hi: a!): a! {
   atLeast(v: a!): a! {

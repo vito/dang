@@ -212,3 +212,27 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 	}
 	return &loc
 }
+
+// checkImplementationBounds rejects a parameter type of an object's method
+// (impl) whose bounded type variable the interface's parameter type
+// (iface) doesn't satisfy. The interface's type variables stand for any type
+// its callers pick, so they are checked as rigid ones, with no bound: an
+// interface's `pick(x: a!)` can't be implemented by `pick[a: Ordered](x: a!)`,
+// whose `<` would then meet values with no order. A concrete type the
+// interface names (`pick(x: Int!)`) satisfies the bound as usual.
+func checkImplementationBounds(iface, impl hm.Type) error {
+	bounded := false
+	for tv := range impl.FreeTypeVar() {
+		bounded = bounded || (tv.IsOrdered() && !tv.IsRigid())
+	}
+	if !bounded {
+		return nil
+	}
+	skolem, _ := skolemSubs(iface)
+	_, err := hm.Assignable(iface.Apply(skolem).(hm.Type), impl)
+	var ce hm.ConstraintError
+	if errors.As(err, &ce) {
+		return fmt.Errorf("the implementation bounds %s by Ordered", ce.Var.Unbounded())
+	}
+	return nil
+}

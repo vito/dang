@@ -1,0 +1,10 @@
+interface Picker {
+  pick(x: a!, y: a!): a!
+}
+
+# Callers of Picker.pick may pass values with no order.
+type Smaller implements Picker {
+  pick[a: Ordered](x: a!, y: a!): a! {
+    if (y < x) { y } else { x }
+  }
+}
