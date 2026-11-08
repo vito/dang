@@ -32,7 +32,7 @@ func Instantiate(fresher Fresher, scheme *Scheme) Type {
 	// Create fresh type variables for each quantified variable
 	subs := NewSubs()
 	for _, tv := range scheme.tvs {
-		fresh := fresher.Fresh()
+		fresh := fresher.Fresh() | tv&orderedBit
 		subs.Add(tv, fresh)
 	}
 

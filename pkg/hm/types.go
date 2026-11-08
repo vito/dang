@@ -61,9 +61,10 @@ const (
 // lastID is the id of the last fresh variable minted.
 var lastID atomic.Int64
 
-// Freshen returns a new flexible variable named like tv.
+// Freshen returns a new flexible variable named like tv, keeping its bound
+// (see Ordered).
 func Freshen(tv TypeVariable) TypeVariable {
-	return tv&nameMask | TypeVariable(lastID.Add(1)<<nameBits)
+	return tv&(nameMask|orderedBit) | TypeVariable(lastID.Add(1)<<nameBits)
 }
 
 // Rigid returns the rigid (skolem) counterpart of a flexible type variable.
@@ -102,7 +103,7 @@ func canonical(t Type) Type {
 		if subs == nil {
 			subs = NewSubs()
 		}
-		subs.Add(tv, TypeVariable(canonicalBase+len(subs)))
+		subs.Add(tv, TypeVariable(canonicalBase+len(subs))|tv&orderedBit)
 	}
 	walk = func(t Type) {
 		switch v := t.(type) {
@@ -134,8 +135,10 @@ func (tv TypeVariable) IsRigid() bool {
 }
 
 // IsWritten reports whether tv is a flexible variable as an author writes
-// it, with no id: not one a fresher minted or Freshen copied.
+// it, with no id: not one a fresher minted or Freshen copied. Its bound, if
+// it was declared with one, doesn't count.
 func (tv TypeVariable) IsWritten() bool {
+	tv = tv.Unbounded()
 	return tv >= 0 && tv>>nameBits == 0 && tv < freshBase
 }
 

@@ -33,6 +33,16 @@ func (s Subs) Compose(other Subs) (Subs, error) {
 			if err != nil {
 				return nil, err
 			}
+			// A merge may widen both bindings to a common supertype,
+			// which tv's bound must still admit.
+			boundExtra, err := boundSubs(tv, merged)
+			if err != nil {
+				return nil, err
+			}
+			extraSubs, err = composeExtra(extraSubs, boundExtra)
+			if err != nil {
+				return nil, err
+			}
 			if len(extraSubs) > 0 {
 				var err error
 				result, err = result.mergeIn(extraSubs)
@@ -50,6 +60,17 @@ func (s Subs) Compose(other Subs) (Subs, error) {
 	return result, nil
 }
 
+// composeExtra composes two substitutions either of which may be empty.
+func composeExtra(a, b Subs) (Subs, error) {
+	switch {
+	case len(b) == 0:
+		return a, nil
+	case len(a) == 0:
+		return b, nil
+	}
+	return a.Compose(b)
+}
+
 func (s Subs) mergeIn(extra Subs) (Subs, error) {
 	result := make(Subs, len(s)+len(extra))
 	for tv, t := range s {
@@ -58,6 +79,14 @@ func (s Subs) mergeIn(extra Subs) (Subs, error) {
 	for tv, t := range extra {
 		if existing, exists := result[tv]; exists {
 			merged, moreSubs, err := mergeTypes(existing, t)
+			if err != nil {
+				return nil, err
+			}
+			boundExtra, err := boundSubs(tv, merged)
+			if err != nil {
+				return nil, err
+			}
+			moreSubs, err = composeExtra(moreSubs, boundExtra)
 			if err != nil {
 				return nil, err
 			}

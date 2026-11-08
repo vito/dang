@@ -140,12 +140,12 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 				// all component evidence is available.
 				componentSubs, err := assignable(comp1, comp2, allowCoercion)
 				if err != nil {
-					return nil, UnificationError{have, want}
+					return nil, unifyError(err, have, want)
 				}
 
 				subs, err = subs.Compose(componentSubs)
 				if err != nil {
-					return nil, UnificationError{have, want}
+					return nil, unifyError(err, have, want)
 				}
 			}
 			return subs, nil
@@ -210,11 +210,11 @@ func assignableFunction(have, want *FunctionType) (Subs, error) {
 	for _, p := range pairs {
 		componentSubs, err := assignable(p.from, p.to, false)
 		if err != nil {
-			return nil, UnificationError{have, want}
+			return nil, unifyError(err, have, want)
 		}
 		subs, err = subs.Compose(componentSubs)
 		if err != nil {
-			return nil, UnificationError{have, want}
+			return nil, unifyError(err, have, want)
 		}
 	}
 	// Composing widens a variable bound on both sides of the arrow to a
@@ -226,7 +226,7 @@ func assignableFunction(have, want *FunctionType) (Subs, error) {
 			from := p.from.Apply(subs).(Type)
 			to := p.to.Apply(subs).(Type)
 			if _, err := assignable(from, to, false); err != nil {
-				return nil, UnificationError{have, want}
+				return nil, unifyError(err, have, want)
 			}
 		}
 	}
@@ -249,12 +249,12 @@ func assignableFromUnion(have *UnionType, want Type, allowCoercion bool) (Subs, 
 		wantType := want.Apply(subs).(Type)
 		optionSubs, err := assignable(optionType, wantType, allowCoercion)
 		if err != nil {
-			return nil, UnificationError{have, want}
+			return nil, unifyError(err, have, want)
 		}
 		var composeErr error
 		subs, composeErr = subs.Compose(optionSubs)
 		if composeErr != nil {
-			return nil, UnificationError{have, want}
+			return nil, unifyError(composeErr, have, want)
 		}
 	}
 	return subs, nil
@@ -274,7 +274,9 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	if tv.IsRigid() {
 		if tv2, ok := t.(TypeVariable); ok && !tv2.IsRigid() {
 			subs := NewSubs()
-			subs.Add(tv2, tv)
+			if err := bind(subs, tv2, tv); err != nil {
+				return nil, err
+			}
 			return subs, nil
 		}
 		return nil, UnificationError{tv, t}
@@ -289,10 +291,14 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	// A weak variable meeting a flexible one keeps its identity: the
 	// flexible one, which nothing persists, takes the weak one on.
 	if tv2, ok := t.(TypeVariable); ok && tv.IsWeak() && !tv2.IsWeak() && !tv2.IsRigid() {
-		subs.Add(tv2, tv)
+		if err := bind(subs, tv2, tv); err != nil {
+			return nil, err
+		}
 		return subs, nil
 	}
-	subs.Add(tv, t)
+	if err := bind(subs, tv, t); err != nil {
+		return nil, err
+	}
 	return subs, nil
 }
 
@@ -309,13 +315,17 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 		}
 		// Never bind a rigid variable: a flexible one absorbs it instead.
 		// Nor a weak one to a flexible one, which nothing persists.
+		var err error
 		switch {
 		case !tv.IsRigid() && !(tv.IsWeak() && !tv2.IsWeak() && !tv2.IsRigid()):
-			subs.Add(tv.TypeVariable, tv2)
+			err = bind(subs, tv.TypeVariable, tv2)
 		case !tv2.IsRigid():
-			subs.Add(tv2.TypeVariable, tv)
+			err = bind(subs, tv2.TypeVariable, tv)
 		default:
 			return nil, UnificationError{tv, t}
+		}
+		if err != nil {
+			return nil, err
 		}
 		return subs, nil
 	}
@@ -331,12 +341,16 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 			if tv.IsRigid() {
 				return nil, UnificationError{tv, t}
 			}
-			subs.Add(tv.TypeVariable, tv2)
+			if err := bind(subs, tv.TypeVariable, tv2); err != nil {
+				return nil, err
+			}
 			return subs, nil
 		}
 		// Bind the other variable to the nullable one so the taint is visible when
 		// that variable appears elsewhere, such as a generic function's return type.
-		subs.Add(tv2, tv)
+		if err := bind(subs, tv2, tv); err != nil {
+			return nil, err
+		}
 		return subs, nil
 	}
 
@@ -347,7 +361,9 @@ func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
 		// this allows: its nullable form a? fits T exactly when a is T!,
 		// which keeps `let n: Int = xs[0]` from making xs a list of
 		// nullable Ints.
-		subs.Add(tv.TypeVariable, NonNullType{Type: t})
+		if err := bind(subs, tv.TypeVariable, NonNullType{Type: t}); err != nil {
+			return nil, err
+		}
 		return subs, nil
 	}
 	return bindVar(tv.TypeVariable, t)
