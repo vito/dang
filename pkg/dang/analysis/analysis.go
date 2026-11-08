@@ -117,6 +117,8 @@ type Analysis struct {
 	Scope dang.TypeScope
 
 	diagnostics []Diagnostic
+
+	symbolsState
 }
 
 // Analyze parses and type-checks the .dang files of dir in src.
