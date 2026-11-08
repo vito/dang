@@ -104,7 +104,13 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 		return h.hoverResult(f, params.Position, symbolName, codeBlock)
 	}
 
-	// Try to format the declaring node's signature from the symbol table
+	// Try to format the declaring node's signature: the declaration the name
+	// resolves to, else one of that name.
+	if sym := inspect(f, params.Position); sym != nil && sym.Name == symbolName && sym.Decl != nil {
+		if sig := formatDeclSignature(sym.Decl); sig != "" {
+			return h.hoverResult(f, params.Position, symbolName, sig)
+		}
+	}
 	if f.Symbols != nil {
 		if def, ok := f.Symbols.Definitions[symbolName]; ok {
 			if sig := formatDeclSignature(def.Node); sig != "" {
@@ -444,6 +450,14 @@ func formatModuleForHover(mod *dang.Type, fallbackDoc string) (codeBlock string,
 func docStringForHoverSymbol(f *File, pos Position, symbolName string) string {
 	if f == nil || symbolName == "" {
 		return ""
+	}
+
+	// What the name resolves to through the scopes around it, so a local
+	// shadowing a documented binding doesn't take its docs.
+	if sym := inspect(f, pos); sym != nil && sym.Name == symbolName {
+		if sym.Doc != "" || sym.Definition != nil {
+			return sym.Doc
+		}
 	}
 
 	// The file's type environment first, then the lexical scopes around pos.

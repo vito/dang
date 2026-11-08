@@ -78,6 +78,7 @@ type ServerCapabilities struct {
 	HoverProvider              bool                         `json:"hoverProvider,omitempty"`
 	CodeActionProvider         bool                         `json:"codeActionProvider,omitempty"`
 	RenameProvider             bool                         `json:"renameProvider,omitempty"`
+	ReferencesProvider         bool                         `json:"referencesProvider,omitempty"`
 	WorkspaceSymbolProvider    bool                         `json:"workspaceSymbolProvider,omitempty"`
 	Workspace                  *ServerCapabilitiesWorkspace `json:"workspace,omitempty"`
 }
@@ -466,6 +467,17 @@ type RenameParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 	Position     Position               `json:"position"`
 	NewName      string                 `json:"newName"`
+}
+
+// ReferenceParams is
+type ReferenceParams struct {
+	TextDocumentPositionParams
+	Context ReferenceContext `json:"context"`
+}
+
+// ReferenceContext is
+type ReferenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
 }
 
 // WorkDoneProgressCreateParams is

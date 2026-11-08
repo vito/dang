@@ -52,6 +52,10 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 // env plus all enclosing scope bindings at the given position. This allows
 // resolving local variables (e.g. "ctr") that are not in the top-level env.
 func (h *langHandler) buildCompletionTypeScope(f *File, pos Position) dang.TypeScope {
+	if f.Analysis != nil {
+		return f.Analysis.ScopeAt(f.Path, analysisPos(pos))
+	}
+
 	if f.TypeScope == nil {
 		return nil
 	}

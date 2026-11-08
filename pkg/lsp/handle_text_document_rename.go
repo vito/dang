@@ -33,6 +33,13 @@ func (h *langHandler) handleTextDocumentRename(ctx context.Context, req *jrpc2.R
 
 	slog.InfoContext(ctx, "file info", "hasAST", f.AST != nil, "textLength", len(f.Text))
 
+	// Rename the declaration the name resolves to, and the references that
+	// resolve to it, in every file of the directory: not other bindings of
+	// the same name.
+	if changes := h.referenceEdits(f, params.TextDocument.URI, params.Position, params.NewName); changes != nil {
+		return &WorkspaceEdit{Changes: changes}, nil
+	}
+
 	// Find the symbol at the cursor position
 	symbolName := h.symbolAtPosition(f, params.Position)
 	if symbolName == "" {
@@ -80,6 +87,38 @@ func (h *langHandler) handleTextDocumentRename(ctx context.Context, req *jrpc2.R
 	return &WorkspaceEdit{
 		Changes: changes,
 	}, nil
+}
+
+// referenceEdits returns the edits renaming what the name at pos names to
+// newName, by URI, or nil if it isn't declared in the directory.
+func (h *langHandler) referenceEdits(f *File, uri DocumentURI, pos Position, newName string) map[string][]TextEdit {
+	locs := references(f, uri, pos)
+	if len(locs) == 0 {
+		return nil
+	}
+	changes := map[string][]TextEdit{}
+	for _, loc := range locs {
+		changes[string(loc.URI)] = append(changes[string(loc.URI)], TextEdit{
+			Range:   loc.Range,
+			NewText: newName,
+		})
+	}
+	return changes
+}
+
+// references returns the LSP locations of the declaration of what the name
+// at pos in f names and of its references (see analysis.References).
+func references(f *File, uri DocumentURI, pos Position) []Location {
+	if f == nil || f.Analysis == nil {
+		return nil
+	}
+	var locs []Location
+	for _, ref := range f.Analysis.References(f.Path, analysisPos(pos)) {
+		if loc, ok := lspLocation(uri, ref); ok {
+			locs = append(locs, loc)
+		}
+	}
+	return locs
 }
 
 // findDeclarations finds all declaration nodes for a symbol

@@ -712,6 +712,8 @@ func (h *langHandler) Assign(ctx context.Context, method string) jrpc2.Handler {
 		return h.handleTextDocumentCodeAction
 	case "textDocument/rename":
 		return h.handleTextDocumentRename
+	case "textDocument/references":
+		return h.handleTextDocumentReferences
 	case "textDocument/formatting":
 		return h.handleTextDocumentFormatting
 	case "workspace/symbol":
