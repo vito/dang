@@ -173,6 +173,53 @@ pub s = toString(1)
 	require.Error(t, err)
 }
 
+func TestClauseBindingsShadow(t *testing.T) {
+	src := `let err = "outer"
+
+pub msg = (raise "boom") rescue {
+  err: Error => err.message
+}
+
+pub other = err
+`
+	a := analyzeShadow(t, map[string]string{"main.dang": src})
+
+	sym, err := a.Inspect("main.dang", at(t, src, "err.message", 0, 0))
+	require.NoError(t, err)
+	require.Equal(t, at(t, src, "err: Error", 0, 0), sym.Definition.Range.Start)
+
+	require.Equal(t, []analysis.Pos{
+		at(t, src, "let err", 0, len("let ")),
+		at(t, src, "= err\n", 0, len("= ")),
+	}, starts(a.References("main.dang", at(t, src, "let err", 0, len("let ")))))
+
+	require.Equal(t, []analysis.Pos{
+		at(t, src, "err: Error", 0, 0),
+		at(t, src, "err.message", 0, 0),
+	}, starts(a.References("main.dang", at(t, src, "err.message", 0, 0))))
+}
+
+func TestReferencesOfMembers(t *testing.T) {
+	src := `type Person {
+  name: String!
+
+  greet: String! { "hi " + name }
+}
+
+pub p = Person(name: "a")
+pub n = p.name
+`
+	a := analyzeShadow(t, map[string]string{"main.dang": src})
+
+	want := []analysis.Pos{
+		at(t, src, "name: String!", 0, 0),
+		at(t, src, "+ name", 0, len("+ ")),
+		at(t, src, "p.name", 0, len("p.")),
+	}
+	require.Equal(t, want, starts(a.References("main.dang", at(t, src, "name: String!", 0, 0))))
+	require.Equal(t, want, starts(a.References("main.dang", at(t, src, "p.name", 0, len("p.")))))
+}
+
 func TestScopeAtSeesLocals(t *testing.T) {
 	a := analyzeShadow(t, map[string]string{"main.dang": shadowSource})
 

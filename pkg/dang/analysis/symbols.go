@@ -173,7 +173,9 @@ func (a *Analysis) Inspect(path string, pos Pos) (*Symbol, error) {
 
 // References returns where the declaration of what the name at pos names is
 // spelled: the declaration itself, then every reference resolving to it,
-// across the analyzed files. Nil if the name isn't declared in the Source.
+// across the analyzed files: bare names, and for a member of a type declared
+// in the Source, its selections from values of the type. Nil if the name
+// isn't declared in the Source.
 func (a *Analysis) References(path string, pos Pos) []Location {
 	idx := a.symbols()
 	var target *decl
@@ -192,6 +194,14 @@ func (a *Analysis) References(path string, pos Pos) []Location {
 		}
 	}
 	if target == nil {
+		for _, s := range idx.selects {
+			if s.path == path && s.rng.containsIncl(pos) {
+				target = s.decl
+				break
+			}
+		}
+	}
+	if target == nil {
 		return nil
 	}
 	locs := []Location{{Path: target.path, Range: target.rng}}
@@ -200,6 +210,18 @@ func (a *Analysis) References(path string, pos Pos) []Location {
 			locs = append(locs, Location{Path: r.path, Range: r.rng})
 		}
 	}
+	for _, s := range idx.selects {
+		if s.decl == target {
+			locs = append(locs, Location{Path: s.path, Range: s.rng})
+		}
+	}
+	sort.SliceStable(locs[1:], func(i, j int) bool {
+		a, b := locs[1+i], locs[1+j]
+		if a.Path != b.Path {
+			return a.Path < b.Path
+		}
+		return a.Range.Start.before(b.Range.Start)
+	})
 	return locs
 }
 
@@ -243,8 +265,10 @@ func (a *Analysis) declSymbol(d *decl, rng Range, node dang.Node) *Symbol {
 		Node:       node,
 		Decl:       d.node,
 	}
-	if t := d.node.GetInferredType(); t != nil {
-		sym.Type = t.String()
+	if d.node != nil {
+		if t := d.node.GetInferredType(); t != nil {
+			sym.Type = t.String()
+		}
 	}
 	return sym
 }
@@ -279,15 +303,9 @@ func (a *Analysis) selectSymbol(s *selectRef) *Symbol {
 		sym.Type = t.String()
 	}
 	// A member of a type declared in the Source: point at its declaration.
-	if typ, ok := mod.(*dang.Type); ok {
-		d := a.symbols().members[memberKey{typ, name}]
-		if d == nil && typ.Canonical != nil {
-			d = a.symbols().members[memberKey{typ.Canonical, name}]
-		}
-		if d != nil {
-			sym.Definition = &Location{Path: d.path, Range: d.rng}
-			sym.Decl = d.node
-		}
+	if d := s.decl; d != nil {
+		sym.Definition = &Location{Path: d.path, Range: d.rng}
+		sym.Decl = d.node
 	}
 	return sym
 }
@@ -318,6 +336,7 @@ type selectRef struct {
 	path string
 	sel  *dang.Select
 	rng  Range // of the field's name
+	decl *decl // the member's declaration, for a type declared in the Source
 }
 
 // lexicalScope is a region of a file whose declarations its code can name.
@@ -367,7 +386,32 @@ func buildSymbols(files []*File) *symbolIndex {
 	for _, r := range idx.refs {
 		r.decl = idx.resolve(r)
 	}
+	for _, s := range idx.selects {
+		s.decl = idx.resolveSelect(s)
+	}
 	return idx
+}
+
+// resolveSelect finds the declaration of the member a selection names, when
+// the receiver's type (or its name's, for a static) is declared in the
+// Source.
+func (idx *symbolIndex) resolveSelect(s *selectRef) *decl {
+	recv := s.sel.Receiver.GetInferredType()
+	if recv == nil {
+		return nil
+	}
+	typ, ok := methodScope(recv).(*dang.Type)
+	if !ok {
+		return nil
+	}
+	name := s.sel.Field.Name
+	if d := idx.members[memberKey{typ, name}]; d != nil {
+		return d
+	}
+	if typ.Canonical != nil {
+		return idx.members[memberKey{typ.Canonical, name}]
+	}
+	return nil
 }
 
 func (idx *symbolIndex) addScope(path string, rng Range, sequential bool, forms []dang.Node) *lexicalScope {
@@ -383,6 +427,7 @@ func (idx *symbolIndex) index(path string, file *dang.FileBlock) {
 	idx.files[path] = idx.addScope(path, wholeFile, false, file.Forms)
 
 	owned := map[*dang.Block]bool{}
+	ownedStatics := map[*dang.SelfBlockDecl]bool{}
 	file.Walk(func(n dang.Node) bool {
 		if n == nil {
 			return false
@@ -403,21 +448,31 @@ func (idx *symbolIndex) index(path string, file *dang.FileBlock) {
 			}
 			owned[n.Value] = true
 			s := idx.addScope(path, locRange(loc), false, n.Value.Forms)
-			if typ := n.Inferred; typ != nil {
-				for _, d := range s.decls {
-					idx.members[memberKey{typ, d.name}] = d
-					if typ.Canonical != nil {
-						idx.members[memberKey{typ.Canonical, d.name}] = d
-					}
+			idx.addMembers(n.Inferred, s.decls)
+			// Statics name each other in any order, and are members of the
+			// type's name.
+			for _, form := range n.Value.Forms {
+				statics, ok := form.(*dang.SelfBlockDecl)
+				if !ok || statics.BodyBlock == nil || statics.Loc == nil {
+					continue
+				}
+				ownedStatics[statics] = true
+				owned[statics.BodyBlock] = true
+				s := idx.addScope(path, locRange(statics.Loc), false, statics.BodyBlock.Forms)
+				if n.Inferred != nil {
+					idx.addMembers(n.Inferred.ExistingMetaType(), s.decls)
 				}
 			}
 		case *dang.SelfBlockDecl:
-			if loc == nil || n.BodyBlock == nil {
+			if loc == nil || n.BodyBlock == nil || ownedStatics[n] {
 				break
 			}
-			// Statics name each other in any order.
 			owned[n.BodyBlock] = true
 			idx.addScope(path, locRange(loc), false, n.BodyBlock.Forms)
+		case *dang.Case:
+			idx.addClauses(path, n.Clauses)
+		case *dang.RescueExpr:
+			idx.addClauses(path, n.Clauses)
 		case *dang.FunDecl:
 			if loc != nil {
 				idx.addScope(path, locRange(loc), false, params(n.Args, n.BlockParam))
@@ -441,6 +496,45 @@ func (idx *symbolIndex) index(path string, file *dang.FileBlock) {
 		}
 		return true
 	})
+}
+
+// addMembers records decls as the members of typ, for selections of them.
+func (idx *symbolIndex) addMembers(typ *dang.Type, decls []*decl) {
+	if typ == nil {
+		return
+	}
+	for _, d := range decls {
+		idx.members[memberKey{typ, d.name}] = d
+		if typ.Canonical != nil {
+			idx.members[memberKey{typ.Canonical, d.name}] = d
+		}
+	}
+}
+
+// addClauses declares the names `case` and `rescue` clauses bind (`err:
+// Error => err.message`), for the clause.
+func (idx *symbolIndex) addClauses(path string, clauses []*dang.CaseClause) {
+	for _, clause := range clauses {
+		if clause.Binding == "" || clause.Loc == nil {
+			continue
+		}
+		rng := locRange(clause.Loc)
+		if clause.Expr != nil {
+			if loc := clause.Expr.GetSourceLocation(); loc != nil {
+				if end := locRange(loc).End; rng.End.before(end) {
+					rng.End = end
+				}
+			}
+		}
+		d := &decl{
+			name: clause.Binding,
+			kind: KindValue,
+			path: path,
+			rng:  nameRange(clause.Loc, clause.Binding),
+		}
+		idx.decls = append(idx.decls, d)
+		idx.scopes = append(idx.scopes, &lexicalScope{path: path, rng: rng, decls: []*decl{d}})
+	}
 }
 
 func params(args []*dang.FieldDecl, block *dang.FieldDecl) []dang.Node {
