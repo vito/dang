@@ -117,6 +117,11 @@ assert {
   JSON.encode(Mixed(last: "x")) == """{"computed":[1],"annotated":2,"record":{"z":1,"a":2},"last":"x"}"""
 }
 
+# Whatever the layout and order, JSON.encode's output decodes back strictly:
+# renamed and omitted fields are still known keys.
+let back = JSON.decode(JSON.encode(mod, indent: "  ", sortKeys: true), strict: true) :: Module!
+assert { back.pin == "abc" and back.source == mod.source and back.deps == [] }
+
 # toString and List.join JSON-encode in the same order, but under the fields'
 # own names: codec field directives are JSON.encode's alone.
 assert { toString(mod.{{source, name}}) == JSON.encode(mod.{{source, name}}) }
