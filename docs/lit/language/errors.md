@@ -426,6 +426,18 @@ bail(n: Int!): String! {
 bail(1)
 ```
 
+Nor can a cancelled evaluation be rescued. A host running Dang can give
+an evaluation a deadline or cancel it. When that happens the evaluation
+ends with `evaluation cancelled: …`, and no `rescue` catches it: not the
+fallback form, not `err: Error =>`, not `else =>`. Once the evaluation
+is cancelled a `rescue` catches nothing else either, so a retry loop
+can't keep a runaway program alive:
+
+```dang-static
+# stops at the host's deadline, rescue or not
+loop { work() rescue null }
+```
+
 ## Rescue where failures happen {#rescue-laziness}
 
 `rescue` catches what fails *while the operand runs* — which, for GraphQL
