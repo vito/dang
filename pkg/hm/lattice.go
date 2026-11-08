@@ -82,7 +82,8 @@ func mergeTypes(current, next Type) (Type, Subs, error) {
 		return current, NewSubs(), nil
 	}
 
-	if subs, err := assignable(next, current, false); err == nil {
+	subs, err := assignable(next, current, false)
+	if err == nil {
 		merged := current.Apply(subs).(Type)
 		resolvedNext := next.Apply(subs).(Type)
 		if mergedNonNull, ok := merged.(NonNullType); ok {
@@ -93,8 +94,14 @@ func mergeTypes(current, next Type) (Type, Subs, error) {
 		merged = keepNullableFn(merged, resolvedNext)
 		return merged, subs, nil
 	}
+	if ce, ok := err.(ConstraintError); ok {
+		// A bound failing says more than a common supertype would, and
+		// none would satisfy it anyway.
+		return nil, nil, ce
+	}
 
-	if subs, err := assignable(current, next, false); err == nil {
+	subs, err = assignable(current, next, false)
+	if err == nil {
 		merged := next.Apply(subs).(Type)
 		resolvedCurrent := current.Apply(subs).(Type)
 		if mergedNonNull, ok := merged.(NonNullType); ok {
@@ -104,6 +111,9 @@ func mergeTypes(current, next Type) (Type, Subs, error) {
 		}
 		merged = keepNullableFn(merged, resolvedCurrent)
 		return merged, subs, nil
+	}
+	if ce, ok := err.(ConstraintError); ok {
+		return nil, nil, ce
 	}
 
 	if common := CommonSupertype(next, current); common != nil {

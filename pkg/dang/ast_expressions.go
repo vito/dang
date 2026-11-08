@@ -466,6 +466,33 @@ func nullableResult(have, want hm.Type) bool {
 	return hm.IsSubtypeOf(hm.NonNull(have), want)
 }
 
+// boundMismatch explains a result of type have that doesn't fit want, a
+// variable bounded by Ordered (sortBy's k!), by the bound when have fails
+// it: a key mixing types across branches would otherwise only be reported
+// as not unifying with the variable.
+func boundMismatch(have, want hm.Type) (hm.ConstraintError, bool) {
+	inner, _ := stripNonNull(want)
+	var tv hm.TypeVariable
+	switch v := inner.(type) {
+	case hm.TypeVariable:
+		tv = v
+	case hm.NullableTypeVariable:
+		tv = v.TypeVariable
+	default:
+		return hm.ConstraintError{}, false
+	}
+	if !tv.IsOrdered() || tv.IsRigid() {
+		return hm.ConstraintError{}, false
+	}
+	_, err := hm.RequireOrdered(hm.NonNull(have))
+	var ce hm.ConstraintError
+	if !errors.As(err, &ce) {
+		return hm.ConstraintError{}, false
+	}
+	ce.Var = tv
+	return ce, true
+}
+
 // omittedArgSubs makes nullable each flexible variable that types a
 // parameter the call leaves out.
 func (c *FunCall) omittedArgSubs(rec *RecordType, argMapping map[int]string) hm.Subs {
@@ -3228,6 +3255,12 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			skipBranch(ctx, c.Else, elseStart)
 
 			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
+			var boundErr hm.ConstraintError
+			if errors.As(err, &boundErr) {
+				// One branch's type fails a bound the other's carries (a
+				// sorted list's elements are Ordered): no union helps.
+				return nil, NewInferError(boundErr, c.Else)
+			}
 			if err != nil {
 				// Branches diverge: widen to a union and let downstream usage
 				// (or a tail-position type annotation) decide whether that's
@@ -3969,6 +4002,9 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
 			if err != nil {
+				if ce, ok := boundMismatch(bodyType, b.ExpectedReturnType); ok {
+					return nil, NewInferError(ce, b.BodyNode)
+				}
 				if nullableResult(bodyType, b.ExpectedReturnType) {
 					return nil, NewInferError(
 						fmt.Errorf("block argument body may be null (%s), but must not be: supply a default with ??", bodyType),
