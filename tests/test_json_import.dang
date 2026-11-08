@@ -35,8 +35,9 @@ assert { JSON.encode(schemaJSON) == "{\"o\":{\"k\":1},\"s\":\"x\"}" }
 assert { parseJSON(schemaJSON["o"]!) == "Parsed JSON: {\"k\":1}" }
 assert { parseJSON(schemaJSON["s"]!) == "Parsed JSON: \"x\"" }
 
-# A result is the JSON text the server sent, compacted.
-assert { toString(jsonConfig) == "{\"name\":\"dang\",\"tags\":[\"a\",\"b\"],\"size\":1.50}" }
+# A result is the JSON text the server sent, formatting and all, and compares
+# as the data it holds.
+assert { toString(jsonConfig) == "{ \"name\": \"dang\", \"tags\": [\"a\", \"b\"], \"size\": 1.50 }" }
 let config = JSON.decode(jsonConfig) :: Map[JSON!]!
 assert { config.keys == ["name", "size", "tags"] }
 assert { jsonConfig == "{\"size\": 1.5, \"tags\": [\"a\", \"b\"], \"name\": \"dang\"}" }
@@ -45,6 +46,12 @@ assert { JSON.encode({{config: jsonConfig}}) == "{\"config\":{\"name\":\"dang\",
 # A round trip through the server gives the same value back.
 assert { echoJSON(schemaJSON["o"]!) == schemaJSON["o"]! }
 assert { echoJSON(value: "[1, null, \"two\"]") == "[1,null,\"two\"]" }
+
+# JSON null is a value of the schema's JSON, sent as the text null, and
+# distinct from no value at all.
+assert { describeJSON(value: "null") == "text: null" }
+assert { describeJSON(value: echoJSON(value: "null")) == "text: null" }
+assert { describeJSON(value: null) == "no value" }
 
 # Strings cast to it must be JSON, and literals are checked like the builtin's.
 let fromCast: Test.JSON! = "{ \"ok\": true }"

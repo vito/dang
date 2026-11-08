@@ -524,20 +524,19 @@ func isJSONNullValue(v Value) bool {
 }
 
 // jsonScalarFromResult holds a GraphQL result for the JSON scalar mod. The
-// server sends JSON text in a string; text that doesn't parse is kept as the
-// server sent it, so a lenient server's value still reaches the program. Any
-// other value is taken as the JSON itself (a graphql-type-json style server),
-// though it will go back to the server as a string.
+// server sends JSON text in a string, which is kept exactly as sent (a
+// server's formatting, such as Dagger's pretty-printed contents, is the
+// program's to keep); its canonical key still makes it compare as data. Text
+// that doesn't parse is kept too, so a lenient server's value (an empty
+// string, say) still reaches the program. Any other value is taken as the
+// JSON itself (a graphql-type-json style server), though it will go back to
+// the server as a string.
 func jsonScalarFromResult(raw any, mod *Type) (Value, error) {
 	str, ok := raw.(string)
 	if !ok {
 		return jsonScalarFromRaw(raw, mod, "")
 	}
-	text, data, err := compactJSONText(str)
-	if err != nil {
-		return ScalarValue{Val: str, ScalarType: mod}, nil
-	}
-	return ScalarValue{Val: text, ScalarType: mod, jsonKey: canonicalJSONKey(data)}, nil
+	return ScalarValue{Val: str, ScalarType: mod, jsonKey: jsonKeyOfText(str)}, nil
 }
 
 // jsonScalarFromRaw holds decoded data as a value of the JSON scalar mod: its
@@ -1022,10 +1021,11 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			return StringValue{Val: v.Val}, nil
 		}
 		// A JSON! holding JSON null widens into a nullable JSON as Dang
-		// null, the null a nullable JSON holds however it was made.
+		// null, the null a nullable JSON holds however it was made. Not a
+		// schema's JSON, where JSON null and no value differ on the wire.
 		if isJSONValue(v) && v.Val == "null" {
 			if _, nonNull := target.(hm.NonNullType); !nonNull {
-				if mod, ok := target.(*Type); ok && isJSONScalar(mod) {
+				if mod, ok := target.(*Type); ok && isJSONScalar(mod) && mod.SourceSchema == nil {
 					return NullValue{}, nil
 				}
 			}
@@ -1088,9 +1088,11 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 			if err != nil {
 				return nil, materializeError(path, "%s", err.Error())
 			}
-			if raw == nil {
+			if raw == nil && mod.SourceSchema == nil {
 				// JSON null is Dang null where null may go, and otherwise a
-				// JSON value like any other, holding null.
+				// JSON value like any other, holding null. A schema's JSON
+				// keeps it a value either way, so it reaches the server as
+				// the JSON text null rather than as no value at all.
 				if _, nonNull := target.(hm.NonNullType); !nonNull {
 					return NullValue{}, nil
 				}

@@ -226,7 +226,7 @@ and `fetchURL` takes one:
 fetchURL(url: homepage)
 ```
 
-Some APIs define custom scalars (like a `JSON` scalar) whose values are
+Some APIs define custom scalars (an "any" or opaque scalar) whose values are
 numbers, booleans, or even structured JSON. Dang keeps those values as they
 are: passed back as an argument, one is sent unchanged, and where a `String`
 is expected (degrading, interpolation, `toString`) it reads as its JSON

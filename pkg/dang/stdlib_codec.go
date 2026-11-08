@@ -728,7 +728,7 @@ func (c Codec) encodeLeaf(val Value) (any, error) {
 
 // encodeJSONScalar embeds a JSON value as the data its text spells, not as a
 // string, so decoding into JSON and encoding back round-trips. Text that is
-// not JSON (only a host embedding Dang can build one, since a String must
+// not JSON (a lenient server's result, or a value a host built; a String must
 // validate to become a JSON value) is an error rather than output a
 // reader would choke on — except for toString, which shows it as the string
 // it is.

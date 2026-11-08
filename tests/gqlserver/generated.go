@@ -80,6 +80,7 @@ type ComplexityRoot struct {
 	Query struct {
 		AddBigInt         func(childComplexity int, a string, b string) int
 		AverageRating     func(childComplexity int) int
+		DescribeJSON      func(childComplexity int, value *string) int
 		DescribeOpaque    func(childComplexity int, value any) int
 		EchoFloat         func(childComplexity int, value float64) int
 		EchoJSON          func(childComplexity int, value string) int
@@ -200,6 +201,7 @@ type QueryResolver interface {
 	ParseJSON(ctx context.Context, data string) (string, error)
 	JSONConfig(ctx context.Context) (string, error)
 	EchoJSON(ctx context.Context, value string) (string, error)
+	DescribeJSON(ctx context.Context, value *string) (string, error)
 	AddBigInt(ctx context.Context, a string, b string) (string, error)
 	OpaqueNumber(ctx context.Context) (any, error)
 	OpaqueObject(ctx context.Context) (any, error)
@@ -384,6 +386,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.AverageRating(childComplexity), true
+	case "Query.describeJSON":
+		if e.complexity.Query.DescribeJSON == nil {
+			break
+		}
+
+		args, err := ec.field_Query_describeJSON_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.DescribeJSON(childComplexity, args["value"].(*string)), true
 	case "Query.describeOpaque":
 		if e.complexity.Query.DescribeOpaque == nil {
 			break
@@ -1112,6 +1125,17 @@ func (ec *executionContext) field_Query_addBigInt_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["b"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_describeJSON_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "value", ec.unmarshalOJSON2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["value"] = arg0
 	return args, nil
 }
 
@@ -3169,6 +3193,47 @@ func (ec *executionContext) fieldContext_Query_echoJSON(ctx context.Context, fie
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_echoJSON_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_describeJSON(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_describeJSON,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().DescribeJSON(ctx, fc.Args["value"].(*string))
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_describeJSON(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_describeJSON_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -7109,6 +7174,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "describeJSON":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_describeJSON(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "addBigInt":
 			field := field
 
@@ -9240,6 +9327,24 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	_ = sel
 	_ = ctx
 	res := graphql.MarshalInt(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOJSON2ᚖstring(ctx context.Context, v any) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalString(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOJSON2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalString(*v)
 	return res
 }
 

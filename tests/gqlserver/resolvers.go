@@ -353,6 +353,14 @@ func (r *queryResolver) EchoJSON(ctx context.Context, value string) (string, err
 	return value, nil
 }
 
+// DescribeJSON is the resolver for the describeJSON field.
+func (r *queryResolver) DescribeJSON(ctx context.Context, value *string) (string, error) {
+	if value == nil {
+		return "no value", nil
+	}
+	return "text: " + *value, nil
+}
+
 // AddBigInt is the resolver for the addBigInt field.
 func (r *queryResolver) AddBigInt(ctx context.Context, a string, b string) (string, error) {
 	return fmt.Sprintf("%s+%s", a, b), nil

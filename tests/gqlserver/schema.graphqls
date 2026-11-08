@@ -66,6 +66,9 @@ type Query {
   # that returns the JSON it was sent.
   jsonConfig: JSON!
   echoJSON(value: JSON!): JSON!
+  # Reports whether a nullable JSON argument arrived as GraphQL null or as
+  # JSON text.
+  describeJSON(value: JSON): String!
   addBigInt(a: BigInt!, b: BigInt!): BigInt!
   # Non-string custom scalar values, and an echo reporting the JSON it was
   # sent, for checking they round-trip unchanged.
