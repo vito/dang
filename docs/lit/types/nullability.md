@@ -424,9 +424,10 @@ doubled(x: a): a { x * 2 }
 ```
 
 Use a concrete type (here `Int!`) if the body needs to operate on the value,
-or, to compare values, bound the type variable by `Ordered`.
+or bound the type variable: by `Ordered` to compare values, by `Numeric` to
+do arithmetic on them.
 
-### Type parameters and `Ordered` {#type-params}
+### Type parameters, `Ordered` and `Numeric` {#type-params}
 
 A function or method may list its type parameters after its name. Without
 the list they are implicit, as above; with it, the list must declare every
@@ -495,6 +496,52 @@ smaller[a](x: a!, y: a!): a! {
 ```
 
 `Ordered` is a constraint, not a type: `x: Ordered!` is an error.
+
+The other bound is `Numeric`: the number types, `Int!` and `Float!`. Values
+of a `Numeric`-bounded `a!` take `+`, `-`, `*`, `/`, `%` and unary `-`, so
+you can write your own folds:
+
+```dang
+mySum[a: Numeric](xs: [a!]!, zero: a!): a! {
+  xs.reduce(zero) { acc, x => acc + x }
+}
+
+{{ints: mySum([1, 2, 3], 0), floats: mySum([0.5, 0.25], 0.0)}}
+```
+
+The result follows the numbers, as it does without a type variable: `a!`
+with `a!` or with an `Int!` is `a!` (Int with Int stays Int, so `/` divides
+Ints), and anything with a `Float!` is `Float!`:
+
+```dang
+mean[a: Numeric](xs: [a!]!): Float! {
+  xs.reduce(0.0) { acc, x => acc + x } / xs.length
+}
+
+mean([1, 2])
+```
+
+Only the numeric `+` applies — a `Numeric` value doesn't concatenate with a
+string — and two different `Numeric` parameters don't mix, since one might
+be an Int and the other a Float. An unbounded variable's arithmetic is an
+error that says to declare the bound:
+
+```dang-failure
+plus[a](x: a!, y: a!): a! { x + y }
+```
+
+Bounds combine with `&`: `[a: Ordered & Numeric]` both compares and adds,
+and compares with number literals the way it adds with them:
+
+```dang
+abs[a: Ordered & Numeric](x: a!): a! {
+  if (x < 0) { -x } else { x }
+}
+
+{{int: abs(-3), float: abs(-2.5)}}
+```
+
+`.sum` on lists is bounded by `Numeric` (see [#collections]).
 
 ## Type hints / casts: `::`
 

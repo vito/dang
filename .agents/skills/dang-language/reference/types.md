@@ -32,19 +32,23 @@
 
 ## Type variables
 - single lowercase letters (`a`, `b`), used in generic signatures, inferred at call sites.
-- Opaque in the body: pass, return, `==`/`!=` only (`x * 2` on an `a` is a definition-time error).
+- Opaque in the body: pass, return, `==`/`!=` only (`x * 2` on an `a` is a definition-time error) — unless bounded (below).
 - **Explicit type parameters** (optional): `name[a, k: Ordered](...)` right after a function or method's name. Without a list, variables are implicit; with one, it must declare every variable of the signature, each once, and use every one it declares (`type variable b is not declared`, `type parameter b is not used`).
 - **`Ordered` bound**: Ordered types are `Int!`, `Float!`, `String!`, `Boolean!`, enums (declaration order), custom scalars, and lists and `{{ }}` records of those (element by element) — exactly what `< <= > >=` compare and `.sort`/`.sortBy` order. Not objects, unions, decoded data or nullable types.
   - In the body, values of a bounded **`a!`** compare (`x < y`) and satisfy other bounds (call another `[k: Ordered]` function, `xs.sort` on `[a!]!`). A bare `a` may be null, so `<` refuses it; an unbounded `a` has no order (`declare it [a: Ordered]`).
   - The bound ignores nullability: `[a: Ordered](xs: [a!]!)` takes an `[Int!]!` (a is Int).
   - Checked at each call where the type is supplied: `mySortBy(people) { p => p }` → `cannot use Person! for k: Ordered` at the block. A type still unknown at the call (`mySort([])`, a `reduce([])` accumulator) keeps the bound and is checked wherever it is learned.
   - `Ordered` is a constraint, not a type: `x: Ordered!` is an error.
+- **`Numeric` bound**: exactly `Int!` and `Float!`. Values of a bounded `a!` take `+ - * / %` and unary `-` (numeric `+` only: no string/list concatenation); `xs.sum` on `[a!]!` works. Result types: `a! op a!` and `a! op Int!` are `a!` (so `/` is Int division when a is Int), `a! op Float!` is `Float!`; two different Numeric parameters (`a! + b!`) are an error. A bare `a` may be null and is refused; arithmetic on an unbounded `a` says `declare it [a: Numeric]`. Checked at calls like Ordered (`mySum(["a"], "")` → `cannot use String! for a: Numeric`).
+- Bounds combine with `&`: `[a: Ordered & Numeric]` compares and adds, also against number literals (`if (x < 0) { -x } else { x }`). Numeric doesn't imply Ordered.
 
 ```dang
 mySortBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
   xs.sortBy { x => key(x) }
 }
 largest[a: Ordered](x: a!, y: a!): a! { if (x < y) { y } else { x } }
+mySum[a: Numeric](xs: [a!]!, zero: a!): a! { xs.reduce(zero) { acc, x => acc + x } }
+mean[a: Numeric](xs: [a!]!): Float! { xs.reduce(0.0) { acc, x => acc + x } / xs.length }
 ```
 
 ## Type hints / casts: `::`

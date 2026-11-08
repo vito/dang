@@ -107,7 +107,7 @@ greet(
 - **Prefer templates to `+` chains**: `` `${name} (${i})` `` over `name + " (" + toString(i) + ")"` — interpolation stringifies any value.
 
 ### Arithmetic
-- `+ - * / %` on `Int`/`Float` (mixed promotes to `Float`). Float `%` is Go's `math.Mod`: the remainder takes the dividend's sign (`-7.5 % 2 == -1.5`).
+- `+ - * / %` on `Int`/`Float` (mixed promotes to `Float`), or on a type variable bounded `[a: Numeric]` (see types.md). Float `%` is Go's `math.Mod`: the remainder takes the dividend's sign (`-7.5 % 2 == -1.5`).
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`).
 - `+` overloads on `String!` (concat) and lists (concat). Operands must be **non-null** (a nullable one is a type error — `!`, `??`, or null-check it first); the result is non-null.
 
@@ -158,7 +158,7 @@ ObjectType   := '{{' (ObjectTypeField Sep)* ObjectTypeField? '}}'
 TypeVariable := [a-z]                             # single lowercase letter
 
 TypeParamList := '[' TypeParam (Sep TypeParam)* Sep? ']'  # right after a function/method name: f[a, k: Ordered](...)
-TypeParam     := Word (':' NamedType ('&' NamedType)*)?   # a single lowercase letter; the bound is Ordered
+TypeParam     := Word (':' NamedType ('&' NamedType)*)?   # a single lowercase letter; the bounds are Ordered and Numeric
 ```
 
 Notable productions:

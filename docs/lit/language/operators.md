@@ -112,6 +112,10 @@ fine, but this is not:
 [1] + [scores[0]]
 ```
 
+In a generic function, the arithmetic operators take values of a type
+variable bounded by `Numeric` (`[a: Numeric]`, see [#type-params]), with
+only the numeric meaning of `+`.
+
 ## Comparison
 
 `<` `<=` `>` `>=` compare values of any Ordered type: numbers (`Int` and

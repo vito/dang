@@ -121,6 +121,27 @@ a seed (positional, or named `initial:`) through each element:
 nums.reduce(0) { acc, x => acc + x }
 ```
 
+`.sum` is that fold, for a list of numbers (`Int!` or `Float!`):
+
+```dang
+{{ints: nums.sum, floats: [0.5, 0.25].sum}}
+```
+
+Its elements are bounded by `Numeric` (see [#type-params]), so any other list
+— even one whose numbers may be null — is a compile error:
+
+```dang-failure
+[1, null, 3].sum
+```
+
+An empty list sums to `0`, or to `0.0` when the list is known to hold
+`Float`s at runtime: a list of Float literals, an annotated `[]`
+(`let none: [Float!]! = []`) or one passed for a `[Float!]!` parameter, and
+lists filtered or sliced from those. A `[]` that only gets its type from
+around it (`xs ?? []`, an `if` branch, a `reduce([])` accumulator), and a
+list built inside a generic function, aren't, so they sum to `0` even when
+typed `[Float!]!`.
+
 `.uniq` drops duplicates, keeping first-occurrence order. It uses Dang
 equality, so it works on nested lists too:
 
