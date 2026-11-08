@@ -31,6 +31,21 @@ func positionWithinNode(node dang.Node, pos Position) bool {
 		(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol))
 }
 
+// nameRange returns the LSP range covering name, spelled at loc. An escaped
+// name (`$rescue`, see dang's RawWordToken) spans its `$` too, which the
+// range leaves out: it covers the name itself, so that renaming it keeps
+// the escape. Dang source locations are 1-based; LSP positions are 0-based.
+func nameRange(loc *dang.SourceLocation, name string) Range {
+	startCol := loc.Column - 1
+	if loc.Length == len(name)+1 {
+		startCol++
+	}
+	return Range{
+		Start: Position{Line: loc.Line - 1, Character: startCol},
+		End:   Position{Line: loc.Line - 1, Character: startCol + len(name)},
+	}
+}
+
 // positionAfter reports whether p comes strictly after q in a document.
 func positionAfter(p, q Position) bool {
 	if p.Line != q.Line {
