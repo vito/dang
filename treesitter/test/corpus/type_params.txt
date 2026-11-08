@@ -1,0 +1,117 @@
+================================================================================
+Function with type parameters
+================================================================================
+
+sortBy[a, k: Ordered](xs: [a!]!): [a!]! {
+  xs
+}
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (field_decl
+      (type_and_args_and_block_field
+        (symbol
+          (word_token))
+        (type_param_list
+          (immediate_bracket)
+          (type_param
+            (word_token))
+          (sep
+            (comma_token))
+          (type_param
+            (word_token)
+            (colon_token)
+            (type_bounds
+              (named_type
+                (upper_id
+                  (upper_token))))))
+        (arg_types
+          (immediate_paren)
+          (arg_type
+            (arg_with_type
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (list_type
+                      (type
+                        (non_null
+                          (type
+                            (type_variable))
+                          (bang_token)))))
+                  (bang_token))))))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (list_type
+                (type
+                  (non_null
+                    (type
+                      (type_variable))
+                    (bang_token)))))
+            (bang_token)))
+        (block
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token)))))))))
+
+================================================================================
+Indexing a name and calling the result
+================================================================================
+
+fns[i](x: 1)
+
+--------------------------------------------------------------------------------
+
+(dang
+  (index_or_call
+    (symbol_or_call
+      (auto_call_symbol
+        (id
+          (word_token))))
+    (immediate_bracket)
+    (symbol_or_call
+      (auto_call_symbol
+        (id
+          (word_token))))
+    (arg_values
+      (immediate_paren)
+      (argument
+        (key_value
+          (word_token)
+          (colon_token)
+          (literal
+            (int
+              (non_zero_decimal_digit))))))))
+
+================================================================================
+Indexing a name with a literal
+================================================================================
+
+fns[0](1)
+
+--------------------------------------------------------------------------------
+
+(dang
+  (index_or_call
+    (symbol_or_call
+      (auto_call_symbol
+        (id
+          (word_token))))
+    (immediate_bracket)
+    (literal
+      (int))
+    (arg_values
+      (immediate_paren)
+      (argument
+        (positional_value
+          (literal
+            (int
+              (non_zero_decimal_digit))))))))

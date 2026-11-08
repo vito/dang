@@ -1,0 +1,1 @@
+smallest[a: Comparable](xs: [a!]!): a { xs[0] }

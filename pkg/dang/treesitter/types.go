@@ -39,11 +39,15 @@ type Rule struct {
 	Members []Rule   `json:"members,omitempty"`
 	Content *Rule    `json:"content,omitempty"`
 	Flags   string   `json:"flags,omitempty"` // regex flags
+	// Named marks an ALIAS as naming a node (rather than an anonymous
+	// token).
+	Named bool `json:"named,omitempty"`
 }
 
 type RuleType string
 
 const (
+	RuleTypeAlias          RuleType = "ALIAS"
 	RuleTypeBlank          RuleType = "BLANK"
 	RuleTypeChoice         RuleType = "CHOICE"
 	RuleTypeField          RuleType = "FIELD"

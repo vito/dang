@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Person! for `a: Ordered`: it has no order; Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those
+  [2m[34m--> errors/type_param_deferred.dang:9:1[0m
+ [2m    |[0m
+ [2m  7 | # The element type isn't known yet: the bound waits for it.[0m
+ [2m  8 | let sorted = mySort([])[0m
+ [2m[34m[1m  9 | [0msorted += [Person("a")]
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 10 | [0m
+ [2m    |[0m
+

@@ -451,12 +451,22 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	subs, err := hm.Assignable(inferredType, expectedFnType)
 	if err != nil {
 		return nil, NewInferError(
-			fmt.Errorf("block argument has type %s but expected %s", inferredType, expectedFnType),
+			boundErrorOr(err, fmt.Errorf("block argument has type %s but expected %s", inferredType, expectedFnType)),
 			c.BlockArg,
 		)
 	}
 
 	return subs, nil
+}
+
+// boundErrorOr returns err when it is a type failing a bound (Ordered),
+// which says more than that two types don't unify; or else fallback.
+func boundErrorOr(err, fallback error) error {
+	var ce hm.ConstraintError
+	if errors.As(err, &ce) {
+		return ce
+	}
+	return fallback
 }
 
 // omittedArgSubs makes nullable each flexible variable that types a
@@ -3968,7 +3978,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 						errorNode = cont.Value
 					}
 					return nil, NewInferError(
-						fmt.Errorf("continue type mismatch: expected %s, inferred %s", b.ExpectedReturnType, contType),
+						boundErrorOr(err, fmt.Errorf("continue type mismatch: expected %s, inferred %s", b.ExpectedReturnType, contType)),
 						errorNode,
 					)
 				}
@@ -3977,11 +3987,11 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
 			if err != nil {
 				return nil, NewInferError(
-					withUnionProvenance(
+					boundErrorOr(err, withUnionProvenance(
 						fmt.Errorf("block argument body has type %s but expected type %s",
 							bodyType, b.ExpectedReturnType),
 						bodyType,
-					),
+					)),
 					b.BodyNode,
 				)
 			}

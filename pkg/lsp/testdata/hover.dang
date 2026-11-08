@@ -43,6 +43,13 @@ multiply(x: Int!, y: Int!): Int! {
 
 multiply # test: K => hover: Multiplies two numbers together
 
+# a bounded type parameter shows in the signature
+largest[a: Ordered](x: a!, y: a!): a! {
+  if (x < y) { y } else { x }
+}
+
+largest # test: K => hover: largest: [a: Ordered](x: a!, y: a!): a!
+
 # unqualified imported value hover (file-local: composite reads lexical)
 serverInfo # test: K => hover: ServerInfo!
 

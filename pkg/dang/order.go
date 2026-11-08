@@ -10,8 +10,18 @@ import (
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-// orderedKinds names the types sort and sortBy can order, for errors.
-const orderedKinds = "sort keys must be Int!, Float!, String!, Boolean!, an enum or scalar, or a list or {{ }} record of those"
+// orderedKinds names the Ordered types: those sort, sortBy and the ordering
+// operators (< > <= >=) can order, and a type parameter bounded by Ordered
+// stands for.
+const orderedKinds = "Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those"
+
+func init() {
+	hm.OrderedHost = func(t hm.Type) ([]hm.OrderedNeed, string) {
+		var needs []hm.OrderedNeed
+		why := unordered(t, "it", &needs)
+		return needs, why
+	}
+}
 
 // checkSortKey rejects, at type-check time, sorting by values of type key
 // that have no order: what orderer.compare would fail on at runtime. Values
@@ -25,20 +35,29 @@ func checkSortKey(prefix string, key hm.Type) error {
 }
 
 // whyUnordered explains why values of type t have no order, or returns ""
-// when they do. what names the value in the explanation.
+// when they do, or might: a type not yet known (a flexible type variable)
+// passes. what names the value in the explanation. It is the one definition
+// of which types are Ordered, which the Ordered bound on type variables
+// checks too (see hm.OrderedHost).
 func whyUnordered(t hm.Type, what string) string {
+	return unordered(t, what, nil)
+}
+
+// unordered is whyUnordered, collecting into needs, when it isn't nil, the
+// flexible variables the order of t still depends on.
+func unordered(t hm.Type, what string, needs *[]hm.OrderedNeed) string {
 	inner, nonNull := stripNonNull(t)
 	switch tv := inner.(type) {
 	case hm.TypeVariable:
-		if tv.IsRigid() {
-			return fmt.Sprintf("%s is of the generic type %s, which has no known order", what, tv)
-		}
-		return ""
+		return unorderedVar(tv, nonNull, what, needs)
 	case hm.NullableTypeVariable:
-		if tv.IsRigid() {
-			return fmt.Sprintf("%s is of the generic type %s, which has no known order", what, tv)
+		if nonNull {
+			return unorderedVar(tv.TypeVariable, true, what, needs)
 		}
-		return ""
+		if tv.IsRigid() && !tv.IsOrdered() {
+			return unorderedVar(tv.TypeVariable, true, what, needs)
+		}
+		return fmt.Sprintf("%s may be null; supply a default with ??", what)
 	}
 	if _, decoded := inner.(DecodedType); decoded {
 		return fmt.Sprintf("%s is decoded data; give it a type first, e.g. `(JSON.decode(...) :: T)`", what)
@@ -53,7 +72,7 @@ func whyUnordered(t hm.Type, what string) string {
 	}
 	switch it := inner.(type) {
 	case ListType:
-		return whyUnordered(it.Type, "an element")
+		return unordered(it.Type, "an element", needs)
 	case *Type:
 		if it.IsMeta() {
 			break
@@ -68,7 +87,7 @@ func whyUnordered(t hm.Type, what string) string {
 				if isMethodType(ft) {
 					continue
 				}
-				if why := whyUnordered(ft, "field "+name); why != "" {
+				if why := unordered(ft, "field "+name, needs); why != "" {
 					return why
 				}
 			}
@@ -79,6 +98,28 @@ func whyUnordered(t hm.Type, what string) string {
 		what = fmt.Sprintf("%s (%s)", what, t)
 	}
 	return fmt.Sprintf("%s has no order; %s", what, orderedKinds)
+}
+
+// unorderedVar is unordered for a type variable tv, written non-null
+// (`a!`) or not. A flexible variable may still come to stand for an Ordered
+// type, so it passes, as one of the needs. A rigid one stands for whatever
+// its declaration says: Ordered if it is bounded so, and then possibly null
+// unless written `a!`.
+func unorderedVar(tv hm.TypeVariable, nonNull bool, what string, needs *[]hm.OrderedNeed) string {
+	if !tv.IsRigid() {
+		if needs != nil {
+			*needs = append(*needs, hm.OrderedNeed{Var: tv, NonNull: nonNull})
+		}
+		return ""
+	}
+	name := tv.Unbounded()
+	if !tv.IsOrdered() {
+		return fmt.Sprintf("%s is of the generic type %s, which has no known order; declare it `[%s: Ordered]`", what, name, name)
+	}
+	if !nonNull {
+		return fmt.Sprintf("%s is of the generic type %s, which may be null; write %s! for its non-null values", what, name, name)
+	}
+	return ""
 }
 
 // sortKeyOfList returns the element type of a list type, for checking sort.

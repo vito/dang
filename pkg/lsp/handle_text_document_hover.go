@@ -82,7 +82,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 				docString := docOf(env, selectNode.Field.Name)
 				if scheme, found := env.LocalSchemeOf(selectNode.Field.Name); found {
 					fieldType, _ := scheme.Type()
-					codeBlock := fmt.Sprintf("%s: %s", symbolName, fieldType)
+					codeBlock := fmt.Sprintf("%s: %s", symbolName, dang.FormatFunctionType(fieldType))
 					if extra := typeDetailSuffix(fieldType); extra != "" {
 						codeBlock += extra
 					}
@@ -94,7 +94,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 
 	// Try the node's inferred type
 	if inferredType := node.GetInferredType(); inferredType != nil {
-		codeBlock := fmt.Sprintf("%s: %s", symbolName, inferredType)
+		codeBlock := fmt.Sprintf("%s: %s", symbolName, dang.FormatFunctionType(inferredType))
 
 		// Enrich hover for union and enum types with member details
 		if extra := typeDetailSuffix(inferredType); extra != "" {

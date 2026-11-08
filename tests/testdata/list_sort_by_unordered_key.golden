@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot sort by Point!: it has no order; sort keys must be Int!, Float!, String!, Boolean!, an enum or scalar, or a list or {{ }} record of those
+[1m[31mError:[0m cannot sort by Point!: it has no order; Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those
   [2m[34m--> errors/list_sort_by_unordered_key.dang:6:15[0m
  [2m    |[0m
  [2m  4 | [0m

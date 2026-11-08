@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot sort a list of a: it is of the generic type a, which has no known order
+[1m[31mError:[0m cannot sort a list of a: it is of the generic type a, which has no known order; declare it `[a: Ordered]`
   [2m[34m--> errors/list_sort_generic_element.dang:2:3[0m
  [2m    |[0m
  [2m  1 | sorted(xs: [a]!): [a]! {[0m

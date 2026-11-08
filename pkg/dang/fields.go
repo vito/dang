@@ -99,6 +99,16 @@ func (s *FieldDecl) funDecl() *FunDecl {
 	return fd
 }
 
+// withTypeParams brings the declared type parameters of the function s
+// declares, if any, into scope for its annotation, which is the function's
+// signature.
+func (s *FieldDecl) withTypeParams(ctx context.Context) context.Context {
+	if fd := s.funDecl(); fd != nil {
+		return withTypeParams(ctx, fd.TypeParams)
+	}
+	return ctx
+}
+
 func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	s.noteImportShadow(env)
 	// If the field value is a hoister (e.g. wraps a FunDecl), delegate while
@@ -283,7 +293,7 @@ func (frame *Type) keepWeakCells(s *FieldDecl) {
 
 func (s *FieldDecl) unweakenedSignatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	if s.Type_ != nil {
-		fieldType, err := s.Type_.Infer(ctx, env, fresh)
+		fieldType, err := s.Type_.Infer(s.withTypeParams(ctx), env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -393,7 +403,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	var definedType hm.Type
 	if s.Type_ != nil {
-		definedType, err = s.Type_.Infer(ctx, env, fresh)
+		definedType, err = s.Type_.Infer(s.withTypeParams(ctx), env, fresh)
 		if err != nil {
 			return nil, err
 		}

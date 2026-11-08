@@ -1468,6 +1468,8 @@ func (f *Formatter) formatFunDecl(fn *FunDecl) {
 }
 
 func (f *Formatter) formatFunDeclSignature(fn *FunDecl, fieldNameLine int) {
+	f.write(formatTypeParams(fn.TypeParams))
+
 	// Arguments. Multiline detection anchors on the name's line, not fn.Loc —
 	// a multi-line prefix directive puts the decl's start lines above the
 	// signature itself.

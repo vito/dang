@@ -1,0 +1,8 @@
+[1m[31mError:[0m unknown bound Comparable on type parameter a: the only bound is Ordered
+  [2m[34m--> errors/type_param_unknown_bound.dang:1:13[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0msmallest[a: Comparable](xs: [a!]!): a { xs[0] }
+[2m                   [31m^^^^^^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

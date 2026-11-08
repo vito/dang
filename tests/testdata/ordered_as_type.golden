@@ -1,0 +1,21 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m Ordered is a constraint, not a type: declare a type parameter bounded by it, like `[a: Ordered]`, and use that (`x: a!`)
+  [2m[34m--> errors/ordered_as_type.dang:1:12[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0msmaller(x: Ordered!, y: Ordered!): Boolean! { x < y }
+[2m                  [31m^^^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m Ordered is a constraint, not a type: declare a type parameter bounded by it, like `[a: Ordered]`, and use that (`x: a!`)
+  [2m[34m--> errors/ordered_as_type.dang:1:12[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0msmaller(x: Ordered!, y: Ordered!): Boolean! { x < y }
+[2m                  [31m^^^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

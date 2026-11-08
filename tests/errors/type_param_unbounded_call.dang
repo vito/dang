@@ -1,0 +1,5 @@
+mySort[k: Ordered](xs: [k!]!): [k!]! { xs.sort }
+
+sortedCopy[a](xs: [a!]!): [a!]! {
+  mySort(xs)
+}

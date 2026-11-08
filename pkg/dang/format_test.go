@@ -825,6 +825,24 @@ func (FormatSuite) TestConstructorBlockParamFormatting(ctx context.Context, t *t
 	require.Equal(t, expected, result)
 }
 
+func (FormatSuite) TestTypeParamFormatting(ctx context.Context, t *testctx.T) {
+	input := `sortBy[a,k:Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! { xs }
+
+type Box {
+  let  first[ b : Ordered & Ordered ]: [b!]! { [] }
+}`
+	expected := `sortBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! { xs }
+
+type Box {
+  let first[b: Ordered & Ordered]: [b!]! { [] }
+}
+`
+
+	result, err := FormatFile([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+}
+
 func (FormatSuite) TestFunctionRefFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

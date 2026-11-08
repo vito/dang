@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -30,6 +31,7 @@ const (
 	numericOperand operandClass = 1 << iota // Int and Float (which may mix)
 	stringOperand                           // String, e.g. concatenation with +
 	listOperand                             // [a], e.g. concatenation with +
+	orderedOperand                          // any Ordered type, for < > <= >=
 )
 
 func (c operandClass) has(x operandClass) bool { return c&x != 0 }
@@ -100,11 +102,15 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 		case ArithmeticOp:
 			return b.resolveOperands(env, lt, rt)
 		case ComparisonOp:
-			// Ordering comparisons (< > <= >=) carry a domain just like
-			// arithmetic and must reject non-orderable operands (e.g.
-			// `"a" < "b"`). Inequality (!=) carries no domain, but like
-			// == its operands must be able to be equal (checkComparable).
-			if b.Operands != 0 {
+			// Ordering comparisons (< > <= >=) carry a domain, the Ordered
+			// types, and must reject operands outside it (e.g. two
+			// objects). Inequality (!=) carries no domain, but like == its
+			// operands must be able to be equal (checkComparable).
+			if b.Operands.has(orderedOperand) {
+				if err := b.checkOrdering(env, lt, rt); err != nil {
+					return nil, err
+				}
+			} else if b.Operands != 0 {
 				if _, err := b.resolveOperands(env, lt, rt); err != nil {
 					return nil, err
 				}
@@ -227,6 +233,66 @@ func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, e
 	}
 	return nil, withUnionProvenance(
 		fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt), lt)
+}
+
+// checkOrdering validates the operands of an ordering comparison (< > <=
+// >=): two values of one Ordered type (see whyUnordered), Int and Float
+// mixing as in arithmetic. A generic type variable compares only if its
+// declaration bounds it by Ordered (`[a: Ordered]`), and only its non-null
+// values (`a!`). An operand whose type is still unknown is bounded by
+// Ordered, which a weak variable keeps for good.
+func (b *BinaryOperator) checkOrdering(env hm.Env, lt, rt hm.Type) error {
+	sides := []struct {
+		node Node
+		t    hm.Type
+	}{{b.Left, lt}, {b.Right, rt}}
+	for _, side := range sides {
+		if tv, ok := unconstrainedVar(side.t); ok {
+			if v := varOfType(tv); !v.IsOrdered() {
+				name := v.Unbounded()
+				return NewInferError(fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations; declare it `[%s: Ordered]` to compare its values", b.OpName, name, name), side.node)
+			}
+		}
+	}
+	for _, side := range sides {
+		if knownNullable(side.t) {
+			return b.nullableOperandError(env, side.node, side.t)
+		}
+	}
+	lb, _ := stripNonNull(lt)
+	rb, _ := stripNonNull(rt)
+	if !isNumeric(lb) || !isNumeric(rb) {
+		subs, err := hm.Assignable(rt, lt)
+		if err != nil {
+			subs, err = hm.Assignable(lt, rt)
+		}
+		if err != nil {
+			return withUnionProvenance(
+				fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt), lt, rt)
+		}
+		lt = lt.Apply(subs).(hm.Type)
+	}
+	subs, err := hm.RequireOrdered(lt)
+	if err == nil {
+		err = hm.CommitWeak(subs)
+	}
+	if err != nil {
+		var ce hm.ConstraintError
+		if errors.As(err, &ce) {
+			return withUnionProvenance(
+				fmt.Errorf("operator %s is not defined for type %s: %s", b.OpName, lt, ce.Why), lt)
+		}
+		return err
+	}
+	return nil
+}
+
+// varOfType returns the variable t is, nullable or not.
+func varOfType(t hm.Type) hm.TypeVariable {
+	if ntv, ok := t.(hm.NullableTypeVariable); ok {
+		return ntv.TypeVariable
+	}
+	return t.(hm.TypeVariable)
 }
 
 // stripNonNull unwraps a NonNullType, reporting whether the wrapper was present.
@@ -636,7 +702,7 @@ func lessThanEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val < rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c < 0 })
 }
 
 func greaterThanEval(leftVal, rightVal Value) (Value, error) {
@@ -660,7 +726,7 @@ func greaterThanEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val > rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("greater than comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c > 0 })
 }
 
 func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
@@ -684,7 +750,7 @@ func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val <= rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c <= 0 })
 }
 
 func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
@@ -708,7 +774,18 @@ func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val >= rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("greater than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c >= 0 })
+}
+
+// orderedEval compares values the fast paths of the ordering operators
+// don't cover (enums, lists, records, booleans, scalars) as sort orders
+// them, and reports whether the comparison's result c satisfies holds.
+func orderedEval(leftVal, rightVal Value, holds func(c int) bool) (Value, error) {
+	c, err := (&orderer{}).compare(leftVal, rightVal)
+	if err != nil {
+		return nil, err
+	}
+	return BoolValue{Val: holds(c)}, nil
 }
 
 type Default struct {
@@ -1062,7 +1139,7 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than",
-			Operands: numericOperand | stringOperand,
+			Operands: orderedOperand,
 			EvalFunc: lessThanEval,
 		},
 	}
@@ -1091,7 +1168,7 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than",
-			Operands: numericOperand | stringOperand,
+			Operands: orderedOperand,
 			EvalFunc: greaterThanEval,
 		},
 	}
@@ -1120,7 +1197,7 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than_equal",
-			Operands: numericOperand | stringOperand,
+			Operands: orderedOperand,
 			EvalFunc: lessThanEqualEval,
 		},
 	}
@@ -1149,7 +1226,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than_equal",
-			Operands: numericOperand | stringOperand,
+			Operands: orderedOperand,
 			EvalFunc: greaterThanEqualEval,
 		},
 	}

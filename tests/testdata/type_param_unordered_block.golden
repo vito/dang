@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Person! for `k: Ordered`: it has no order; Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those
+  [2m[34m--> errors/type_param_unordered_block.dang:10:18[0m
+ [2m    |[0m
+ [2m  8 | [0m
+ [2m  9 | let people = [Person("b"), Person("a")][0m
+ [2m[34m[1m 10 | [0mmySortBy(people) { p => p }
+[2m                        [31m^^^^^^^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+
