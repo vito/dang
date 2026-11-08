@@ -44,6 +44,13 @@ type Person {
   greet(greeting: String! = "hi"): String! {
     greeting + ", " + name
   }
+
+  self {
+    """
+    Nobody in particular.
+    """
+    nobody: Person! { Person(name: "nobody") }
+  }
 }
 
 """
@@ -245,6 +252,19 @@ func TestDocOfStatics(t *testing.T) {
 	random, err := analysis.Doc(ctx, scope, "Random.int")
 	require.NoError(t, err)
 	require.NotEmpty(t, random.Doc)
+
+	escape, err := analysis.Doc(ctx, scope, "Regexp.escape")
+	require.NoError(t, err)
+	require.True(t, escape.Static)
+	require.NotEmpty(t, escape.Doc)
+
+	// A self { } block's statics, though the type's name is bound to its
+	// constructor.
+	nobody, err := analysis.Doc(ctx, scope, "Person.nobody")
+	require.NoError(t, err)
+	require.True(t, nobody.Static)
+	require.Equal(t, "Nobody in particular.", nobody.Doc)
+	require.Equal(t, "Person.nobody", analysis.Search(scope, "nobody", 1)[0].Qualified())
 }
 
 func TestDocOfDeclarations(t *testing.T) {
@@ -288,6 +308,12 @@ func TestSearch(t *testing.T) {
 	// Test's names unqualified too.
 	results = analysis.Search(scope, "version", 10)
 	require.Contains(t, qualified(results), "ServerInfo.version")
+
+	// A member reachable by several names is found once, by the shortest.
+	results = analysis.Search(scope, "featured", 10)
+	require.Contains(t, qualified(results), "featured")
+	require.NotContains(t, qualified(results), "Query.featured")
+	require.NotContains(t, qualified(results), "Test.featured")
 
 	require.Len(t, analysis.Search(scope, "a", 3), 3)
 }

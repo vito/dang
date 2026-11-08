@@ -84,6 +84,10 @@ type Member struct {
 	// function result has members of, or the type a type name names. Nil
 	// when that has no members.
 	Scope dang.TypeScope `json:"-"`
+
+	// scheme is the binding's scheme, which identifies it however it is
+	// reached (e.g. Test.featured and an unqualified import of it).
+	scheme *hm.Scheme
 }
 
 // Arg is an argument of a function, or a parameter of a block.
@@ -178,7 +182,7 @@ func Members(ctx context.Context, scope dang.TypeScope, of string) (*MemberList,
 		return &MemberList{
 			Of:      of,
 			Type:    named.Name(),
-			Members: typeNameMembers(ctx, scope, of, named),
+			Members: typeNameMembers(of, named),
 		}, nil
 	}
 	t, err := inferExpr(ctx, scope, of)
@@ -357,29 +361,41 @@ func typeMembers(t hm.Type) []Member {
 
 // typeNameMembers lists the members of the type a type name names: its
 // values' members (for an enum, its values), then the static members of the
-// name itself, e.g. JSON.encode.
-func typeNameMembers(ctx context.Context, scope dang.TypeScope, name string, named dang.TypeScope) []Member {
+// name itself, e.g. JSON.encode or what a `self { }` block declares.
+func typeNameMembers(name string, named dang.TypeScope) []Member {
 	members := scopeMembers(named, dang.PublicVisibility, true)
 	seen := map[string]bool{}
 	for _, m := range members {
 		seen[m.Name] = true
 	}
-	// The name's own type: its meta-type, holding its statics.
-	if t, err := inferExpr(ctx, scope, name); err == nil {
-		if meta, ok := unwrapNonNull(t).(*dang.Type); ok && meta.IsMeta() && dang.TypeScope(meta.InstanceType()) == named {
-			for _, m := range scopeMembers(meta, dang.PublicVisibility, true) {
-				if !seen[m.Name] {
-					seen[m.Name] = true
-					m.Static = true
-					members = append(members, m)
-				}
-			}
+	for _, m := range staticMembers(named) {
+		if !seen[m.Name] {
+			seen[m.Name] = true
+			members = append(members, m)
 		}
 	}
 	for i := range members {
 		members[i].Receiver = name
 	}
 	return sortMembers(members)
+}
+
+// staticMembers lists the public static members of a named type: those of
+// its meta-type, the type of its name, if it has one.
+func staticMembers(named dang.TypeScope) []Member {
+	mod, ok := named.(*dang.Type)
+	if !ok {
+		return nil
+	}
+	meta := mod.ExistingMetaType()
+	if meta == nil {
+		return nil
+	}
+	members := scopeMembers(meta, dang.PublicVisibility, true)
+	for i := range members {
+		members[i].Static = true
+	}
+	return members
 }
 
 // receiverName names the type a member listing is of, qualified by its
@@ -490,6 +506,7 @@ func bindingMember(scope dang.TypeScope, name string, scheme *hm.Scheme) (Member
 		Name:   name,
 		Type:   t.String(),
 		HMType: t,
+		scheme: scheme,
 	}
 	if doc, ok := scope.GetDocString(name); ok {
 		m.Doc = doc

@@ -64,7 +64,8 @@ func TestCompleteNamespaceMembers(t *testing.T) {
 		t.Skip("no completions without cgo")
 	}
 	require.Contains(t, labels(got.Items), "serverInfo")
-	require.NotContains(t, labels(got.Items), "print", "the prelude an import sees isn't its members")
+	// dang.Complete offered Test.Path, the prelude's Path.
+	require.NotContains(t, labels(got.Items), "Path", "the prelude an import sees isn't its members")
 }
 
 func labels(items []dang.Completion) []string {

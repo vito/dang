@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // Search ranks what scope can reach by how well its name and docs match
@@ -28,13 +29,23 @@ func Search(scope dang.TypeScope, query string, limit int) []Member {
 		score  int
 	}
 	var results []result
-	seen := map[string]bool{}
+	seenNames := map[string]bool{}
+	seenBindings := map[*hm.Scheme]bool{}
+	// Each member is considered once, under the first (shortest) name it's
+	// reached by: an import's field is reachable unqualified, through its
+	// Query type, and through its namespace.
 	consider := func(m Member) {
+		if m.scheme != nil {
+			if seenBindings[m.scheme] {
+				return
+			}
+			seenBindings[m.scheme] = true
+		}
 		key := m.Qualified()
-		if seen[key] {
+		if seenNames[key] {
 			return
 		}
-		seen[key] = true
+		seenNames[key] = true
 		if score := searchScore(m, query, words); score > 0 {
 			results = append(results, result{m, score})
 		}
@@ -72,6 +83,11 @@ func Search(scope dang.TypeScope, query string, limit int) []Member {
 					m.Receiver = qualified
 					consider(m)
 				}
+				// Its statics, e.g. JSON.encode.
+				for _, m := range staticMembers(named) {
+					m.Receiver = qualified
+					consider(m)
+				}
 				next = append(next, namespace{qualified + ".", named})
 			}
 		}
@@ -80,19 +96,6 @@ func Search(scope dang.TypeScope, query string, limit int) []Member {
 	if !visited[dang.MapTypeModule] {
 		for _, m := range scopeMembers(dang.MapTypeModule, dang.PublicVisibility, true) {
 			m.Receiver = "Map"
-			consider(m)
-		}
-	}
-	// The statics of type names in scope, e.g. JSON.encode.
-	for name, scheme := range scope.Bindings(dang.PrivateVisibility) {
-		t, _ := scheme.Type()
-		meta, ok := unwrapNonNull(t).(*dang.Type)
-		if !ok || !meta.IsMeta() {
-			continue
-		}
-		for _, m := range scopeMembers(meta, dang.PublicVisibility, true) {
-			m.Receiver = name
-			m.Static = true
 			consider(m)
 		}
 	}
