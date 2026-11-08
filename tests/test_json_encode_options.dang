@@ -1,7 +1,7 @@
 # JSON.encode's layout options: `indent` pretty-prints like Go's
 # json.MarshalIndent(v, "", indent), and `escapeHTML: false` leaves <, >, and &
 # bare, like a json.Encoder with SetEscapeHTML(false). The defaults are compact
-# and HTML-escaped, exactly as before the options existed.
+# and HTML-escaped, like json.Marshal.
 
 let page = {{
   title: "<b>Tom & Jerry</b>",
@@ -10,19 +10,34 @@ let page = {{
   meta: {{}}
 }}
 
-# Defaults: compact, HTML-escaped, keys sorted.
+# Defaults: compact, HTML-escaped, fields in the order written.
 assert {
-  JSON.encode(page) == """{"ids":[1,2],"meta":{},"none":[],"title":"\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e"}"""
+  JSON.encode(page) == """{"title":"\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e","ids":[1,2],"none":[],"meta":{}}"""
 }
 assert { JSON.encode(page, indent: "", escapeHTML: true) == JSON.encode(page) }
 
 assert {
-  JSON.encode(page, escapeHTML: false) == """{"ids":[1,2],"meta":{},"none":[],"title":"<b>Tom & Jerry</b>"}"""
+  JSON.encode(page, escapeHTML: false) == """{"title":"<b>Tom & Jerry</b>","ids":[1,2],"none":[],"meta":{}}"""
 }
 
 # Empty lists and objects stay on one line, as with json.MarshalIndent.
 assert {
   JSON.encode(page, indent: "  ") == """
+  {
+    "title": "\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e",
+    "ids": [
+      1,
+      2
+    ],
+    "none": [],
+    "meta": {}
+  }
+  """
+}
+
+# Layout composes with sorting.
+assert {
+  JSON.encode(page, indent: "  ", escapeHTML: false, sortKeys: true) == """
   {
     "ids": [
       1,
@@ -30,7 +45,7 @@ assert {
     ],
     "meta": {},
     "none": [],
-    "title": "\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e"
+    "title": "<b>Tom & Jerry</b>"
   }
   """
 }

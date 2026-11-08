@@ -7,10 +7,13 @@ let obj1 = {{name: "test", value: 42}}
 let json1 = JSON.encode(obj1)
 assert { json1 == "{\"name\":\"test\",\"value\":42}" }
 
-# Object literal with nested structure
+# Object literal with nested structure: fields stay in the order written
 let obj2 = {{user: {{id: 1, active: true}}, count: 100}}
 let json2 = JSON.encode(obj2)
-assert { json2 == "{\"count\":100,\"user\":{\"active\":true,\"id\":1}}" }
+assert { json2 == "{\"user\":{\"id\":1,\"active\":true},\"count\":100}" }
+assert {
+  JSON.encode(obj2, sortKeys: true) == "{\"count\":100,\"user\":{\"active\":true,\"id\":1}}"
+}
 
 # Empty list from filter/map should serialize as [] not null
 nums: [Int] = [1, 2, 3]

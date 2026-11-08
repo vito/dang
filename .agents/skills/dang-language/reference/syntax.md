@@ -75,7 +75,7 @@ greet(
 - `{{ key: value, other: value }}` — note the **double braces**. Always non-null.
 - A bare name is **shorthand** for `name: name`: `{{ name, age }}` ≡ `{{ name: name, age: age }}` (values taken from variables in scope), mirroring object selection's bare-field form (`recv.{{ name }}` ≡ `recv.{{ name: name }}`).
 - Same `{{ ... }}` syntax is also a record *type* annotation: `x :: {{foo: Int!, bar: Status!}}!`.
-- Nestable. Serialized to JSON with keys **sorted alphabetically** by default; `JSON.encode(value, sortKeys: false)` keeps the order the literal writes them in.
+- Nestable. Serialized to JSON with its fields **in the order written**; `JSON.encode(value, sortKeys: true)` sorts them.
 - Fields may reference each other in **any order** (`{{ total: a + b, a: 1, b: 2 }}`); a cyclic reference is a compile error.
 - A field's **own name resolves to the enclosing scope**, not the field being defined: `{{ user: user.{{name}} }}` reads the outer `user`. Siblings still see the field.
 - `{{ }}` is **always parallel**: fields evaluate concurrently (one referencing a sibling waits for it), failing fast on the first error. So a field can't write state declared outside it; fields produce values instead (objects.md "Compile-time rules").

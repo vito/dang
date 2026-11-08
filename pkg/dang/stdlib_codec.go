@@ -38,16 +38,16 @@ func registerCodecs() {
 	// (there is no universal receiver); it belongs to the format's namespace.
 	StaticMethod(JSONModule, "encode").
 		Doc("serializes a value to a JSON string. " +
+			"Fields come out in declaration order (a type's as declared, a record's as written) " +
+			"and map entries in insertion order; sortKeys: true sorts every object's keys instead. " +
 			"indent pretty-prints with one copy of it per nesting level (e.g. \"  \"); " +
-			"escapeHTML: false leaves <, >, and & unescaped in strings; " +
-			"sortKeys: false emits object and record fields in declaration order instead of alphabetically " +
-			"(maps always keep insertion order).").
-		Example(`JSON.encode({{tag: "<b>", ids: [1, 2]}}, indent: "  ", escapeHTML: false, sortKeys: false)`).
+			"escapeHTML: false leaves <, >, and & unescaped in strings.").
+		Example(`JSON.encode({{tag: "<b>", ids: [1, 2]}}, indent: "  ", escapeHTML: false)`).
 		Params(
 			"value", TypeVar('a'),
 			"indent", NonNull(StringType), StringValue{Val: ""},
 			"escapeHTML", NonNull(BooleanType), BoolValue{Val: true},
-			"sortKeys", NonNull(BooleanType), BoolValue{Val: true},
+			"sortKeys", NonNull(BooleanType), BoolValue{Val: false},
 		).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -208,28 +208,60 @@ type jsonOptions struct {
 	// \u0026, as json.Marshal does; false writes them verbatim, like a
 	// json.Encoder with SetEscapeHTML(false).
 	escapeHTML bool
-	// sortKeys emits object and record fields sorted by key, as json.Marshal
-	// does for Go maps; false keeps their declaration order, as it does for
-	// Go structs. Maps keep their insertion order either way.
+	// sortKeys sorts the keys of every object — records, typed objects, maps,
+	// and objects inside raw JSON leaves alike — as json.Marshal does for Go
+	// maps. Without it, fields keep their declaration order, as json.Marshal
+	// does for Go structs, and map entries their insertion order.
 	sortKeys bool
 }
 
-var defaultJSONOptions = jsonOptions{escapeHTML: true, sortKeys: true}
+var defaultJSONOptions = jsonOptions{escapeHTML: true}
+
+// marshalOrderedJSON encodes val with e and marshals the result compactly.
+func marshalOrderedJSON(e valueEncoder, val Value) ([]byte, error) {
+	tree, err := e.encode(val)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(tree)
+}
+
+// toStringJSON is the JSON text toString and List.join turn a non-string value
+// into. Its layout is JSON.encode's default — compact, HTML-escaped, fields in
+// declaration order, map entries in insertion order — but, as toString always
+// has, it writes every field under its own name: codec field directives do
+// not apply.
+func toStringJSON(val Value) (string, error) {
+	out, err := marshalOrderedJSON(valueEncoder{codec: jsonCodec, rawFields: true}, val)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
 
 func encodeJSON(val Value, opts jsonOptions) (string, error) {
 	if strings.Trim(opts.indent, " \t") != "" {
 		return "", fmt.Errorf("indent must contain only spaces and tabs, got %q", opts.indent)
 	}
-	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries;
-	// json.Marshal then produces canonical output (json.Number leaves render as
-	// numbers, object keys sort unless they were assembled in order).
-	tree, err := valueEncoder{codec: jsonCodec, declaredOrder: !opts.sortKeys}.encode(val)
+	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries and
+	// assembles objects in order; json.Marshal then produces compact output
+	// (json.Number leaves render as numbers).
+	jsonBytes, err := marshalOrderedJSON(valueEncoder{codec: jsonCodec}, val)
 	if err != nil {
 		return "", err
 	}
-	jsonBytes, err := json.Marshal(tree)
-	if err != nil {
-		return "", err
+	if opts.sortKeys {
+		// Decoding into Go maps and marshaling again sorts every object's
+		// keys, including those of leaves that brought their own JSON (raw
+		// scalars), which the encoder never looks inside. Numbers stay
+		// json.Number, so their text is kept as written.
+		raw, err := jsonBytesToRaw(jsonBytes)
+		if err != nil {
+			return "", err
+		}
+		if jsonBytes, err = json.Marshal(raw); err != nil {
+			return "", err
+		}
 	}
 	// Layout is applied to the compact output as a whole rather than through
 	// json.MarshalIndent or a json.Encoder, because parts of the tree are
@@ -485,13 +517,16 @@ func encodeValue(val Value, c Codec) (any, error) {
 }
 
 // valueEncoder is encodeValue with its options.
+//
+// For JSON it assembles every object as an ordered json.RawMessage: fields in
+// declaration order (see objectBindings), like encoding/json does for struct
+// fields, and map entries in insertion order. YAML/TOML render Go maps, which
+// their encoders sort.
 type valueEncoder struct {
 	codec Codec
-	// declaredOrder emits object and record fields in declaration order
-	// rather than sorted by key, like encoding/json does for struct fields.
-	// Only JSON honors it: its objects are assembled as ordered
-	// json.RawMessage, while YAML/TOML render Go maps, which they sort.
-	declaredOrder bool
+	// rawFields encodes every object field under its own name, ignoring the
+	// codec's field directives, as toString does.
+	rawFields bool
 }
 
 func (e valueEncoder) encode(val Value) (any, error) {
@@ -505,11 +540,10 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			if _, isFn := kv.Value.(FunctionValue); isFn {
 				continue
 			}
-			var directives []*DirectiveApplication
-			if v.Mod != nil {
-				directives = v.Mod.GetDirectives(kv.Key)
+			var opts codecFieldOpts
+			if v.Mod != nil && !e.rawFields {
+				opts = c.options(v.Mod.GetDirectives(kv.Key))
 			}
-			opts := c.options(directives)
 			if opts.ignore {
 				continue
 			}
@@ -527,7 +561,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			}
 			entries = append(entries, jsonEntry{key: opts.key(kv.Key), val: encoded})
 		}
-		if e.declaredOrder && c == jsonCodec {
+		if c == jsonCodec {
 			return marshalJSONObject(entries)
 		}
 		result := make(map[string]any, len(entries))
@@ -548,10 +582,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 		return items, nil
 	case MapValue:
 		// Map keys are runtime data and are never renamed, but the values may be
-		// objects with field directives, so recurse into them. JSON preserves key
-		// insertion order, which a Go map would lose (encoding/json sorts keys),
-		// so assemble it directly; YAML/TOML sort keys regardless, so a plain map
-		// suffices.
+		// objects with field directives, so recurse into them.
 		if c == jsonCodec {
 			entries := make([]jsonEntry, len(v.Keys))
 			for i, k := range v.Keys {
@@ -580,23 +611,24 @@ func (e valueEncoder) encode(val Value) (any, error) {
 }
 
 // objectBindings returns an object's bindings in the order its fields are
-// encoded. By default that order does not matter (they are collected into a
-// map), so they come in whatever order the object holds them. With
-// declaredOrder they follow the order the object's own type declares its
+// encoded. For JSON they follow the order the object's own type declares its
 // members — a type's fields, a record literal's fields as written, a
 // selection's as selected — with anything the type does not declare after
 // them, by name. That is the type the value was built with: a record literal
 // annotated with a record type listing its fields differently keeps the
-// literal's order.
+// literal's order. Other codecs collect fields into a map, so the order does
+// not matter and is left as the object holds them.
 func (e valueEncoder) objectBindings(obj *Object) []Keyed[Value] {
 	bindings := obj.Bindings(PrivateVisibility)
-	if !e.declaredOrder || obj.Mod == nil {
+	if e.codec != jsonCodec {
 		return bindings
 	}
 	rank := map[string]int{}
-	for name := range obj.Mod.Bindings(PrivateVisibility) {
-		if _, seen := rank[name]; !seen {
-			rank[name] = len(rank)
+	if obj.Mod != nil {
+		for name := range obj.Mod.Bindings(PrivateVisibility) {
+			if _, seen := rank[name]; !seen {
+				rank[name] = len(rank)
+			}
 		}
 	}
 	sort.SliceStable(bindings, func(i, j int) bool {

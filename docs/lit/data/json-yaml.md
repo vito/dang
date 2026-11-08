@@ -187,8 +187,9 @@ YAML.decode("") :: Options!
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
-a `String!`. Object and record keys come out in alphabetical order by default
-(see [#literals]):
+a `String!`. `JSON.encode` keeps fields in the order they are declared, as
+Go does for struct fields: a record's as written (see [#literals]), a type's
+as the type declares them. YAML and TOML sort them alphabetically:
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})
@@ -226,12 +227,11 @@ let link = {{ label: "Tom & Jerry", tags: ["<b>"] }}
 print(JSON.encode(link, indent: "  ", escapeHTML: false))
 ```
 
-To keep fields in the order they are declared instead, as Go does for struct
-fields, pass `sortKeys: false`. A type's fields come out in the order the type
-declares them. A record's follow how it was built: a literal's as written
-(even when it is annotated with a record type listing them differently), a
-selection's as selected, and a decoded record's as its type lists them. Maps
-keep their insertion order either way:
+More precisely, a record's fields follow how it was built: a literal's as
+written (even when it is annotated with a record type listing them
+differently), a selection's as selected, and a decoded record's as its type
+lists them. A map's entries keep their insertion order. To sort the keys of
+every object instead, maps included, pass `sortKeys: true`:
 
 ```dang
 type Release {
@@ -242,7 +242,11 @@ type Release {
 
 let release = Release(version: "2.2", name: "dang")
 
-[JSON.encode(release), JSON.encode(release, sortKeys: false)]
+[JSON.encode(release), JSON.encode(release, sortKeys: true)]
+```
+
+```dang
+JSON.encode(["zed": 1, "amy": 2], sortKeys: true)
 ```
 
 `toString(value)` passes strings through and JSON-encodes everything else
