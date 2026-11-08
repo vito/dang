@@ -20,20 +20,13 @@ type TypeParam struct {
 
 func (p *TypeParam) GetSourceLocation() *SourceLocation { return p.Loc }
 
-// orderedBound is the name of the Ordered constraint, the one bound there is
-// so far.
-const orderedBound = "Ordered"
-
-// errOrderedAsType reports Ordered written where a type goes.
-var errOrderedAsType = errors.New("Ordered is a constraint, not a type: declare a type parameter bounded by it, like `[a: Ordered]`, and use that (`x: a!`)")
-
-// variable returns the type variable p declares: its letter, bounded by
-// Ordered if p is.
+// variable returns the type variable p declares: its letter, bounded as p
+// is (by the bounds checkTypeParams finds; others it reports).
 func (p *TypeParam) variable() hm.TypeVariable {
 	tv := hm.TypeVariable([]rune(p.Name)[0])
 	for _, b := range p.Bounds {
-		if b.Base == nil && b.Name == orderedBound {
-			tv = hm.Ordered(tv)
+		if c, ok := lookupConstraint(b); ok {
+			tv = hm.Bound(tv, c.Constraint)
 		}
 	}
 	return tv
@@ -82,7 +75,7 @@ func FormatFunctionType(t hm.Type) string {
 			continue
 		}
 		vars = append(vars, tv)
-		bounded = bounded || tv.IsOrdered()
+		bounded = bounded || len(tv.Bounds()) > 0
 	}
 	if !bounded {
 		return ft.String()
@@ -97,8 +90,8 @@ func FormatFunctionType(t hm.Type) string {
 			continue
 		}
 		p := &TypeParam{Name: name}
-		if tv.IsOrdered() {
-			p.Bounds = []*NamedTypeNode{{Name: orderedBound}}
+		for _, hc := range tv.Bounds() {
+			p.Bounds = append(p.Bounds, &NamedTypeNode{Name: hc.Name()})
 		}
 		params = append(params, p)
 	}
@@ -168,8 +161,8 @@ func checkTypeParams(name string, params []*TypeParam, sig ...hm.Type) error {
 		}
 		declared[p.Name] = p
 		for _, b := range p.Bounds {
-			if b.Base != nil || b.Name != orderedBound {
-				return NewInferError(fmt.Errorf("unknown bound %s on type parameter %s: the only bound is Ordered", namedTypeString(b), p.Name), b)
+			if _, ok := lookupConstraint(b); !ok {
+				return NewInferError(fmt.Errorf("unknown bound %s on type parameter %s: known bounds: %s", namedTypeString(b), p.Name, constraintNames()), b)
 			}
 		}
 	}
@@ -223,7 +216,7 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 func checkImplementationBounds(iface, impl hm.Type) error {
 	bounded := false
 	for tv := range impl.FreeTypeVar() {
-		bounded = bounded || (tv.IsOrdered() && !tv.IsRigid())
+		bounded = bounded || (len(tv.Bounds()) > 0 && !tv.IsRigid())
 	}
 	if !bounded {
 		return nil
@@ -232,7 +225,7 @@ func checkImplementationBounds(iface, impl hm.Type) error {
 	_, err := hm.Assignable(iface.Apply(skolem).(hm.Type), impl)
 	var ce hm.ConstraintError
 	if errors.As(err, &ce) {
-		return fmt.Errorf("the implementation bounds %s by Ordered", ce.Var.Unbounded())
+		return fmt.Errorf("the implementation bounds %s by %s", ce.Var.Unbounded(), ce.Constraint.Name())
 	}
 	return nil
 }

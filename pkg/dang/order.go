@@ -16,33 +16,24 @@ import (
 // stands for.
 const orderedKinds = "Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those"
 
-// The Ordered bound on type variables (`[a: Ordered]`) admits exactly the
-// types whyUnordered does.
-func init() {
-	hm.OrderedHost = func(t hm.Type) ([]hm.OrderedNeed, string) {
-		var needs []hm.OrderedNeed
-		why := whyUnordered(t, "it", &needs)
-		return needs, why
-	}
-}
-
-// whyUnordered explains why values of type t have no order, or returns ""
-// when they do, or might: a type not yet known (a flexible type variable)
-// passes, and is appended to needs, the variables its order depends on.
-// what names the value in the explanation. It is the one definition of the
-// Ordered types: what sort and sortBy order, what < compares, and what a
-// type parameter bounded by Ordered stands for.
-func whyUnordered(t hm.Type, what string, needs *[]hm.OrderedNeed) string {
+// whyUnordered is Ordered's predicate (see BuiltinConstraint.Why): it
+// explains why values of type t have no order, or returns "" when they do,
+// or might: a type not yet known (a flexible type variable) passes, and is
+// appended to needs, the variables its order depends on. what names the
+// value in the explanation. It is the one definition of the Ordered types:
+// what sort and sortBy order, what < compares, and what a type parameter
+// bounded by Ordered stands for.
+func whyUnordered(c *BuiltinConstraint, t hm.Type, what string, needs *[]hm.Need) string {
 	inner, nonNull := stripNonNull(t)
 	switch tv := inner.(type) {
 	case hm.TypeVariable:
-		return unorderedVar(tv, nonNull, what, needs)
+		return unorderedVar(c, tv, nonNull, what, needs)
 	case hm.NullableTypeVariable:
 		if nonNull {
-			return unorderedVar(tv.TypeVariable, true, what, needs)
+			return unorderedVar(c, tv.TypeVariable, true, what, needs)
 		}
-		if tv.IsRigid() && !tv.IsOrdered() {
-			return unorderedVar(tv.TypeVariable, true, what, needs)
+		if tv.IsRigid() && !tv.Has(c.Constraint) {
+			return unorderedVar(c, tv.TypeVariable, true, what, needs)
 		}
 		return fmt.Sprintf("%s may be null; supply a default with ??", what)
 	}
@@ -63,7 +54,7 @@ func whyUnordered(t hm.Type, what string, needs *[]hm.OrderedNeed) string {
 	}
 	switch it := inner.(type) {
 	case ListType:
-		return whyUnordered(it.Type, "an element", needs)
+		return whyUnordered(c, it.Type, "an element", needs)
 	case *Type:
 		if it.IsMeta() {
 			break
@@ -78,7 +69,7 @@ func whyUnordered(t hm.Type, what string, needs *[]hm.OrderedNeed) string {
 				if isMethodType(ft) {
 					continue
 				}
-				if why := whyUnordered(ft, "field "+name, needs); why != "" {
+				if why := whyUnordered(c, ft, "field "+name, needs); why != "" {
 					return why
 				}
 			}
@@ -96,16 +87,16 @@ func whyUnordered(t hm.Type, what string, needs *[]hm.OrderedNeed) string {
 // type, so it passes, as one of the needs. A rigid one stands for whatever
 // its declaration says: Ordered if it is bounded so, and then possibly null
 // unless written `a!`.
-func unorderedVar(tv hm.TypeVariable, nonNull bool, what string, needs *[]hm.OrderedNeed) string {
+func unorderedVar(c *BuiltinConstraint, tv hm.TypeVariable, nonNull bool, what string, needs *[]hm.Need) string {
 	if !tv.IsRigid() {
 		if needs != nil {
-			*needs = append(*needs, hm.OrderedNeed{Var: tv, NonNull: nonNull})
+			*needs = append(*needs, hm.Need{Var: tv, NonNull: nonNull})
 		}
 		return ""
 	}
 	name := tv.Unbounded()
-	if !tv.IsOrdered() {
-		return fmt.Sprintf("%s is of the generic type %s, which has no known order; declare it `[%s: Ordered]`", what, name, name)
+	if !tv.Has(c.Constraint) {
+		return fmt.Sprintf("%s is of the generic type %s, which has no known order; declare it `[%s: %s]`", what, name, name, c.Name)
 	}
 	if !nonNull {
 		return fmt.Sprintf("%s is of the generic type %s, which may be null; write %s! for its non-null values", what, name, name)
@@ -113,43 +104,53 @@ func unorderedVar(tv hm.TypeVariable, nonNull bool, what string, needs *[]hm.Ord
 	return ""
 }
 
-// orderedElems checks the receiver of a list method whose signature bounds
-// the element variable `a` by Ordered (sort): the method takes its receiver
-// as `[a!]!`, so the elements must be Ordered and non-null. Elements whose
-// type isn't known yet are bounded instead, for good when they are a
-// binding's, and returned so: the method's type then carries the bound.
-func orderedElems(def BuiltinDef, elemType hm.Type) (hm.Type, error) {
-	if !mentionsVar(def, hm.Ordered('a')) {
-		return elemType, nil
-	}
-	subs, err := hm.RequireOrdered(elemType)
-	if err == nil {
-		err = hm.CommitWeak(subs)
-	}
-	if err != nil {
-		var ce hm.ConstraintError
-		if errors.As(err, &ce) {
-			return nil, fmt.Errorf("cannot %s a list of %s: %s", def.Name, elemType, ce.Why)
+// boundedElems checks the receiver of a list method whose signature bounds
+// the element variable `a` (sort's, by Ordered): the method takes its
+// receiver as `[a!]!`, so the elements must satisfy each bound and be
+// non-null. Elements whose type isn't known yet are bounded instead, for
+// good when they are a binding's, and returned so: the method's type then
+// carries the bounds.
+func boundedElems(def BuiltinDef, elemType hm.Type) (hm.Type, error) {
+	for _, c := range listElemVar(def).Bounds() {
+		subs, err := hm.Require(c, elemType)
+		if err == nil {
+			err = hm.CommitWeak(subs)
 		}
-		return nil, err
-	}
-	if len(subs) > 0 {
-		elemType = elemType.Apply(subs).(hm.Type)
+		if err != nil {
+			var ce hm.ConstraintError
+			if errors.As(err, &ce) {
+				return nil, fmt.Errorf("cannot %s a list of %s: %s", def.Name, elemType, ce.Why)
+			}
+			return nil, err
+		}
+		if len(subs) > 0 {
+			elemType = elemType.Apply(subs).(hm.Type)
+		}
 	}
 	return elemType, nil
 }
 
-// mentionsVar reports whether a builtin's signature mentions tv.
-func mentionsVar(def BuiltinDef, tv hm.TypeVariable) bool {
+// listElemVar returns the variable a list method's signature writes for the
+// list's elements: `a`, with the bounds the signature gives it.
+func listElemVar(def BuiltinDef) hm.TypeVariable {
+	var types []hm.Type
 	for _, param := range def.ParamTypes {
-		if param.Type.FreeTypeVar().Contains(tv) {
-			return true
+		types = append(types, param.Type)
+	}
+	if def.ReturnType != nil {
+		types = append(types, def.ReturnType)
+	}
+	if def.BlockType != nil {
+		types = append(types, def.BlockType)
+	}
+	for _, t := range types {
+		for tv := range t.FreeTypeVar() {
+			if tv.Unbounded() == 'a' {
+				return tv
+			}
 		}
 	}
-	if def.ReturnType != nil && def.ReturnType.FreeTypeVar().Contains(tv) {
-		return true
-	}
-	return def.BlockType != nil && def.BlockType.FreeTypeVar().Contains(tv)
+	return 'a'
 }
 
 // sortStable returns elems ordered by their keys (keys[i] is elems[i]'s),

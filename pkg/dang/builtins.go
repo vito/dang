@@ -748,7 +748,16 @@ func TypeVar(r rune) hm.Type {
 // `[a: Ordered]`. A list method's element variable `a` bounded so takes
 // its receiver as `[a!]!`: the elements must be Ordered and non-null.
 func OrderedVar(r rune) hm.Type {
-	return hm.Ordered(hm.TypeVariable(r))
+	return BoundedVar(r, orderedConstraint)
+}
+
+// BoundedVar creates a type variable bounded by the given constraints.
+func BoundedVar(r rune, cs ...*BuiltinConstraint) hm.Type {
+	tv := hm.TypeVariable(r)
+	for _, c := range cs {
+		tv = hm.Bound(tv, c.Constraint)
+	}
+	return tv
 }
 
 // NonNull wraps a type in NonNullType

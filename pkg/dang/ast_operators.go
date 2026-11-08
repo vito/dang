@@ -31,7 +31,10 @@ const (
 	numericOperand operandClass = 1 << iota // Int and Float (which may mix)
 	stringOperand                           // String, e.g. concatenation with +
 	listOperand                             // [a], e.g. concatenation with +
-	orderedOperand                          // any Ordered type, for < > <= >=
+	// constrainedOperand: the domain is the built-in constraint that
+	// enables the operator (BuiltinConstraint.Operators), e.g. Ordered for
+	// < > <= >=.
+	constrainedOperand
 )
 
 func (c operandClass) has(x operandClass) bool { return c&x != 0 }
@@ -106,8 +109,12 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 			// types, and must reject operands outside it (e.g. two
 			// objects). Inequality (!=) carries no domain, but like == its
 			// operands must be able to be equal (checkComparable).
-			if b.Operands.has(orderedOperand) {
-				if err := b.checkOrdering(env, lt, rt); err != nil {
+			if b.Operands.has(constrainedOperand) {
+				c, ok := constraintEnabling(b.OpName)
+				if !ok {
+					return nil, fmt.Errorf("operator %s: internal error: no constraint enables it", b.OpName)
+				}
+				if err := b.checkConstrainedOperands(env, c, lt, rt); err != nil {
 					return nil, err
 				}
 			} else if b.Operands != 0 {
@@ -164,10 +171,10 @@ func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, e
 	// Reject at definition time rather than failing at the call site — without
 	// typeclasses, a generic value can only be passed around, not operated on.
 	if tv, ok := unconstrainedVar(lt); ok {
-		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+		return nil, b.unboundedVarError(tv)
 	}
 	if tv, ok := unconstrainedVar(rt); ok {
-		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+		return nil, b.unboundedVarError(tv)
 	}
 
 	// A null operand raises at runtime (operators don't propagate null the way
@@ -235,22 +242,22 @@ func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, e
 		fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt), lt)
 }
 
-// checkOrdering validates the operands of an ordering comparison (< > <=
-// >=): two values of one Ordered type (see whyUnordered), Int and Float
-// mixing as in arithmetic. A generic type variable compares only if its
-// declaration bounds it by Ordered (`[a: Ordered]`), and only its non-null
-// values (`a!`). An operand whose type is still unknown is bounded by
-// Ordered, which a weak variable keeps for good.
-func (b *BinaryOperator) checkOrdering(env hm.Env, lt, rt hm.Type) error {
+// checkConstrainedOperands validates the operands of an operator whose
+// domain is the constraint c that enables it (Ordered, for < > <= >=): two
+// values of one type satisfying c (see BuiltinConstraint.Why), Int and Float
+// mixing as in arithmetic. A generic type variable qualifies only if its
+// declaration bounds it by c (`[a: Ordered]`), and only its non-null values
+// (`a!`). An operand whose type is still unknown is bounded by c, which a
+// weak variable keeps for good.
+func (b *BinaryOperator) checkConstrainedOperands(env hm.Env, c *BuiltinConstraint, lt, rt hm.Type) error {
 	sides := []struct {
 		node Node
 		t    hm.Type
 	}{{b.Left, lt}, {b.Right, rt}}
 	for _, side := range sides {
 		if tv, ok := unconstrainedVar(side.t); ok {
-			if v := varOfType(tv); !v.IsOrdered() {
-				name := v.Unbounded()
-				return NewInferError(fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations; declare it `[%s: Ordered]` to compare its values", b.OpName, name, name), side.node)
+			if v := varOfType(tv); !v.Has(c.Constraint) {
+				return NewInferError(b.unboundedVarError(tv), side.node)
 			}
 		}
 	}
@@ -274,9 +281,9 @@ func (b *BinaryOperator) checkOrdering(env hm.Env, lt, rt hm.Type) error {
 		rt = rt.Apply(subs).(hm.Type)
 	}
 	// Both sides: one may be wider than the other (a union the other is
-	// a member of), and each must be Ordered.
+	// a member of), and each must satisfy c.
 	for _, t := range []hm.Type{lt, rt} {
-		subs, err := hm.RequireOrdered(t)
+		subs, err := hm.Require(c.Constraint, t)
 		if err == nil {
 			err = hm.CommitWeak(subs)
 		}
@@ -290,6 +297,16 @@ func (b *BinaryOperator) checkOrdering(env hm.Env, lt, rt hm.Type) error {
 		}
 	}
 	return nil
+}
+
+// unboundedVarError reports the operator used on a value of a type variable
+// that isn't bounded to support it, saying which bound would, if any does.
+func (b *BinaryOperator) unboundedVarError(t hm.Type) error {
+	if c, ok := constraintEnabling(b.OpName); ok {
+		name := varOfType(t).Unbounded()
+		return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations; declare it `[%s: %s]` to use it", b.OpName, t, name, c.Name)
+	}
+	return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, t)
 }
 
 // varOfType returns the variable t is, nullable or not.
@@ -1144,7 +1161,7 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than",
-			Operands: orderedOperand,
+			Operands: constrainedOperand,
 			EvalFunc: lessThanEval,
 		},
 	}
@@ -1173,7 +1190,7 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than",
-			Operands: orderedOperand,
+			Operands: constrainedOperand,
 			EvalFunc: greaterThanEval,
 		},
 	}
@@ -1202,7 +1219,7 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than_equal",
-			Operands: orderedOperand,
+			Operands: constrainedOperand,
 			EvalFunc: lessThanEqualEval,
 		},
 	}
@@ -1231,7 +1248,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than_equal",
-			Operands: orderedOperand,
+			Operands: constrainedOperand,
 			EvalFunc: greaterThanEqualEval,
 		},
 	}

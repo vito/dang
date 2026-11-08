@@ -79,8 +79,8 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			if t.Base != nil {
 				return nil, UnresolvedTypeError{Name: t.Name, Qualifier: t.Base.spelling()}
 			}
-			if t.Name == orderedBound {
-				return nil, errOrderedAsType
+			if c, ok := lookupConstraint(t); ok {
+				return nil, constraintAsTypeError(c)
 			}
 			// A builtin type that is not a module (Decoded) resolves here,
 			// below every scope: a declaration of the same name shadows it,

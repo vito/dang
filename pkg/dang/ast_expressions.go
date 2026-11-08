@@ -467,9 +467,9 @@ func nullableResult(have, want hm.Type) bool {
 }
 
 // boundMismatch explains a result of type have that doesn't fit want, a
-// variable bounded by Ordered (sortBy's k!), by the bound when have fails
-// it: a key mixing types across branches would otherwise only be reported
-// as not unifying with the variable.
+// bounded variable (sortBy's k!), by a bound have fails: a key mixing types
+// across branches would otherwise only be reported as not unifying with the
+// variable.
 func boundMismatch(have, want hm.Type) (hm.ConstraintError, bool) {
 	inner, _ := stripNonNull(want)
 	var tv hm.TypeVariable
@@ -481,16 +481,19 @@ func boundMismatch(have, want hm.Type) (hm.ConstraintError, bool) {
 	default:
 		return hm.ConstraintError{}, false
 	}
-	if !tv.IsOrdered() || tv.IsRigid() {
+	if tv.IsRigid() {
 		return hm.ConstraintError{}, false
 	}
-	_, err := hm.RequireOrdered(hm.NonNull(have))
-	var ce hm.ConstraintError
-	if !errors.As(err, &ce) {
-		return hm.ConstraintError{}, false
+	for _, c := range tv.Bounds() {
+		_, err := hm.Require(c, hm.NonNull(have))
+		var ce hm.ConstraintError
+		if errors.As(err, &ce) {
+			ce.Var = tv
+			ce.Type = have
+			return ce, true
+		}
 	}
-	ce.Var = tv
-	return ce, true
+	return hm.ConstraintError{}, false
 }
 
 // omittedArgSubs makes nullable each flexible variable that types a
@@ -1166,7 +1169,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			// Build method type with element type substituted for type
 			// variable, which a bound on it checks first (sort's).
-			listElemType, err = orderedElems(def, listElemType)
+			listElemType, err = boundedElems(def, listElemType)
 			if err != nil {
 				return nil, err
 			}
@@ -4093,17 +4096,17 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 	if def.BlockType != nil {
 		own = own.Union(def.BlockType.FreeTypeVar())
 	}
+	// The element variable may be bounded (sort's); boundedElems checked
+	// the element type against its bounds.
+	elem := listElemVar(def)
 	own.Remove('a')
-	// The element variable may be bounded (sort's); orderedElems checked
-	// the element type against the bound.
-	own.Remove(hm.Ordered('a'))
+	own.Remove(elem)
 	rename := freshenSubs(own)
 	instantiate := func(t hm.Type) hm.Type {
 		if t == nil {
 			return nil
 		}
-		t = substituteTypeVar(t.Apply(rename).(hm.Type), 'a', elemType)
-		return substituteTypeVar(t, hm.Ordered('a'), elemType)
+		return substituteTypeVar(t.Apply(rename).(hm.Type), elem, elemType)
 	}
 
 	// Build a record type for the method arguments, replacing TypeVar('a') with elemType

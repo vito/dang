@@ -536,7 +536,7 @@ func registerStdlib() {
 	//
 	// Stable, like sortBy: elements that compare equal keep their order.
 	// The bound on the element variable checks the receiver's elements at
-	// type-check time (see orderedElems).
+	// type-check time (see boundedElems).
 	Method(ListTypeModule, "sort").
 		Doc("returns a new list in ascending order (descending: true reverses it), keeping equal elements in their original order. Numbers sort numerically, strings and scalars by their bytes (numeric scalars numerically), false before true, enum values in declaration order, and lists and records element by element").
 		Example(`["b", "c", "a"].sort`).
