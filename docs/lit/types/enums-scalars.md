@@ -236,10 +236,11 @@ text. Demo's `Opaque` scalar is one of these:
 [describeOpaque(value: opaqueNumber), `object: ${opaqueObject}`]
 ```
 
-Dang's own `JSON` goes further: it is the type for data of any shape.
-Decoding into it accepts any value, kept as its JSON text (see
-[#json-values]). A schema's `scalar JSON` stays a schema scalar like the
-ones above, its values as the server sends them.
+`JSON` goes further: it is the type for data of any shape. Decoding into it
+accepts any value, kept as its JSON text (see [#json-values]). That holds for
+Dang's own `JSON` and for a schema's `scalar JSON` alike; a schema's JSON is
+sent and received as its JSON text in a string, which is how Dagger's works.
+APIs whose JSON scalar sends raw JSON values instead aren't supported.
 
 ### Treating scalars as opaque
 

@@ -489,18 +489,21 @@ func isDegradableScalar(mod *Type) bool {
 	return mod == JSONModule || !builtins.staticModuleSeen[mod]
 }
 
-// isJSONScalar reports whether mod is Dang's JSON value type: the builtin JSON
-// scalar, or a same-named scalar a user declared, which merges with it (see
-// BuiltinScalarModule). A JSON value is untyped JSON data held as its JSON
-// text: decoding into it accepts any value, and encoding embeds it as that
-// value rather than as a string. A declared JSON with a new() hook defines its
-// own values instead, and a schema's `scalar JSON` keeps the behavior of any
-// schema scalar: servers disagree on its wire form (Dagger sends JSON text in
-// a string, graphql-type-json style servers send the value itself), so Dang
-// leaves its values exactly as the server sends them.
+// isJSONScalar reports whether mod is a JSON value type: the builtin JSON
+// scalar, a same-named scalar a user declared (which merges with it, see
+// BuiltinScalarModule), or a schema's `scalar JSON`. A JSON value is untyped
+// JSON data held as its JSON text: decoding into it accepts any value, and
+// encoding embeds it as that value rather than as a string. A declared JSON
+// with a new() hook defines its own values instead.
+//
+// A schema's JSON is matched by name and taken to carry its JSON text in a
+// string on the wire, which is Dagger's convention (core.JSON marshals as a
+// string of JSON). Servers that send the JSON value itself for their JSON
+// scalar (graphql-type-json style) are not supported: their values are read
+// as JSON, but go back to them as strings.
 func isJSONScalar(mod *Type) bool {
 	return mod.Kind == ScalarKind && mod.Named == JSONModule.Named &&
-		mod.SourceSchema == nil && !mod.hasScalarHook && mod.goScalarHook == nil
+		!mod.hasScalarHook && mod.goScalarHook == nil
 }
 
 // isJSONValue reports whether v is a value of Dang's JSON type.
@@ -518,6 +521,23 @@ func isJSONNullValue(v Value) bool {
 	}
 	mod, ok := s.ScalarType.(*Type)
 	return ok && isJSONScalar(mod) && mod.SourceSchema == nil
+}
+
+// jsonScalarFromResult holds a GraphQL result for the JSON scalar mod. The
+// server sends JSON text in a string; text that doesn't parse is kept as the
+// server sent it, so a lenient server's value still reaches the program. Any
+// other value is taken as the JSON itself (a graphql-type-json style server),
+// though it will go back to the server as a string.
+func jsonScalarFromResult(raw any, mod *Type) (Value, error) {
+	str, ok := raw.(string)
+	if !ok {
+		return jsonScalarFromRaw(raw, mod, "")
+	}
+	text, data, err := compactJSONText(str)
+	if err != nil {
+		return ScalarValue{Val: str, ScalarType: mod}, nil
+	}
+	return ScalarValue{Val: text, ScalarType: mod, jsonKey: canonicalJSONKey(data)}, nil
 }
 
 // jsonScalarFromRaw holds decoded data as a value of the JSON scalar mod: its

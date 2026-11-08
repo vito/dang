@@ -62,6 +62,10 @@ type Query {
   # Additional queries for scalar coercion testing
   formatTimestamp(ts: Timestamp!): String!
   parseJSON(data: JSON!): String!
+  # A JSON result (JSON text in a string, as Dagger sends it), and an echo
+  # that returns the JSON it was sent.
+  jsonConfig: JSON!
+  echoJSON(value: JSON!): JSON!
   addBigInt(a: BigInt!, b: BigInt!): BigInt!
   # Non-string custom scalar values, and an echo reporting the JSON it was
   # sent, for checking they round-trip unchanged.

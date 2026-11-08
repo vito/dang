@@ -14,8 +14,9 @@ assert { urlResult == "Fetched: https://example.com" }
 let tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z")
 assert { tsResult == "Formatted: 2024-01-15T10:30:00Z" }
 
+# A JSON literal is checked and compacted on its way in.
 let jsonResult = parseJSON(data: "{\"key\": \"value\"}")
-assert { jsonResult == "Parsed JSON: {\"key\": \"value\"}" }
+assert { jsonResult == "Parsed JSON: {\"key\":\"value\"}" }
 
 let bigIntResult = addBigInt(a: "12345678901234567890", b: "98765432109876543210")
 assert { bigIntResult == ("12345678901234567890+98765432109876543210" :: BigInt!) }

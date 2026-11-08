@@ -23,13 +23,33 @@ assert { JSON.encode(any) == "{\"n\":1,\"o\":{\"k\":[true]},\"s\":\"x\"}" }
 # Its text goes to the schema's JSON through a String.
 assert { parseJSON((any["o"]! :: String!) :: Test.JSON!) == "Parsed JSON: {\"k\":[true]}" }
 
-# The schema's JSON keeps the behavior of any schema scalar, whose wire form
-# Dang leaves to the server: a string stays the string, and other values are
-# held as their JSON, sent back as those values.
+# The schema's JSON is a JSON value too, carried on the wire as its JSON text
+# in a string (Dagger's convention). Decoding into it takes any value, held
+# as its text, a string with its quotes.
 let schemaJSON = JSON.decode("{\"s\": \"x\", \"o\": {\"k\": 1}}") :: Map[Test.JSON!]!
-assert { toString(schemaJSON["s"]!) == "x" }
+assert { toString(schemaJSON["s"]!) == "\"x\"" }
 assert { toString(schemaJSON["o"]!) == "{\"k\":1}" }
-let fromServer: Test.JSON! = "{\"ok\":true}"
-assert { JSON.encode(fromServer) == "\"{\\\"ok\\\":true}\"" }
+assert { JSON.encode(schemaJSON) == "{\"o\":{\"k\":1},\"s\":\"x\"}" }
+
+# It is sent as the string of its text, which the server reads as JSON.
+assert { parseJSON(schemaJSON["o"]!) == "Parsed JSON: {\"k\":1}" }
+assert { parseJSON(schemaJSON["s"]!) == "Parsed JSON: \"x\"" }
+
+# A result is the JSON text the server sent, compacted.
+assert { toString(jsonConfig) == "{\"name\":\"dang\",\"tags\":[\"a\",\"b\"],\"size\":1.50}" }
+let config = JSON.decode(jsonConfig) :: Map[JSON!]!
+assert { config.keys == ["name", "size", "tags"] }
+assert { jsonConfig == "{\"size\": 1.5, \"tags\": [\"a\", \"b\"], \"name\": \"dang\"}" }
+assert { JSON.encode({{config: jsonConfig}}) == "{\"config\":{\"name\":\"dang\",\"tags\":[\"a\",\"b\"],\"size\":1.50}}" }
+
+# A round trip through the server gives the same value back.
+assert { echoJSON(schemaJSON["o"]!) == schemaJSON["o"]! }
+assert { echoJSON(value: "[1, null, \"two\"]") == "[1,null,\"two\"]" }
+
+# Strings cast to it must be JSON, and literals are checked like the builtin's.
+let fromCast: Test.JSON! = "{ \"ok\": true }"
+assert { JSON.encode(fromCast) == "{\"ok\":true}" }
+let notJSON = "nope"
+assert { ((notJSON :: Test.JSON!) rescue null) == null }
 
 print("JSON scalar import + codec merge tests passed!")

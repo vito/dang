@@ -343,6 +343,16 @@ func (r *queryResolver) ParseJSON(ctx context.Context, data string) (string, err
 	return fmt.Sprintf("Parsed JSON: %s", data), nil
 }
 
+// JSONConfig is the resolver for the jsonConfig field.
+func (r *queryResolver) JSONConfig(ctx context.Context) (string, error) {
+	return `{ "name": "dang", "tags": ["a", "b"], "size": 1.50 }`, nil
+}
+
+// EchoJSON is the resolver for the echoJSON field.
+func (r *queryResolver) EchoJSON(ctx context.Context, value string) (string, error) {
+	return value, nil
+}
+
 // AddBigInt is the resolver for the addBigInt field.
 func (r *queryResolver) AddBigInt(ctx context.Context, a string, b string) (string, error) {
 	return fmt.Sprintf("%s+%s", a, b), nil

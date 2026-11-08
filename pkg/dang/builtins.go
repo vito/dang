@@ -679,11 +679,11 @@ func StaticModules() []*Type {
 // in the Prelude so its name resolves with no import. A scalar of the same
 // name that a schema imports or a user declares is grafted the identical
 // members, so the two merge rather than colliding: Dang's members ride along
-// on the other scalar. A user's declaration shadows the builtin (and, for
-// JSON, shares its value semantics); a schema's scalar doesn't, since imports
-// never shadow builtins, so the unqualified name stays the builtin and the
-// schema's scalar keeps its own values (see isJSONScalar). This is general —
-// any future builtin scalar behaves the same way.
+// on the other scalar. A user's declaration shadows the builtin; a schema's
+// scalar doesn't, since imports never shadow builtins, so the unqualified name
+// stays the builtin and the schema's scalar is a distinct type (for JSON, one
+// with the same value semantics; see isJSONScalar). This is general — any
+// future builtin scalar behaves the same way.
 
 // BuiltinScalarModule returns the builtin scalar module of the given name, if
 // Dang ships one. These are the ScalarKind entries among the static modules.

@@ -82,6 +82,7 @@ type ComplexityRoot struct {
 		AverageRating     func(childComplexity int) int
 		DescribeOpaque    func(childComplexity int, value any) int
 		EchoFloat         func(childComplexity int, value float64) int
+		EchoJSON          func(childComplexity int, value string) int
 		FavoriteNode      func(childComplexity int) int
 		FavoriteNodeID    func(childComplexity int) int
 		FavoriteUserID    func(childComplexity int) int
@@ -93,6 +94,7 @@ type ComplexityRoot struct {
 		FormatTimestamp   func(childComplexity int, ts string) int
 		Hello             func(childComplexity int, name string) int
 		Homepage          func(childComplexity int) int
+		JSONConfig        func(childComplexity int) int
 		MaybeUser         func(childComplexity int, id string) int
 		Node              func(childComplexity int, id string) int
 		NodeLabel         func(childComplexity int, node string) int
@@ -196,6 +198,8 @@ type QueryResolver interface {
 	Timestamped(ctx context.Context) ([]Timestamped, error)
 	FormatTimestamp(ctx context.Context, ts string) (string, error)
 	ParseJSON(ctx context.Context, data string) (string, error)
+	JSONConfig(ctx context.Context) (string, error)
+	EchoJSON(ctx context.Context, value string) (string, error)
 	AddBigInt(ctx context.Context, a string, b string) (string, error)
 	OpaqueNumber(ctx context.Context) (any, error)
 	OpaqueObject(ctx context.Context) (any, error)
@@ -402,6 +406,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.EchoFloat(childComplexity, args["value"].(float64)), true
+	case "Query.echoJSON":
+		if e.complexity.Query.EchoJSON == nil {
+			break
+		}
+
+		args, err := ec.field_Query_echoJSON_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.EchoJSON(childComplexity, args["value"].(string)), true
 	case "Query.favoriteNode":
 		if e.complexity.Query.FavoriteNode == nil {
 			break
@@ -493,6 +508,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Homepage(childComplexity), true
+	case "Query.jsonConfig":
+		if e.complexity.Query.JSONConfig == nil {
+			break
+		}
+
+		return e.complexity.Query.JSONConfig(childComplexity), true
 	case "Query.maybeUser":
 		if e.complexity.Query.MaybeUser == nil {
 			break
@@ -1109,6 +1130,17 @@ func (ec *executionContext) field_Query_echoFloat_args(ctx context.Context, rawA
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "value", ec.unmarshalNFloat2float64)
+	if err != nil {
+		return nil, err
+	}
+	args["value"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_echoJSON_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "value", ec.unmarshalNJSON2string)
 	if err != nil {
 		return nil, err
 	}
@@ -3067,6 +3099,76 @@ func (ec *executionContext) fieldContext_Query_parseJSON(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_parseJSON_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_jsonConfig(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_jsonConfig,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().JSONConfig(ctx)
+		},
+		nil,
+		ec.marshalNJSON2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_jsonConfig(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_echoJSON(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_echoJSON,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().EchoJSON(ctx, fc.Args["value"].(string))
+		},
+		nil,
+		ec.marshalNJSON2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_echoJSON(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_echoJSON_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6951,6 +7053,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_parseJSON(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "jsonConfig":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_jsonConfig(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "echoJSON":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_echoJSON(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}

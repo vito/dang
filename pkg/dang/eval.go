@@ -1391,6 +1391,12 @@ func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType 
 				if !found {
 					return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
 				}
+				if mod, ok := scalarType.(*Type); ok && isJSONScalar(mod) {
+					// A JSON scalar's result is its JSON text in a string
+					// (Dagger's convention). A non-string is taken as the
+					// JSON value itself, held as its text.
+					return jsonScalarFromResult(raw, mod)
+				}
 				if str, ok := raw.(string); ok {
 					return ScalarValue{Val: str, ScalarType: scalarType}, nil
 				}
