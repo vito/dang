@@ -2536,7 +2536,14 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 				return nil, fmt.Errorf("type %s not found in type environment", typeName)
 			}
 
-			resultObject := NewObject(concreteType)
+			// A fragment selecting fields builds a record of them, typed (like
+			// on native values) by the fragment's narrowed member, which lists
+			// them in the order selected; it links back to the concrete type.
+			var resultMod TypeScope = concreteType
+			if frag.Inferred != nil && len(frag.Fields) > 0 {
+				resultMod = frag.Inferred
+			}
+			resultObject := NewObject(resultMod)
 			concreteSchemaType := schema.Types.Get(typeName)
 			for _, field := range frag.Fields {
 				outKey := field.OutputKey()

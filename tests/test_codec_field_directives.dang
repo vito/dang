@@ -14,9 +14,10 @@ let nullEmail = Account("Ada", null, "s", 100)
 let withEmail = Account("Mary", "mary@x.io", "s", 50)
 
 # --- JSON encode: rename, omitNull drops the null field, @JSON.ignore excludes ---
-assert { JSON.encode(nullEmail) == "{\"balance\":100,\"display_name\":\"Ada\"}" }
+# Fields keep their declared order, renamed or not.
+assert { JSON.encode(nullEmail) == "{\"display_name\":\"Ada\",\"balance\":100}" }
 # a non-null value is kept, under its renamed key
-assert { JSON.encode(withEmail) == "{\"balance\":50,\"display_name\":\"Mary\",\"email_address\":\"mary@x.io\"}" }
+assert { JSON.encode(withEmail) == "{\"display_name\":\"Mary\",\"email_address\":\"mary@x.io\",\"balance\":50}" }
 
 # --- Format isolation: YAML honors only @YAML.* ---
 # display-name uses YAML's own rename; email keeps its declared name and its null
@@ -36,7 +37,7 @@ type Sparse {
 }
 
 assert { JSON.encode(Sparse("", 0, false, [], 7)) == "{\"keep\":7}" }
-assert { JSON.encode(Sparse("hi", 3, true, ["a"], 7)) == "{\"count\":3,\"flag\":true,\"keep\":7,\"note\":\"hi\",\"tags\":[\"a\"]}" }
+assert { JSON.encode(Sparse("hi", 3, true, ["a"], 7)) == "{\"note\":\"hi\",\"count\":3,\"flag\":true,\"tags\":[\"a\"],\"keep\":7}" }
 
 # omitNull keeps "" (only null is absent); omitEmpty also drops ""
 type NullVsEmpty {

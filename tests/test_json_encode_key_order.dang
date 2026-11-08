@@ -1,0 +1,132 @@
+# JSON.encode keeps fields in declaration order, like json.Marshal does for Go
+# struct fields, and map entries in insertion order. `sortKeys: true` sorts the
+# keys of every object instead, maps included, like json.Marshal does for Go
+# maps.
+
+type Module {
+  name: String!
+  source: String!
+  version: String @JSON.field(omitEmpty: true)
+  pin: String @JSON.field(name: "pinned", omitEmpty: true)
+  deps: [String!]! @JSON.field(omitEmpty: true) = []
+
+  label: String! { name + "@" + source }
+}
+
+let mod = Module(name: "go", source: "github.com/dagger/go", pin: "abc")
+
+# Fields come out as the type declares them; renamed fields keep their place,
+# omitted ones leave no gap, and methods never encode.
+assert {
+  JSON.encode(mod) == """{"name":"go","source":"github.com/dagger/go","pinned":"abc"}"""
+}
+assert { JSON.encode(mod, sortKeys: false) == JSON.encode(mod) }
+assert {
+  JSON.encode(mod, sortKeys: true) == """{"name":"go","pinned":"abc","source":"github.com/dagger/go"}"""
+}
+
+# Together with the layout options, this is what Go's
+# json.Encoder with SetIndent("", "  ") and SetEscapeHTML(false) writes for
+# a struct.
+let lock = {{
+  version: 1,
+  modules: [
+    mod,
+    Module(name: "<html>", source: "./html&css", deps: ["go"]),
+  ]
+}}
+
+assert {
+  JSON.encode(lock, indent: "  ", escapeHTML: false) == """
+  {
+    "version": 1,
+    "modules": [
+      {
+        "name": "go",
+        "source": "github.com/dagger/go",
+        "pinned": "abc"
+      },
+      {
+        "name": "<html>",
+        "source": "./html&css",
+        "deps": [
+          "go"
+        ]
+      }
+    ]
+  }
+  """
+}
+
+# Records keep their fields as written, even when one refers to a later
+# sibling (fields are evaluated in dependency order).
+assert {
+  JSON.encode({{zed: amy + 1, amy: 1, mid: 3}}) == """{"zed":2,"amy":1,"mid":3}"""
+}
+assert {
+  JSON.encode({{zed: amy + 1, amy: 1, mid: 3}}, sortKeys: true) == """{"amy":1,"mid":3,"zed":2}"""
+}
+
+# A selection's record has the fields in the order selected.
+assert {
+  JSON.encode(mod.{{source, name}}) == """{"source":"github.com/dagger/go","name":"go"}"""
+}
+
+# A decoded record follows its type, not the input.
+let decoded: {{b: Int!, a: Int!}} = JSON.decode("""{"a": 1, "b": 2}""")
+assert { JSON.encode(decoded) == """{"b":2,"a":1}""" }
+assert { JSON.encode(decoded, sortKeys: true) == """{"a":1,"b":2}""" }
+
+# A literal keeps the order it is written in, even where it is annotated
+# with a record type that lists the fields differently.
+let written: {{b: Int!, a: Int!}} = {{a: 1, b: 2}}
+assert { written == decoded }
+assert { JSON.encode(written) == """{"a":1,"b":2}""" }
+
+# Maps keep their insertion order, and objects held in them their field
+# order; sortKeys sorts both.
+let byName = ["z": {{y: 1, b: 2}}, "a": {{y: 3, b: 4}}]
+assert { JSON.encode(byName) == """{"z":{"y":1,"b":2},"a":{"y":3,"b":4}}""" }
+assert {
+  JSON.encode(byName, sortKeys: true) == """{"a":{"b":4,"y":3},"z":{"b":2,"y":1}}"""
+}
+
+# Assigned in a different order than declared: still declaration order.
+type Pair {
+  second: Int!
+  first: Int!
+
+  new(first: Int!, second: Int!) {
+    self.first = first
+    self.second = second
+    self
+  }
+}
+
+assert { JSON.encode(Pair(1, 2)) == """{"second":2,"first":1}""" }
+
+# Fields typed by their initializer keep their place among annotated ones.
+type Mixed {
+  pub computed = [1]
+  annotated: Int! = 2
+  pub record = {{z: 1, a: 2}}
+  last: String!
+}
+
+assert {
+  JSON.encode(Mixed(last: "x")) == """{"computed":[1],"annotated":2,"record":{"z":1,"a":2},"last":"x"}"""
+}
+
+# Whatever the layout and order, JSON.encode's output decodes back strictly:
+# renamed and omitted fields are still known keys.
+let back = JSON.decode(JSON.encode(mod, indent: "  ", sortKeys: true), strict: true) :: Module!
+assert { back.pin == "abc" and back.source == mod.source and back.deps == [] }
+
+# toString and List.join JSON-encode in the same order, but under the fields'
+# own names: codec field directives are JSON.encode's alone.
+assert { toString(mod.{{source, name}}) == JSON.encode(mod.{{source, name}}) }
+assert { toString(Pair(1, 2)) == """{"second":2,"first":1}""" }
+assert {
+  toString(Module(name: "a", source: "b", pin: "c")) == """{"name":"a","source":"b","version":null,"pin":"c","deps":[]}"""
+}
+assert { [byName].join("") == JSON.encode(byName) }

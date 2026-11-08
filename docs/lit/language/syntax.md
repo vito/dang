@@ -205,12 +205,12 @@ person.name
 - the same `{{ ... }}` syntax is also a record *type* annotation: `x :: {{foo: Int!, bar: Status!}}!`
 - nestable: `{{user: {{id: 1, active: true}}, count: 100}}`
 - compared by **value** — two records with the same fields and equal values are equal, `{{a: 1}} == {{a: 1}}` (see [#operators]); this is the structural cousin of a named `type`, which compares by type identity
-- serialized to JSON with keys sorted alphabetically, not declaration order (see [#json-yaml])
+- serialized to JSON with its fields in the order written; `JSON.encode(value, sortKeys: true)` sorts them (see [#json-yaml])
 
 ```dang
 let point: {{x: Int!, y: Int!}}! = {{y: 2, x: 1}}
 
-[point == {{x: 1, y: 2}}, JSON.encode(point) == """{"x":1,"y":2}"""]
+[point == {{x: 1, y: 2}}, JSON.encode(point) == """{"y":2,"x":1}"""]
 ```
 
 Fields may reference each other in any order:

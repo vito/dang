@@ -153,7 +153,7 @@ Maps are immutable, keyed by `String!` (only the value type is a parameter: `Map
 - `.each { key, value => ... } -> Map[T]!` — returns the original map
 - `.reduce(initial: U) { acc, key, value => ... } -> U`
 
-Equality ignores order (`["a": 1, "b": 2] == ["b": 2, "a": 1]`). `JSON.encode` emits a map as an object in insertion order (unlike records). `JSON`/`YAML`/`TOML.decode` into a `Map[T]` type reads an object, materializing each value at `T`; decoded maps come back with **sorted** keys (document order is not kept).
+Equality ignores order (`["a": 1, "b": 2] == ["b": 2, "a": 1]`). `JSON.encode` emits a map as an object in insertion order (`sortKeys: true` sorts it). `JSON`/`YAML`/`TOML.decode` into a `Map[T]` type reads an object, materializing each value at `T`; decoded maps come back with **sorted** keys (document order is not kept).
 
 ## JSON, YAML, and TOML
 
@@ -181,8 +181,9 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
 ### Serialization
-- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
-- `toString(value)` — pass-through for strings, JSON-encode otherwise.
+- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)`. `JSON.encode` keeps keys in **declaration order** (below); `YAML.encode`/`TOML.encode` emit them in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
+- `JSON.encode(value, indent: String! = "", escapeHTML: Boolean! = true, sortKeys: Boolean! = false)` — like Go's `json.Marshal` of structs: compact, `<`, `>`, `&` escaped as `\u003c`/`\u003e`/`\u0026`, a `type`'s fields in declaration order, a record's in the order it was built (a literal's as written — an annotation listing them differently doesn't reorder it — a selection's as selected, a decoded record's as its type lists them), a map's in insertion order. `indent: "  "` pretty-prints one copy per nesting level (`json.MarshalIndent(v, "", indent)`; spaces/tabs only); `escapeHTML: false` writes `<>&` bare; `sortKeys: true` sorts the keys of **every** object, maps included. No trailing newline either way.
+- `toString(value)` — pass-through for strings, JSON-encode otherwise. Like `List.join`, it JSON-encodes in the same order as `JSON.encode`'s default, but under each field's own name (`@JSON.field`/`@JSON.ignore` don't apply).
 
 ### Errors (all recoverable with `rescue`)
 - invalid input → `<Format>.decode: invalid <Format>: ...` (e.g. `JSON.decode: invalid JSON: ...`, `YAML.decode: invalid YAML: ...`)

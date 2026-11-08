@@ -1,0 +1,105 @@
+# JSON.encode's layout options: `indent` pretty-prints like Go's
+# json.MarshalIndent(v, "", indent), and `escapeHTML: false` leaves <, >, and &
+# bare, like a json.Encoder with SetEscapeHTML(false). The defaults are compact
+# and HTML-escaped, like json.Marshal.
+
+let page = {{
+  title: "<b>Tom & Jerry</b>",
+  ids: [1, 2],
+  none: [] :: [Int!]!,
+  meta: {{}}
+}}
+
+# Defaults: compact, HTML-escaped, fields in the order written.
+assert {
+  JSON.encode(page) == """{"title":"\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e","ids":[1,2],"none":[],"meta":{}}"""
+}
+assert { JSON.encode(page, indent: "", escapeHTML: true) == JSON.encode(page) }
+
+assert {
+  JSON.encode(page, escapeHTML: false) == """{"title":"<b>Tom & Jerry</b>","ids":[1,2],"none":[],"meta":{}}"""
+}
+
+# Empty lists and objects stay on one line, as with json.MarshalIndent.
+assert {
+  JSON.encode(page, indent: "  ") == """
+  {
+    "title": "\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e",
+    "ids": [
+      1,
+      2
+    ],
+    "none": [],
+    "meta": {}
+  }
+  """
+}
+
+# Layout composes with sorting.
+assert {
+  JSON.encode(page, indent: "  ", escapeHTML: false, sortKeys: true) == """
+  {
+    "ids": [
+      1,
+      2
+    ],
+    "meta": {},
+    "none": [],
+    "title": "<b>Tom & Jerry</b>"
+  }
+  """
+}
+
+assert {
+  JSON.encode([page.title], indent: "\t", escapeHTML: false) == "[\n\t\"<b>Tom & Jerry</b>\"\n]"
+}
+
+# Scalars have nothing to indent.
+assert { JSON.encode(42, indent: "  ") == "42" }
+assert { JSON.encode("a<b", indent: "  ", escapeHTML: false) == "\"a<b\"" }
+
+# Only HTML escapes are undone: an escaped backslash followed by the text
+# "u003c" is still that text, and other escapes are kept.
+let tricky = "\\u003c \" \n <"
+assert { JSON.encode(tricky, escapeHTML: false) == "\"\\\\u003c \\\" \\n <\"" }
+assert { (JSON.decode(JSON.encode(tricky, escapeHTML: false)) :: String!) == tricky }
+
+# Maps keep their insertion order through both options, nested objects
+# included.
+let ordered = ["z": {{tag: "<"}}, "a": {{tag: "&"}}]
+assert {
+  JSON.encode(ordered, indent: "  ", escapeHTML: false) == """
+  {
+    "z": {
+      "tag": "<"
+    },
+    "a": {
+      "tag": "&"
+    }
+  }
+  """
+}
+
+# Field directives apply as usual.
+type Link {
+  href: String! @JSON.field(name: "url")
+  label: String @JSON.field(omitNull: true)
+}
+
+assert {
+  JSON.encode([Link("/?a=1&b=2")], indent: " ", escapeHTML: false) == """
+  [
+   {
+    "url": "/?a=1&b=2"
+   }
+  ]
+  """
+}
+
+# The indent must be JSON whitespace, or the output would not be JSON.
+let badIndent = JSON.encode([1], indent: "--") rescue {
+  e: Error => e.message
+}
+assert {
+  badIndent == "JSON.encode: indent must contain only spaces and tabs, got \"--\""
+}
