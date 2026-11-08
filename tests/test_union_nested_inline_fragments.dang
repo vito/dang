@@ -22,4 +22,17 @@ let desc = case (first.node) {
 }
 assert { desc == "user: John Doe" }
 
+# A fragment's record has its fields in the order selected, and still matches
+# its concrete type.
+let flat = search(query: "John").{{
+  ... on User {{ age, name }}
+  ... on Post {{ title }}
+}}
+assert { JSON.encode(flat) == """[{"age":30,"name":"John Doe"}]""" }
+let flatDesc = case (flat[0]) {
+  u: User => "user: " + u.name
+  else => "unknown"
+}
+assert { flatDesc == "user: John Doe" }
+
 print("Nested inline fragment tests passed!")

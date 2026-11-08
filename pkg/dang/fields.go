@@ -1131,6 +1131,15 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	if _, err := InferFormsWithPhases(withTypeBody(ctx, object, unavailable), bodyForms, inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
+	// Members are bound as inference reaches them, which puts annotated
+	// fields (bound when hoisted) before ones whose type comes from their
+	// initializer. The type lists them as declared instead, so whatever
+	// iterates them (JSON.encode, toString) sees the declaration order.
+	var declared []string
+	for _, form := range bodyForms {
+		declared = append(declared, form.DeclaredSymbols()...)
+	}
+	object.orderBindings(declared)
 
 	// Infer static members (self { } blocks) against the meta-type.
 	if err := inferStatics(ctx, object, c.Value, env, fresh); err != nil {

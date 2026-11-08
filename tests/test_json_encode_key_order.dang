@@ -105,6 +105,18 @@ type Pair {
 
 assert { JSON.encode(Pair(1, 2)) == """{"second":2,"first":1}""" }
 
+# Fields typed by their initializer keep their place among annotated ones.
+type Mixed {
+  pub computed = [1]
+  annotated: Int! = 2
+  pub record = {{z: 1, a: 2}}
+  last: String!
+}
+
+assert {
+  JSON.encode(Mixed(last: "x")) == """{"computed":[1],"annotated":2,"record":{"z":1,"a":2},"last":"x"}"""
+}
+
 # toString and List.join JSON-encode in the same order, but under the fields'
 # own names: codec field directives are JSON.encode's alone.
 assert { toString(mod.{{source, name}}) == JSON.encode(mod.{{source, name}}) }
