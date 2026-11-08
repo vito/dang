@@ -1132,6 +1132,11 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 	}
 
 	if raw == nil {
+		if mod, ok := target.(*Type); ok && isJSONScalar(mod) && mod.SourceSchema != nil {
+			// A schema's JSON keeps JSON null a value even where null may
+			// go, as a cast does: on the wire it differs from no value.
+			return jsonScalarFromRaw(nil, mod, path)
+		}
 		return NullValue{}, nil
 	}
 

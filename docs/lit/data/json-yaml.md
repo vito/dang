@@ -256,7 +256,8 @@ toString(written :: JSON!)
 a `String!`. `JSON.encode` keeps fields in the order they are declared, as
 Go does for struct fields: a record's as written (see [#literals]), a type's
 as the type declares them; a JSON value keeps its own keys' order (a decoded
-one's are sorted). YAML and TOML sort them alphabetically:
+one's are sorted, a schema result's are as the server sent them). YAML and
+TOML sort them alphabetically:
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})

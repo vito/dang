@@ -52,6 +52,9 @@ assert { echoJSON(value: "[1, null, \"two\"]") == "[1,null,\"two\"]" }
 assert { describeJSON(value: "null") == "text: null" }
 assert { describeJSON(value: echoJSON(value: "null")) == "text: null" }
 assert { describeJSON(value: null) == "no value" }
+let nullable = JSON.decode("{\"a\": null}") :: Map[Test.JSON]!
+assert { describeJSON(value: nullable["a"]) == "text: null" }
+assert { describeJSON(value: JSON.decode("null") :: Test.JSON) == "text: null" }
 
 # Strings cast to it must be JSON, and literals are checked like the builtin's.
 let fromCast: Test.JSON! = "{ \"ok\": true }"
