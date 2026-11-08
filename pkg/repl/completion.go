@@ -37,9 +37,18 @@ func NewCompletionProvider(ctx context.Context, typeScope dang.TypeScope, static
 // editor contents, used to infer receiver types for member completions.
 func NewDetailRenderer(ctx context.Context, typeScope dang.TypeScope, getInput func() string) tuist.DetailRenderer {
 	return func(c tuist.Completion, width int) []string {
-		item, found := DocItemFromTypeScope(typeScope, c.Label)
-		if !found {
-			item, found = resolveCompletionDocItem(ctx, typeScope, getInput(), c)
+		// After a dot, the label names a member of the receiver, whatever
+		// the scope binds by the same name.
+		input := getInput()
+		var item DocItem
+		var found bool
+		if afterDot(input) {
+			item, found = resolveCompletionDocItem(ctx, typeScope, input, c)
+		} else {
+			item, found = DocItemFromTypeScope(typeScope, c.Label)
+			if !found {
+				item, found = resolveCompletionDocItem(ctx, typeScope, input, c)
+			}
 		}
 		if !found {
 			if c.Detail == "" && c.Documentation == "" {
@@ -199,6 +208,13 @@ func lastIdent(s string) string {
 		i--
 	}
 	return s[i+1:]
+}
+
+// afterDot reports whether the input ends in a member being typed: a dot,
+// then maybe part of a name.
+func afterDot(input string) bool {
+	rest := input[:len(input)-len(lastIdent(input))]
+	return strings.HasSuffix(rest, ".")
 }
 
 func isIdentByte(c byte) bool {
