@@ -131,7 +131,7 @@ case (c) {
 
 ```dang
 scalar Email
-scalar JSON
+scalar URL
 ```
 - *Literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list and map literals, returns) — including backtick templates with `${...}`.
 - A *non-literal* String (a variable or `a + b`) does NOT auto-coerce — needs an explicit `::` cast: `fetchURL(url: myUrl :: URL!)`, `(base + domain) :: URL!`. Otherwise `cannot use String! as URL!`.

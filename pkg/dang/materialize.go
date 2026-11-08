@@ -1035,16 +1035,17 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 		}
 		if isJSONScalar(mod) {
 			// A String becomes a JSON value only if it is JSON, held
-			// compact. JSON null is Dang null, as when decoding.
+			// compact.
 			text, raw, err := compactJSONText(val.Val)
 			if err != nil {
 				return nil, materializeError(path, "%s", err.Error())
 			}
 			if raw == nil {
-				if _, nonNull := target.(hm.NonNullType); nonNull {
-					return nil, materializeError(path, "null is not allowed for %s", target.Name())
+				// JSON null is Dang null where null may go, and otherwise a
+				// JSON value like any other, holding null.
+				if _, nonNull := target.(hm.NonNullType); !nonNull {
+					return NullValue{}, nil
 				}
-				return NullValue{}, nil
 			}
 			return ScalarValue{Val: text, ScalarType: mod, jsonKey: canonicalJSONKey(raw)}, nil
 		}
@@ -1070,6 +1071,11 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string, codec Codec, strict *strictDecode) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
+			if mod, ok := nn.Type.(*Type); ok && isJSONScalar(mod) {
+				// A non-null JSON value may hold JSON null; only a
+				// nullable JSON maps it to Dang null.
+				return jsonScalarFromRaw(nil, mod, path)
+			}
 			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
 		}
 		return materializeDecoded(ctx, scope, raw, nn.Type, path, codec, strict)

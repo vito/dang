@@ -74,12 +74,15 @@ assert { [named["html"]!].join("") == "\"<b>&</b>\"" }
 assert { named["s"]! == "\"x\"" }
 assert { [named["s"]!].contains("\"x\"") }
 
-# null stays null: a nullable JSON takes it, a non-null one rejects it.
+# JSON null: a nullable JSON maps it to Dang null, while a non-null JSON holds
+# it as the JSON value null, so a JSON! slot takes any JSON at all.
 let maybe = JSON.decode("{\"a\": null}") :: Map[JSON]!
 assert { maybe["a"] == null }
-assert {
-  ((JSON.decode("{\"a\": null}") :: Map[JSON!]!) rescue null) == null
-}
+let held = JSON.decode("{\"a\": null}") :: Map[JSON!]!
+assert { toString(held["a"]!) == "null" }
+assert { held["a"]! == "null" }
+assert { JSON.encode(held) == "{\"a\":null}" }
+assert { toString(JSON.decode("null") :: JSON!) == "null" }
 
 # A String becomes a JSON value only if it is JSON, compacted: whitespace goes,
 # while object keys keep the order they were written in. So equal data
@@ -100,10 +103,13 @@ assert { (ordered :: JSON!) == "{\"n\": 1.5, \"a\": \"é\", \"b\": 1}" }
 assert { (ordered :: JSON!) != "{\"n\": 1.5, \"a\": \"e\", \"b\": 1}" }
 assert { [ordered :: JSON!, JSON.decode(ordered) :: JSON!].uniq.length == 1 }
 
-# JSON null is Dang null, whether cast or decoded.
+# Cast the same way: JSON null is Dang null only where null may go.
 let nullText = "null"
 assert { (nullText :: JSON) == null }
-assert { ((nullText :: JSON!) rescue null) == null }
+assert { toString(nullText :: JSON!) == "null" }
+let empty = "[]" :: JSON!
+assert { empty != "null" }
+assert { ![empty].contains("null") }
 
 takesJSON(j: JSON!): String! { toString(j) }
 

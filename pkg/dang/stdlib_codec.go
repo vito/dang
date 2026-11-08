@@ -19,9 +19,9 @@ import (
 // `:: JSON` and `JSON.encode` resolve with no import), and a schema- or
 // user-declared scalar of the same name (e.g. Dagger's `scalar JSON`) merges
 // with them through the general scalar-attach mechanism in builtins.go
-// (BuiltinScalarModule / attachBuiltinSchemes / attachBuiltinMethods). Nothing
-// here is special-cased for encoding — encoding is just the first builtin scalar.
-// See issue #105.
+// (BuiltinScalarModule / attachBuiltinSchemes / attachBuiltinMethods). As a
+// type, JSON is also Dang's untyped JSON value (see isJSONScalar), which the
+// codecs decode into and encode from. See issue #105.
 var (
 	JSONModule = NewType("JSON", ScalarKind)
 	YAMLModule = NewType("YAML", ScalarKind)
