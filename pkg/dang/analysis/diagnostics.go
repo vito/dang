@@ -61,8 +61,10 @@ func (d Diagnostic) String() string {
 
 // errorDiagnostics converts a Dang error into diagnostics, one per error an
 // *dang.InferenceErrors collects. pathOf maps the filename of an error's
-// location to its Source path; an error in a file it doesn't know (ok false)
-// is dropped. fallback is the path of an error with no location.
+// location to its Source path, or to "" for a file outside the Source whose
+// errors are still reported (with no path, naming the file in the message);
+// an error it doesn't want (ok false) is dropped. fallback is the path of an
+// error with no location.
 func errorDiagnostics(err error, code Code, fallback string, pathOf func(filename string) (string, bool)) []Diagnostic {
 	var inferErrs *dang.InferenceErrors
 	if errors.As(err, &inferErrs) {
@@ -78,9 +80,10 @@ func errorDiagnostics(err error, code Code, fallback string, pathOf func(filenam
 		Range:    Range{Start: Pos{Line: 1, Column: 1}, End: Pos{Line: 1, Column: 2}},
 		Severity: SeverityError,
 		Code:     code,
-		Message:  err.Error(),
 	}
 
+	// Never format a *dang.SourceError whole: that renders a source snippet,
+	// reading its file from disk when it has no source of its own.
 	var sourceErr *dang.SourceError
 	var parseErr interface {
 		ParseErrorLocation() *dang.SourceLocation
@@ -90,15 +93,17 @@ func errorDiagnostics(err error, code Code, fallback string, pathOf func(filenam
 	switch {
 	case errors.As(err, &sourceErr):
 		loc = sourceErr.Location
-		// Use the inner message: the full one is a rendered source snippet.
 		d.Message = sourceErr.Inner.Error()
 	case errors.As(err, &parseErr):
 		loc = parseErr.ParseErrorLocation()
+		d.Message = err.Error()
 	case errors.As(err, &inferErr):
 		loc = inferErr.Location
 		// Leave out what's joined to it, e.g. a dump of a node that has no
 		// location.
 		d.Message = inferErr.Error()
+	default:
+		d.Message = err.Error()
 	}
 
 	if loc != nil {
@@ -107,12 +112,23 @@ func errorDiagnostics(err error, code Code, fallback string, pathOf func(filenam
 			if !ok {
 				return nil
 			}
+			if path == "" {
+				// A file outside the Source, e.g. an imported Dang module's.
+				d.Message = foreignMessage(loc, d.Message)
+				return []Diagnostic{d}
+			}
 			d.Path = path
 		}
 		d.Range = locRange(loc)
 	}
 
 	return []Diagnostic{d}
+}
+
+// foreignMessage prefixes a message about a file outside the Source with
+// where in it the problem is.
+func foreignMessage(loc *dang.SourceLocation, message string) string {
+	return fmt.Sprintf("%s:%d:%d: %s", loc.Filename, loc.Line, loc.Column, message)
 }
 
 // warningDiagnostics converts collected inference warnings into diagnostics.
@@ -124,18 +140,25 @@ func warningDiagnostics(warnings []dang.InferWarning, fallback string, pathOf fu
 			continue
 		}
 		path := fallback
+		rng := locRange(loc)
+		message := w.Message
 		if loc.Filename != "" {
 			var ok bool
 			if path, ok = pathOf(loc.Filename); !ok {
 				continue
 			}
+			if path == "" {
+				// A file outside the Source, e.g. an imported Dang module's.
+				rng = Range{Start: Pos{Line: 1, Column: 1}, End: Pos{Line: 1, Column: 2}}
+				message = foreignMessage(loc, message)
+			}
 		}
 		diags = append(diags, Diagnostic{
 			Path:     path,
-			Range:    locRange(loc),
+			Range:    rng,
 			Severity: SeverityWarning,
 			Code:     CodeWarning,
-			Message:  w.Message,
+			Message:  message,
 		})
 	}
 	return diags

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -43,7 +44,8 @@ func TestDiagnosticsReportTypeErrors(t *testing.T) {
 		require.Equal(t, analysis.CodeType, d.Code)
 	}
 	// The Source is in memory: messages are the errors' own, with nothing
-	// read from (or failing to read from) the host's disk.
+	// read from (or failing to read from) the host's disk; see
+	// TestDiagnosticsDontReadTheDisk.
 	require.Equal(t, "operator addition is not defined between types String! and Int!", diags[0].Message)
 	require.Equal(t, 2, diags[0].Range.Start.Line)
 	require.Equal(t, `"undefined_var" not found`, diags[1].Message)
@@ -136,6 +138,36 @@ func TestFocusMustBeAFileOfDir(t *testing.T) {
 
 	_, err = analysis.Analyze(context.Background(), src, "mod", analysis.Options{Focus: "mod/missing.dang"})
 	require.ErrorContains(t, err, "focus mod/missing.dang is not one of its .dang files")
+}
+
+func TestErrorsOfImportedModulesAreReported(t *testing.T) {
+	// A path import is compiled from the host: its errors name its own
+	// files, outside the Source. They're why the import fails, so a full
+	// check reports them, with no path.
+	lib := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(lib, "lib.dang"), []byte("pub x: Int! = \"s\"\n"), 0o644))
+	src := mapFS(map[string]string{
+		"main.dang": "import Lib\n\npub y = Lib.x\n",
+	})
+	imports := []dang.ImportConfig{{Name: "Lib", DangModuleDir: lib}}
+
+	a, err := analysis.Analyze(context.Background(), src, ".", analysis.Options{ImportConfigs: imports})
+	require.NoError(t, err)
+	var foreign []analysis.Diagnostic
+	for _, d := range a.Diagnostics() {
+		if d.Path == "" {
+			foreign = append(foreign, d)
+		}
+	}
+	require.NotEmpty(t, foreign, "got %v", a.Diagnostics())
+	require.Contains(t, foreign[0].Message, filepath.Join(lib, "lib.dang")+":1:")
+
+	// Focused on a file, only that file's are.
+	focused, err := analysis.Analyze(context.Background(), src, ".", analysis.Options{ImportConfigs: imports, Focus: "main.dang"})
+	require.NoError(t, err)
+	for _, d := range focused.Diagnostics() {
+		require.Equal(t, "main.dang", d.Path)
+	}
 }
 
 func TestResolveImportsAddsImports(t *testing.T) {

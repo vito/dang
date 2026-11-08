@@ -146,7 +146,13 @@ func Analyze(ctx context.Context, src Source, dir string, opts Options) (*Analys
 	byName := make(map[string]string, len(paths))
 	pathOf := func(filename string) (string, bool) {
 		p, ok := byName[filepath.Clean(filename)]
-		if !ok || (opts.Focus != "" && p != opts.Focus) {
+		if !ok {
+			// A file outside the Source, e.g. an imported Dang module's:
+			// reported without a path when checking everything, since its
+			// errors are why the import fails.
+			return "", opts.Focus == ""
+		}
+		if opts.Focus != "" && p != opts.Focus {
 			return "", false
 		}
 		return p, true
