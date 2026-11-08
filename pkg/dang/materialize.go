@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -422,15 +423,20 @@ func checkEnumLiterals(value Node, want hm.Type) error {
 		}
 	case *Type:
 		if isJSONScalar(t) {
-			// Likewise a literal handed to a JSON slot must be JSON. A bare
-			// word is most likely a JSON string missing its quotes.
+			// Likewise a literal handed to a JSON slot must be JSON.
 			if v, ok := value.(*String); ok {
 				if _, err := decodeJSON(v.Value, false); err != nil {
-					quoted, _ := json.Marshal(v.Value)
-					return NewInferError(
-						fmt.Errorf("%q is not JSON (%v); a JSON string is written with its quotes: %q", v.Value, err, string(quoted)),
-						v,
-					)
+					msg := fmt.Sprintf("%q is not JSON (%v)", v.Value, err)
+					if t := strings.TrimSpace(v.Value); t == "" || !strings.ContainsAny(t[:1], "{[\"") {
+						// A bare word is most likely a JSON string
+						// missing its quotes.
+						var quoted bytes.Buffer
+						enc := json.NewEncoder(&quoted)
+						enc.SetEscapeHTML(false)
+						_ = enc.Encode(v.Value)
+						msg += fmt.Sprintf("; a JSON string is written with its quotes: %q", strings.TrimSuffix(quoted.String(), "\n"))
+					}
+					return NewInferError(errors.New(msg), v)
 				}
 			}
 			if b, ok := value.(*Block); ok && len(b.Forms) > 0 {
@@ -981,6 +987,15 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 		// target passes through (the value is trusted to match its type).
 		if unwrapNonNull(target) == StringType {
 			return StringValue{Val: v.Val}, nil
+		}
+		// A JSON! holding JSON null widens into a nullable JSON as Dang
+		// null, the null a nullable JSON holds however it was made.
+		if isJSONValue(v) && v.Val == "null" {
+			if _, nonNull := target.(hm.NonNullType); !nonNull {
+				if mod, ok := target.(*Type); ok && isJSONScalar(mod) {
+					return NullValue{}, nil
+				}
+			}
 		}
 		return val, nil
 	case ListValue:

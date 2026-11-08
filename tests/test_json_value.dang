@@ -83,6 +83,8 @@ assert { toString(held["a"]!) == "null" }
 assert { held["a"]! == "null" }
 assert { JSON.encode(held) == "{\"a\":null}" }
 assert { toString(JSON.decode("null") :: JSON!) == "null" }
+let widened: JSON = JSON.decode("null") :: JSON!
+assert { widened == null }
 
 # A String becomes a JSON value only if it is JSON, compacted: whitespace goes,
 # while object keys keep the order they were written in. So equal data
