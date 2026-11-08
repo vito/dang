@@ -9,6 +9,7 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
@@ -78,10 +79,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 				receiverType = nn.Type
 			}
 			if env, ok := receiverType.(dang.TypeScope); ok {
-				var docString string
-				if doc, found := env.GetDocString(selectNode.Field.Name); found {
-					docString = doc
-				}
+				docString := docOf(env, selectNode.Field.Name)
 				if scheme, found := env.LocalSchemeOf(selectNode.Field.Name); found {
 					fieldType, _ := scheme.Type()
 					codeBlock := fmt.Sprintf("%s: %s", symbolName, fieldType)
@@ -143,27 +141,20 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 
 // hoverResult builds a hover response, looking up doc strings from the environment.
 func (h *langHandler) hoverResult(f *File, pos Position, symbolName string, codeBlock string) (any, error) {
-	var docString string
+	return h.hoverResultWithDoc(docStringForHoverSymbol(f, pos, symbolName), codeBlock)
+}
 
-	// Try the file's type environment
-	if f.TypeScope != nil {
-		if doc, ok := f.TypeScope.GetDocString(symbolName); ok {
-			docString = doc
-		}
+// docOf returns the documentation of what name names in env (see
+// analysis.Lookup), which includes builtins' own docs.
+func docOf(env dang.TypeScope, name string) string {
+	if env == nil {
+		return ""
 	}
-
-	// If not found at file level, try to find in lexical scopes
-	if docString == "" && f.AST != nil {
-		environments := findEnclosingEnvironments(f.AST, pos)
-		for i := len(environments) - 1; i >= 0; i-- {
-			if doc, ok := environments[i].GetDocString(symbolName); ok {
-				docString = doc
-				break
-			}
-		}
+	m, ok := analysis.Lookup(env, name)
+	if !ok {
+		return ""
 	}
-
-	return h.hoverResultWithDoc(docString, codeBlock)
+	return m.Doc
 }
 
 // hoverResultWithDoc builds a hover response with an explicit doc string.
@@ -455,16 +446,15 @@ func docStringForHoverSymbol(f *File, pos Position, symbolName string) string {
 		return ""
 	}
 
-	if f.TypeScope != nil {
-		if doc, ok := f.TypeScope.GetDocString(symbolName); ok {
-			return doc
-		}
+	// The file's type environment first, then the lexical scopes around pos.
+	if doc := docOf(f.TypeScope, symbolName); doc != "" {
+		return doc
 	}
 
 	if f.AST != nil {
 		environments := findEnclosingEnvironments(f.AST, pos)
 		for i := len(environments) - 1; i >= 0; i-- {
-			if doc, ok := environments[i].GetDocString(symbolName); ok {
+			if doc := docOf(environments[i], symbolName); doc != "" {
 				return doc
 			}
 		}

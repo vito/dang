@@ -5,7 +5,7 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
-	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 )
 
 func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {
@@ -31,7 +31,10 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		if path, err := fromURI(params.TextDocument.URI); err == nil {
 			ctx = dang.ContextWithVersion(ctx, versionForFile(ctx, path))
 		}
-		result := dang.Complete(ctx, env, f.Text, params.Position.Line, params.Position.Character)
+		result := analysis.Complete(ctx, env, f.Text, analysis.Pos{
+			Line:   params.Position.Line + 1,
+			Column: params.Position.Character + 1,
+		})
 		if len(result.Items) > 0 {
 			return completionsToItems(result.Items), nil
 		}
@@ -93,34 +96,29 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 
 	// Search environments from innermost to outermost (reverse order)
 	for i := len(environments) - 1; i >= 0; i-- {
-		env := environments[i]
-
-		// Get all bindings from this environment (both public and private for completion)
-		for name, scheme := range env.Bindings(dang.PrivateVisibility) {
-			// Skip if we've already seen this symbol
-			if seen[name] || dang.IsInternalName(name) {
+		// Everything in scope, private bindings included, but not types that
+		// can only be named in type position.
+		for _, m := range analysis.ScopeMembers(environments[i]) {
+			if seen[m.Name] || m.TypeOnly {
 				continue
 			}
-			seen[name] = true
+			seen[m.Name] = true
 
-			// Determine type and kind
-			memberType, _ := scheme.Type()
 			kind := VariableCompletion
-			if _, isFn := memberType.(*hm.FunctionType); isFn {
+			if m.Kind == analysis.KindFunction {
 				kind = FunctionCompletion
 			}
 
-			// Get documentation for this symbol
-			var documentation string
-			if doc, found := env.GetDocString(name); found {
-				documentation = doc
+			detail := m.Type
+			if m.HMType != nil {
+				detail = m.HMType.String()
 			}
 
 			items = append(items, CompletionItem{
-				Label:         name,
+				Label:         m.Name,
 				Kind:          kind,
-				Detail:        memberType.String(),
-				Documentation: documentation,
+				Detail:        detail,
+				Documentation: m.Doc,
 			})
 		}
 	}
