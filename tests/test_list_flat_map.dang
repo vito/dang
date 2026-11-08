@@ -1,0 +1,35 @@
+# Test list.flatMap() method
+
+# Each element's list is concatenated, in order.
+let pairs: [Int!]! = [1, 2, 3].flatMap { x => [x, x * 10] }
+assert { pairs == [1, 10, 2, 20, 3, 30] }
+
+# Flattening a list of lists, the reduce([]) { all, e => all + e } idiom.
+type Fn {
+  name: String!
+  args: [String!]!
+}
+
+let fns = [Fn("a", ["x", "y"]), Fn("b", []), Fn("c", ["z"])]
+let allArgs: [String!]! = fns.flatMap { f => f.args }
+assert { allArgs == ["x", "y", "z"] }
+assert { allArgs == fns.reduce([]) { all, f => all + f.args } }
+
+# The block can take the index, like map.
+assert { ["a", "b"].flatMap { s, i => [`${i}${s}`] } == ["0a", "1b"] }
+
+# Empty blocks results and empty receivers yield an empty list.
+assert { [1, 2].flatMap { x => [] :: [Int!]! } == [] }
+let empty: [Int!]! = []
+let none: [String!]! = empty.flatMap { x => ["unused"] }
+assert { none.isEmpty }
+
+# The result's element type comes from the block, not the receiver.
+let lengths: [Int!]! = ["ab", "c"].flatMap { s => [s.length] }
+assert { lengths == [2, 1] }
+
+# Nullable list receivers propagate null.
+let nullableFns: [Fn!] = null
+assert { nullableFns.flatMap { f => f.args } == null }
+
+print("List flatMap tests passed!")

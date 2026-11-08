@@ -1,0 +1,29 @@
+# Test String.toInt(base:)
+
+# Base 10 by default, with an optional sign.
+assert { "42".toInt == 42 }
+assert { "-42".toInt == -42 }
+assert { "+7".toInt == 7 }
+
+# Other bases, named or positional.
+assert { "ff".toInt(base: 16) == 255 }
+assert { "FF".toInt(base: 16) == 255 }
+assert { "101".toInt(2) == 5 }
+assert { "777".toInt(base: 8) == 511 }
+assert { "z".toInt(base: 36) == 35 }
+
+# A hex digit table, without hand-writing one.
+let digits = "0123456789abcdef".split("").map { c => c.toInt(base: 16) }
+assert { digits == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] }
+
+# Invalid input raises, so rescue recovers.
+assert { ("12x".toInt rescue -1) == -1 }
+assert { ("".toInt rescue -1) == -1 }
+assert { (" 1".toInt rescue -1) == -1 }
+assert { ("0x1f".toInt(base: 16) rescue -1) == -1 }
+assert { ("g".toInt(base: 16) rescue -1) == -1 }
+assert { ("1".toInt(base: 1) rescue -1) == -1 }
+assert { ("1".toInt(base: 37) rescue -1) == -1 }
+assert { ("99999999999999999999".toInt rescue -1) == -1 }
+
+print("String toInt tests passed!")

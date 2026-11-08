@@ -107,6 +107,13 @@ fruits.map { fruit, i => `${i}: ${fruit}` }
 [nums.filter { _ % 2 == 0 }, nums.reject { _ % 2 == 0 }]
 ```
 
+`.flatMap` is `.map` for a block that returns a list: it concatenates the
+lists into one, flattening a level as it goes:
+
+```dang
+fruits.flatMap { fruit => [fruit, fruit.toUpper] }
+```
+
 `.reduce` folds the list down to a single value, threading an accumulator from
 a seed (positional, or named `initial:`) through each element:
 
@@ -137,6 +144,12 @@ specific value:
 
 ```dang
 [nums.any { _ > 3 }, nums.all { _ > 0 }, fruits.contains("banana")]
+```
+
+`.indexOf` finds where a value is, or gives `null` when it isn't there:
+
+```dang
+[fruits.indexOf("banana"), fruits.indexOf("kiwi")]
 ```
 
 ### Slicing

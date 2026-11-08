@@ -54,7 +54,7 @@ greet(
 ## Literals
 
 ### Numbers
-- `Int!` — decimal, signed 64-bit. No hex/octal/binary.
+- `Int!` — decimal, signed 64-bit. No hex/octal/binary literals; parse them from a string with `"ff".toInt(base: 16)`.
 - `Float!` — `3.14`, `1.5e10`, `2.5e-3`. A digit must precede and follow the `.`; exponent `e`/`E` with optional sign. A bare `1.` or `.5` is NOT a float.
 
 ### Booleans / Null

@@ -30,8 +30,9 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 - `.split(separator: String!, limit: Int = 0) -> [String!]!` — empty separator splits into characters; `limit` caps parts (last keeps remainder)
 - `.replace(old: String!, new: String!, count: Int = -1) -> String!` — `count = -1` replaces all; empty `old` inserts between characters
 - `.truncate(length: Int!) -> String!` — at most `length` characters (code points, like `.length`); unchanged if already shorter; `length <= 0` yields `""`: `"hello world".truncate(5) == "hello"`
+- `.toInt(base: Int = 10) -> Int!` — parse an integer in base 2–36 (letters either case), optional leading `+`/`-`; raises on anything else (no whitespace, `0x` prefix, or `_`) and on overflow: `"ff".toInt(base: 16) == 255`, `("x".toInt rescue 0)`. Prefer it to a hand-written digit table
 
-Conversion: `toString(value)` (JSON-encodes non-strings) or `value :: String!` (explicit cast where types align).
+Conversion: `toString(value)` (JSON-encodes non-strings) or `value :: String!` (explicit cast where types align). A `::` cast never parses (`"42" :: Int!` is a type error); use `.toInt`.
 
 ### `String!` regex methods
 Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `` `\d+` ``. Go `regexp/syntax` (RE2); named groups use `(?P<name>...)`.
@@ -106,6 +107,7 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 
 ### Transform / select / aggregate
 - `.map { x, i => ... } -> [U]!`
+- `.flatMap { x, i => [U]! } -> [U]!` — map, then concatenate the lists; replaces `.reduce([]) { all, x => all + x.items }`
 - `.filter { x => Boolean! } -> [T]!`, `.reject { x => Boolean! } -> [T]!`
 - `.find { x => Boolean! } -> T` — first element the block accepts, or **null** when none does (stops at the first match); prefer it over `.filter { ... }[0]`
 - `.reduce(initial: U) { acc, x => ... } -> U` — `initial` positional or named `initial:`
@@ -113,6 +115,7 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 - `.each { x, i => ... } -> [T]!` — returns the original list (for chaining / side effects)
 - `.any { x => Boolean! } -> Boolean!`, `.all { x => Boolean! } -> Boolean!`
 - `.contains(element: T) -> Boolean!`
+- `.indexOf(element: T) -> Int` — index of the first equal element (Dang equality), or **null** when absent (not `-1`)
 
 ### Slice
 - `.takeFirst(count: Int = 1)`, `.takeLast(count: Int = 1)`, `.dropFirst(count: Int = 1)`, `.dropLast(count: Int = 1)`
