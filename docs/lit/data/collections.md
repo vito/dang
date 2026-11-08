@@ -171,10 +171,12 @@ at runtime:
 [{{name: "Cy", age: null :: Int}}].sortBy { _.age }
 ```
 
-The check needs to know the key's type where the call is written: a list
-whose element type isn't settled yet there (a `reduce` accumulator starting
-from `[]`), or a `.sortBy` taken as a value (`&xs.sortBy`) and called
-later, is checked as it sorts instead.
+The orderable types are the `Ordered` ones, which a function of your own can
+require too (`[a: Ordered]`, see [#type-params]); `<` and the other ordering
+operators compare them the same way. A list whose element type isn't settled
+yet (a `reduce` accumulator starting from `[]`), or a `.sortBy` taken as a
+value (`&xs.sortBy`) and called later, is checked wherever its type is
+learned.
 
 ### Iterating
 

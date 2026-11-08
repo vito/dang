@@ -112,7 +112,7 @@ greet(
 - `+` overloads on `String!` (concat) and lists (concat). Operands must be **non-null** (a nullable one is a type error — `!`, `??`, or null-check it first); the result is non-null.
 
 ### Comparison
-- `< <= > >=` on numbers (`Int`/`Float`, mixed allowed) or strings (lexicographic); operands must match. Operands must be non-null, like arithmetic.
+- `< <= > >=` on any **Ordered** type — numbers (`Int`/`Float`, mixed allowed), strings (by bytes), `Boolean` (`false < true`), enums (declaration order), custom scalars, lists (lexicographic) and `{{ }}` records (field by field), the same order `.sort` uses — or a type variable bounded `[a: Ordered]` (see types.md). Operands must match and be non-null, like arithmetic. Objects have no order (static error).
 - `== !=` only compare operands that could be equal: same type (nullability aside), `Int`/`Float` (numerically), subtype/supertype, union/member, `null`. Unrelated types are a static error: `1 == "1"`, unrelated objects. A string *literal* against an enum or scalar converts to it (`c == "GREEN"`, must name a value — `c == Color.GREEN` reads clearer; `node.id == "User:1"`); a non-literal `String` needs a cast (`(s :: ID!)`). Work on numbers, strings, bools, null, lists, maps, records. Return `Boolean!`. Records and objects: see objects.md "Equality".
 
 ### Logical
@@ -156,6 +156,9 @@ NamedType    := (NamedType '.')? UpperIdent       # qualifier is itself a NamedT
 ListType     := '[' Type ']'
 ObjectType   := '{{' (ObjectTypeField Sep)* ObjectTypeField? '}}'
 TypeVariable := [a-z]                             # single lowercase letter
+
+TypeParamList := '[' TypeParam (Sep TypeParam)* ']'  # right after a function/method name: f[a, k: Ordered](...)
+TypeParam     := Word (':' NamedType ('&' NamedType)*)?   # one letter for now; Ordered is the only bound
 ```
 
 Notable productions:

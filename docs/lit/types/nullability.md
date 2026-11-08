@@ -423,7 +423,79 @@ it, or compare it with `==` and `!=`, but nothing else:
 doubled(x: a): a { x * 2 }
 ```
 
-Use a concrete type (here `Int!`) if the body needs to operate on the value.
+Use a concrete type (here `Int!`) if the body needs to operate on the value,
+or, to compare values, bound the type variable by `Ordered`.
+
+### Type parameters and `Ordered` {#type-params}
+
+A function or method may list its type parameters after its name. Without
+the list they are implicit, as above; with it, the list must declare every
+type variable the signature uses, each once, and use every one it declares:
+
+```dang
+second[a, b](x: a!, y: b!): b! { y }
+
+second(1, "two")
+```
+
+A parameter may be bounded by `Ordered`, the types whose values have an
+order: `Int!`, `Float!`, `String!`, `Boolean!`, enums (in declaration order),
+custom scalars, and lists and `{{ }}` records of those, compared element by
+element. These are exactly what `<`, `>`, `<=` and `>=` compare and what
+`.sort` and `.sortBy` order (see [#collections]). In the body, values of a
+bounded `a!` compare, and the function can pass them on to another
+`Ordered`-bounded one:
+
+```dang
+insert[a: Ordered](xs: [a!]!, x: a!): [a!]! {
+  xs.takeWhile { y => y <= x } + [x] + xs.dropWhile { y => y <= x }
+}
+
+insertionSort[a: Ordered](xs: [a!]!): [a!]! {
+  xs.reduce([]) { acc, x => insert(acc, x) }
+}
+
+{{ints: insertionSort([3, 1, 2]), lists: insertionSort([[2], [1, 9]])}}
+```
+
+The bound is on the type, not its nullability: `a: Ordered` stands for `T`
+or `T!` for any Ordered `T!`, so write `a!` for the values you compare. A
+bare `a` may be null, and `<` refuses it.
+
+Each call checks the bound where the type is supplied, so a key with no
+order is an error at the block returning it:
+
+```dang
+mySortBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+  xs.sortBy { x => key(x) }
+}
+
+type Point {
+  x: Int!
+}
+```
+
+```dang
+mySortBy([Point(2), Point(1)]) { p => p.x }.map { p => p.x }
+```
+
+```dang-failure
+mySortBy([Point(2), Point(1)]) { p => p }
+```
+
+A call that leaves the type unknown (`insertionSort([])`) keeps the bound on
+it until something learns the type, and checks it there. Inside a generic
+body, an unbounded type variable has no order, and comparing its values is an
+error that says to declare the bound:
+
+```dang-failure
+smaller[a](x: a!, y: a!): a! {
+  if (x < y) { x } else { y }
+}
+```
+
+`Ordered` is a constraint, not a type: `x: Ordered!` is an error. It is the
+only bound for now.
 
 ## Type hints / casts: `::`
 

@@ -38,6 +38,7 @@ add(a: Int!, b: Int!): Int! { a + b }
 - Name, params, return type, body. The **last expression is the result** — no `return` needed for the normal result.
 - `return expr` is for *early* exit; unwinds through enclosing blocks/loops; valid in `new(...)` too. `return` outside any function → `return outside of function`.
 - Separate forms with newlines or `;`.
+- Generic: type variables in the signature (`first(xs: [a!]!): a`) are inferred per call. An optional type parameter list after the name declares them, with bounds: `largest[a: Ordered](xs: [a!]!): a` (methods too). See types.md "Type variables".
 
 ### Zero-arity & auto-calling
 ```dang
