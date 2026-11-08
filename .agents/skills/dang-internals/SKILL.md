@@ -1,6 +1,6 @@
 ---
 name: dang-internals
-description: Non-obvious invariants in Dang's compiler — multi-pass hoisting, the Fork/Clone/dynamic-scope-cell model, the effect/escape checks (top-level immutability, closure purity, `{{ }}` purity), and `Module.Eq` subtyping. Use when editing `pkg/dang/` infer/eval/scope code, adding a new type-like declaration, adding a builtin that takes a block, or debugging mutation/scoping/purity issues.
+description: Non-obvious invariants in Dang's compiler — multi-pass hoisting, the Fork/Clone/dynamic-scope-cell model, the effect/escape checks (top-level immutability, closure purity, `{{ }}` purity), `Module.Eq` subtyping, and evaluation cancellation. Use when editing `pkg/dang/` infer/eval/scope code, adding a new type-like declaration, adding a builtin that takes a block, adding a path that evaluates user code or caches its result, or debugging mutation/scoping/purity/cancellation issues.
 ---
 
 # Dang Internals — Hoisting and Scoping
@@ -160,10 +160,16 @@ record literal or a chained `recv.{{ … }}` selection, and a selection over a
 list fans out across the elements. The shared primitive is `evalParallel`
 (eval.go): it runs N tasks concurrently, returns their results in index order,
 and **fails fast** — the first error cancels the context handed to the
-still-running tasks. Every task is awaited, then one error is chosen
+still-running tasks, with the cause `errSiblingFailed`. That cancellation is
+for in-flight I/O (GraphQL queries) only: the interpreter's checkpoint (see
+"Cancellation" below) ignores it unless the context the `{{ }}` was evaluated
+under is done too (`parallelTask`), so pure Dang code in the other tasks runs
+to completion. Every task is awaited, then one error is chosen
 deterministically: the lowest-index *genuine* error, preferring it over the
-`context.Canceled` errors our own cancellation may have induced in siblings
-(so the real cause is never masked by cancellation noise from a lower index).
+noise our own cancellation may have induced in siblings — errors wrapping
+`context.Canceled` or `errSiblingFailed`, and `CancelledError`s (when the whole
+evaluation is cancelled, every task reports one) — so the real cause is never
+masked by cancellation noise from a lower index.
 `n <= 1` runs inline. Callers fork the scope per task (`forkTaskScope`: a sealed
 `Derive(true)` plus a **task-private `self` cell** seeded with the enclosing
 `self`) so a task's incidental writes — bare or `self.x = v` — stay private
@@ -206,11 +212,19 @@ Two things to preserve when touching this:
 - **`Object` is concurrency-safe by necessity.** `Lookup`/`force`/`Bind` and
   the other map accessors take `Object.mu` only for brief snapshots/commits —
   never across `Init`, which runs arbitrary user code that re-enters the scope
-  and would deadlock. A pending initializer runs at most once — the first
-  forcer marks it running, later ones wait for its `ready` channel — and its
-  result (value *or* error) is memoized; `pendingInit.mu` guards only that
-  state, never across `Init` either. Don't add a path that touches
-  `Values`/`Pending` without `Object.mu`.
+  and would deadlock. A pending initializer runs at most once to completion —
+  the first forcer marks it running, later ones wait for its `ready` channel —
+  and its result (value *or* error) is memoized; `pendingInit.mu` guards only
+  that state, never across `Init` either. The exception is a run **cut short**
+  (`cutShort`: the evaluation was cancelled, or a `{{ }}` sibling's failure
+  cancelled its I/O): that error says nothing about the binding, so `force`
+  abandons the run instead of memoizing it, waking its waiters to retry, and
+  the next read runs the initializer again from the start (repeating whatever
+  side effects the cut-short run had). A genuine
+  error raised while a sibling's cancellation is pending is still memoized.
+  Waiters stop waiting when their own evaluation is cancelled. An imported
+  module's top-level code (`dangModule.valueScope`) follows the same rules.
+  Don't add a path that touches `Values`/`Pending` without `Object.mu`.
 - **A field's own name resolves outward.** During a field's evaluation its own
   name is redirected to the enclosing scope, so `users: users.{{...}}` reads
   the outer `users` instead of recursing into itself. Siblings still see the
@@ -238,6 +252,34 @@ Two things to preserve when touching this:
   count as part of it. Which force detects such a cycle depends on
   scheduling, so the binding the error names — and whether a `rescue` in one
   of the initializers catches it — does too.
+
+## Cancellation
+
+A host can stop an evaluation through its context (a timeout or a cancel).
+It is checked at one place, `enterCall` → `checkpoint` (cancel.go): every
+evaluation of a user-defined body goes through it (function, method and
+constructor calls, every block invocation, so `loop` iterations and
+block-taking builtins), and code between two calls is bounded. Keep it that
+way — a new path evaluating a user body must go through `enterCall`, not add
+checks of its own.
+
+- **Cheap by construction.** The fast path is one non-blocking `ctx.Err()`.
+  It stays O(1) at any recursion depth because `frameContext` answers
+  `Done`/`Err`/`Deadline` from `src`, the nearest non-frame context below it,
+  instead of delegating frame by frame.
+- **Cancellation aborts.** It surfaces as a `*CancelledError` (unwrapping to
+  the context's error and cause), which is never rescued (`isCancelled`), and
+  `RescueExpr` also refuses to rescue anything once `evalCancelled(ctx)` —
+  whatever failed (a call or query cut short) failed because of it.
+  Otherwise `loop { x rescue null }` would spin forever.
+- **`{{ }}` sibling cancellation is not an abort.** See `evalParallel` above:
+  `cancellation` ignores a task context done with `errSiblingFailed` unless
+  `parallelTask.watch` is done too. Use the task's own context for its cause
+  (`parallelTask.ctx`); `context.Cause(ctx)` on a frame context walks every
+  frame.
+- **Never memoize a cancellation.** Lazy initializers and imported modules
+  abandon cut-short runs (see "Object literals" above); anything else that
+  caches an evaluation's outcome must do the same (`cutShort`).
 
 ## Effects and escapes (compile-time purity)
 

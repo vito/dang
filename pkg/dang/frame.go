@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/vito/dang/v2/pkg/ioctx"
 )
@@ -33,6 +34,9 @@ type evalFrame struct {
 	// maxDepth the most allowed (see enterCall).
 	depth    int
 	maxDepth int
+
+	// task is set in a `{{ }}` task (see parallelTask).
+	task *parallelTask
 
 	// Targets of return, break and continue, and the call expression a
 	// block argument breaks out of (see control_flow.go).
@@ -70,10 +74,31 @@ type frameKey struct{}
 
 // frameContext is the context layer carrying an evalFrame. It owns its frame
 // by value, so pushing a frame is a single allocation.
+//
+// A frame adds no cancellation of its own, so Done, Err and Deadline answer
+// from src: the nearest context below that isn't a frame. Without that, they
+// would delegate frame by frame down a chain that grows with recursion depth,
+// and checking for cancellation at every call (enterCall) would make deep
+// recursion quadratic.
 type frameContext struct {
 	context.Context
 	frame evalFrame
+	src   context.Context
 }
+
+func newFrameContext(ctx context.Context, f evalFrame) *frameContext {
+	src := ctx
+	if fc, ok := ctx.(*frameContext); ok {
+		src = fc.src
+	}
+	return &frameContext{Context: ctx, frame: f, src: src}
+}
+
+func (c *frameContext) Done() <-chan struct{} { return c.src.Done() }
+
+func (c *frameContext) Err() error { return c.src.Err() }
+
+func (c *frameContext) Deadline() (time.Time, bool) { return c.src.Deadline() }
 
 func (c *frameContext) Value(key any) any {
 	if _, ok := key.(frameKey); ok {
@@ -123,7 +148,7 @@ func deriveFrame(ctx context.Context) evalFrame {
 
 // withFrame returns ctx with f pushed as its current frame.
 func withFrame(ctx context.Context, f evalFrame) context.Context {
-	return &frameContext{Context: ctx, frame: f}
+	return newFrameContext(ctx, f)
 }
 
 // ensureFrame returns ctx with a frame, pushing a root frame if it has none,
@@ -133,6 +158,6 @@ func ensureFrame(ctx context.Context) (context.Context, *evalFrame) {
 	if f := frameFrom(ctx); f != nil {
 		return ctx, f
 	}
-	fc := &frameContext{Context: ctx, frame: deriveFrame(ctx)}
+	fc := newFrameContext(ctx, deriveFrame(ctx))
 	return fc, &fc.frame
 }

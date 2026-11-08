@@ -96,7 +96,7 @@ interface Error { message: String! }
 let contents = dir.file("VERSION").contents rescue null
 let ref = commit rescue "main"
 ```
-- If evaluating the operand raises **any** error, the result is the fallback; on success the operand's value passes through unchanged.
+- If evaluating the operand raises **any** error, the result is the fallback; on success the operand's value passes through unchanged. (Jumps and cancellation are not rescued; see Propagation.)
 - The operand can be any term, including a block: `{ let msg = "boom"; raise msg } rescue "rescued"`.
 
 ### Rescuing: the clause form `expr rescue { clauses }`
@@ -128,6 +128,7 @@ validate(name) rescue {
 - Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` ends the program with a report: `uncaught <TypeName>: <message>`, the raise site, the error's fields, its `caused by:` chain, and `also failed:` for sibling failures in a concurrent `{{ }}`.
 - `{{ }}` stays fail-fast with one deterministic primary error; a rescue catching the primary drops the siblings (they appear only in the uncaught report).
 - `return` cannot be rescued — `{ return x } rescue fallback` still returns `x`; likewise `break`/`continue` are not errors.
+- **Cancellation cannot be rescued.** When the host stops an evaluation (its timeout passes or it is cancelled), the evaluation ends with `evaluation cancelled: <reason>`. No `rescue` catches it — not the fallback form, not `e: Error =>`, not `else =>` — and once the evaluation is cancelled, a `rescue` doesn't catch anything else either, so `loop { work() rescue null }` still stops.
 - Re-raise inside a clause with `raise err` (or a new error); it propagates to the next enclosing `rescue`.
 
 ### Laziness warnings (non-fatal)

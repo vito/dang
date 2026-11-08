@@ -40,12 +40,17 @@ func ContextWithMaxCallDepth(ctx context.Context, max int) context.Context {
 
 // enterCall records entry into a Dang function body, failing with a
 // StackOverflowError instead of letting runaway recursion exhaust the Go
-// stack. It returns the frame for the body: the caller's, one call deeper.
+// stack. It is also the evaluation's checkpoint: it fails if the evaluation
+// was cancelled (see checkpoint). It returns the frame for the body: the
+// caller's, one call deeper.
 // Every path that evaluates a user-defined body must go through it and
 // evaluate the body under that frame (pushed with withFrame, along with any
 // other state the call changes, such as its return target).
 func enterCall(ctx context.Context) (evalFrame, error) {
 	f := deriveFrame(ctx)
+	if err := checkpoint(ctx, &f); err != nil {
+		return f, err
+	}
 	if f.depth >= f.maxDepth {
 		return f, &StackOverflowError{MaxDepth: f.maxDepth}
 	}

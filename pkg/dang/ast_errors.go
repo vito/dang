@@ -269,8 +269,15 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			return val, nil
 		}
 
-		if isControlFlowException(err) {
+		if isControlFlowException(err) || isCancelled(err) {
 			return nil, err
+		}
+
+		// Once the evaluation is cancelled, nothing is rescued: whatever
+		// failed (say, a call cut short) failed because of it, so report the
+		// cancellation.
+		if cancelled := evalCancelled(ctx); cancelled != nil {
+			return nil, cancelled
 		}
 
 		// Resolve the error value once, and expose it to the arm's dynamic
