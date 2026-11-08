@@ -29,9 +29,11 @@ type dangModule struct {
 	typeScope TypeScope
 	blocks    []*FileBlock
 
-	once  sync.Once
-	value ValueScope
-	err   error
+	mu      sync.Mutex
+	running chan struct{} // closed when the run in progress ends (see valueScope)
+	done    bool
+	value   ValueScope
+	err     error
 }
 
 type dangModuleCacheKey struct{}
@@ -150,19 +152,59 @@ func (m *dangModule) compile(ctx context.Context) error {
 // top-level side effects run a single time regardless of how many importers it
 // has. The module's own imports resolve from their inference-time cached node
 // state, so the importer's ctx configs do not leak in here.
+//
+// A run cut short by cancellation is not kept, like a lazy binding's (see
+// pendingInit): a later call runs the module again.
 func (m *dangModule) valueScope(ctx context.Context) (ValueScope, error) {
-	m.once.Do(func() {
-		vs := NewValueScope(m.typeScope)
-		// Give the module its own eval context so runtime errors point at the
-		// module's files rather than the importer's.
-		mctx := WithEvalContext(withEvaluatingModule(ctx, m), NewEvalContext(m.dir, ""))
-		if err := evaluateDirectoryFiles(mctx, m.blocks, vs); err != nil {
-			m.err = err
-			return
+	for {
+		m.mu.Lock()
+		if m.done {
+			value, err := m.value, m.err
+			m.mu.Unlock()
+			return value, err
 		}
-		m.value = vs
-	})
-	return m.value, m.err
+		if m.running == nil {
+			break
+		}
+		// Another evaluation is running the module: wait for it, unless ours
+		// is cancelled first.
+		running := m.running
+		m.mu.Unlock()
+		select {
+		case <-running:
+		case <-watchedContext(ctx, currentFrame(ctx)).Done():
+		}
+		if cancelled := evalCancelled(ctx); cancelled != nil {
+			return nil, cancelled
+		}
+	}
+	running := make(chan struct{})
+	m.running = running
+	m.mu.Unlock()
+
+	var value ValueScope
+	var err error
+	keep := false
+	defer func() {
+		m.mu.Lock()
+		if keep {
+			m.done, m.value, m.err = true, value, err
+		}
+		m.running = nil
+		close(running)
+		m.mu.Unlock()
+	}()
+
+	vs := NewValueScope(m.typeScope)
+	// Give the module its own eval context so runtime errors point at the
+	// module's files rather than the importer's.
+	mctx := WithEvalContext(withEvaluatingModule(ctx, m), NewEvalContext(m.dir, ""))
+	if err = evaluateDirectoryFiles(mctx, m.blocks, vs); err != nil {
+		keep = !cutShort(ctx, err)
+		return nil, err
+	}
+	value, keep = vs, true
+	return value, nil
 }
 
 type evaluatingModuleKey struct{}

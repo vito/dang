@@ -2082,7 +2082,10 @@ func (f FunctionValue) IsAutoCallable() bool {
 
 // pendingInit is a deferred initializer registered via BindLazy. It runs at
 // most once: on the first Lookup for its name. The result replaces the
-// pending entry in Values, so subsequent reads bypass the initializer.
+// pending entry in Values, so subsequent reads bypass the initializer. The one
+// exception is a run cut short by cancellation, which is abandoned rather
+// than memoized (see force), so a later read runs it again from the start,
+// repeating whatever side effects the cut-short run had.
 //
 // Concurrent readers (e.g. independent `{{ }}` fields that reference the same
 // lazy binding) run the initializer once and share the result, value or error:
@@ -2162,7 +2165,10 @@ var forceGraphMu sync.Mutex
 // below. That can't produce a false cycle: the stale target is done, so no
 // chain includes it, and the forces within it all returned (removing their
 // own edges) before it finished, so the walk dead-ends there.
-func awaitInit(chain *forceChain, p *pendingInit, ready <-chan struct{}) bool {
+//
+// The wait also ends, early, once done closes: the waiting evaluation was
+// cancelled, and the caller must not take p's result for granted.
+func awaitInit(chain *forceChain, p *pendingInit, ready, done <-chan struct{}) bool {
 	forceGraphMu.Lock()
 	if chain != nil && waitsReach(p, chain) {
 		forceGraphMu.Unlock()
@@ -2176,7 +2182,10 @@ func awaitInit(chain *forceChain, p *pendingInit, ready <-chan struct{}) bool {
 	}
 	forceGraphMu.Unlock()
 
-	<-ready
+	select {
+	case <-ready:
+	case <-done:
+	}
 
 	forceGraphMu.Lock()
 	for fc := chain; fc != nil; fc = fc.parent {
@@ -2239,8 +2248,16 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 		return results, nil
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// The tasks' context is cancelled once one fails, to stop in-flight I/O
+	// (GraphQL queries). Dang code in the other tasks still runs to
+	// completion: it ignores a cancellation with this cause unless the
+	// context we were given is done too (see cancellation).
+	watch := watchedContext(ctx, currentFrame(ctx))
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	taskFrame := deriveFrame(ctx)
+	taskFrame.task = &parallelTask{ctx: ctx, watch: watch}
+	ctx = withFrame(ctx, taskFrame)
 
 	errs := make([]error, n)
 	var wg sync.WaitGroup
@@ -2251,7 +2268,7 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 			v, err := fn(ctx, i)
 			if err != nil {
 				errs[i] = err
-				cancel()
+				cancel(errSiblingFailed)
 				return
 			}
 			results[i] = v
@@ -2263,9 +2280,11 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 	// context.Canceled errors our own fail-fast cancellation may have induced in
 	// still-running siblings — otherwise the actual cause could be masked by
 	// cancellation noise from a lower index (e.g. a list of GraphQL queries
-	// where one fails and the rest are cancelled mid-flight). Completed
-	// sibling failures ride along on a parallelFailure wrapper so the
-	// boundary report can show every parallel failure that actually
+	// where one fails and the rest are cancelled mid-flight). A CancelledError
+	// counts as noise too, whatever its context error: when the whole
+	// evaluation is cancelled, every task reports it, and one is enough.
+	// Completed sibling failures ride along on a parallelFailure wrapper so
+	// the boundary report can show every parallel failure that actually
 	// happened; the wrapper unwraps to the primary, so rescue dispatch and
 	// errors.Is/As are unaffected.
 	var canceled error
@@ -2273,7 +2292,7 @@ func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context
 	for i := range errs {
 		switch {
 		case errs[i] == nil:
-		case errors.Is(errs[i], context.Canceled):
+		case errors.Is(errs[i], context.Canceled), errors.Is(errs[i], errSiblingFailed), isCancelled(errs[i]):
 			if canceled == nil {
 				canceled = errs[i]
 			}
@@ -2540,13 +2559,16 @@ func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value,
 		return nil, true, initCycleError(name)
 	}
 
-	p.mu.Lock()
-	if p.done {
-		val, err := p.val, p.err
-		p.mu.Unlock()
-		return val, true, err
-	}
-	if p.running {
+	for {
+		p.mu.Lock()
+		if p.done {
+			val, err := p.val, p.err
+			p.mu.Unlock()
+			return val, true, err
+		}
+		if !p.running {
+			break
+		}
 		// Another chain is initializing p: wait for its result, unless that
 		// would close a cycle through other goroutines.
 		if p.ready == nil {
@@ -2554,20 +2576,22 @@ func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value,
 		}
 		ready := p.ready
 		p.mu.Unlock()
-		if !awaitInit(chain, p, ready) {
+		if !awaitInit(chain, p, ready, watchedContext(ctx, currentFrame(ctx)).Done()) {
 			return nil, true, initCycleError(name)
 		}
-		p.mu.Lock()
-		val, err := p.val, p.err
-		p.mu.Unlock()
-		return val, true, err
+		// Usually p is done now. If this evaluation was cancelled instead,
+		// stop waiting; if p's run was abandoned (see below), try again:
+		// maybe running it ourselves.
+		if cancelled := evalCancelled(ctx); cancelled != nil {
+			return nil, true, cancelled
+		}
 	}
 	p.running = true
 	p.mu.Unlock()
 
-	// Run the initializer, at most once. Distinct bindings run independently,
-	// so independent fields still force in parallel. Should Init panic, the
-	// waiters are still released, with an error.
+	// Run the initializer, at most once to completion. Distinct bindings run
+	// independently, so independent fields still force in parallel. Should
+	// Init panic, the waiters are still released, with an error.
 	finished := false
 	defer func() {
 		if !finished {
@@ -2581,7 +2605,17 @@ func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value,
 	}
 	if err != nil {
 		finished = true
-		p.finish(nil, err)
+		if cutShort(ctx, err) {
+			// The force was cut short: the evaluation was cancelled, or (in a
+			// `{{ }}` task) I/O was cancelled because a sibling failed. The
+			// error says nothing about the binding itself, so don't memoize
+			// it: a later force (say, by a host evaluating again in the same
+			// scope) runs it again, rather than failing forever with an error
+			// nothing can rescue.
+			p.abandon()
+		} else {
+			p.finish(nil, err)
+		}
 		return nil, true, err
 	}
 
@@ -2601,6 +2635,18 @@ func (p *pendingInit) finish(val Value, err error) {
 	p.val, p.err, p.done = val, err, true
 	if p.ready != nil {
 		close(p.ready)
+	}
+	p.mu.Unlock()
+}
+
+// abandon gives up a run of p without a result, releasing its waiters to try
+// again (see force).
+func (p *pendingInit) abandon() {
+	p.mu.Lock()
+	p.running = false
+	if p.ready != nil {
+		close(p.ready)
+		p.ready = nil
 	}
 	p.mu.Unlock()
 }
