@@ -53,6 +53,43 @@ let entry = JSON.decode("{\"name\": \"e\", \"extra\": {\"deep\": [true]}}") :: E
 assert { toString(entry.extra) == "{\"deep\":[true]}" }
 assert { JSON.encode(entry) == "{\"extra\":{\"deep\":[true]},\"name\":\"e\"}" }
 
+# Strict decoding checks keys against a type, so it leaves a JSON value's
+# insides alone: they are data, like a Map's keys. Keys around it are still
+# checked, and a key repeated anywhere in the document, inside a JSON value
+# too, is still rejected.
+let strictEntry = JSON.decode(
+  "{\"name\": \"e\", \"extra\": {\"anything\": {\"goes\": 1, \"more\": 2}}}",
+  strict: true,
+) :: Entry!
+assert { toString(strictEntry.extra) == "{\"anything\":{\"goes\":1,\"more\":2}}" }
+let strictAny = YAML.decode("a: {b: 1}\nc: [1, 2]\n", strict: true) :: Map[JSON!]!
+assert { strictAny.keys == ["a", "c"] }
+let unknownAround = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": 1, \"typo\": 2}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { unknownAround.contains("field typo not found") }
+let repeatedInside = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": {\"k\": 1, \"k\": 2}}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { repeatedInside.contains("field k already set") }
+
+# Walking deeper decodes again, and strict applies at the type given there.
+type Inner {
+  goes: Int!
+}
+
+let lax = JSON.decode(strictEntry.extra) :: Map[Inner!]!
+assert { lax["anything"]!.goes == 1 }
+let innerError = toString(JSON.decode(strictEntry.extra, strict: true) :: Map[Inner!]!) rescue {
+  e: Error => e.message
+}
+assert { innerError.contains("field more not found") }
+assert { (JSON.decode(strictEntry.extra, strict: true) :: Map[JSON!]!).keys == ["anything"] }
+
 # YAML and TOML decode into JSON values as well. YAML numbers that aren't
 # spelled as JSON numbers are held as the number they are.
 let fromYAML = YAML.decode("a: 1\nb: [x, y]\nmode: 0755\nhalf: -.5\nup: +1\n") :: Map[JSON!]!
