@@ -10,7 +10,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func decodeYAML(data string) (any, error) {
+// decodeYAML parses a single YAML document into decoded data. strict also
+// rejects a mapping that repeats a key, which a plain decode resolves by
+// keeping the last.
+func decodeYAML(data string, strict bool) (any, error) {
 	decoder := yaml.NewDecoder(strings.NewReader(data))
 
 	var doc yaml.Node
@@ -29,7 +32,61 @@ func decodeYAML(data string) (any, error) {
 		return nil, fmt.Errorf("trailing document")
 	}
 
+	if strict {
+		if err := checkYAMLDuplicateKeys(&doc, ""); err != nil {
+			return nil, err
+		}
+	}
+
 	return yamlNodeToDeferredRaw(&doc, map[*yaml.Node]bool{})
+}
+
+// checkYAMLDuplicateKeys reports the first mapping under node that repeats a
+// key, with its path and line, worded like yaml.v3's error for a struct field
+// set twice. Keys compare by their scalar text, as yamlNodeToDeferredRaw
+// stores them. Merge keys (`<<`) are skipped: a key a merge also supplies is
+// an override, not a duplicate. Aliases are not followed; the anchored node
+// is checked where it is defined.
+func checkYAMLDuplicateKeys(node *yaml.Node, path string) error {
+	switch node.Kind {
+	case yaml.DocumentNode:
+		for _, child := range node.Content {
+			if err := checkYAMLDuplicateKeys(child, path); err != nil {
+				return err
+			}
+		}
+	case yaml.SequenceNode:
+		for i, item := range node.Content {
+			if err := checkYAMLDuplicateKeys(item, joinIndexPath(path, i)); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		seen := make(map[string]bool, len(node.Content)/2)
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			keyNode := node.Content[i]
+			if keyNode.Kind != yaml.ScalarNode {
+				// Non-scalar keys are rejected by yamlNodeToDeferredRaw.
+				continue
+			}
+			if keyNode.ShortTag() == "!!merge" {
+				// Not a key of its own, but a mapping written inline as its
+				// value can still repeat one.
+				if err := checkYAMLDuplicateKeys(node.Content[i+1], path); err != nil {
+					return err
+				}
+				continue
+			}
+			if seen[keyNode.Value] {
+				return materializeDeferredError(path, "line %d: field %s already set", keyNode.Line, keyNode.Value)
+			}
+			seen[keyNode.Value] = true
+			if err := checkYAMLDuplicateKeys(node.Content[i+1], joinFieldPath(path, keyNode.Value)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func yamlNodeToDeferredRaw(node *yaml.Node, seen map[*yaml.Node]bool) (any, error) {

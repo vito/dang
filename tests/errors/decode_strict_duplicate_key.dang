@@ -1,0 +1,13 @@
+type Module {
+  name: String!
+  source: String!
+}
+
+let modules: [Module!]! = YAML.decode(
+  """
+  - name: one
+    source: ./one
+    source: ./two
+  """,
+  strict: true,
+)

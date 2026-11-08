@@ -170,6 +170,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Until it reaches an expected type, a decode result has the opaque type `Decoded`: it can be stored, passed, and returned, but `JSON.decode("1") + 1`, `JSON.decode("1") == 1`, `if (JSON.decode("true"))`, and `.field` on it are type errors — cast first. Joins with typed values too: `(JSON.decode(s) :: Int!) rescue 0`.
 - Works for primitives, lists, maps (`Map[T]`, from an object), records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
+- `decode(data, strict: true)` (all three formats; default `false`) rejects instead, like Go yaml.v3's `KnownFields(true)`: an input key that matches no field (or constructor parameter) of the target type/record → `<path>: field <key> not found` (`@FORMAT.field(name:)` renames count, so the declared name is unknown; an `@FORMAT.ignore` field reads no key, so its name is unknown too; `let` fields count, so encode output always decodes back; `Map[T]` accepts any key). Every unknown key in the whole value is reported in one error, one line each (an object's own keys sorted, then its fields' in declaration order; list elements by index, map entries by key); any other decode error still stops at once. It also rejects a key repeated within one JSON object or YAML mapping (non-strict keeps the last) → `<Format>.decode: invalid <Format>: <path>: line N: field <key> already set`; TOML always rejects repeats. YAML `<<` merges are not repeats. **The two paths differ on purpose:** duplicates are found while parsing, so their path is the document's (`web`, `a.b`) with a line number; unknown keys are found while materializing at the type, so their path is the typed one shared with other decode errors (a map entry reads `["web"]`). The flag stays with a `Decoded` value until it materializes.
 - YAML anchors/aliases and `<<` merge keys are resolved; a mapping's own keys beat merged ones, and earlier entries of `<<: [*a, *b]` beat later ones.
 - Empty input differs by format: `JSON.decode("")` errors (invalid JSON); `YAML.decode("")` is `null` (an empty YAML document), so it won't materialize into a non-null record; `TOML.decode("")` is an empty table, so it fills declared defaults.
 
@@ -188,6 +189,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - missing required field → `<path>: missing required field`
 - wrong type for field → raises
 - invalid enum value → `<path>: invalid enum value "X" for <Enum>`
+- with `strict: true`: unknown keys → one `<typed path>: field <key> not found` line per key, all in one error; repeated key → `<Format>.decode: invalid <Format>: <document path>: line N: field <key> already set`
 
 ## `Random` module
 - `Random.int(min: Int!, max: Int!) -> Int!` — `min` inclusive, `max` exclusive (errors if `min >= max`)
