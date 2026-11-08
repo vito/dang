@@ -114,14 +114,18 @@ fine, but this is not:
 
 ## Comparison
 
-`<` `<=` `>` `>=` compare numbers (`Int` and `Float` mix) or strings
-(alphabetically):
+`<` `<=` `>` `>=` compare values of any Ordered type: numbers (`Int` and
+`Float` mix), strings (by their bytes, so `"B" < "a"`), booleans (`false`
+first), enum values (in declaration order), custom scalars, and lists and
+`{{ }}` records of those, element by element. It's the same order `.sort`
+uses, and a function can ask for it with a type parameter bounded by
+`Ordered` (see [#type-params]):
 
 ```dang
-[1 < 2.5, "apple" < "banana"]
+[1 < 2.5, "apple" < "banana", false < true, [1, 2] < [1, 3]]
 ```
 
-Both operands must be the same kind and non-null, as for arithmetic:
+Both operands must be the same type and non-null, as for arithmetic:
 
 ```dang-failure
 "a" < 1
