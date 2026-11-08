@@ -59,6 +59,7 @@ func TestLoadDirDeclaresWithoutRunning(t *testing.T) {
 	require.NoError(t, err)
 	defer m.Close()
 	require.Empty(t, out.String(), "declaring the module ran its top level")
+	require.Contains(t, Describe(ctx, m.ValueEnv, nil, DescribeOptions{}), "noisy: <lazy>")
 
 	// A snippet calls the module's private helper.
 	val, typ, err := m.Eval(ctx, "", `paragraph("a\n\nb")`)
