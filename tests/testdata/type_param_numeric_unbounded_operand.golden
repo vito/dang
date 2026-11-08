@@ -1,0 +1,8 @@
+[1m[31mError:[0m operator addition is not defined between types a! and b!: a! is a Numeric type, and a type variable supports no operations; give it the same type (a!)
+  [2m[34m--> errors/type_param_numeric_unbounded_operand.dang:1:44[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mmix[a: Numeric, b](x: a!, y: b!): a! { x + y }
+[2m                                                  [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

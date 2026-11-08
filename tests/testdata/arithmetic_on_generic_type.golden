@@ -1,4 +1,4 @@
-[1m[31mError:[0m operator multiplication is not defined for the generic type b: a type variable supports no operations
+[1m[31mError:[0m operator multiplication is not defined for the generic type b: a type variable supports no operations; declare it `[b: Numeric]` to use it
   [2m[34m--> errors/arithmetic_on_generic_type.dang:5:20[0m
  [2m    |[0m
  [2m  3 | [0m

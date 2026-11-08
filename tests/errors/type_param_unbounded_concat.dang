@@ -1,0 +1,2 @@
+# Numeric can't make + concatenate, so it isn't suggested.
+label[a](x: a!): String! { "n=" + x }

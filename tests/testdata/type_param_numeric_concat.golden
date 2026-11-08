@@ -1,0 +1,9 @@
+[1m[31mError:[0m operator addition is not defined between types a! and String!: a! is a Numeric type, so only numbers go with it
+  [2m[34m--> errors/type_param_numeric_concat.dang:2:37[0m
+ [2m    |[0m
+ [2m  1 | # Numeric enables only the numeric meaning of +.[0m
+ [2m[34m[1m  2 | [0mlabel[a: Numeric](x: a!): String! { x + "s" }
+[2m                                           [31m^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

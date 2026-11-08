@@ -1,0 +1,1 @@
+neg[a: Numeric](x: a): a { -x }

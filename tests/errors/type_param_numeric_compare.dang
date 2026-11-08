@@ -1,0 +1,1 @@
+largest[a: Numeric](x: a!, y: a!): a! { if (x > y) { x } else { y } }

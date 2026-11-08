@@ -1,0 +1,8 @@
+[1m[31mError:[0m operator greater_than is not defined for the generic type a: Numeric doesn't support it; declare it `[a: Numeric & Ordered]` to use it
+  [2m[34m--> errors/type_param_numeric_compare.dang:1:45[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlargest[a: Numeric](x: a!, y: a!): a! { if (x > y) { x } else { y } }
+[2m                                                   [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

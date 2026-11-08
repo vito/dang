@@ -55,6 +55,14 @@ var orderedConstraint = newBuiltinConstraint(&BuiltinConstraint{
 	Operators: []string{"less_than", "greater_than", "less_than_equal", "greater_than_equal"},
 })
 
+// numericConstraint is Numeric: the number types, Int and Float, whose
+// values the arithmetic operators take and sum adds up (whyNotNumeric).
+var numericConstraint = newBuiltinConstraint(&BuiltinConstraint{
+	Name:      "Numeric",
+	Why:       whyNotNumeric,
+	Operators: []string{"addition", "subtraction", "multiplication", "division", "modulo"},
+})
+
 // lookupConstraint finds a constraint named by a bound.
 func lookupConstraint(bound *NamedTypeNode) (*BuiltinConstraint, bool) {
 	if bound.Base != nil {

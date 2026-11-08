@@ -1,0 +1,8 @@
+[1m[31mError:[0m operator addition is not defined for type a: it is of the generic type a, which may be null; write a! for its non-null values
+  [2m[34m--> errors/type_param_numeric_nullable.dang:1:36[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0madd[a: Numeric](x: a, y: a!): a! { x + y }
+[2m                                          [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

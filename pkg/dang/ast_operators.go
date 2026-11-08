@@ -165,16 +165,23 @@ func checkDecodedComparison(left Node, lt hm.Type, right Node, rt hm.Type) error
 // allows Int and Float to mix, widening to Float when either side is Float —
 // something the old "assign right to left" check rejected.
 func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, error) {
+	// A type variable bounded by Numeric supports the numeric operators.
+	if b.Operands.has(numericOperand) {
+		if t, ok, err := b.resolveNumericVars(env, lt, rt); ok {
+			return t, err
+		}
+	}
+
 	// An operator is not defined for an unconstrained generic type variable: a
 	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work
 	// for every possible type, so we cannot assume it is numeric/string/etc.
 	// Reject at definition time rather than failing at the call site — without
 	// typeclasses, a generic value can only be passed around, not operated on.
 	if tv, ok := unconstrainedVar(lt); ok {
-		return nil, b.unboundedVarError(tv)
+		return nil, b.unboundedOperandError(tv, rt)
 	}
 	if tv, ok := unconstrainedVar(rt); ok {
-		return nil, b.unboundedVarError(tv)
+		return nil, b.unboundedOperandError(tv, lt)
 	}
 
 	// A null operand raises at runtime (operators don't propagate null the way
@@ -268,7 +275,7 @@ func (b *BinaryOperator) checkConstrainedOperands(env hm.Env, c *BuiltinConstrai
 	}
 	lb, _ := stripNonNull(lt)
 	rb, _ := stripNonNull(rt)
-	if !isNumeric(lb) || !isNumeric(rb) {
+	if !numbersMix(lb, rb) {
 		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
 			subs, err = hm.Assignable(lt, rt)
@@ -299,12 +306,35 @@ func (b *BinaryOperator) checkConstrainedOperands(env hm.Env, c *BuiltinConstrai
 	return nil
 }
 
+// unboundedOperandError is unboundedVarError for an arithmetic operand of
+// type t beside one of type other. Numeric only gives + its numeric meaning,
+// so beside a string or list (`"n=" + x`) declaring it wouldn't help, and
+// isn't suggested.
+func (b *BinaryOperator) unboundedOperandError(t, other hm.Type) error {
+	if ob, _ := stripNonNull(other); ob == StringType || isList(ob) {
+		return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, t)
+	}
+	return b.unboundedVarError(t)
+}
+
 // unboundedVarError reports the operator used on a value of a type variable
 // that isn't bounded to support it, saying which bound would, if any does.
 func (b *BinaryOperator) unboundedVarError(t hm.Type) error {
 	if c, ok := constraintEnabling(b.OpName); ok {
-		name := varOfType(t).Unbounded()
-		return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations; declare it `[%s: %s]` to use it", b.OpName, t, name, c.Name)
+		tv := varOfType(t)
+		name := tv.Unbounded()
+		why := "a type variable supports no operations"
+		// Keep the bounds it has: `[a: Numeric & Ordered]`.
+		bounds := c.Name
+		if have := tv.Bounds(); len(have) > 0 {
+			var names []string
+			for _, h := range have {
+				names = append(names, h.Name())
+			}
+			why = fmt.Sprintf("%s doesn't support it", strings.Join(names, " & "))
+			bounds = strings.Join(names, " & ") + " & " + c.Name
+		}
+		return fmt.Errorf("operator %s is not defined for the generic type %s: %s; declare it `[%s: %s]` to use it", b.OpName, t, why, name, bounds)
 	}
 	return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, t)
 }
@@ -1347,7 +1377,22 @@ func (u *UnaryMinus) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 		nonNull, ok := exprType.(hm.NonNullType)
 		if !ok {
+			if tv, ok := numericVar(exprType); ok {
+				// A bare a from [a: Numeric]: maybe null.
+				return nil, fmt.Errorf("unary minus is not defined for the generic type %s, which may be null; write %s! for its non-null values", exprType, tv.Unbounded())
+			}
 			return nil, fmt.Errorf("unary minus requires Int or Float, got %s", exprType)
+		}
+		if tv, ok := nonNull.Type.(hm.TypeVariable); ok && tv.IsRigid() && tv.Has(numericConstraint.Constraint) {
+			// a! from [a: Numeric]: a number, negated.
+			return exprType, nil
+		}
+		if tv, ok := nonNull.Type.(hm.TypeVariable); ok && tv.IsRigid() {
+			bounds := "Numeric"
+			for _, have := range tv.Bounds() {
+				bounds = have.Name() + " & " + bounds
+			}
+			return nil, fmt.Errorf("unary minus is not defined for the generic type %s: declare it `[%s: %s]` to negate it", exprType, tv.Unbounded(), bounds)
 		}
 		if nonNull.Type != IntType && nonNull.Type != FloatType {
 			return nil, fmt.Errorf("unary minus requires Int or Float, got %s", exprType)

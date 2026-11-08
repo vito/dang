@@ -1,0 +1,8 @@
+[1m[31mError:[0m unary minus is not defined for the generic type a!: declare it `[a: Numeric]` to negate it
+  [2m[34m--> errors/type_param_unbounded_negation.dang:1:21[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mneg[a](x: a!): a! { -x }
+[2m                           [31m^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

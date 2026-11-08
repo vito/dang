@@ -1,0 +1,64 @@
+# Test the Numeric bound
+
+# A user-written sum: the bound gives a's values + - * / %.
+mySum[a: Numeric](xs: [a!]!, zero: a!): a! {
+  xs.reduce(zero) { acc, x => acc + x }
+}
+
+assert { mySum([1, 2, 3], 0) == 6 }
+assert { mySum([1.5, 2.25], 0.0) == 3.75 }
+let intTotal: Int! = mySum([4, 5], 0)
+assert { intTotal == 9 }
+
+# A Float operand makes a Float, whichever number a stands for.
+average[a: Numeric](xs: [a!]!): Float! {
+  xs.reduce(0.0) { acc, x => acc + x } / xs.length
+}
+
+assert { average([1, 2]) == 1.5 }
+assert { average([1.0, 2.0, 6.0]) == 3.0 }
+
+# An Int operand keeps a: Int op Int is Int, Float op Int is Float.
+scale[a: Numeric](x: a!): a! { x * 2 - 1 }
+
+assert { scale(3) == 5 }
+assert { scale(1.5) == 2.0 }
+
+# Division follows the number a stands for: Int division for Ints.
+halve[a: Numeric](x: a!): a! { x / 2 }
+
+assert { halve(7) == 3 }
+assert { halve(7.0) == 3.5 }
+
+rem[a: Numeric](x: a!): a! { x % 3 }
+
+assert { rem(7) == 1 }
+assert { rem(7.5) == 1.5 }
+
+neg[a: Numeric](x: a!): a! { -x }
+
+assert { neg(2) == -2 }
+
+# Compound assignment goes through the same operators.
+bump[a: Numeric](x: a!): a! {
+  let y = x
+  y += 1
+  y
+}
+
+assert { bump(1) == 2 }
+
+# Bounds combine: ordering and arithmetic both.
+largestPlus[a: Ordered & Numeric](xs: [a!]!, n: a!): a! {
+  xs.sort(descending: true)[0]! + n
+}
+
+assert { largestPlus([3, 9, 4], 1) == 10 }
+
+# A bounded variable compares with numbers as it adds with them.
+abs[a: Ordered & Numeric](x: a!): a! { if (x < 0) { -x } else { x } }
+
+assert { abs(-3) == 3 }
+assert { abs(2.5) == 2.5 }
+
+print("Numeric tests passed!")
