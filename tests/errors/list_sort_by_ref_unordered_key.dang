@@ -1,0 +1,7 @@
+type Point {
+  x: Int!
+}
+
+# A method taken as a value keeps its key's bound for the later call.
+let sortPoints = &[Point(2), Point(1)].sortBy
+sortPoints { p => p }

@@ -296,21 +296,6 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return nil, NewInferError(fmt.Errorf("function requires a block argument"), c)
 	}
 
-	// A builtin's own constraints on its resolved signature (sortBy's key
-	// must be orderable); a complaint about the block is located there.
-	if sel, ok := unwrapGrouped(c.Fun).(*Select); ok && sel.callCheck != nil {
-		resolved := ft
-		if blockArgSubs != nil {
-			resolved = ft.Apply(blockArgSubs).(*hm.FunctionType)
-		}
-		if err := sel.callCheck(resolved); err != nil {
-			if c.BlockArg != nil {
-				return nil, NewInferError(err, c.BlockArg)
-			}
-			return nil, NewInferError(err, c)
-		}
-	}
-
 	// Apply block arg substitutions to the return type
 	retType := ft.Ret(false)
 	if blockArgSubs != nil {
@@ -467,6 +452,18 @@ func boundErrorOr(err, fallback error) error {
 		return ce
 	}
 	return fallback
+}
+
+// nullableResult reports whether a result of type have fails to fit want
+// only because it may be null (sortBy's key from a nullable field).
+func nullableResult(have, want hm.Type) bool {
+	if _, nonNull := want.(hm.NonNullType); !nonNull || !knownNullable(have) {
+		return false
+	}
+	if _, isUnion := have.(*hm.UnionType); isUnion {
+		return false
+	}
+	return hm.IsSubtypeOf(hm.NonNull(have), want)
 }
 
 // omittedArgSubs makes nullable each flexible variable that types a
@@ -968,11 +965,6 @@ type Select struct {
 	staticOwner *Type
 	Loc         *SourceLocation
 
-	// callCheck is the BuiltinDef.Check of the list method this selection
-	// resolved to, for the FunCall calling it to run on its resolved
-	// signature.
-	callCheck func(*hm.FunctionType) error
-
 	// selectedThrough marks an auto-called selection whose result is
 	// immediately selected from. See markSelectedThrough.
 	selectedThrough bool
@@ -1071,8 +1063,6 @@ func importedModuleDeclarations(t TypeScope) *Type {
 
 func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		d.callCheck = nil
-
 		// Every Select has a receiver: bare names are Symbols.
 		if d.Receiver == nil {
 			return nil, fmt.Errorf("Select.Infer: internal error: %q has no receiver", d.Field.Name)
@@ -1147,20 +1137,13 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				return tv, fmt.Errorf("list does not have method %q", d.Field.Name)
 			}
 
-			// Build method type with element type substituted for type variable
-			methodType := instantiateListMethod(def, listElemType)
-			d.callCheck = def.Check
-			// Check what the receiver already resolves (sort's elements),
-			// also for a method taken as a value (`&xs.sort`), which no
-			// FunCall checks; a call checks again once its arguments and
-			// block resolve the rest.
-			if def.Check != nil {
-				if ft, ok := methodType.(*hm.FunctionType); ok {
-					if err := def.Check(ft); err != nil {
-						return nil, err
-					}
-				}
+			// Build method type with element type substituted for type
+			// variable, which a bound on it checks first (sort's).
+			listElemType, err = orderedElems(def, listElemType)
+			if err != nil {
+				return nil, err
 			}
+			methodType := instantiateListMethod(def, listElemType)
 
 			if d.AutoCall {
 				var err error
@@ -3986,6 +3969,12 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
 			if err != nil {
+				if nullableResult(bodyType, b.ExpectedReturnType) {
+					return nil, NewInferError(
+						fmt.Errorf("block argument body may be null (%s), but must not be: supply a default with ??", bodyType),
+						b.BodyNode,
+					)
+				}
 				return nil, NewInferError(
 					boundErrorOr(err, withUnionProvenance(
 						fmt.Errorf("block argument body has type %s but expected type %s",
@@ -4069,12 +4058,16 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 		own = own.Union(def.BlockType.FreeTypeVar())
 	}
 	own.Remove('a')
+	// The element variable may be bounded (sort's); orderedElems checked
+	// the element type against the bound.
+	own.Remove(hm.Ordered('a'))
 	rename := freshenSubs(own)
 	instantiate := func(t hm.Type) hm.Type {
 		if t == nil {
 			return nil
 		}
-		return substituteTypeVar(t.Apply(rename).(hm.Type), 'a', elemType)
+		t = substituteTypeVar(t.Apply(rename).(hm.Type), 'a', elemType)
+		return substituteTypeVar(t, hm.Ordered('a'), elemType)
 	}
 
 	// Build a record type for the method arguments, replacing TypeVar('a') with elemType

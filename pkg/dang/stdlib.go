@@ -532,19 +532,16 @@ func registerStdlib() {
 			}, nil
 		})
 
-	// List.sort method: sort(descending: Boolean = false) -> [a]!
+	// List.sort method: sort[a: Ordered](descending: Boolean = false) -> [a!]!
 	//
 	// Stable, like sortBy: elements that compare equal keep their order.
-	// The element type must be orderable (checkSortKey), which is checked
-	// at type-check time.
+	// The bound on the element variable checks the receiver's elements at
+	// type-check time (see orderedElems).
 	Method(ListTypeModule, "sort").
 		Doc("returns a new list in ascending order (descending: true reverses it), keeping equal elements in their original order. Numbers sort numerically, strings and scalars by their bytes (numeric scalars numerically), false before true, enum values in declaration order, and lists and records element by element").
 		Example(`["b", "c", "a"].sort`).
 		Params("descending", BooleanType, BoolValue{Val: false}).
-		Returns(NonNull(ListOf(TypeVar('a')))).
-		Check(func(fn *hm.FunctionType) error {
-			return checkSortKey("cannot sort a list of", sortKeyOfList(fn.Ret(false)))
-		}).
+		Returns(NonNull(ListOf(OrderedVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
 			sorted, err := sortStable(list.Elements, list.Elements, args.GetBool("descending"))
@@ -557,11 +554,12 @@ func registerStdlib() {
 			}, nil
 		})
 
-	// List.sortBy method: sortBy(descending: Boolean = false, fn: \(a) -> b) -> [a]!
+	// List.sortBy method: sortBy[k: Ordered](descending: Boolean = false, fn: \(a) -> k!) -> [a]!
 	//
 	// The key block runs once per element, in order. Sorting is stable, so a
 	// compound key can be a list (`[x.major, x.minor]`) or, mixing types, a
-	// record (`{{role: x.role, name: x.name}}`).
+	// record (`{{role: x.role, name: x.name}}`). The key's bound checks it
+	// at type-check time, where the block or the call learns its type.
 	Method(ListTypeModule, "sortBy").
 		Doc("returns a new list ordered by the key the block computes for each element, ascending (descending: true reverses it), keeping elements with equal keys in their original order. Keys order like sort's elements; use a list or record for a compound key").
 		Example(`["ccc", "a", "bb"].sortBy { s => s.length }`).
@@ -571,15 +569,9 @@ func registerStdlib() {
 				Key:   "item",
 				Value: hm.NewScheme(nil, TypeVar('a')),
 			}),
-			TypeVar('b'),
+			NonNull(OrderedVar('k')),
 		)).
 		Returns(NonNull(ListOf(TypeVar('a')))).
-		Check(func(fn *hm.FunctionType) error {
-			if fn.Block() == nil {
-				return nil
-			}
-			return checkSortKey("cannot sort by", fn.Block().Ret(false))
-		}).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
 

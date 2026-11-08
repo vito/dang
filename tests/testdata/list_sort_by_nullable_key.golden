@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot sort by {name: String!, rank: Int}!: field rank may be null; supply a default with ??
+[1m[31mError:[0m cannot use {name: String!, rank: Int}! for `k: Ordered`: field rank may be null; supply a default with ??
   [2m[34m--> errors/list_sort_by_nullable_key.dang:7:16[0m
  [2m    |[0m
  [2m  5 | [0m
