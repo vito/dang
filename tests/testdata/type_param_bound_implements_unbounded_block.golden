@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "best", block argument: the implementation bounds a by Ordered, but the interface's callers may pass a block of (): a!
+  [2m[34m--> errors/type_param_bound_implements_unbounded_block.dang:6:26[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Best.best may pass a block returning values with no order.[0m
+ [2m[34m[1m  6 | [0mtype Smallest implements Best {
+[2m                                [31m^^^^[0m
+ [2m  7 |   best[a: Ordered](&mk: a!): a! {[0m
+ [2m  8 |     let x = mk[0m
+ [2m    |[0m
+

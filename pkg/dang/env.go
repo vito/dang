@@ -1682,6 +1682,11 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	case !hm.IsSubtypeOf(ifaceBlock, objectBlock):
 		return fmt.Errorf("field %q: block argument type %s is not compatible with interface block type %s (contravariance required)",
 			fieldName, objectBlock, ifaceBlock)
+	default:
+		if err := checkImplementationBounds(ifaceBlock, objectBlock); err != nil {
+			return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
+				fieldName, err, ifaceBlock)
+		}
 	}
 
 	return nil
