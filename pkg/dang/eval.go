@@ -3613,9 +3613,11 @@ func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
 		return err, true
 	}
 
-	source := ""
-	if evalCtx != nil {
-		source = evalCtx.Source
+	sourceFor := func(loc *SourceLocation) string {
+		if evalCtx == nil {
+			return ""
+		}
+		return evalCtx.sourceFor(loc)
 	}
 
 	var returned *ReturnException
@@ -3623,7 +3625,7 @@ func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
 		return NewSourceError(
 			errors.New(returned.Error()),
 			returned.Location,
-			source,
+			sourceFor(returned.Location),
 		), true
 	}
 
@@ -3632,7 +3634,7 @@ func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
 		return NewSourceError(
 			errors.New(broken.Error()),
 			broken.Location,
-			source,
+			sourceFor(broken.Location),
 		), true
 	}
 
@@ -3641,7 +3643,7 @@ func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
 		return NewSourceError(
 			errors.New(continued.Error()),
 			continued.Location,
-			source,
+			sourceFor(continued.Location),
 		), true
 	}
 
@@ -3649,7 +3651,7 @@ func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
 	// public data fields, cause chain, and concurrent sibling failures.
 	var raised *RaisedError
 	if errors.As(err, &raised) {
-		report := &uncaughtErrorReport{Raised: raised, Source: source}
+		report := &uncaughtErrorReport{Raised: raised, Source: sourceFor(raised.Location)}
 		var parallel *parallelFailure
 		if errors.As(err, &parallel) {
 			report.Also = parallel.Also
@@ -3972,6 +3974,14 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 // scope (e.g. via ConstructorFunction.Closure), so directive arguments and method
 // bodies that reference imported symbols continue to resolve.
 func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope ValueScope) error {
+	return evaluateDirectory(ctx, blocks, valueScope, true)
+}
+
+// evaluateDirectory is evaluateDirectoryFiles, or with eager unset, its
+// declaring half: the directory's top-level variables are bound as lazy
+// initializers, run on first read rather than all up front, and top-level
+// statements don't run at all (see LoadDir).
+func evaluateDirectory(ctx context.Context, blocks []*FileBlock, valueScope ValueScope, eager bool) error {
 	type fileEvalScope struct {
 		classified ClassifiedForms
 		scope      ValueScope
@@ -4044,6 +4054,9 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope
 				return EvalNode(ctx, scope, field.Value)
 			}, field.Visibility)
 		}
+	}
+	if !eager {
+		return nil
 	}
 	for _, fs := range fileScopes {
 		for _, form := range fs.classified.Variables {

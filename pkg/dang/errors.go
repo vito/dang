@@ -192,11 +192,30 @@ type EvalContext struct {
 	Filename string
 	Source   string
 
+	// sources, when set, holds the text of other files evaluation may report
+	// errors in, by filename: the files of a module a snippet runs in (see
+	// Session), which may not be on disk. A location in a file it lacks
+	// other than Filename gets no source, and is read from disk if it can be.
+	sources map[string]string
+
 	// warnedDeprecations dedupes deprecation warnings by call site within a
 	// single evaluation run, so calling a deprecated builtin inside a loop warns
 	// once rather than on every iteration. Eval is single-threaded, so no lock is
 	// needed.
 	warnedDeprecations map[string]bool
+}
+
+// sourceFor returns the source text to report a location in.
+func (ctx *EvalContext) sourceFor(loc *SourceLocation) string {
+	if ctx.sources != nil && loc != nil {
+		if src, ok := ctx.sources[loc.Filename]; ok {
+			return src
+		}
+		if loc.Filename != ctx.Filename {
+			return ""
+		}
+	}
+	return ctx.Source
 }
 
 // WithEvalContext stores the EvalContext in the Go context
@@ -279,7 +298,7 @@ func WarnAtSource(ctx context.Context, loc *SourceLocation, message string) {
 			}
 			evalCtx.warnedDeprecations[key] = true
 		}
-		source = evalCtx.Source
+		source = evalCtx.sourceFor(loc)
 	}
 
 	if source == "" && loc != nil && loc.Filename != "" {
@@ -332,7 +351,7 @@ func (ctx *EvalContext) CreateSourceError(err error, node SourceLocatable) error
 		return err
 	}
 
-	return NewSourceError(err, location, ctx.Source)
+	return NewSourceError(err, location, ctx.sourceFor(location))
 }
 
 // ConvertInferError converts an InferError to a SourceError with source context
