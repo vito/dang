@@ -232,13 +232,17 @@ JSON.encode({{ first: modules[0]! }})
 ```
 
 A `String` turns into a JSON value only if it is JSON. It is compacted on
-the way in, keeping its keys in the order written, so equal data compares
-equal however it was spaced:
+the way in, keeping its keys in the order written. JSON values compare as
+data, so key order and spacing don't affect equality:
 
 ```dang
-let spaced = """{ "name": "lint" }"""
+let written = """{ "name": "lint", "pin": 3 }"""
 
-(spaced :: JSON!) == (JSON.decode(spaced) :: JSON!)
+toString(written :: JSON!)
+```
+
+```dang
+(written :: JSON!) == """{"pin": 3, "name": "lint"}"""
 ```
 
 ```dang-failure

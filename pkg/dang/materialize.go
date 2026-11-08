@@ -520,6 +520,64 @@ func truncateForError(s string) string {
 	return strconv.Quote(s)
 }
 
+// jsonTextEqual reports whether two JSON texts hold the same data: objects
+// with the same keys (in any order) and equal values, lists element by
+// element, and numbers by value (`1.50` is `1.5`). Text that does not parse
+// compares as text.
+func jsonTextEqual(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ra, errA := decodeJSON(a, false)
+	rb, errB := decodeJSON(b, false)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return jsonDataEqual(ra, rb)
+}
+
+func jsonDataEqual(a, b any) bool {
+	switch x := a.(type) {
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for k, xv := range x {
+			yv, ok := y[k]
+			if !ok || !jsonDataEqual(xv, yv) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !jsonDataEqual(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case json.Number:
+		y, ok := b.(json.Number)
+		if !ok {
+			return false
+		}
+		rx, okX := new(big.Rat).SetString(x.String())
+		ry, okY := new(big.Rat).SetString(y.String())
+		if !okX || !okY {
+			return x == y
+		}
+		return rx.Cmp(ry) == 0
+	default:
+		// string, bool, nil
+		return a == b
+	}
+}
+
 // canonicalJSONNumbers returns raw with every number spelled as JSON. JSON
 // and TOML decode numbers in JSON form already, but YAML keeps a number's
 // source text (`0755`, `+1`, `-.5`), which is not JSON; those are respelled
@@ -908,10 +966,16 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 		}
 		if isJSONScalar(mod) {
 			// A String becomes a JSON value only if it is JSON, held
-			// compact so equal text compares equal.
+			// compact. JSON null is Dang null, as when decoding.
 			text, err := compactJSONText(val.Val)
 			if err != nil {
 				return nil, materializeError(path, "%s", err.Error())
+			}
+			if text == "null" {
+				if _, nonNull := target.(hm.NonNullType); nonNull {
+					return nil, materializeError(path, "null is not allowed for %s", target.Name())
+				}
+				return NullValue{}, nil
 			}
 			return ScalarValue{Val: text, ScalarType: mod}, nil
 		}

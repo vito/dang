@@ -270,6 +270,13 @@ func valuesEqual(left, right Value) bool {
 	case ScalarValue:
 		// Compare scalar values - must be same value and same type
 		if r, ok := right.(ScalarValue); ok {
+			if l.ScalarType == r.ScalarType {
+				if mod, ok := l.ScalarType.(*Type); ok && isJSONScalar(mod) {
+					// JSON values are data: key order and spelling don't
+					// matter, only what the text means.
+					return jsonTextEqual(l.Val, r.Val)
+				}
+			}
 			return l.ScalarType == r.ScalarType && l.Encoded == r.Encoded && l.Val == r.Val
 		}
 		// Allow comparison with StringValue

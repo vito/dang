@@ -86,6 +86,20 @@ let spaced = "{\"a\": 1}"
 assert { (spaced :: JSON!) == (JSON.decode("{\"a\":1}") :: JSON!) }
 assert { (JSON.decode(spaced) :: JSON!) == "{ \"a\" : 1 }" }
 
+# Equality compares the data, not the text: key order, string escapes and
+# number spelling don't matter, while the text keeps the order written.
+let ordered = "{\"b\": 1, \"a\": \"\\u00e9\", \"n\": 1.50}"
+assert { toString(ordered :: JSON!) == "{\"b\":1,\"a\":\"\\u00e9\",\"n\":1.50}" }
+assert { (ordered :: JSON!) == (JSON.decode(ordered) :: JSON!) }
+assert { (ordered :: JSON!) == "{\"n\": 1.5, \"a\": \"é\", \"b\": 1}" }
+assert { (ordered :: JSON!) != "{\"n\": 1.5, \"a\": \"e\", \"b\": 1}" }
+assert { [ordered :: JSON!, JSON.decode(ordered) :: JSON!].uniq.length == 1 }
+
+# JSON null is Dang null, whether cast or decoded.
+let nullText = "null"
+assert { (nullText :: JSON) == null }
+assert { ((nullText :: JSON!) rescue null) == null }
+
 takesJSON(j: JSON!): String! { toString(j) }
 
 assert { takesJSON(" [true] ") == "[true]" }
