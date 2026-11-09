@@ -165,7 +165,7 @@ func (DangSuite) TestRescueMigrationDiagnostics(ctx context.Context, t *testctx.
 print(x)
 `,
 			wants: []string{
-				"bare catch-all `err =>` is no longer supported",
+				"bare catch-all `err =>` isn't supported",
 				"err: Error =>",
 				"else =>",
 			},
@@ -181,14 +181,14 @@ print(x)
 print(x)
 `,
 			wants: []string{
-				"try/catch was replaced by postfix `rescue`",
+				"try/catch is deprecated in favor of postfix `rescue`",
 				"dang fmt -w",
 			},
 			wantsErr: false,
 		},
 		{
 			// The published go-sdk module's pattern: a legacy try/catch
-			// whose catch-all uses the removed bare-binding form. Both
+			// whose catch-all uses the bare-binding form. Both
 			// constructs warn, the binding is typed Error!, and the
 			// program still runs.
 			name: "legacy try/catch with bare catch-all",
@@ -200,8 +200,8 @@ print(x)
 print(x)
 `,
 			wants: []string{
-				"try/catch was replaced by postfix `rescue`",
-				"bare catch-all `err =>` is no longer supported",
+				"try/catch is deprecated in favor of postfix `rescue`",
+				"bare catch-all `err =>` isn't supported",
 			},
 			wantsErr: false,
 		},
@@ -218,7 +218,7 @@ print(x)
 print(x)
 `,
 			unwanted: []string{
-				"try/catch was replaced",
+				"try/catch is deprecated",
 				"bare catch-all",
 			},
 			wantsErr: false,

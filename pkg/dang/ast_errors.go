@@ -75,7 +75,7 @@ func (t *RescueExpr) GetSourceLocation() *SourceLocation { return t.Loc }
 func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
 		if t.Legacy {
-			EmitInferWarning(ctx, t, "try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate")
+			EmitInferWarning(ctx, t, "try/catch is deprecated in favor of postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to rewrite it")
 		}
 
 		// Writes before a raise in the operand reach the code after it.
@@ -157,21 +157,20 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 					return nil, err
 				}
 			} else if clause.IsElse {
-				// A binding on a catch-all can only come from the removed
-				// bare-binding form (`err =>`), which parses so it can be
-				// rejected with a targeted error here. Try/catch blocks
-				// predate the removal: they warn instead where try/catch
-				// itself is deprecated, and the binding behaves like
-				// `err: Error =>`.
+				// A binding on a catch-all can only come from the bare-binding
+				// form (`err =>`), which parses so it can be rejected with a
+				// targeted error here. In a try/catch block it warns instead
+				// where try/catch itself is deprecated, and the binding
+				// behaves like `err: Error =>`.
 				if clause.Binding != "" {
 					if !t.TryCatch {
 						return nil, NewInferError(
-							fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
+							fmt.Errorf("bare catch-all `%s =>` isn't supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
 							clause,
 						)
 					}
 					if t.Legacy {
-						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
+						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` isn't supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
 					}
 				}
 				// Unlike case — whose nullable operands fall through every
