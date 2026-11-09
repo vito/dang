@@ -728,6 +728,8 @@ func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		}
 		scheme := hm.NewScheme(nil, fieldType)
 		mod.Add(field.Key, scheme)
+		// A record's fields are its data, readable wherever it is.
+		mod.SetVisibility(field.Key, PublicVisibility)
 	}
 	return mod, nil
 }

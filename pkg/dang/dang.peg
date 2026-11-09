@@ -922,6 +922,8 @@ ObjectLiteral <- "{{" _ vals:(v:ObjectField Sep { return v, nil })* last:ObjectF
         Loc: kv.Value.GetSourceLocation(),
       },
       Value: kv.Value,
+      // A record's fields are its data, readable wherever the record is.
+      Visibility: PublicVisibility,
       Loc: kv.Value.GetSourceLocation(),
     })
   }

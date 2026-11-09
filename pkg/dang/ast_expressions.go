@@ -2107,6 +2107,8 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 			return nil, err
 		}
 		mod.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
+		// A selection is a record: its fields are public data.
+		mod.SetVisibility(field.OutputKey(), PublicVisibility)
 	}
 	o.Inferred = mod
 	return mod, nil
