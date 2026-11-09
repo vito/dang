@@ -132,7 +132,13 @@ func runMigrate(cmd *cobra.Command, dirs []string, to dang.Version, opts dang.Mi
 	var plans []*dang.ProjectMigration
 	seen := map[string]bool{}
 	var undeclared []string
-	for _, dir := range dirs {
+	for i, dir := range dirs {
+		if coveredByAnother(i, dirs) {
+			// Planning the directory above it plans it too; planning it on
+			// its own would also plan its ungoverned source a second time,
+			// as a project of its own.
+			continue
+		}
 		dirPlan, err := dang.PlanMigrations(dir, to, opts)
 		if err != nil {
 			return err
@@ -240,6 +246,43 @@ func projectDir(file string) string {
 		}
 	}
 	return dir
+}
+
+// coveredByAnother reports whether migrating another of dirs migrates
+// dirs[i] too: dirs[i] is inside it, and no repository boundary (.git), which
+// PlanMigrations doesn't cross, lies between them. Of the arguments naming
+// the same directory, the first covers the rest.
+func coveredByAnother(i int, dirs []string) bool {
+	abs, err := filepath.Abs(dirs[i])
+	if err != nil {
+		return false
+	}
+	for j, other := range dirs {
+		otherAbs, err := filepath.Abs(other)
+		if err != nil || j == i {
+			continue
+		}
+		if otherAbs == abs {
+			if j < i {
+				return true
+			}
+			continue
+		}
+		if !isWithin(otherAbs, abs) {
+			continue
+		}
+		crossesRepo := false
+		for d := abs; d != otherAbs; d = filepath.Dir(d) {
+			if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+				crossesRepo = true
+				break
+			}
+		}
+		if !crossesRepo {
+			return true
+		}
+	}
+	return false
 }
 
 // isWithin reports whether path is dir or inside it.
