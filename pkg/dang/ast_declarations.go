@@ -1240,6 +1240,12 @@ type DirectiveDecl struct {
 	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
+
+	// declScope is the scope the directive is declared in, where its
+	// argument types resolve: an imported module's directive names that
+	// module's types (its own scalar JSON), not whatever the applying
+	// file's scope binds to those names. Nil resolves them where applied.
+	declScope TypeScope
 }
 
 var _ Node = &DirectiveDecl{}
@@ -1271,6 +1277,7 @@ func (d *DirectiveDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	if pass == 0 {
 		// Add directive to environment during hoisting so it's available for later use
 		if e, ok := env.(TypeScope); ok {
+			d.declScope = e
 			e.AddDirective(d.Name, d)
 		}
 	}
@@ -1424,6 +1431,12 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 	positionalIndex := 0
 	providedArgs := make(map[string]Node)
 
+	// Argument types name types where the directive is declared.
+	var declEnv hm.Env = env
+	if decl.declScope != nil {
+		declEnv = decl.declScope
+	}
+
 	for i, arg := range d.Args {
 		if arg.Positional {
 			if positionalIndex >= len(decl.Args) {
@@ -1450,7 +1463,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 			if declArg.Value == nil {
 				// Check if the argument type is nullable (optional)
 				if declArg.Type_ != nil {
-					argType, err := declArg.Type_.Infer(ctx, env, fresh)
+					argType, err := declArg.Type_.Infer(ctx, declEnv, fresh)
 					if err != nil {
 						return err
 					}
@@ -1464,7 +1477,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 
 		// Validate provided argument type matches declared type
 		if declArg.Type_ != nil {
-			expectedType, err := declArg.Type_.Infer(ctx, env, fresh)
+			expectedType, err := declArg.Type_.Infer(ctx, declEnv, fresh)
 			if err != nil {
 				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Name.Name, err)
 			}

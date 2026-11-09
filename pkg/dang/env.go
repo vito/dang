@@ -506,6 +506,7 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			Args:      args,
 			Locations: locations,
 			DocString: t.Description,
+			declScope: env,
 		}
 		env.AddDirective(t.Name, directive)
 	}
