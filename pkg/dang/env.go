@@ -1168,6 +1168,12 @@ func (e *Type) MetaType() *Type {
 // as opposed to instances of the type).
 func (e *Type) IsMeta() bool { return e.metaOf != nil }
 
+// ExistingMetaType returns T's meta-type if one has been created, holding
+// T's statics (or, for an enum, its values), and nil otherwise. Unlike
+// MetaType it never creates one, so it is safe on types shared between
+// analyses and evaluations.
+func (e *Type) ExistingMetaType() *Type { return e.meta }
+
 // typeNameValueType is the type of an interface or union name used as a
 // value (`Named != null`): its namespace, the meta-type, which has no
 // members of its own. It is not an instance, so it can't stand in for one

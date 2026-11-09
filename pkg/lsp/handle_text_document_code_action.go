@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/creachadair/jrpc2"
 )
@@ -29,34 +30,26 @@ func (h *langHandler) handleTextDocumentCodeAction(ctx context.Context, req *jrp
 	}
 
 	f := h.waitForFile(params.TextDocument.URI)
-	if f == nil || f.AST == nil {
+	if f == nil || f.Analysis == nil || f.AST == nil {
 		return actions, nil
 	}
 
-	for _, call := range findDeprecatedCalls(f.AST) {
-		if call.info.replacement == "" {
+	for _, d := range f.Analysis.Diagnostics() {
+		if d.Path != f.Path || d.Replacement == "" {
 			// No structured replacement to rewrite to; the diagnostic still
 			// flags it, but there's no safe automatic fix.
 			continue
 		}
-		rng, ok := symbolRange(call.sym)
-		if !ok || !rangesOverlap(rng, params.Range) {
+		diag := lspDiagnostic(d)
+		if !rangesOverlap(diag.Range, params.Range) {
 			continue
 		}
 
-		diag := Diagnostic{
-			Range:    rng,
-			Severity: int(SeverityWarning),
-			Source:   stringPtr("dang"),
-			Message:  deprecationMessage(call),
-			Tags:     []DiagnosticTag{DiagnosticTagDeprecated},
-		}
-
-		// Replace only the callee identifier (e.g. toJSON -> JSON.encode); the
-		// argument list is untouched.
-		edit := TextEdit{Range: rng, NewText: call.info.replacement}
+		// Replace only the flagged range (e.g. the callee toJSON ->
+		// JSON.encode); the argument list is untouched.
+		edit := TextEdit{Range: diag.Range, NewText: d.Replacement}
 		actions = append(actions, CodeAction{
-			Title:       fmt.Sprintf("Replace %s with %s", call.name, call.info.replacement),
+			Title:       fmt.Sprintf("Replace %s with %s", rangeText(f.Text, diag.Range), d.Replacement),
 			Kind:        QuickFix,
 			Diagnostics: []Diagnostic{diag},
 			IsPreferred: true,
@@ -72,6 +65,20 @@ func (h *langHandler) handleTextDocumentCodeAction(ctx context.Context, req *jrp
 		"uri", params.TextDocument.URI, "range", params.Range, "actions", len(actions))
 
 	return actions, nil
+}
+
+// rangeText returns the text a single-line range covers, or "" if it doesn't
+// fit text.
+func rangeText(text string, rng Range) string {
+	lines := strings.Split(text, "\n")
+	if rng.Start.Line != rng.End.Line || rng.Start.Line < 0 || rng.Start.Line >= len(lines) {
+		return ""
+	}
+	line := []rune(lines[rng.Start.Line])
+	if rng.Start.Character < 0 || rng.End.Character > len(line) || rng.Start.Character > rng.End.Character {
+		return ""
+	}
+	return string(line[rng.Start.Character:rng.End.Character])
 }
 
 // codeActionKindAllowed reports whether a code action of the given kind should

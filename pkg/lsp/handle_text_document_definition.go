@@ -22,13 +22,27 @@ func (h *langHandler) handleTextDocumentDefinition(ctx context.Context, req *jrp
 		return nil, nil
 	}
 
+	// Resolve the name through the scopes around it, so a local shadowing an
+	// outer binding goes to the local.
+	if sym := inspect(f, params.Position); sym != nil {
+		if sym.Definition != nil {
+			if loc, ok := lspLocation(params.TextDocument.URI, *sym.Definition); ok {
+				return loc, nil
+			}
+		} else if sym.Member != nil {
+			// A builtin, an import, a schema field: nothing to go to.
+			return nil, nil
+		}
+	}
+
 	// Find the symbol at the cursor position
 	symbolName := h.symbolAtPosition(f, params.Position)
 	if symbolName == "" {
 		return nil, nil
 	}
 
-	// Look up the definition
+	// Fall back to looking the name up, e.g. for a type named in a type
+	// annotation, which isn't a reference analysis resolves.
 	if def, ok := f.Symbols.Definitions[symbolName]; ok {
 		return def.Location, nil
 	}

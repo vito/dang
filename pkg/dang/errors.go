@@ -354,7 +354,11 @@ func (ctx *EvalContext) CreateSourceError(err error, node SourceLocatable) error
 	return NewSourceError(err, location, ctx.sourceFor(location))
 }
 
-// ConvertInferError converts an InferError to a SourceError with source context
+// ConvertInferError converts an InferError to a SourceError with source
+// context. The source is read when the error is formatted (see
+// FormatWithHighlighting), not here: inference runs over source that may not
+// be on disk at all (an editor buffer, an embedder's file system), and
+// callers that only want the message never need it.
 func ConvertInferError(origErr error) error {
 	var inferErrs *InferenceErrors
 	if errors.As(origErr, &inferErrs) {
@@ -376,14 +380,7 @@ func ConvertInferError(origErr error) error {
 			)
 		}
 		if location.Filename != "" {
-			source, err := os.ReadFile(location.Filename)
-			if err != nil {
-				return errors.Join(
-					origErr,
-					fmt.Errorf("failed to read file %s: %w", location.Filename, err),
-				)
-			}
-			return NewSourceError(inferErr, location, string(source))
+			return NewSourceError(inferErr, location, "")
 		}
 	}
 

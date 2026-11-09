@@ -285,7 +285,7 @@ type DocBrowserOverlay struct {
 
 // NewDocBrowserOverlay creates a new doc browser for the given type environment.
 func NewDocBrowserOverlay(typeScope dang.TypeScope) *DocBrowserOverlay {
-	root := BuildColumn("(root)", "Top-level scope", typeScope)
+	root := BuildRootColumn(typeScope)
 	db := &DocBrowserOverlay{
 		Columns: []DocColumn{root},
 	}

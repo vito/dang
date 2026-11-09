@@ -8,13 +8,13 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/vito/dang/v2/pkg/dang"
-	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 	"github.com/vito/tuist"
 )
 
 // NewCompletionProvider returns a tuist.CompletionProvider that uses
-// tree-sitter-based type-aware completions, falling back to static
-// keyword/name completions.
+// tree-sitter-based type-aware completions (see analysis.Complete), falling
+// back to static keyword/name completions.
 func NewCompletionProvider(ctx context.Context, typeScope dang.TypeScope, staticCompletions []string) tuist.CompletionProvider {
 	return func(input string, cursorPos int) tuist.CompletionResult {
 		if input == "" {
@@ -23,7 +23,7 @@ func NewCompletionProvider(ctx context.Context, typeScope dang.TypeScope, static
 
 		line, col := byteOffsetToLineCol(input, cursorPos)
 
-		result := dang.Complete(ctx, typeScope, input, line, col)
+		result := analysis.Complete(ctx, typeScope, input, analysis.Pos{Line: line + 1, Column: col + 1})
 		if len(result.Items) > 0 {
 			return dangCompletionResult(result)
 		}
@@ -37,9 +37,18 @@ func NewCompletionProvider(ctx context.Context, typeScope dang.TypeScope, static
 // editor contents, used to infer receiver types for member completions.
 func NewDetailRenderer(ctx context.Context, typeScope dang.TypeScope, getInput func() string) tuist.DetailRenderer {
 	return func(c tuist.Completion, width int) []string {
-		item, found := DocItemFromTypeScope(typeScope, c.Label)
-		if !found {
-			item, found = resolveCompletionDocItem(ctx, typeScope, getInput(), c)
+		// After a dot, the label names a member of the receiver, whatever
+		// the scope binds by the same name.
+		input := getInput()
+		var item DocItem
+		var found bool
+		if afterDot(input) {
+			item, found = resolveCompletionDocItem(ctx, typeScope, input, c)
+		} else {
+			item, found = DocItemFromTypeScope(typeScope, c.Label)
+			if !found {
+				item, found = resolveCompletionDocItem(ctx, typeScope, input, c)
+			}
 		}
 		if !found {
 			if c.Detail == "" && c.Documentation == "" {
@@ -201,6 +210,13 @@ func lastIdent(s string) string {
 	return s[i+1:]
 }
 
+// afterDot reports whether the input ends in a member being typed: a dot,
+// then maybe part of a name.
+func afterDot(input string) bool {
+	rest := input[:len(input)-len(lastIdent(input))]
+	return strings.HasSuffix(rest, ".")
+}
+
 func isIdentByte(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
@@ -298,178 +314,28 @@ func ClassifyTypeScope(env dang.TypeScope) ItemKind {
 	return KindType
 }
 
-// DocItemFromTypeScope builds a DocItem for a named binding in env.
+// DocItemFromTypeScope builds a DocItem for what name names in env (see
+// analysis.Lookup).
 func DocItemFromTypeScope(env dang.TypeScope, name string) (DocItem, bool) {
-	if env == nil {
+	m, ok := analysis.Lookup(env, name)
+	if !ok {
 		return DocItem{}, false
 	}
-
-	for bName, scheme := range env.Bindings(dang.PublicVisibility) {
-		if bName != name {
-			continue
-		}
-		t, _ := scheme.Type()
-		if t == nil {
-			return DocItem{}, false
-		}
-		item := DocItem{
-			Name:    name,
-			TypeStr: t.String(),
-		}
-		if d, found := env.GetDocString(name); found {
-			item.Doc = d
-		}
-		if fn, ok := t.(*hm.FunctionType); ok {
-			item.Kind = KindField
-			item.Args = ExtractArgs(fn)
-			item.TypeStr = FormatReturnType(fn)
-			ExtractBlockInfo(fn, &item)
-		} else {
-			inner := UnwrapType(t)
-			if mod, ok := inner.(dang.TypeScope); ok {
-				item.Kind = ClassifyTypeScope(mod)
-			} else {
-				item.Kind = KindField
-			}
-		}
-		return item, true
-	}
-
-	if mod, ok := env.(*dang.Type); ok {
-		var found DocItem
-		var matched bool
-		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
-			if matched || def.Name != name {
-				return
-			}
-			matched = true
-			found = DocItem{
-				Name: def.Name,
-				Kind: KindField,
-				Doc:  def.Doc,
-			}
-			for _, p := range def.ParamTypes {
-				found.Args = append(found.Args, DocArg{
-					Name:    p.Name,
-					TypeStr: FormatType(p.Type),
-				})
-			}
-			if def.ReturnType != nil {
-				found.TypeStr = "-> " + FormatType(def.ReturnType)
-			}
-			if def.BlockType != nil {
-				found.BlockArgs = ExtractArgs(def.BlockType)
-				found.BlockRet = FormatType(def.BlockType.Ret(true))
-			}
-		})
-		if matched {
-			return found, true
-		}
-	}
-
-	for tName, namedTypeScope := range env.NamedTypes() {
-		if tName == name {
-			item := DocItem{
-				Name:    name,
-				TypeStr: namedTypeScope.Name(),
-				Kind:    ClassifyTypeScope(namedTypeScope),
-			}
-			if d := namedTypeScope.GetTypeDocString(); d != "" {
-				item.Doc = d
-			}
-			return item, true
-		}
-	}
-
-	return DocItem{}, false
+	return docItem(m), true
 }
 
+// resolveCompletionDocItem documents a member completion: the label of a
+// member of the receiver before the input's last dot.
 func resolveCompletionDocItem(ctx context.Context, typeScope dang.TypeScope, input string, c tuist.Completion) (DocItem, bool) {
-	dotIdx := -1
-	for i := len(input) - 1; i >= 0; i-- {
-		if input[i] == '.' {
-			dotIdx = i
-			break
-		}
-	}
+	dotIdx := strings.LastIndexByte(input, '.')
 	if dotIdx < 0 {
 		return DocItem{}, false
 	}
-	receiverText := input[:dotIdx]
-	receiverType := dang.InferReceiverType(ctx, typeScope, receiverText)
-	if receiverType == nil {
+	m, err := analysis.Doc(ctx, typeScope, input[:dotIdx]+"."+c.Label)
+	if err != nil {
 		return DocItem{}, false
 	}
-	unwrapped := UnwrapType(receiverType)
-	env, ok := unwrapped.(dang.TypeScope)
-	if !ok {
-		return DocItem{}, false
-	}
-	return DocItemFromTypeScope(env, c.Label)
-}
-
-// ExtractArgs extracts function arguments as DocArgs.
-func ExtractArgs(fn *hm.FunctionType) []DocArg {
-	arg := fn.Arg()
-	rec, ok := arg.(*dang.RecordType)
-	if !ok {
-		return nil
-	}
-	var args []DocArg
-	for _, field := range rec.Fields {
-		t, _ := field.Value.Type()
-		a := DocArg{
-			Name:    field.Key,
-			TypeStr: FormatType(t),
-		}
-		if rec.DocStrings != nil {
-			if doc, found := rec.DocStrings[field.Key]; found {
-				a.Doc = doc
-			}
-		}
-		args = append(args, a)
-	}
-	return args
-}
-
-// ExtractBlockInfo populates block args/ret on a DocItem.
-func ExtractBlockInfo(fn *hm.FunctionType, item *DocItem) {
-	block := fn.Block()
-	if block == nil {
-		return
-	}
-	item.BlockArgs = ExtractArgs(block)
-	item.BlockRet = FormatType(block.Ret(true))
-}
-
-// FormatReturnType formats a function's return type.
-func FormatReturnType(fn *hm.FunctionType) string {
-	ret := fn.Ret(true)
-	return "-> " + FormatType(ret)
-}
-
-// FormatType formats a type for display.
-func FormatType(t hm.Type) string {
-	if t == nil {
-		return "?"
-	}
-	return t.String()
-}
-
-// UnwrapType strips NonNull/List wrappers from a type.
-func UnwrapType(t hm.Type) hm.Type {
-	for {
-		switch inner := t.(type) {
-		case hm.NonNullType:
-			t = inner.Type
-		case dang.ListType:
-			t = inner.Type
-		case dang.GraphQLListType:
-			t = inner.Type
-		default:
-			return t
-		}
-	}
+	return docItem(*m), true
 }
 
 // ── detail rendering ────────────────────────────────────────────────────────

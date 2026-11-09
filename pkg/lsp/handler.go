@@ -2,22 +2,18 @@ package lsp
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"sync"
-	"time"
 	"unicode"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
-	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 )
 
 // NewHandler create JSON-RPC handler for this language server.
@@ -28,7 +24,7 @@ func NewHandler(rootCtx context.Context) *langHandler {
 		loadedEnvDirs:      make(map[string]bool),
 		importCache:        make(map[string][]dang.ImportConfig),
 		schemaModuleCaches: make(map[string]*sync.Map),
-		parseCache:         make(map[string]parsedFile),
+		parses:             &analysis.ParseCache{},
 		mu:                 new(sync.Mutex),
 	}
 
@@ -62,30 +58,13 @@ type langHandler struct {
 	// schema module and breaks type identity with the rest of the directory.
 	schemaModuleCaches map[string]*sync.Map
 
-	// Cached file parses keyed by absolute file path. Sibling files in the
-	// same directory don't change on every keystroke, so reusing their parse
-	// trees turns directory analysis from O(files) into O(1) parses.
-	parseCache map[string]parsedFile
+	// Cached file parses. Sibling files in the same directory don't change on
+	// every keystroke, so reusing their parse trees turns directory analysis
+	// from O(files) into O(1) parses.
+	parses *analysis.ParseCache
 
 	// TODO?: make per-file or something
 	mu *sync.Mutex
-}
-
-// parsedFile is a cache entry for a single .dang file's parse output. The
-// block is reused across analyzeDirectory calls when the file's content is
-// unchanged; its ImportDecls' inferred schema modules are also cached on the
-// nodes, so the imports phase runs in O(1) on cache hit.
-//
-// For files on disk, mtime+size is used as the fingerprint so cache hits skip
-// the disk read entirely. For open buffers (no mtime), text is the
-// fingerprint.
-type parsedFile struct {
-	block   *dang.FileBlock
-	text    string // populated only when sourced from an open buffer
-	mtime   time.Time
-	size    int64
-	open    bool         // true if sourced from an open buffer
-	version dang.Version // Dang version the block was parsed as
 }
 
 // File is
@@ -97,6 +76,12 @@ type File struct {
 	Symbols     *SymbolTable
 	AST         *dang.FileBlock // Parsed and type-annotated AST
 	TypeScope   dang.TypeScope  // Type environment after inference
+
+	// Analysis is the analysis of the file's directory, and Path the file's
+	// path in its Source (see analyzeDirectory). Analysis is nil when the
+	// directory couldn't be read.
+	Analysis *analysis.Analysis
+	Path     string
 
 	// Synchronization for async file processing
 	mu         sync.Mutex
@@ -218,14 +203,14 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
-	analysis, err := h.analyzeDirectory(ctx, uri, fp)
+	result, err := h.analyzeDirectory(ctx, uri, fp)
 	if err != nil {
 		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
 		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 		return err
 	}
 
-	versionNumber, diagnostics := h.finishFileUpdate(f, analysis)
+	versionNumber, diagnostics := h.finishFileUpdate(f, result)
 
 	// Publish diagnostics to the client.
 	h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
@@ -243,20 +228,17 @@ type fileAnalysis struct {
 	Symbols     *SymbolTable
 	AST         *dang.FileBlock
 	TypeScope   dang.TypeScope
+	Analysis    *analysis.Analysis
+	Path        string
 }
 
+// analyzeDirectory analyzes the directory of the file at fp, focused on it:
+// its body is inferred in full, its siblings only for their declarations.
+// The analysis reads the directory from disk, with the open buffers in it
+// laid over, through a Source rooted at the directory.
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
-	analysis := emptyFileAnalysis()
-
 	fileDir := filepath.Dir(fp)
-	files, err := h.directoryDangFiles(fileDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var parsedFiles []directoryFile
-	var blocks []*dang.FileBlock
-	var currentBlock *dang.FileBlock
+	focus := filepath.Base(fp)
 
 	// Look up the directory's dang.toml once per analysis: it decides both the
 	// Dang version every file in the directory is parsed as and the imports.
@@ -265,101 +247,75 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
 	}
 	version := dang.VersionForConfig(ctx, projectConfig)
-
-	for _, path := range files {
-		fileURI := toURI(path)
-
-		block, err := h.parseFileCached(path, version)
-		if err != nil {
-			// IO errors (missing file, permission denied, broken symlink)
-			// are fatal — bail out so the caller can surface them. Parse
-			// errors are reported as diagnostics for the active buffer and
-			// otherwise skipped so the rest of the directory still analyzes.
-			var pathErr *fs.PathError
-			if errors.As(err, &pathErr) {
-				return nil, err
-			}
-			slog.WarnContext(ctx, "failed to parse Dang code for LSP", "path", path, "error", err)
-			if sameFile(path, fp) {
-				analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnostics(err, uri)...)
-			}
-			continue
-		}
-
-		if sameFile(path, fp) {
-			currentBlock = block
-			analysis.AST = block
-		}
-
-		parsedFiles = append(parsedFiles, directoryFile{
-			URI:   fileURI,
-			Block: block,
-		})
-		blocks = append(blocks, block)
+	if projectConfig != nil {
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
 	}
 
-	if currentBlock == nil {
-		return analysis, nil
+	// Resolve import configs once for the directory, using a cache to avoid
+	// spawning new dagger sessions on every keystroke, and only once the file
+	// parses.
+	resolveImports := func(ctx context.Context) []dang.ImportConfig {
+		configs, _ := h.resolveImports(ctx, fileDir, configPath, projectConfig)
+		return configs
 	}
+
+	// The schema-module cache is long-lived, per directory. Without it, each
+	// analyzeDirectory call gets a fresh cache and ImportDecls in re-parsed
+	// sibling files build divergent *Type instances — types like
+	// Test.ServerInfo fail to unify.
+	src := analysis.Overlay(os.DirFS(fileDir), h.openBuffers(fileDir))
+	a, err := analysis.Analyze(ctx, src, ".", analysis.Options{
+		Root:              fileDir,
+		Focus:             focus,
+		ResolveImports:    resolveImports,
+		SchemaModuleCache: h.schemaModuleCacheFor(fileDir),
+		Version:           version,
+		Parses:            h.parses,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := emptyFileAnalysis()
+	result.Analysis = a
+	result.Path = focus
+	result.Diagnostics = fileDiagnostics(a, focus)
+
+	current := a.File(focus)
+	if current == nil || current.Block == nil {
+		return result, nil
+	}
+	result.AST = current.Block
+	// The block's TypeScope composes the shared dirScope with the file's own
+	// imports, so editor features see exactly what inference saw — including the
+	// file's unqualified imported symbols, which only live in the file-local env.
+	result.TypeScope = a.FileScope(focus)
 
 	// Build a directory-wide symbol table so features like go-to-definition can
 	// resolve declarations from sibling files while still reporting the correct
 	// URI for each declaration.
-	analysis.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
-
-	// Resolve import configs once for the directory, using a cache to avoid
-	// spawning new dagger sessions on every keystroke.
-	importConfigs, ctx := h.resolveImports(ctx, fileDir, configPath, projectConfig)
-	// Attach a long-lived schema-module cache for this directory BEFORE
-	// installing the import configs, so the configs' helpers find an existing
-	// cache and reuse it. Without this, each analyzeDirectory call gets a
-	// fresh cache and ImportDecls in re-parsed sibling files build divergent
-	// *Type instances — types like Test.ServerInfo fail to unify.
-	ctx = dang.WithSchemaModuleCache(ctx, h.schemaModuleCacheFor(fileDir))
-	if len(importConfigs) > 0 {
-		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+	var parsedFiles []directoryFile
+	for _, f := range a.Files {
+		if f.Block != nil {
+			parsedFiles = append(parsedFiles, directoryFile{URI: toURI(f.Name), Block: f.Block})
+		}
 	}
+	result.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
 
-	// Collect inference warnings (e.g. the rescue laziness analysis) into a
-	// sink instead of letting them print to the LSP process stderr on every
-	// keystroke; they surface as Warning-severity diagnostics below.
-	ctx, inferWarnings := dang.WithInferWarningSink(ctx)
-
-	// Run type inference focused on the active buffer: full body inference for
-	// the open file, declarations only for siblings. Cross-file declarations
-	// still resolve through the shared dirScope; sibling body errors do not run
-	// on every keystroke.
-	typeScope := dang.NewPreludeTypeScope("")
-	fresh := hm.NewSimpleFresher()
-	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeScope, fresh); err != nil {
-		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
-	}
-	analysis.Diagnostics = append(analysis.Diagnostics, warningDiagnostics(inferWarnings.Take(), fp)...)
-	// The block's TypeScope composes the shared dirScope with the file's own
-	// imports, so editor features see exactly what inference saw — including the
-	// file's unqualified imported symbols, which only live in the file-local env.
-	if currentBlock.TypeScope != nil {
-		analysis.TypeScope = currentBlock.TypeScope
-	} else {
-		analysis.TypeScope = typeScope
-	}
-
-	// Surface deprecated-builtin usages as strike-through warnings. This walks
-	// the parsed AST, so it works regardless of whether inference succeeded.
-	analysis.Diagnostics = append(analysis.Diagnostics, deprecationDiagnostics(currentBlock)...)
-
-	return analysis, nil
+	return result, nil
 }
 
-func (h *langHandler) finishFileUpdate(f *File, analysis *fileAnalysis) (int, []Diagnostic) {
+func (h *langHandler) finishFileUpdate(f *File, result *fileAnalysis) (int, []Diagnostic) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if analysis != nil {
-		f.Diagnostics = analysis.Diagnostics
-		f.Symbols = analysis.Symbols
-		f.AST = analysis.AST
-		f.TypeScope = analysis.TypeScope
+	if result != nil {
+		f.Diagnostics = result.Diagnostics
+		f.Symbols = result.Symbols
+		f.AST = result.AST
+		f.TypeScope = result.TypeScope
+		f.Analysis = result.Analysis
+		f.Path = result.Path
 	}
 
 	f.processing = false
@@ -383,37 +339,31 @@ func emptySymbolTable() *SymbolTable {
 	}
 }
 
-func (h *langHandler) directoryDangFiles(dir string) ([]string, error) {
-	dangFiles, err := filepath.Glob(filepath.Join(dir, "*.dang"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to find .dang files in directory %s: %w", dir, err)
-	}
-
-	seen := make(map[string]bool, len(dangFiles))
-	for i, path := range dangFiles {
-		path = filepath.Clean(path)
-		dangFiles[i] = path
-		seen[path] = true
-	}
-
-	// Include open, unsaved .dang files that may not exist on disk yet.
+// openBuffers returns the text of the open buffers in dir, keyed by file name,
+// including unsaved ones that don't exist on disk yet.
+func (h *langHandler) openBuffers(dir string) map[string]string {
 	h.mu.Lock()
-	for openURI := range h.files {
-		path, err := fromURI(openURI)
+	files := make(map[DocumentURI]*File, len(h.files))
+	for uri, f := range h.files {
+		files[uri] = f
+	}
+	h.mu.Unlock()
+
+	buffers := map[string]string{}
+	for uri, f := range files {
+		path, err := fromURI(uri)
 		if err != nil {
 			continue
 		}
 		path = filepath.Clean(path)
-		if filepath.Dir(path) != dir || filepath.Ext(path) != ".dang" || seen[path] {
+		if filepath.Dir(path) != dir {
 			continue
 		}
-		dangFiles = append(dangFiles, path)
-		seen[path] = true
+		f.mu.Lock()
+		buffers[filepath.Base(path)] = f.Text
+		f.mu.Unlock()
 	}
-	h.mu.Unlock()
-
-	sort.Strings(dangFiles)
-	return dangFiles, nil
+	return buffers
 }
 
 // schemaModuleCacheFor returns the persistent schema-module cache for a
@@ -431,53 +381,6 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 	return cache
 }
 
-// parseFileCached returns the parsed *FileBlock for path, parsed as Dang
-// version. When the file is unchanged from the cached entry, the cached block
-// is returned without re-parsing. For files on disk, the fingerprint is
-// mtime+size+version — a stat call is enough to know if the cache is still
-// good, avoiding even the file read. For open buffers, the fingerprint is the
-// buffer's text and the version. The version is part of the fingerprint
-// because editing dang.toml's version changes how an otherwise unchanged file
-// parses; callers resolve it once per directory (see analyzeDirectory).
-//
-// Auto-imports prepended into block.Forms by InferDirectoryFiles persist
-// across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
-// blocks keep their inferred schema modules, so the imports phase doesn't
-// re-introspect on cache hit.
-func (h *langHandler) parseFileCached(path string, version dang.Version) (*dang.FileBlock, error) {
-	uri := toURI(path)
-
-	h.mu.Lock()
-	openFile := h.files[uri]
-	cached, hit := h.parseCache[path]
-	h.mu.Unlock()
-	hit = hit && cached.version == version
-
-	if openFile != nil {
-		openFile.mu.Lock()
-		text := openFile.Text
-		openFile.mu.Unlock()
-		if hit && cached.open && cached.text == text {
-			return cached.block, nil
-		}
-		return h.parseAndStore(path, text, parsedFile{open: true, text: text, version: version})
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, fmt.Errorf("stat %s: %w", path, err)
-	}
-	if hit && !cached.open && cached.mtime.Equal(info.ModTime()) && cached.size == info.Size() {
-		return cached.block, nil
-	}
-
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size(), version: version})
-}
-
 // versionForFile returns the Dang version of the file at path (see
 // dang.VersionForDir). A broken dang.toml is reported elsewhere (import
 // resolution), so here it just falls back to the version of ungoverned
@@ -488,22 +391,6 @@ func versionForFile(ctx context.Context, path string) dang.Version {
 		slog.WarnContext(ctx, "failed to determine Dang version", "path", path, "error", err)
 	}
 	return version
-}
-
-func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.FileBlock, error) {
-	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path), dang.WithVersion(entry.version))
-	if err != nil {
-		return nil, err
-	}
-	block, ok := parsed.(*dang.FileBlock)
-	if !ok {
-		return nil, fmt.Errorf("parsed result for %s is not a FileBlock", path)
-	}
-	entry.block = block
-	h.mu.Lock()
-	h.parseCache[path] = entry
-	h.mu.Unlock()
-	return block, nil
 }
 
 func (h *langHandler) buildDirectorySymbolTable(files []directoryFile, currentURI DocumentURI) *SymbolTable {
@@ -539,10 +426,6 @@ func (h *langHandler) buildDirectorySymbolTable(files []directoryFile, currentUR
 	return st
 }
 
-func sameFile(a, b string) bool {
-	return filepath.Clean(a) == filepath.Clean(b)
-}
-
 // waitForFile waits for a file to finish processing and returns it.
 // Returns nil if the file doesn't exist.
 func (h *langHandler) waitForFile(uri DocumentURI) *File {
@@ -574,6 +457,8 @@ func (f *File) waitForSnapshot() *File {
 		Symbols:     f.Symbols,
 		AST:         f.AST,
 		TypeScope:   f.TypeScope,
+		Analysis:    f.Analysis,
+		Path:        f.Path,
 	}
 }
 
@@ -701,6 +586,10 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 // collectNestedSymbols recursively collects symbols from nested structures
 func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *SymbolTable) {
 	switch n := node.(type) {
+	case *dang.Coerce:
+		// Inference wraps values flowing into typed contexts (a field's
+		// value, a function's body) in a Coerce; look through it.
+		h.collectNestedSymbols(uri, n.Expr, st)
 	case *dang.Block:
 		h.collectSymbols(uri, n.Forms, st)
 	case *dang.FileBlock:
@@ -738,13 +627,25 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	case *dang.FieldDecl:
 		// Check if the field value is a function
 		if field, ok := node.(*dang.FieldDecl); ok {
-			if _, isFunDecl := field.Value.(*dang.FunDecl); isFunDecl {
+			if _, isFunDecl := uncoerced(field.Value).(*dang.FunDecl); isFunDecl {
 				return FunctionCompletion
 			}
 		}
 		return VariableCompletion
 	default:
 		return VariableCompletion
+	}
+}
+
+// uncoerced looks through the Coerce nodes inference wraps around values
+// flowing into typed contexts, such as a field's value.
+func uncoerced(node dang.Node) dang.Node {
+	for {
+		c, ok := node.(*dang.Coerce)
+		if !ok {
+			return node
+		}
+		node = c.Expr
 	}
 }
 
@@ -765,118 +666,6 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, d
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
 	}
-}
-
-func (h *langHandler) errorToDiagnosticsForPath(err error, uri DocumentURI, path string) []Diagnostic {
-	var inferErrs *dang.InferenceErrors
-	if errors.As(err, &inferErrs) {
-		var ds []Diagnostic
-		for _, e := range inferErrs.Errors {
-			ds = append(ds, h.errorToDiagnosticsForPath(e, uri, path)...)
-		}
-		return ds
-	}
-
-	if loc := errorLocation(err); loc != nil && loc.Filename != "" && !sameFile(loc.Filename, path) {
-		return nil
-	}
-
-	return h.errorToDiagnostics(err, uri)
-}
-
-func errorLocation(err error) *dang.SourceLocation {
-	var sourceErr *dang.SourceError
-	var parseErr interface {
-		ParseErrorLocation() *dang.SourceLocation
-	}
-	var inferErr *dang.InferError
-	if errors.As(err, &sourceErr) {
-		return sourceErr.Location
-	} else if errors.As(err, &parseErr) {
-		return parseErr.ParseErrorLocation()
-	} else if errors.As(err, &inferErr) {
-		return inferErr.Location
-	}
-	return nil
-}
-
-// errorToDiagnostic converts a Dang error to an LSP Diagnostic
-func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnostic {
-	slog.Warn("converting error", "type", fmt.Sprintf("%T", err), "err", err)
-	for e := errors.Unwrap(err); e != nil && e != err; e = errors.Unwrap(e) {
-		slog.Warn("unwrapped", "type", fmt.Sprintf("%T", e), "err", e)
-	}
-
-	var inferErrs *dang.InferenceErrors
-	if errors.As(err, &inferErrs) {
-		var ds []Diagnostic
-		for _, e := range inferErrs.Errors {
-			ds = append(ds, h.errorToDiagnostics(e, uri)...)
-		}
-		return ds
-	}
-
-	var startLine, endLine = 0, 0
-	var startCol, endCol = 0, 1
-
-	var loc *dang.SourceLocation
-
-	// Try to extract parse or infer error with location info
-	var sourceErr *dang.SourceError
-	var parseErr interface {
-		ParseErrorLocation() *dang.SourceLocation
-	}
-	var inferErr *dang.InferError
-	if errors.As(err, &sourceErr) {
-		loc = sourceErr.Location
-		slog.Warn("got source error", "err", sourceErr, "loc", loc)
-	} else if errors.As(err, &parseErr) {
-		loc = parseErr.ParseErrorLocation()
-		slog.Warn("got parse error", "err", parseErr, "loc", loc)
-	} else if errors.As(err, &inferErr) {
-		slog.Warn("got infer error error", "err", inferErr)
-		loc = inferErr.Location
-	}
-
-	if loc != nil {
-		// LSP uses 0-based lines and columns, Dang uses 1-based
-		startLine = loc.Line - 1
-		startCol = loc.Column - 1
-		endCol = startCol + loc.Length
-		if loc.Length == 0 {
-			endCol = startCol + 1 // Default to at least one character
-		}
-
-		// If we have an End position, use it
-		endLine = startLine
-		if loc.End != nil {
-			endLine = loc.End.Line - 1
-			endCol = loc.End.Column - 1
-		}
-	}
-
-	// For SourceErrors, use the inner error message to avoid the full
-	// formatted output with source highlighting in the diagnostic.
-	message := err.Error()
-	if sourceErr != nil {
-		message = sourceErr.Inner.Error()
-	}
-
-	return []Diagnostic{
-		{
-			Range: Range{
-				Start: Position{Line: startLine, Character: startCol},
-				End:   Position{Line: endLine, Character: endCol},
-			},
-			Severity: 1, // Error
-			Source:   stringPtr("dang"),
-			Message:  message,
-		},
-	}
-}
-
-func stringPtr(s string) *string {
-	return &s
 }
 
 func isIdentifierChar(r rune) bool {
@@ -923,6 +712,8 @@ func (h *langHandler) Assign(ctx context.Context, method string) jrpc2.Handler {
 		return h.handleTextDocumentCodeAction
 	case "textDocument/rename":
 		return h.handleTextDocumentRename
+	case "textDocument/references":
+		return h.handleTextDocumentReferences
 	case "textDocument/formatting":
 		return h.handleTextDocumentFormatting
 	case "workspace/symbol":

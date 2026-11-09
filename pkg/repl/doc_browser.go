@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/dang"
-	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 )
 
 // DocColumn represents one column in the Miller-column browser.
@@ -63,117 +63,29 @@ func (c *DocColumn) ApplyFilter() {
 	c.Offset = 0
 }
 
-// BuildColumn creates a column listing public members of a TypeScope.
+// BuildRootColumn creates the column listing what's in scope at the top
+// level (see analysis.ScopeMembers).
+func BuildRootColumn(env dang.TypeScope) DocColumn {
+	return buildColumn("(root)", "Top-level scope", env, analysis.ScopeMembers(env))
+}
+
+// BuildColumn creates a column listing the public members of a TypeScope (see
+// analysis.NamedTypeMembers).
 func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
+	return buildColumn(title, doc, env, analysis.NamedTypeMembers(env))
+}
+
+func buildColumn(title, doc string, env dang.TypeScope, members []analysis.Member) DocColumn {
 	col := DocColumn{
 		Title:     title,
 		Doc:       doc,
 		TypeScope: env,
 	}
-
-	if env == nil {
-		return col
+	for _, m := range members {
+		col.Items = append(col.Items, docItem(m))
 	}
 
-	for name, scheme := range env.Bindings(dang.PublicVisibility) {
-		t, _ := scheme.Type()
-		if t == nil {
-			continue
-		}
-
-		item := DocItem{
-			Name:    name,
-			TypeStr: t.String(),
-		}
-
-		if d, found := env.GetDocString(name); found {
-			item.Doc = d
-		}
-
-		if fn, ok := t.(*hm.FunctionType); ok {
-			item.Kind = KindField
-			item.Args = ExtractArgs(fn)
-			item.TypeStr = FormatReturnType(fn)
-			ExtractBlockInfo(fn, &item)
-
-			ret := UnwrapType(fn.Ret(true))
-			if mod, ok := ret.(dang.TypeScope); ok {
-				item.RetTypeScope = mod
-			}
-		} else {
-			inner := UnwrapType(t)
-			// A type's name is bound to its meta-type (its namespace):
-			// browse the type it names.
-			if meta, ok := inner.(*dang.Type); ok && meta.IsMeta() {
-				inner = meta.InstanceType()
-			}
-			if mod, ok := inner.(dang.TypeScope); ok {
-				item.RetTypeScope = mod
-				item.Kind = ClassifyTypeScope(mod)
-			} else {
-				item.Kind = KindField
-			}
-		}
-
-		col.Items = append(col.Items, item)
-	}
-
-	seen := make(map[string]bool, len(col.Items))
-	for _, item := range col.Items {
-		seen[item.Name] = true
-	}
-	if mod, ok := env.(*dang.Type); ok {
-		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
-			if seen[def.Name] {
-				return
-			}
-			seen[def.Name] = true
-
-			item := DocItem{
-				Name: def.Name,
-				Kind: KindField,
-				Doc:  def.Doc,
-			}
-			for _, p := range def.ParamTypes {
-				item.Args = append(item.Args, DocArg{
-					Name:    p.Name,
-					TypeStr: FormatType(p.Type),
-				})
-			}
-			if def.ReturnType != nil {
-				item.TypeStr = "-> " + FormatType(def.ReturnType)
-			}
-			if def.BlockType != nil {
-				item.BlockArgs = ExtractArgs(def.BlockType)
-				item.BlockRet = FormatType(def.BlockType.Ret(true))
-			}
-			if def.ReturnType != nil {
-				ret := UnwrapType(def.ReturnType)
-				if scope, ok := ret.(dang.TypeScope); ok {
-					item.RetTypeScope = scope
-				}
-			}
-			col.Items = append(col.Items, item)
-		})
-	}
-
-	for name, namedTypeScope := range env.NamedTypes() {
-		if seen[name] {
-			continue
-		}
-		item := DocItem{
-			Name:         name,
-			TypeStr:      namedTypeScope.Name(),
-			RetTypeScope: namedTypeScope,
-			Kind:         ClassifyTypeScope(namedTypeScope),
-		}
-		if d := namedTypeScope.GetTypeDocString(); d != "" {
-			item.Doc = d
-		}
-		col.Items = append(col.Items, item)
-	}
-
-	sort.Slice(col.Items, func(i, j int) bool {
+	sort.SliceStable(col.Items, func(i, j int) bool {
 		if col.Items[i].Kind != col.Items[j].Kind {
 			return col.Items[i].Kind < col.Items[j].Kind
 		}
@@ -181,6 +93,56 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 	})
 
 	return col
+}
+
+// docItem renders an analysis member as a doc browser entry.
+func docItem(m analysis.Member) DocItem {
+	item := DocItem{
+		Name:         m.Name,
+		Kind:         itemKind(m),
+		TypeStr:      m.Type,
+		Doc:          m.Doc,
+		RetTypeScope: m.Scope,
+	}
+	if m.Kind == analysis.KindFunction {
+		item.TypeStr = "-> " + m.Type
+	}
+	for _, arg := range m.Args {
+		item.Args = append(item.Args, DocArg{Name: arg.Name, TypeStr: arg.Type, Doc: arg.Doc})
+	}
+	if m.Block != nil {
+		for _, arg := range m.Block.Args {
+			item.BlockArgs = append(item.BlockArgs, DocArg{Name: arg.Name, TypeStr: arg.Type, Doc: arg.Doc})
+		}
+		item.BlockRet = m.Block.Type
+	}
+	return item
+}
+
+// itemKind classifies a member for the browser: a value whose type has
+// members (a namespace, an object) browses like the type it holds.
+func itemKind(m analysis.Member) ItemKind {
+	switch m.Kind {
+	case analysis.KindFunction:
+		return KindField
+	case analysis.KindValue:
+		if m.Scope != nil {
+			return ClassifyTypeScope(m.Scope)
+		}
+		return KindField
+	case analysis.KindInterface:
+		return KindInterface
+	case analysis.KindEnum:
+		return KindEnum
+	case analysis.KindScalar:
+		return KindScalar
+	case analysis.KindUnion:
+		return KindUnion
+	case analysis.KindInput:
+		return KindInput
+	default:
+		return KindType
+	}
 }
 
 // BuildDetailColumn creates a non-interactive detail pane for an item.
