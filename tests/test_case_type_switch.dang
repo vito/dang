@@ -181,6 +181,22 @@ let selectedKind = case (selected) {
 }
 assert { selectedKind == "records 2" }
 
+# A map that gains values of another type records what both fit.
+let maps = [["a": whiskers], ["b": nemo]]
+let widened = maps[0]!.with("b", nemo)
+let widenedKind = case (widened) {
+  cs: Map[Cat!]! => "cats"
+  as: Map[Animal!]! => "animals"
+}
+assert { widenedKind == "animals" }
+
+let merged = maps[0]!.merge(maps[1]!)
+let mergedKind = case (merged) {
+  cs: Map[Cat!]! => "cats"
+  as: Map[Animal!]! => "animals"
+}
+assert { mergedKind == "animals" }
+
 # A pattern may name a type spelled in lowercase, as a GraphQL schema may.
 type lowercase {
   n: Int! = 1

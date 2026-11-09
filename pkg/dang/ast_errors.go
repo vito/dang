@@ -307,7 +307,7 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			}
 
 			if clause.IsTypePattern() {
-				if valueInhabits(errVal, clause.matchType, false) {
+				if valueInhabits(errVal, clause.matchType, matchMode{}) {
 					childScope := scope.Derive(false)
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(armCtx, childScope, clause.Expr)

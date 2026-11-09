@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: the Cat! clause on line 13 already matches every Cat! value
+  [2m[34m--> errors/case_unreachable_after_total_arm.dang:14:6[0m
+ [2m    |[0m
+ [2m 12 | case (c) {[0m
+ [2m 13 |   x: Cat! => "cat"[0m
+ [2m[34m[1m 14 | [0m  a: Animal! => "animal"
+[2m            [31m^^^^^^[0m
+ [2m 15 | }[0m
+ [2m 16 | [0m
+ [2m    |[0m
+

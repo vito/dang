@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -149,6 +150,19 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				}
 				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil {
 					return nil, err
+				}
+				// An arm after one taking every non-null value of the
+				// operand never runs either.
+				if clause.matchType != nil {
+					for _, prev := range priorPatterns {
+						if prev.matchType != nil && typeCoveredBy(exprType, []hm.Type{prev.matchType}) {
+							return nil, NewInferError(
+								fmt.Errorf("unreachable clause: the %s clause on line %d already matches every %s value",
+									prev.patternSource(), prev.Loc.Line, hm.NonNull(unwrapNonNull(exprType))),
+								clause.patternNode(),
+							)
+						}
+					}
 				}
 				priorPatterns = append(priorPatterns, clause)
 
@@ -481,32 +495,46 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 }
 
 // idPatternTakesStrings reports whether an arm of type pattern on an operand
-// of type operand takes a plain string as an ID: it is an ID pattern, and the
-// operand can't hold a String, which a plain string would be instead.
+// of type operand takes plain strings as IDs (see matchMode.idStrings): the
+// pattern holds ID somewhere, and the operand's type holds no String, which
+// a plain string would be instead.
 func idPatternTakesStrings(pattern, operand hm.Type) bool {
-	if mod, ok := unwrapNonNull(pattern).(*Type); !ok || canonicalModule(mod) != IDType {
+	return mentionsModule(pattern, IDType) && !mentionsModule(operand, StringType)
+}
+
+// mentionsModule reports whether t is, or holds as an option, element or
+// record field, the named type mod.
+func mentionsModule(t hm.Type, mod *Type) bool {
+	if opts, ok := unionOptions(t); ok {
+		return slices.ContainsFunc(opts, func(o hm.Type) bool { return mentionsModule(o, mod) })
+	}
+	if elem, ok := listElementTarget(t); ok {
+		return mentionsModule(elem, mod)
+	}
+	if val, ok := mapValueTarget(t); ok {
+		return mentionsModule(val, mod)
+	}
+	m, ok := unwrapNonNull(t).(*Type)
+	if !ok {
 		return false
 	}
-	opts, ok := unionOptions(operand)
-	if !ok {
-		opts = []hm.Type{operand}
+	if canonicalModule(m) == mod {
+		return true
 	}
-	for _, o := range opts {
-		if unwrapNonNull(o) == StringType {
-			return false
+	if isRecordModule(m) {
+		for _, field := range m.AsRecord().Fields {
+			if ft, mono := field.Value.Type(); mono && mentionsModule(ft, mod) {
+				return true
+			}
 		}
 	}
-	return true
+	return false
 }
 
 // matches reports whether val, the operand, takes the clause's type pattern
 // arm (see valueInhabits).
 func (c *CaseClause) matches(val Value, byContents bool) bool {
-	if valueInhabits(val, c.matchType, byContents) {
-		return true
-	}
-	_, isString := val.(StringValue)
-	return isString && c.idTakesStrings
+	return valueInhabits(val, c.matchType, matchMode{byContents: byContents, idStrings: c.idTakesStrings})
 }
 
 // resolveMemberPattern resolves a named type pattern on a union, interface

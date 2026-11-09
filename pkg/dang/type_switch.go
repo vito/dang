@@ -321,12 +321,22 @@ func typeCoveredBy(t hm.Type, patterns []hm.Type) bool {
 	return false
 }
 
+// matchMode says how valueInhabits judges values.
+type matchMode struct {
+	// byContents judges lists, maps and records by what they hold instead
+	// of the types they recorded (see Case.Eval).
+	byContents bool
+	// idStrings lets an ID pattern take a plain string, as an ID from a
+	// GraphQL result is at runtime: where the operand's type holds no
+	// String a plain string could be instead (see idPatternTakesStrings).
+	idStrings bool
+}
+
 // valueInhabits reports whether val is a value of type t, by the rules at
-// the top of this file. With byContents, lists, maps and records are judged
-// by what they hold instead of the types they recorded (see Case.Eval).
-func valueInhabits(val Value, t hm.Type, byContents bool) bool {
+// the top of this file.
+func valueInhabits(val Value, t hm.Type, how matchMode) bool {
 	if opts, ok := unionOptions(t); ok {
-		return slices.ContainsFunc(opts, func(o hm.Type) bool { return valueInhabits(val, o, byContents) })
+		return slices.ContainsFunc(opts, func(o hm.Type) bool { return valueInhabits(val, o, how) })
 	}
 	_, isNull := val.(NullValue)
 	if nn, ok := t.(hm.NonNullType); ok {
@@ -344,9 +354,9 @@ func valueInhabits(val Value, t hm.Type, byContents bool) bool {
 		if !ok {
 			return false
 		}
-		return recordedFits(list.ElemType, elem, byContents, func() bool {
+		return recordedFits(list.ElemType, elem, how, func() bool {
 			for _, e := range list.Elements {
-				if !valueInhabits(e, elem, byContents) {
+				if !valueInhabits(e, elem, how) {
 					return false
 				}
 			}
@@ -357,9 +367,9 @@ func valueInhabits(val Value, t hm.Type, byContents bool) bool {
 		if !ok {
 			return false
 		}
-		return recordedFits(m.ValType, want.Type, byContents, func() bool {
+		return recordedFits(m.ValType, want.Type, how, func() bool {
 			for _, k := range m.Keys {
-				if !valueInhabits(m.Entries[k], want.Type, byContents) {
+				if !valueInhabits(m.Entries[k], want.Type, how) {
 					return false
 				}
 			}
@@ -370,7 +380,10 @@ func valueInhabits(val Value, t hm.Type, byContents bool) bool {
 		return ok
 	case *Type:
 		if isRecordModule(want) {
-			return recordInhabits(val, want, byContents)
+			return recordInhabits(val, want, how)
+		}
+		if _, isString := val.(StringValue); isString && how.idStrings && canonicalModule(want) == IDType {
+			return true
 		}
 		return matchesType(val, want)
 	}
@@ -379,9 +392,9 @@ func valueInhabits(val Value, t hm.Type, byContents bool) bool {
 
 // recordedFits decides whether a list or map that recorded the element type
 // recorded holds values of want: by that type, unless it still holds type
-// variables (or byContents is set), where elementwise decides.
-func recordedFits(recorded, want hm.Type, byContents bool, elementwise func() bool) bool {
-	if byContents || holdsTypeVars(recorded) {
+// variables (or the mode is byContents), where elementwise decides.
+func recordedFits(recorded, want hm.Type, how matchMode, elementwise func() bool) bool {
+	if how.byContents || holdsTypeVars(recorded) {
 		return elementwise()
 	}
 	return typeFits(recorded, want)
@@ -390,7 +403,7 @@ func recordedFits(recorded, want hm.Type, byContents bool, elementwise func() bo
 // recordInhabits reports whether val is a record with the fields of want,
 // each of a type that fits (or, where its type holds type variables, a
 // value that inhabits) the pattern's field type.
-func recordInhabits(val Value, want *Type, byContents bool) bool {
+func recordInhabits(val Value, want *Type, how matchMode) bool {
 	obj, ok := val.(*Object)
 	if !ok {
 		return false
@@ -412,9 +425,9 @@ func recordInhabits(val Value, want *Type, byContents bool) bool {
 			return false
 		}
 		ht, _ := field.Value.Type()
-		if !recordedFits(ht, wt, byContents, func() bool {
+		if !recordedFits(ht, wt, how, func() bool {
 			fv, found := obj.lookupValue(field.Key)
-			return found && valueInhabits(fv, wt, byContents)
+			return found && valueInhabits(fv, wt, how)
 		}) {
 			return false
 		}
@@ -469,6 +482,16 @@ func joinRecordedTypes(a hm.Type, aEmpty bool, b hm.Type, bEmpty bool) hm.Type {
 // elements' static type is unknown: a type variable, so they decide what it
 // matches (see recordedFits).
 var unknownElemType hm.Type = hm.TypeVariable('a')
+
+// recordedValueType is what a single value added to a list or map at
+// runtime contributes to its recorded element type: the value's own type,
+// or nothing known for null.
+func recordedValueType(v Value) hm.Type {
+	if _, isNull := v.(NullValue); isNull || v == nil {
+		return unknownElemType
+	}
+	return v.Type()
+}
 
 // recordedOr returns t, the static type a list or map records for its
 // elements, or unknownElemType where it has none.

@@ -119,6 +119,21 @@ let idKind = case (favoriteNode.id) {
 }
 assert { idKind == "id Post:2" }
 
+# ...also inside a list built in a generic body, where the elements decide.
+wrapIt(x: a): [a]! { [x] }
+
+let idsKind = case (wrapIt(favoriteNode.id)) {
+  is: [ID!]! => "ids"
+}
+assert { idsKind == "ids" }
+
+# A non-mutation union handle is resolved for a pattern its members all
+# implement, so the arm can select the interface's fields.
+let featuredNode = case (featured) {
+  n: Node! => "node " + toString(n.id)
+}
+assert { featuredNode == "node User:2" }
+
 # A list selected off an object list records its records' type.
 let named = users.{{name}}
 let namedKind = case (named) {
