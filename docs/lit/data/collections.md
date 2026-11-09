@@ -134,13 +134,21 @@ Its elements are bounded by `Numeric` (see [#type-params]), so any other list
 [1, null, 3].sum
 ```
 
-An empty list sums to `0`, or to `0.0` when the list is known to hold
-`Float`s at runtime: a list of Float literals, an annotated `[]`
-(`let none: [Float!]! = []`) or one passed for a `[Float!]!` parameter, and
-lists filtered or sliced from those. A `[]` that only gets its type from
-around it (`xs ?? []`, an `if` branch, a `reduce([])` accumulator), and a
-list built inside a generic function, aren't, so they sum to `0` even when
-typed `[Float!]!`.
+An empty list sums to the zero of its element type: `0` for `Int!`, `0.0` for
+`Float!`. An empty `[]` takes on the element type inference gives it however
+it gets it, from an annotation or from around it:
+
+```dang
+let maybeFloats: [Float!] = null
+((maybeFloats ?? []).sum + 1) / 2
+```
+
+A list built in a generic function (see [#type-params]) holds what the call's
+arguments or block make its type variables. A variable the arguments don't
+decide (one only the call's expected result fixes, or one whose arguments
+are all null) isn't known while the function runs, so an empty list of it
+sums to `0`, unless it then passes a typed boundary such as an annotated
+`let` or a `[Float!]!` parameter.
 
 `.uniq` drops duplicates, keeping first-occurrence order. It uses Dang
 equality, so it works on nested lists too:

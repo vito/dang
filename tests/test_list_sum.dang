@@ -12,9 +12,11 @@ genericSum[a: Numeric](xs: [a!]!): a! { xs.sum }
 assert { genericSum([4, 5]) == 9 }
 assert { genericSum([0.5, 0.25]) == 0.75 }
 
-# An empty list sums to 0, or 0.0 when it is known to hold Floats.
+# An empty list sums to the zero of its element type: Float division below
+# proves a Float zero, not an Int one, however the list got its type.
 let noInts: [Int!]! = []
 assert { noInts.sum == 0 }
+assert { (noInts.sum + 1) / 2 == 0 }
 let floats: [Float!]! = [1.0, 2.0]
 let noFloats = floats.filter { x => x > 5.0 }
 assert { (noFloats.sum + 1) / 2 == 0.5 }
@@ -23,6 +25,56 @@ assert { (annotated.sum + 1) / 2 == 0.5 }
 # Passing through a type variable keeps the list's element type.
 let viaGeneric: Float! = genericSum(annotated)
 assert { (viaGeneric + 1) / 2 == 0.5 }
+
+# A [] typed by its surroundings.
+let maybeFloats: [Float!] = null
+assert { ((maybeFloats ?? []).sum + 1) / 2 == 0.5 }
+let flag = true
+assert { ((if (flag) { [] } else { [1.5] }).sum + 1) / 2 == 0.5 }
+let kept = floats.reduce([]) { acc, x => if (x > 5.0) { acc + [x] } else { acc } }
+assert { (kept.sum + 1) / 2 == 0.5 }
+
+# Lists built in a generic body, with the call's type for its variable.
+doubledSum[a: Numeric](xs: [a!]!): a! { xs.map { x => x * 2 }.sum }
+
+nothingOf[a: Numeric](x: a!): [a!]! { [] }
+
+assert { (doubledSum(annotated) + 1) / 2 == 0.5 }
+assert { (nothingOf(1.5).sum + 1) / 2 == 0.5 }
+assert { (nothingOf(1).sum + 1) / 2 == 0 }
+
+# A [] passed to a generic function takes the type the call settles on.
+firstOf[a](x: [a!]!, y: [a!]!): [a!]! { x }
+
+assert { (firstOf([], [1.5]).sum + 1) / 2 == 0.5 }
+
+# A block's result decides a generic function's variable too.
+collectOf[b: Numeric](n: Int!, &f(i: Int!): b!): [b!]! {
+  let out = []
+  if (n > 0) {
+    out += [f(n)]
+  }
+  out
+}
+
+assert { (collectOf(0) { i => 1.5 }.sum + 1) / 2 == 0.5 }
+assert { (collectOf(0) { i => 1 }.sum + 1) / 2 == 0 }
+
+# A nested generic function's own variable shadows the enclosing one's.
+outerOf[a: Numeric](x: a!): Float! {
+  innerOf[a: Numeric](xs: [a!]!): a! { xs.filter { v => false }.sum }
+  let fs: [Float!]! = [1.5]
+  (innerOf(fs) + 1) / 2
+}
+
+assert { outerOf(1) == 0.5 }
+
+# A generic function's return keeps the call's type for its variable.
+noneOf[b: Numeric]: [b!]! { [] }
+
+passOn[a: Numeric](x: a!): [a!]! { noneOf }
+
+assert { (passOn(1.5).sum + 1) / 2 == 0.5 }
 
 # The element type may be learned after sum is called.
 let later = []
@@ -37,6 +89,16 @@ deferredSum: Float! {
 }
 
 assert { deferredSum == 4.0 }
+
+# `before` was summed while pending was empty, but its type is pending's.
+deferredZero: Float! {
+  let pending = []
+  let before = pending.sum
+  pending += [1.5]
+  (before + 1) / 2
+}
+
+assert { deferredZero == 0.5 }
 
 # Nullable list receivers propagate null.
 let nullableInts: [Int!] = null
