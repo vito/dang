@@ -98,6 +98,13 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 			return nil, fmt.Errorf("Case.Infer: no case clauses")
 		}
 
+		if unionHoldsDecoded(exprType) {
+			// Its arms would mix two kinds of matching: by a value's
+			// type for the other options, and by the data's shape for
+			// the Decoded one, which could also match those arms.
+			return nil, NewInferError(fmt.Errorf("a case can't match %s, a union holding decoded data: separate the decoded data first, e.g. rescue to null rather than to a value of another type", exprType), c.Expr)
+		}
+
 		hasElse := false
 		// Arms are exclusive: each arm's body skips the writes of the arms
 		// before it (narrowlog.go).
@@ -887,6 +894,21 @@ func takesAnyString(t hm.Type) bool {
 	}
 	mod, ok := t.(*Type)
 	return ok && mod.Kind == ScalarKind && !isPrimitiveScalar(mod)
+}
+
+// unionHoldsDecoded reports whether a case operand is an inline union with
+// a Decoded option, like `JSON.decode(t) rescue 0` (Decoded | Int!).
+func unionHoldsDecoded(exprType hm.Type) bool {
+	union, ok := unwrapNonNull(exprType).(*hm.UnionType)
+	if !ok {
+		return false
+	}
+	for _, option := range union.Options {
+		if _, decoded := unwrapNonNull(option).(DecodedType); decoded {
+			return true
+		}
+	}
+	return false
 }
 
 // decodedOperand reports whether a case operand is decoded data, and whether

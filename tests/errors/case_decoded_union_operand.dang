@@ -1,0 +1,9 @@
+# A union holding decoded data can't be a case operand: its arms would match
+# the other options by type and the decoded data by shape. Separate the
+# decoded data first.
+let parsed = JSON.decode("5") rescue 0
+
+case (parsed) {
+  n: Int => "int"
+  else => "other"
+}

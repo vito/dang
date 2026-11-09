@@ -1,0 +1,11 @@
+[1m[31mError:[0m a case can't match Decoded | Int!, a union holding decoded data: separate the decoded data first, e.g. rescue to null rather than to a value of another type
+  [2m[34m--> errors/case_decoded_union_operand.dang:6:7[0m
+ [2m    |[0m
+ [2m  4 | let parsed = JSON.decode("5") rescue 0[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mcase (parsed) {
+[2m             [31m^^^^^^[0m
+ [2m  7 |   n: Int => "int"[0m
+ [2m  8 |   else => "other"[0m
+ [2m    |[0m
+

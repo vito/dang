@@ -159,6 +159,11 @@ null is the operand itself being null, so it goes only to a `null` arm or
 `else`, and a `Decoded` arm stands in for `else` together with a `null` arm;
 on `Decoded!`, null data goes to a `Decoded` arm or `else`.
 
+A `case` can't take a union that holds decoded data, such as the
+`Decoded | Int!` from `JSON.decode(text) rescue 0`: its arms would match the
+`Int!` by type and the data by shape. Separate the decoded data first, e.g.
+by rescuing to `null`.
+
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded
 maps have sorted keys:
