@@ -201,8 +201,7 @@ spells names through `Id`/`ReservedName` and `f.ident`/`f.fieldName`; see
 - **Undeclared means current**: source no dang.toml governs, and source a
   dang.toml without the `dang` key governs, are `CurrentVersion` (absent an
   embedder's `ContextWithVersion`). Projects roll forward with Dang unless
-  they pin a version (`dang = "X.Y"`, or `dang init`); there is no separate
-  default version for keyless dang.tomls.
+  they pin a version (`dang = "X.Y"`, or `dang init`).
 - **The version comes only from the source's path**: nearest `dang.toml`
   walking up, stopping at `.git`. Never from the importer, and never from
   the project config that happens to be on the context. Use `VersionForDir`.

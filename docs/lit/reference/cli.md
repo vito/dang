@@ -45,7 +45,7 @@ dang migrate [flags] [path...]
 ## `dang init`
 
 - make a directory (default: `.`) a project whose `dang.toml` declares its Dang version (`dang = "X.Y"`; see [#dang.toml])
-- with no `dang.toml`, creates one declaring the running Dang's version; a `dang.toml` without the key gets it too, since that is the version it already means, so nothing changes meaning but later Dang releases no longer move it
+- with no `dang.toml`, creates one declaring the running Dang's version; a `dang.toml` without the key gets that version too, which is the one it already means: nothing changes meaning, and later Dang releases leave it pinned there
 - refuses a directory that is already part of a project further up
 
 ## `dang migrate`
