@@ -1,0 +1,46 @@
+# Encoding embeds Decoded data as the data it is, and JSON.encode's options
+# reach inside it.
+let written = JSON.decode("{\"b\": 1, \"a\": {\"d\": \"<x>\", \"c\": [2, 1]}}") :: Decoded!
+assert { JSON.encode(written) == "{\"a\":{\"c\":[2,1],\"d\":\"\\u003cx\\u003e\"},\"b\":1}" }
+assert { JSON.encode(written, escapeHTML: false) == "{\"a\":{\"c\":[2,1],\"d\":\"<x>\"},\"b\":1}" }
+assert { JSON.encode({{v: written}}, indent: "  ", escapeHTML: false) == "{\n  \"v\": {\n    \"a\": {\n      \"c\": [\n        2,\n        1\n      ],\n      \"d\": \"<x>\"\n    },\n    \"b\": 1\n  }\n}" }
+assert { JSON.encode(JSON.decode("{\"z\": 1.50, \"y\": 2}") :: Decoded!, sortKeys: true) == "{\"y\":2,\"z\":1.50}" }
+
+# Strict decoding checks keys against a type, so it leaves a Decoded field's
+# insides alone: they are data, like a Map's keys. Keys around it are still
+# checked, and a key repeated anywhere in the document is still rejected.
+type Entry {
+  name: String!
+  extra: Decoded!
+}
+
+let strictEntry = JSON.decode(
+  "{\"name\": \"e\", \"extra\": {\"anything\": {\"goes\": 1, \"more\": 2}}}",
+  strict: true,
+) :: Entry!
+assert { JSON.encode(strictEntry.extra) == "{\"anything\":{\"goes\":1,\"more\":2}}" }
+let unknownAround = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": 1, \"typo\": 2}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { unknownAround.contains("field typo not found") }
+let repeatedInside = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": {\"k\": 1, \"k\": 2}}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { repeatedInside.contains("field k already set") }
+
+# TOML decodes into Decoded as well.
+let fromTOML = TOML.decode("[server]\nport = 8080\n") :: Map[Decoded!]!
+assert { JSON.encode(fromTOML["server"]!) == "{\"port\":8080}" }
+
+# toString and join render Decoded data as JSON, as they do other non-string
+# values.
+let nested = JSON.decode("{\"a\": {\"b\": 1}, \"s\": \"x\"}") :: Map[Decoded!]!
+assert { toString(nested) == "{\"a\":{\"b\":1},\"s\":\"x\"}" }
+assert { toString({{v: nested["a"]!}}) == "{\"v\":{\"b\":1}}" }
+assert { [nested["a"]!, nested["s"]!].join(" ") == "{\"b\":1} \"x\"" }
+
+print("Decoded encoding tests passed!")
