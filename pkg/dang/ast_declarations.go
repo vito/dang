@@ -21,6 +21,13 @@ type FunctionBase struct {
 	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
+	// generic is isGenericSignature(Inferred), worked out when Inferred is
+	// set rather than for every function value made from it.
+	generic bool
+	// enclosingVars are the type variables of the generic functions the
+	// function is written in, whose calls' type arguments its values see
+	// (captureTypeArgs).
+	enclosingVars hm.TypeVarSet
 
 	InferredScope TypeScope
 
@@ -209,6 +216,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.generic = isGenericSignature(f.Inferred)
 	f.attachEffects(f.Inferred)
 	f.SetInferredType(f.Inferred)
 	return f.Inferred, nil
@@ -250,6 +258,7 @@ func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.Function
 		BlockParamName: blockParamName,
 		IsDynamic:      hasDynamicScope,
 		Nested:         hasDynamicScope && inMethodBody(scope),
+		Generic:        f.generic && fnType == f.Inferred,
 	}
 }
 
@@ -324,6 +333,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
+	f.enclosingVars = weakScope(ctx)
 	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(outsideRescue(ctx)))
 
 	// Assign early so we can still use partial inference results.
@@ -474,6 +484,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.generic = isGenericSignature(f.Inferred)
 	f.Inferred.SetEffect(f.fnEffects().latent)
 	return f.Inferred, nil
 }
@@ -483,7 +494,10 @@ func (f *FunctionBase) Eval(ctx context.Context, scope ValueScope) (Value, error
 	if f.Inferred == nil {
 		return nil, fmt.Errorf("%v.Eval: function type not inferred", f)
 	}
-	return f.createFunctionValue(scope, f.Inferred), nil
+	fv := f.createFunctionValue(scope, f.Inferred)
+	// Written in a generic body, it sees that call's type variables.
+	fv.TypeArgs = captureTypeArgs(ctx, f.enclosingVars)
+	return fv, nil
 }
 
 type FunDecl struct {

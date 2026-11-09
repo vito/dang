@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
@@ -65,6 +66,10 @@ type evalFrame struct {
 	// and the next frame pushed picks it up (see deriveFrame).
 	stdout io.Writer
 	stderr io.Writer
+
+	// typeArgs are what the type variables of the generic calls being
+	// evaluated stand for (see runtime_types.go).
+	typeArgs hm.Subs
 }
 
 // rootFrame is the state of an evaluation before anything has been set.

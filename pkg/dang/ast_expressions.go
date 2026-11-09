@@ -3761,6 +3761,11 @@ type BlockArg struct {
 	// Inferred is the final inferred function type
 	Inferred *hm.FunctionType
 
+	// enclosingVars are the type variables of the generic functions the
+	// block is written in, whose calls' type arguments it sees
+	// (captureTypeArgs).
+	enclosingVars hm.TypeVarSet
+
 	// LocalNames are the names the body binds each parameter of Inferred
 	// to, index-aligned with its argument record.
 	LocalNames []string
@@ -4029,6 +4034,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// Build the function type
 		b.Inferred = hm.NewFnType(NewRecordType("", argSchemes...), bodyType)
 		b.LocalNames = localNames
+		b.enclosingVars = weakScope(ctx)
 		b.Inferred.SetEffect(b.effect)
 		t := b.Inferred
 		b.SetInferredType(t)
@@ -4065,6 +4071,8 @@ func (b *BlockArg) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			IsBlockArg:          true,
 			CapturedReturnFrame: currentReturnFrame(ctx),
 			CapturedBreakFrame:  currentBlockCallFrame(ctx),
+			// A block in a generic body sees that call's type variables.
+			TypeArgs: captureTypeArgs(ctx, b.enclosingVars),
 		}, nil
 	})
 }

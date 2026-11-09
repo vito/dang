@@ -476,12 +476,11 @@ func registerStdlib() {
 
 			// The block's declared return type is [b]!; its element type is
 			// the result's.
-			fnType, ok := fn.Type().(*hm.FunctionType)
-			if !ok {
+			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("flatMap expects a function type, got %T", fn.Type())
 			}
 			var resultElemType hm.Type = TypeVar('b')
-			if lt, ok := unwrapNonNull(fnType.ReturnType()).(ListType); ok {
+			if lt, ok := unwrapNonNull(fn.resultType()).(ListType); ok {
 				resultElemType = lt.Type
 			}
 
@@ -603,12 +602,10 @@ func registerStdlib() {
 	//
 	// The bound on the element variable checks the receiver's elements at
 	// type-check time (see boundedElems), like sort's. An empty list's sum
-	// is the zero of its runtime element type: 0.0 when the list is known
-	// to hold Floats, 0 otherwise. A [] typed only by its surroundings
-	// (`xs ?? []`) or a list built in a generic body (`xs.map` with a
-	// rigid result) carries no concrete element type at runtime.
+	// is the zero of its element type, which a list carries at runtime
+	// (see emptyElemType and runtime_types.go).
 	Method(ListTypeModule, "sum").
-		Doc("adds up a list of numbers (Int! or Float!); an empty list sums to 0, or 0.0 when it is known to hold Floats").
+		Doc("adds up a list of numbers (Int! or Float!); an empty list sums to the zero of its element type, 0 or 0.0").
 		Example(`[1, 2, 3, 4].sum`).
 		Returns(NumericVar('a')).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -820,11 +817,10 @@ func registerStdlib() {
 			fn := *args.Block
 
 			// Get the return type from the function's type
-			fnType, ok := fn.Type().(*hm.FunctionType)
-			if !ok {
+			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultElemType := fnType.ReturnType()
+			resultElemType := fn.resultType()
 
 			var result []Value
 			for i, item := range list.Elements {
@@ -1362,11 +1358,10 @@ func registerStdlib() {
 				return nil, fmt.Errorf("map requires a block argument")
 			}
 			fn := *args.Block
-			fnType, ok := fn.Type().(*hm.FunctionType)
-			if !ok {
+			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultValType := fnType.ReturnType()
+			resultValType := fn.resultType()
 
 			entries := make(map[string]Value, len(m.Keys))
 			for _, k := range m.Keys {

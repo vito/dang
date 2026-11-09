@@ -206,6 +206,43 @@ func (s *FieldDecl) weaken(ctx context.Context, t hm.Type) hm.Type {
 // The weak variables may hold the enclosing generic functions' own
 // variables, but no other function's.
 func weakenVars(ctx context.Context, t hm.Type, vars hm.Subs, cells *[]*hm.WeakCell) hm.Type {
+	scope := weakScope(ctx)
+	var opened hm.Subs
+	for tv := range t.FreeTypeVar() {
+		if tv.IsRigid() || (tv.IsWeak() && !tv.IsOpenWeak()) {
+			continue
+		}
+		if _, ok := vars[tv]; ok {
+			continue
+		}
+		w, cell := hm.NewWeakVar(tv, scope)
+		vars[tv] = w
+		*cells = append(*cells, cell)
+		if tv.IsWeak() {
+			// An expression's open variable (an empty literal's element
+			// type) is now this binding's, in its scope: the expression
+			// takes on whatever the binding's variable is bound to.
+			if opened == nil {
+				opened = hm.NewSubs()
+			}
+			opened.Add(tv, w)
+		}
+	}
+	if len(opened) > 0 {
+		// Each w is unbound and mentions no rigid variable, so this can't
+		// fail; if it somehow did, the expression just stays unrefined.
+		_ = hm.CommitWeak(opened)
+	}
+	if len(vars) == 0 {
+		return t
+	}
+	return t.Apply(vars).(hm.Type)
+}
+
+// weakScope returns the rigid variables a weak variable made here may be
+// bound to mention: the enclosing generic functions' own (see
+// hm.NewWeakVar).
+func weakScope(ctx context.Context) hm.TypeVarSet {
 	var scope hm.TypeVarSet
 	for _, r := range scopedTypeVars(ctx) {
 		if rv, ok := r.(hm.TypeVariable); ok {
@@ -215,21 +252,7 @@ func weakenVars(ctx context.Context, t hm.Type, vars hm.Subs, cells *[]*hm.WeakC
 			scope.Add(rv)
 		}
 	}
-	for tv := range t.FreeTypeVar() {
-		if tv.IsRigid() || tv.IsWeak() {
-			continue
-		}
-		if _, ok := vars[tv]; ok {
-			continue
-		}
-		w, cell := hm.NewWeakVar(tv, scope)
-		vars[tv] = w
-		*cells = append(*cells, cell)
-	}
-	if len(vars) == 0 {
-		return t
-	}
-	return t.Apply(vars).(hm.Type)
+	return scope
 }
 
 type paramDeclKey struct{}
