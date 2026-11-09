@@ -180,3 +180,27 @@ let selectedKind = case (selected) {
   rs: [{{name: String!}}!]! => `records ${rs.length}`
 }
 assert { selectedKind == "records 2" }
+
+# A pattern may name a type spelled in lowercase, as a GraphQL schema may.
+type lowercase {
+  n: Int! = 1
+}
+
+let lc = lowercase
+let lcKind = case (lc) {
+  l: lowercase! => `lowercase ${l.n}`
+}
+assert { lcKind == "lowercase 1" }
+
+# An ID and a String are told apart by type, even though a GraphQL ID is a
+# plain string at runtime.
+idOrString(plain: Boolean!): String! {
+  let v = if (plain) { "s" } else { "x" :: ID! }
+  case (v) {
+    i: ID! => "id"
+    s: String! => "string"
+  }
+}
+
+assert { idOrString(true) == "string" }
+assert { idOrString(false) == "id" }

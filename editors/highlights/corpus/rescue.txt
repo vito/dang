@@ -47,7 +47,7 @@ let x = risky rescue {
   (@variable "e")
   (@punctuation.delimiter ":")
   " "
-  (@type "Error")
+  (@variable "Error")
   (@operator "!")
   " "
   (@operator "=>")

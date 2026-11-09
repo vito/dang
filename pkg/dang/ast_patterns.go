@@ -441,6 +441,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 			// clause body
 			clause.resolvedMemberType = memberMod
 			clause.matchType = hm.NonNullType{Type: memberMod}
+			clause.idTakesStrings = idPatternTakesStrings(clause.matchType, exprType)
 			return nil
 		}
 	}
@@ -460,6 +461,11 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 	if holdsTypeVars(t) {
 		return NewInferError(fmt.Errorf("a type pattern needs a concrete type, not %s", t), clause.patternNode())
 	}
+	if holdsNarrowed(exprType) {
+		// It would bind a value holding only the selected fields as a
+		// type that has others.
+		return NewInferError(fmt.Errorf("pattern %s can't match %s, a selection narrowed by inline fragments: match one of the fragments' types", t, exprType), clause.patternNode())
+	}
 	if !typesOverlap(t, exprType) {
 		if _, gqlList := unwrapped.(GraphQLListType); gqlList {
 			return NewInferError(fmt.Errorf("pattern %s can't match a GraphQL object list (%s); select fields on its elements first, e.g. value.{{id}}", t, exprType), clause.patternNode())
@@ -470,7 +476,37 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		clause.resolvedMemberType = mod
 	}
 	clause.matchType = t
+	clause.idTakesStrings = idPatternTakesStrings(t, exprType)
 	return nil
+}
+
+// idPatternTakesStrings reports whether an arm of type pattern on an operand
+// of type operand takes a plain string as an ID: it is an ID pattern, and the
+// operand can't hold a String, which a plain string would be instead.
+func idPatternTakesStrings(pattern, operand hm.Type) bool {
+	if mod, ok := unwrapNonNull(pattern).(*Type); !ok || canonicalModule(mod) != IDType {
+		return false
+	}
+	opts, ok := unionOptions(operand)
+	if !ok {
+		opts = []hm.Type{operand}
+	}
+	for _, o := range opts {
+		if unwrapNonNull(o) == StringType {
+			return false
+		}
+	}
+	return true
+}
+
+// matches reports whether val, the operand, takes the clause's type pattern
+// arm (see valueInhabits).
+func (c *CaseClause) matches(val Value, byContents bool) bool {
+	if valueInhabits(val, c.matchType, byContents) {
+		return true
+	}
+	_, isString := val.(StringValue)
+	return isString && c.idTakesStrings
 }
 
 // resolveMemberPattern resolves a named type pattern on a union, interface
@@ -484,8 +520,13 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 func (c *Case) resolveMemberPattern(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, unwrapped hm.Type) (*Type, bool, error) {
 	patternName := clause.PatternName()
 	// overlaps reports whether the named type is still a valid pattern on
-	// the operand, though not one of the members listed.
+	// the operand, though not one of the members listed. Not on a union
+	// narrowed by inline fragments: its members hold only the selected
+	// fields, so a pattern must name one of them to bind what they hold.
 	overlaps := func() bool {
+		if holdsNarrowed(unwrapped) {
+			return false
+		}
 		named, err := clause.lookupNamedPattern(ctx, env, fresh)
 		return err == nil && typesOverlap(hm.NonNullType{Type: named}, unwrapped)
 	}
@@ -678,7 +719,7 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				return EvalNode(ctx, childScope, clause.Expr)
 			}
 			if clause.IsTypePattern() {
-				if valueInhabits(typedVal, clause.matchType, false) {
+				if clause.matches(typedVal, false) {
 					// Create a child scope with the binding. It is unsealed, like
 					// a value clause's scope, so the clause can update enclosing
 					// bindings (e.g. loop state) the same way.
@@ -717,7 +758,7 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			// failing.
 			for _, clause := range c.Clauses {
 				if clause.IsTypePattern() && clause.matchType != nil &&
-					valueInhabits(typedVal, clause.matchType, true) {
+					clause.matches(typedVal, true) {
 					childScope := scope.Derive(false)
 					childScope.Bind(clause.Binding, typedVal, PrivateVisibility)
 					return EvalNode(ctx, childScope, clause.Expr)
@@ -791,11 +832,6 @@ func matchesType(val Value, pattern *Type) bool {
 	valMod := valueModule(val)
 	if valMod == nil {
 		return false
-	}
-	// An ID is a plain string at runtime (GraphQL results, ID literals), so
-	// an ID pattern takes a string; its static type alone tells them apart.
-	if canonicalModule(pattern) == IDType && valMod == StringType {
-		return true
 	}
 	// Resolve both sides to their canonical type so that narrowed
 	// projections compare against the same identity.
@@ -1057,6 +1093,11 @@ type CaseClause struct {
 	// matchType is set during inference when the operand is not decoded
 	// data: the non-null type the arm matches (see valueInhabits) and binds.
 	matchType hm.Type
+
+	// idTakesStrings is set during inference for an ID pattern on an
+	// operand that can't be a String: an ID from a GraphQL result is a
+	// plain string at runtime, which only its static type tells apart.
+	idTakesStrings bool
 
 	// decodedPatternType is set during inference when the operand is
 	// decoded data: the non-null type whose shape the data must have for

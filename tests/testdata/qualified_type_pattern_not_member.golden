@@ -1,10 +1,10 @@
 [1m[31mError:[0m type Lib.Greeter is not a member of union Pet
-  [2m[34m--> errors/qualified_type_pattern_not_member.dang:9:6[0m
+  [2m[34m--> errors/qualified_type_pattern_not_member.dang:9:10[0m
  [2m    |[0m
  [2m  7 | case (pet) {[0m
  [2m  8 |   d: Lib.Dog! => d.sound[0m
  [2m[34m[1m  9 | [0m  g: Lib.Greeter! => g.greeting
-[2m            [31m^^^^^^^^^^^[0m
+[2m                [31m^^^^^^^[0m
  [2m 10 | }[0m
  [2m 11 | [0m
  [2m    |[0m

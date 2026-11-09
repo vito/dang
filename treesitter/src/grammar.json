@@ -3610,8 +3610,70 @@
               "type": "FIELD",
               "name": "pattern",
               "content": {
-                "type": "SYMBOL",
-                "name": "type"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "FIELD",
+                        "name": "qual",
+                        "content": {
+                          "type": "REPEAT",
+                          "content": {
+                            "type": "SEQ",
+                            "members": [
+                              {
+                                "type": "FIELD",
+                                "name": "q",
+                                "content": {
+                                  "type": "SYMBOL",
+                                  "name": "id"
+                                }
+                              },
+                              {
+                                "type": "SYMBOL",
+                                "name": "dot_token"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "FIELD",
+                        "name": "name",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "symbol"
+                        }
+                      },
+                      {
+                        "type": "FIELD",
+                        "name": "bang",
+                        "content": {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "SYMBOL",
+                              "name": "bang_token"
+                            },
+                            {
+                              "type": "BLANK"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "t",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "type"
+                    }
+                  }
+                ]
               }
             },
             {
@@ -5761,8 +5823,70 @@
               "type": "FIELD",
               "name": "pattern",
               "content": {
-                "type": "SYMBOL",
-                "name": "type"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "FIELD",
+                        "name": "qual",
+                        "content": {
+                          "type": "REPEAT",
+                          "content": {
+                            "type": "SEQ",
+                            "members": [
+                              {
+                                "type": "FIELD",
+                                "name": "q",
+                                "content": {
+                                  "type": "SYMBOL",
+                                  "name": "id"
+                                }
+                              },
+                              {
+                                "type": "SYMBOL",
+                                "name": "dot_token"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "FIELD",
+                        "name": "name",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "symbol"
+                        }
+                      },
+                      {
+                        "type": "FIELD",
+                        "name": "bang",
+                        "content": {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "SYMBOL",
+                              "name": "bang_token"
+                            },
+                            {
+                              "type": "BLANK"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "t",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "type"
+                    }
+                  }
+                ]
               }
             },
             {

@@ -68,6 +68,36 @@ func isRecordModule(mod *Type) bool {
 	return mod.Named == "" && mod.Kind == ObjectKind
 }
 
+// holdsNarrowed reports whether t is, or may be, a value narrowed by inline
+// fragments (`x.{{... on Cat {{ lives }}}}`): a projection of its type
+// holding only the selected fields (see Type.Canonical), or a union of them.
+func holdsNarrowed(t hm.Type) bool {
+	if opts, ok := unionOptions(t); ok {
+		return slices.ContainsFunc(opts, holdsNarrowed)
+	}
+	if elem, ok := listElementTarget(t); ok {
+		return holdsNarrowed(elem)
+	}
+	if val, ok := mapValueTarget(t); ok {
+		return holdsNarrowed(val)
+	}
+	mod, ok := unwrapNonNull(t).(*Type)
+	if !ok {
+		return false
+	}
+	if mod.Canonical != nil {
+		return true
+	}
+	if mod.Kind == UnionKind {
+		for _, m := range mod.GetMembers() {
+			if mm, ok := m.(*Type); ok && mm.Canonical != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // unionOptions returns the options of an inline union, made non-null when
 // the union itself is.
 func unionOptions(t hm.Type) ([]hm.Type, bool) {

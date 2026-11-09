@@ -31,13 +31,10 @@ let x = case (v) {
               (id
                 (word_token)))
             (colon_token)
-            (type
-              (non_null
-                (type
-                  (named_type
-                    (upper_id
-                      (upper_token))))
-                (bang_token)))
+            (symbol
+              (id
+                (word_token)))
+            (bang_token)
             (arrow_token)
             (literal
               (int

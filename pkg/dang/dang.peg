@@ -1363,8 +1363,16 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
 CaseToken <- "case" !WordChar
 
 // The type of a case or rescue clause's type pattern, with where it is
-// written, for errors to point at.
-TypePattern <- t:Type {
+// written, for errors to point at. A named type is spelled as a Symbol, as
+// before patterns took any type, so that a type named in lowercase (`type
+// users`, from a GraphQL schema, say) can still be matched.
+TypePattern <- qual:(q:Id DotToken { return &NamedTypeNode{Name: q.(string), Loc: c.Loc()}, nil })* name:Symbol bang:BangToken? !ImmediateBracket {
+  var t TypeNode = &NamedTypeNode{Base: namedTypeChain(qual), Name: name.(*Symbol).Name, Loc: name.(*Symbol).Loc}
+  if bang != nil {
+    t = NonNullTypeNode{t}
+  }
+  return locatedType{Type: t, Loc: c.Loc()}, nil
+} / t:Type {
   return locatedType{Type: t.(TypeNode), Loc: c.Loc()}, nil
 }
 
