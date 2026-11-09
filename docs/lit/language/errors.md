@@ -235,7 +235,8 @@ type or declines to bind it, so a bare `err =>` is rejected:
 lookup(0) rescue { err => err.message }
 ```
 
-Pattern types must implement `Error` — validated like a `case` over an
+Pattern types must be errors — a type implementing `Error`, or a union of
+such types — validated like a `case` over an
 interface operand (see [#control-flow]):
 
 ```dang-failure

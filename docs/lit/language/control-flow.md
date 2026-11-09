@@ -187,9 +187,9 @@ The type can be any type: a named type, which may be qualified
 (`g: Lib.Greeter! =>`, naming an imported type even where a type of your own
 shadows the bare name), a list or map type, or a record type. It must be a
 type some value of the operand may have, as the types relate: the operand's
-type itself, a type that implements it or belongs to it, or one it implements
-or belongs to. Two interfaces related by neither don't qualify, even if some
-type implements both.
+type itself, a type that implements it or belongs to it, one it implements
+or belongs to, or a union with a member that is one of these. Two interfaces
+related by neither don't qualify, even if some type implements both.
 Here it takes apart the `Cat! | Dog!` union `pet` picked up under
 `if`/`else` above:
 
@@ -231,7 +231,7 @@ signal(light: Light): String! {
 
 A named type matches a value of that type, of a type implementing it (for an
 interface), or of one of its members (for a union). A pattern that takes
-every value of the operand is fine, just exhaustive on its own:
+every value of the operand is exhaustive on its own:
 
 ```dang
 case (Cat(name: "Solo")) { c: Cat! => c.name }
