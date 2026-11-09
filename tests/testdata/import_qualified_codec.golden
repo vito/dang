@@ -1,0 +1,10 @@
+[1m[31mError:[0m field "YAML" not found in Test
+  [2m[34m--> errors/import_qualified_codec.dang:5:1[0m
+ [2m    |[0m
+ [2m  3 | # An import's namespace holds only what its schema defines: Dang's codec[0m
+ [2m  4 | # namespaces are not reachable through it.[0m
+ [2m[34m[1m  5 | [0mTest.YAML.encode(1)
+[2m       [31m^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+
