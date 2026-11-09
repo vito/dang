@@ -80,6 +80,8 @@ type Query {
   # Float round-trip: a Float result reused as a Float argument.
   averageRating: Float!
   echoFloat(value: Float!): Float!
+  # Named like Dang's builtin toString: Test.toString must call this field.
+  toString(value: Int!): String!
 }
 
 enum UserSortField {

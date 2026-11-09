@@ -1,0 +1,5 @@
+# A native Dang module's `let`s are private to it: a top-level one is not
+# reachable through its namespace, qualified or not.
+import Lib
+
+Lib.salutation

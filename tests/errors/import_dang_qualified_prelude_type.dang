@@ -1,0 +1,5 @@
+# A native Dang module's namespace holds only its own declarations, types
+# included: the prelude's Path is not a type of it.
+import Lib
+
+let p: Lib.Path! = Path("a/b")

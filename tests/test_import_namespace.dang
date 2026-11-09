@@ -1,0 +1,20 @@
+import Test
+
+# An import's namespace holds what its schema defines, and nothing of Dang's.
+# The schema's Query has a toString field, named like Dang's builtin, so
+# Test.toString is that field, in type checking and at runtime alike.
+let viaSchema: String! = Test.toString(value: 7)
+assert { viaSchema == "schema toString: 7" }
+
+# Unqualified, toString is still the builtin: an import never shadows one.
+assert { toString(7) == "7" }
+
+# GraphQL's built-in scalars belong to every schema, so they are reachable
+# qualified too.
+let s: Test.String! = "s"
+let i: Test.Int! = 1
+let f: Test.Float! = 1.5
+let b: Test.Boolean! = true
+assert { [s == "s", i == 1, f == 1.5, b] == [true, true, true, true] }
+
+print("import namespace tests passed!")

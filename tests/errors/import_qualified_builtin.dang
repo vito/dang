@@ -1,0 +1,5 @@
+import Test
+
+# An import's namespace holds only what its schema defines: a builtin the
+# schema has no field for, like print, is not reachable through it.
+Test.print("hello")

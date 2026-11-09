@@ -90,6 +90,7 @@ path = "./lib/helpers"
 - mutually exclusive with the GraphQL source kinds: `'path' cannot be combined with 'dagger', 'schema', 'endpoint', or 'service'`
 - the module's public (non-`let`) declarations are its API; `let` declarations stay private **across the import boundary** — the same public/`let` rule as [#fields], now enforced between modules
 - `import Helpers` then exposes `Helpers.Greeting` (qualified) and `Greeting` (unqualified), like any import
+- the namespace holds only the module's own declarations: Dang's builtins and prelude, which the module's code uses as usual, aren't reachable through it (`Helpers.toString` or `Helpers.Path` is an error)
 - transitive `path` imports work (an imported module resolves its own `dang.toml` from its directory); import cycles are reported: `import cycle detected: a -> b -> a`
 
 ### Per-module identity
@@ -125,6 +126,7 @@ name (see [#enums-scalars]):
 ```
 
 - imported directives are usable unqualified: `@customDirective(...)` (see [#directives])
+- the import's namespace holds only what the schema defines, plus GraphQL's built-in scalars (`Demo.String`, `Demo.Int`, …); Dang's own builtins and types aren't in it, so `Demo.print` or `Demo.Path` is an error unless the schema defines that name
 
 ## Shadowing
 

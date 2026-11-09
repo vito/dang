@@ -468,6 +468,11 @@ func (r *queryResolver) EchoFloat(ctx context.Context, value float64) (float64, 
 	return value, nil
 }
 
+// ToString is the resolver for the toString field.
+func (r *queryResolver) ToString(ctx context.Context, value int) (string, error) {
+	return fmt.Sprintf("schema toString: %d", value), nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user

@@ -127,6 +127,7 @@ X-Custom = "value"
 ### Native Dang module imports
 - `path = "./dir"` imports **another Dang module** (a directory of `.dang` files, relative to `dang.toml`) instead of a GraphQL source; mutually exclusive with `dagger`/`schema`/`endpoint`/`service` (`'path' cannot be combined with ...`).
 - The module's public (non-`let`) surface becomes the import's API; `let` stays private **across the boundary** (the public/`let` rule of objects.md "Fields", enforced between modules).
+- The namespace holds only the module's **own** declarations: Dang's builtins and prelude, which the module's code uses as usual, are not reachable through it (`Lib.toString`, `Lib.Path(...)` → `field "Path" not found in Lib`; `Lib.Path!` → `type "Path" not found in Lib`).
 - **Per-module identity:** each importing module gets its own instance — two modules importing the same directory hold distinct copies of its types, and same-named types from different instances don't unify (`the "Widget" value here is a different type from the "Widget" expected ... share behavior through an interface instead`). No MVS/version reconciliation.
 - Transitive `path` imports resolve each module's own `dang.toml`; cycles are reported (`import cycle detected: a -> b -> a`).
 
@@ -137,6 +138,7 @@ import MyApi
 ```
 - Exposes both *qualified* (`MyApi.User`) and *unqualified* (`User`) names.
 - Covers types, root `Query`/`Mutation` functions, interfaces, unions, enums, scalars, and directives.
+- The namespace holds **only what the schema defines**, plus GraphQL's built-in scalars (`MyApi.String`, `MyApi.Int`, …). Dang's own builtins and prelude are not in it: `MyApi.Path`, `MyApi.Random`, `MyApi.print` are errors (`field "print" not found in MyApi`, `type "Regexp" not found in MyApi`) unless the schema itself defines that name.
 - Enum *values* become unqualified too: `ACTIVE` (== `Status.ACTIVE`) if no collision.
 - Imported directives are usable unqualified: `@customDirective(...)`.
 

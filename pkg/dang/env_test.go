@@ -261,7 +261,7 @@ core: Dagger.Container! = Dagger.container
 `), 0o600))
 
 	_, err := RunDir(ctx, dir, false)
-	require.ErrorContains(t, err, "unresolved type: Container")
+	require.ErrorContains(t, err, `type "Container" not found in Dagger`)
 }
 
 func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {

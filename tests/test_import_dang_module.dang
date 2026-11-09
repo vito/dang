@@ -30,3 +30,10 @@ assert { Lib.Pet != null }
 assert { Pet != null } # unqualified union value binding
 
 print(Lib.Greeter("Dang").greeting)
+
+# The module's namespace holds only its own declarations; Dang's builtins and
+# prelude stay unqualified here (see errors/import_dang_qualified_*), while the
+# module itself uses them as usual.
+assert { toString(Lib.answer) == "42" }
+assert { Lib.answerText == "42" }
+assert { Lib.answerPath == "a/b/c" }
