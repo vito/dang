@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot sort by Decoded!: it is decoded data; give it a type first, e.g. `(JSON.decode(...) :: T)`
+  [2m[34m--> errors/list_sort_by_decoded_key.dang:3:11[0m
+ [2m    |[0m
+ [2m  1 | # A sort key can't be decoded data: cast it to the type it has first.[0m
+ [2m  2 | let xs = JSON.decode("""[{"n": 2}, {"n": 1}]""") :: [Map[Decoded!]!]![0m
+ [2m[34m[1m  3 | [0mxs.sortBy { x => x["n"]! }
+[2m                 [31m^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+
