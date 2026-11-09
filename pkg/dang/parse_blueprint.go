@@ -58,6 +58,51 @@ type SyntaxCache struct {
 	entries *simplelru.LRU[parseBlueprintKey, blueprintEntry]
 	weight  int64
 	budget  int64
+	stats   SyntaxCacheStats
+	// parsing holds the sources being parsed, each closed when its parse
+	// is done.
+	parsing map[parseBlueprintKey]chan struct{}
+}
+
+// SyntaxCacheStats counts what a SyntaxCache has done since it was created,
+// to tell whether sources that should be reused are parsed again, and why.
+type SyntaxCacheStats struct {
+	// Hits are files copied from cached syntax instead of parsed.
+	Hits int64
+	// Misses are files parsed, including ones that parse with an error.
+	Misses int64
+	// Waited are files that waited for another call parsing the same
+	// source, instead of parsing it too.
+	Waited int64
+	// Uncached are parsed files the cache did not keep: their syntax
+	// exceeds the weight budget or has fields the cache cannot copy.
+	Uncached int64
+	// EvictedForEntries and EvictedForWeight are entries removed to stay
+	// within the entry limit and the weight budget.
+	EvictedForEntries int64
+	EvictedForWeight  int64
+	// Entries and Weight are what the cache holds now. Weight is the
+	// estimate the budget limits, not measured memory.
+	Entries int
+	Weight  int64
+	Budget  int64
+}
+
+// Stats returns the cache's counts so far.
+func (cache *SyntaxCache) Stats() SyntaxCacheStats {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	stats := cache.stats
+	stats.Entries = cache.entries.Len()
+	stats.Weight = cache.weight
+	stats.Budget = cache.budget
+	return stats
+}
+
+func (cache *SyntaxCache) count(field *int64) {
+	cache.mu.Lock()
+	*field++
+	cache.mu.Unlock()
 }
 
 func newSyntaxCache(entries int, budget int64) *SyntaxCache {
@@ -74,22 +119,59 @@ func (cache *SyntaxCache) get(key parseBlueprintKey) (parseBlueprint, bool) {
 	return entry.create, ok
 }
 
+// lookup returns key's cached syntax. Otherwise it claims the parse of key,
+// returning done to call when the parse is over, or, when another call is
+// parsing key, returns a channel closed when that parse is over. Looking and
+// claiming under one lock means a call never parses a source another call
+// has just cached.
+func (cache *SyntaxCache) lookup(key parseBlueprintKey) (cached parseBlueprint, ok bool, parsing <-chan struct{}, done func()) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if entry, ok := cache.entries.Get(key); ok {
+		return entry.create, true, nil, nil
+	}
+	if parsing, ok := cache.parsing[key]; ok {
+		return parseBlueprint{}, false, parsing, nil
+	}
+	if cache.parsing == nil {
+		cache.parsing = map[parseBlueprintKey]chan struct{}{}
+	}
+	ch := make(chan struct{})
+	cache.parsing[key] = ch
+	return parseBlueprint{}, false, nil, func() {
+		cache.mu.Lock()
+		delete(cache.parsing, key)
+		cache.mu.Unlock()
+		close(ch)
+	}
+}
+
 func (cache *SyntaxCache) add(key parseBlueprintKey, create parseBlueprint, weight int64) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	// Concurrent misses may build the same entry; the first one is enough.
-	if cache.entries.Contains(key) || weight > cache.budget {
+	if cache.entries.Contains(key) {
+		return
+	}
+	if weight > cache.budget {
+		cache.stats.Uncached++
 		return
 	}
 	cache.weight += weight
-	cache.entries.Add(key, blueprintEntry{create: create, weight: weight})
+	if cache.entries.Add(key, blueprintEntry{create: create, weight: weight}) {
+		cache.stats.EvictedForEntries++
+	}
 	for cache.weight > cache.budget {
 		cache.entries.RemoveOldest()
+		cache.stats.EvictedForWeight++
 	}
 }
 
+// parseSyntax parses a source for the cache; tests replace it.
+var parseSyntax = ParseWithRecovery
+
 // NewSyntaxCache creates a concurrent cache for syntax reused across RunDir calls.
-// It retains at most 128 entries with a combined estimated weight of 64 MiB.
+// It retains at most 128 entries holding an estimated 64 MiB of syntax.
 func NewSyntaxCache() *SyntaxCache { return newSyntaxCache(128, 64<<20) }
 
 type syntaxCacheKey struct{}
@@ -115,13 +197,28 @@ func parseFileBlueprintWithCache(filename string, version Version, cache *Syntax
 		return nil, err
 	}
 	key := parseBlueprintKey{digest: sha256.Sum256(source), version: version.orCurrent()}
-	if blueprint, ok := cache.get(key); ok {
-		copied, err := blueprint.copy(reflect.ValueOf(filename))
-		if err == nil {
-			return copied.Interface().(*FileBlock), nil
+	for {
+		// Calls that miss the same source together, such as parallel loads
+		// of one module, parse it once: the others wait and copy its syntax.
+		// If the parse kept nothing, the next waiter parses.
+		blueprint, ok, parsing, done := cache.lookup(key)
+		if ok {
+			copied, err := blueprint.copy(reflect.ValueOf(filename))
+			if err == nil {
+				cache.count(&cache.stats.Hits)
+				return copied.Interface().(*FileBlock), nil
+			}
+			break
 		}
+		if done != nil {
+			defer done()
+			break
+		}
+		cache.count(&cache.stats.Waited)
+		<-parsing
 	}
-	parsed, err := ParseWithRecovery(filename, source, GlobalStore("filePath", filename), WithVersion(version))
+	cache.count(&cache.stats.Misses)
+	parsed, err := parseSyntax(filename, source, GlobalStore("filePath", filename), WithVersion(version))
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +231,7 @@ func parseFileBlueprintWithCache(filename string, version Version, cache *Syntax
 	if err != nil {
 		// Unsupported fields fall back to normal parsing. This result has
 		// not been inferred yet and belongs only to the current call.
+		cache.count(&cache.stats.Uncached)
 		return block, nil
 	}
 	cache.add(key, blueprint, weight)
@@ -187,10 +285,10 @@ func (state *syntaxCopyState) remember(value, result reflect.Value, size uintptr
 	}
 }
 
+// copyInto charges what the copy allocates: each pointed-to value, each
+// boxed interface value, each slice's backing array and each string's bytes.
+// Fields and elements are inside their parent's allocation.
 func (state *syntaxCopyState) copyInto(result, value reflect.Value) error {
-	if err := state.charge(128); err != nil {
-		return err
-	}
 	if value.IsZero() {
 		return nil
 	}
@@ -204,10 +302,18 @@ func (state *syntaxCopyState) copyInto(result, value reflect.Value) error {
 			result.Set(copied)
 			return nil
 		}
+		if err := state.charge(int64(typ.Elem().Size())); err != nil {
+			return err
+		}
 		result.Set(reflect.New(typ.Elem()))
 		state.remember(value, result, typ.Elem().Size())
 		return state.copyInto(result.Elem(), value.Elem())
 	case reflect.Interface:
+		if value.Elem().Kind() != reflect.Pointer {
+			if err := state.charge(int64(value.Elem().Type().Size())); err != nil {
+				return err
+			}
+		}
 		concrete := reflect.New(value.Elem().Type()).Elem()
 		if err := state.copyInto(concrete, value.Elem()); err != nil {
 			return err
@@ -238,7 +344,7 @@ func (state *syntaxCopyState) copyInto(result, value reflect.Value) error {
 				return nil
 			}
 		}
-		if err := state.charge(int64(capacity) * 8); err != nil {
+		if err := state.charge(int64(capacity) * int64(typ.Elem().Size())); err != nil {
 			return err
 		}
 		full := reflect.MakeSlice(typ, capacity, capacity)

@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/v2/pkg/hm"
@@ -316,5 +318,203 @@ func TestParseSourceFileThroughSyntaxCache(t *testing.T) {
 	}
 	if _, err := ParseSourceFile(context.Background(), file); err != nil {
 		t.Fatalf("ParseSourceFile without a cache: %v", err)
+	}
+}
+
+func TestSyntaxCacheStats(t *testing.T) {
+	dir := t.TempDir()
+	files := make([]string, 3)
+	for i := range files {
+		files[i] = filepath.Join(dir, fmt.Sprintf("f%d.dang", i))
+		if err := os.WriteFile(files[i], []byte(fmt.Sprintf("value: Int! = %d\n", i)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := WithSyntaxCache(context.Background(), newSyntaxCache(2, 1<<20))
+	cache := ctx.Value(syntaxCacheKey{}).(*SyntaxCache)
+	for _, file := range []string{files[0], files[0], files[1], files[2], files[0]} {
+		if _, err := ParseSourceFile(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The third file pushes the first out of a two-entry cache, so the
+	// first file is parsed again.
+	got := cache.Stats()
+	want := SyntaxCacheStats{Hits: 1, Misses: 4, EvictedForEntries: 2, Entries: 2, Weight: got.Weight, Budget: 1 << 20}
+	if got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+
+	// A budget smaller than any syntax keeps nothing and counts each parse.
+	tiny := WithSyntaxCache(context.Background(), newSyntaxCache(2, 1))
+	for range 2 {
+		if _, err := ParseSourceFile(tiny, files[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := tiny.Value(syntaxCacheKey{}).(*SyntaxCache).Stats(); got.Misses != 2 || got.Uncached != 2 || got.Hits != 0 || got.Entries != 0 {
+		t.Fatalf("oversized syntax: got %+v", got)
+	}
+
+	// Two entries that together exceed the weight budget evict by weight.
+	weighed := newSyntaxCache(4, 10)
+	create := parseBlueprint{syntax: reflect.ValueOf(1)}
+	weighed.add(parseBlueprintKey{digest: [32]byte{1}}, create, 6)
+	weighed.add(parseBlueprintKey{digest: [32]byte{2}}, create, 6)
+	if got := weighed.Stats(); got.EvictedForWeight != 1 || got.EvictedForEntries != 0 || got.Entries != 1 || got.Weight != 6 {
+		t.Fatalf("weight eviction: got %+v", got)
+	}
+}
+
+// Loads that miss the same source together parse it once; the others copy
+// that parse's syntax.
+func TestSyntaxCacheParsesASourceOnce(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "main.dang")
+	source := []byte("type Thing { value: String! = \"one\" }\n")
+	if err := os.WriteFile(file, source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var parses atomic.Int64
+	entered, release := make(chan struct{}, 8), make(chan struct{})
+	parse := parseSyntax
+	parseSyntax = func(filename string, source []byte, opts ...Option) (any, error) {
+		parses.Add(1)
+		entered <- struct{}{}
+		<-release
+		return parse(filename, source, opts...)
+	}
+	t.Cleanup(func() { parseSyntax = parse })
+
+	cache := newSyntaxCache(16, 1<<20)
+	ctx := WithSyntaxCache(context.Background(), cache)
+	const loads = 8
+	results := make([]*FileBlock, loads)
+	errs := make([]error, loads)
+	var wg sync.WaitGroup
+	for i := range loads {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = ParseSourceFile(ctx, file)
+		}()
+	}
+	<-entered
+	// Hold the first parse until every other load waits for it or parses.
+	deadline := time.Now().Add(10 * time.Second)
+	for cache.Stats().Waited+parses.Load() < loads {
+		if time.Now().After(deadline) {
+			t.Fatal("loads did not reach the cache")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	wg.Wait()
+
+	if got := parses.Load(); got != 1 {
+		t.Fatalf("parsed %d times, want once", got)
+	}
+	if got := cache.Stats(); got.Misses != 1 || got.Waited != loads-1 || got.Hits != loads-1 {
+		t.Fatalf("got %+v", got)
+	}
+	want, err := ParseWithRecovery(file, source, GlobalStore("filePath", file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, got := range results {
+		if errs[i] != nil {
+			t.Fatal(errs[i])
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("load %d got other syntax", i)
+		}
+		for _, other := range results[:i] {
+			if got == other {
+				t.Fatal("loads share syntax")
+			}
+		}
+	}
+}
+
+// A load that missed a source just before another load cached it finds the
+// cached syntax rather than claiming a parse: it looks and claims at once.
+func TestSyntaxCacheClaimsOnlyUncachedSources(t *testing.T) {
+	cache := newSyntaxCache(4, 1<<20)
+	key := parseBlueprintKey{digest: [32]byte{9}}
+	if _, ok, _, done := cache.lookup(key); ok || done == nil {
+		t.Fatal("an uncached source was not claimed")
+	}
+	// Meanwhile, the claiming load caches its syntax and finishes.
+	if _, _, parsing, done := cache.lookup(key); parsing == nil || done != nil {
+		t.Fatal("a source being parsed was claimed again")
+	}
+	cache.add(key, parseBlueprint{syntax: reflect.ValueOf(1)}, 4)
+	if _, ok, parsing, done := cache.lookup(key); !ok || parsing != nil || done != nil {
+		t.Fatal("a cached source was claimed for parsing")
+	}
+}
+
+// When the parse a load waited for keeps nothing, that load parses itself.
+func TestSyntaxCacheWaiterParsesWhenNothingKept(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "main.dang")
+	if err := os.WriteFile(file, []byte("value: Int! = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache := newSyntaxCache(16, 1) // keeps nothing
+	ctx := WithSyntaxCache(context.Background(), cache)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := ParseSourceFile(ctx, file); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := cache.Stats(); got.Misses != 4 || got.Hits != 0 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// The cache's weight estimate is close to the heap its entries hold, so its
+// budget bounds memory without evicting far below it.
+func TestSyntaxCacheWeightMatchesHeap(t *testing.T) {
+	files, err := filepath.Glob("../../tests/*.dang")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("language corpus: %v", err)
+	}
+	var blocks []*FileBlock
+	for _, file := range files {
+		source, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := ParseWithRecovery(file, source, GlobalStore("filePath", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		blocks = append(blocks, parsed.(*FileBlock))
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	blueprints := make([]parseBlueprint, len(blocks))
+	estimated := int64(0)
+	for i, block := range blocks {
+		weight := int64(0)
+		blueprints[i], err = syntaxBlueprintWeighted(reflect.ValueOf(block), &weight, 1<<40)
+		if err != nil {
+			t.Fatal(err)
+		}
+		estimated += weight
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	runtime.KeepAlive(blocks)
+	runtime.KeepAlive(blueprints)
+	held := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	if ratio := float64(estimated) / float64(held); ratio < 0.5 || ratio > 2 {
+		t.Fatalf("estimated %d bytes for %d held on the heap (%.1f×)", estimated, held, ratio)
 	}
 }
