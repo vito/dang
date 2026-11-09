@@ -1,0 +1,28 @@
+# Decoded, the type of decoded data not yet given a type, can be named: an
+# annotation, parameter or cast to it keeps data undecoded.
+let d: Decoded! = JSON.decode("3")
+
+double(x: Decoded!): Int! { (x :: Int!) * 2 }
+
+assert { double(d) == 6 }
+
+# Decoding into Map[Decoded!]! or [Decoded!]! materializes the outer level and
+# keeps each value deferred, to be given a type later.
+let top = JSON.decode("{\"a\": [1, 2], \"b\": \"x\"}") :: Map[Decoded!]!
+assert { top.keys == ["a", "b"] }
+assert { (top["a"]! :: [Int!]!) == [1, 2] }
+let items = JSON.decode("[1, \"x\"]") :: [Decoded!]!
+assert { (items[1]! :: String!) == "x" }
+
+# A field typed Decoded keeps its data as it came, and encodes as that data.
+type Entry {
+  name: String!
+  extra: Decoded!
+}
+
+let entry = JSON.decode("{\"name\": \"e\", \"extra\": {\"deep\": [true]}}") :: Entry!
+assert { (entry.extra :: Map[[Boolean!]!]!)["deep"] == [true] }
+assert { JSON.encode(entry) == "{\"name\":\"e\",\"extra\":{\"deep\":[true]}}" }
+assert { YAML.encode(entry.extra) == "deep:\n    - true" }
+
+print("Decoded name tests passed!")

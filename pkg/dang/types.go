@@ -74,6 +74,13 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			if t.Base != nil {
 				return nil, UnresolvedTypeError{Name: t.Name, Qualifier: t.Base.spelling()}
 			}
+			// A builtin type that is not a module (Decoded) resolves here,
+			// below every scope: a declaration of the same name shadows it,
+			// and an unqualified import never installs one (see
+			// installUnqualifiedImportTypesFromModule).
+			if pt, ok := PreludeType(t.Name); ok {
+				return pt, nil
+			}
 			return nil, UnresolvedTypeError{Name: t.Name}
 		}
 		return s, nil
@@ -253,18 +260,39 @@ func (t MapType) Supertypes() []hm.Type {
 	return innerSupers
 }
 
+// preludeTypes are the Prelude's builtin types that are not modules, so
+// cannot sit among its TypeScope objects, by the name they resolve under.
+// They resolve below every scope (NamedTypeNode.Infer), like any Prelude
+// type: a declaration of the same name shadows one, and an unqualified
+// import never does. Registered once at init.
+var preludeTypes = map[string]hm.Type{}
+
+// registerPreludeType registers a Prelude type that is not a module under its
+// own name.
+func registerPreludeType(t hm.Type) {
+	preludeTypes[t.Name()] = t
+}
+
+// PreludeType returns the Prelude's non-module builtin type of that name.
+func PreludeType(name string) (hm.Type, bool) {
+	t, ok := preludeTypes[name]
+	return t, ok
+}
+
 // DecodedType is the static type of a codec decode result (JSON.decode and
 // friends): data whose shape is only known at runtime, carried as a
-// DeferredValue until it reaches an expected type. It is deliberately opaque —
+// DeferredValue until it reaches an expected type. Code names it `Decoded`
+// (a Prelude type) to keep data undecoded: a `Map[Decoded!]!` materializes an
+// object's keys and leaves each value deferred. It is deliberately opaque —
 // it unifies only with itself and type variables, so operators, conditions
-// and selections reject it, and equality does too (checkDecodedComparison,
-// since it is otherwise defined across all types) — and it may cross into any
-// fully known type only at a materializing boundary (a Coerce: annotations,
-// arguments, returns, `::`), where assignableDecoded admits it and
-// materializeValue converts the data or raises. Typing decode results as a
-// bare type variable instead made them usable as anything without
-// materialization, so `JSON.decode("1") + 1` type-checked and then failed at
-// runtime.
+// and selections reject it, and equality accepts it only against other
+// Decoded data or null (checkDecodedComparison, since it is otherwise
+// defined across all types) — and it may cross into any fully known type
+// only at a materializing boundary (a Coerce: annotations, arguments,
+// returns, `::`), where assignableDecoded admits it and materializeValue
+// converts the data or raises. Typing decode results as a bare type variable
+// instead made them usable as anything without materialization, so
+// `JSON.decode("1") + 1` type-checked and then failed at runtime.
 type DecodedType struct{}
 
 var _ hm.Type = DecodedType{}

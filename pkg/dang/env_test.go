@@ -501,6 +501,37 @@ useContainer: String! = container
 	require.Equal(t, "local", str.Val)
 }
 
+func TestRunDirImportDoesNotShadowPreludeDecoded(t *testing.T) {
+	// Decoded is a Prelude type, so an unqualified import of a schema that
+	// defines its own Decoded leaves the name meaning the builtin; the
+	// schema's type is still reachable qualified.
+	schema, err := SchemaFromSDL(`
+type Query { decoded: Decoded! }
+type Decoded { id: String! }
+`, "schema.graphqls")
+	require.NoError(t, err)
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Schema",
+		Schema: schema,
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+import Schema
+
+double(d: Decoded!): Int! { (d :: Int!) * 2 }
+idOf(d: Schema.Decoded!): String! { d.id }
+
+pub doubled: Int! = double(JSON.decode("21"))
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	doubled, found := requireEvalGet(t, env, "doubled")
+	require.True(t, found)
+	require.Equal(t, IntValue{Val: 42}, doubled)
+}
+
 func TestRunDirImportsAreFileLocal(t *testing.T) {
 	// File A imports Dagger and uses an unqualified imported symbol.
 	// File B never imports Dagger and so cannot see container.

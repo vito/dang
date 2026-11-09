@@ -72,6 +72,11 @@ func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Typ
 		if name == importName || isShadowed(shadowed, name) {
 			continue
 		}
+		// An unqualified import never shadows a builtin type; it is still
+		// reachable qualified.
+		if _, builtin := PreludeType(name); builtin {
+			continue
+		}
 
 		if _, exists := parentTypeScope.NamedType(name); exists {
 			if localTypeBindingIsUnqualifiedImport(parentTypeScope, name) {

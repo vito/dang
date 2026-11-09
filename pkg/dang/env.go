@@ -402,6 +402,10 @@ func init() {
 	Prelude.Add("Regexp", hm.NewScheme(nil, regexpConstructorType()))
 	RegexpType.AddObject("Match", MatchType)
 
+	// Decoded, the type of decoded data not yet given a type, is not a
+	// module, so it is registered beside the Prelude's objects.
+	registerPreludeType(DecodedType{})
+
 	// Install Error interface with message field
 	Prelude.AddObject("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NewFnType(NewRecordType(""), hm.NonNullType{Type: StringType})))
