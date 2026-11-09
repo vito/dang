@@ -1285,12 +1285,17 @@ func (s *strictDecode) noteUnknownKeys(obj map[string]any, mod *Type, params []s
 // nullTakesDefault reports whether decoded null for param means "use the
 // default": param has one and is non-null as declared. (Its type in the
 // constructor's signature is nullable, since the argument may be omitted.)
+// A Decoded! field is the exception: it holds null data as it is.
 func nullTakesDefault(param *FieldDecl) bool {
 	if param.Value == nil {
 		return false
 	}
-	_, nonNull := param.GetInferredType().(hm.NonNullType)
-	return nonNull
+	nn, nonNull := param.GetInferredType().(hm.NonNullType)
+	if !nonNull {
+		return false
+	}
+	_, decoded := nn.Type.(DecodedType)
+	return !decoded
 }
 
 func parameterTypes(val Value) map[string]hm.Type {

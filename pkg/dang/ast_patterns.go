@@ -825,35 +825,68 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 }
 
 // decodedPatternCovers reports whether every piece of data with the shape of
-// cur also has the shape of prev, so an arm for cur after one for prev never
-// runs: the same type; a `Map[Decoded!]` arm before any object or map arm; a
-// `[Decoded!]` arm before any list arm; `Float` before `Int`.
+// cur also has the shape of prev (see shapeMatcher), so an arm for cur after
+// one for prev never runs. Besides the same type: `Float` covers `Int`; a
+// String or scalar arm (which takes any string) covers String, scalar and
+// enum arms, and a schema scalar without a hook takes any data at all; a
+// list or map arm covers one whose elements its elements cover, and
+// `Map[Decoded]` covers every object.
 func decodedPatternCovers(prev, cur hm.Type) bool {
 	if prev.Eq(cur) {
 		return true
 	}
+	_, prevNonNull := prev.(hm.NonNullType)
+	_, curNonNull := cur.(hm.NonNullType)
 	p, c := unwrapNonNull(prev), unwrapNonNull(cur)
-	if val, ok := mapValueTarget(p); ok && isDecodedNonNull(val) {
-		if _, ok := mapValueTarget(c); ok {
-			return true
-		}
-		mod, ok := c.(*Type)
-		return ok && (mod.Kind == ObjectKind || mod.Kind == InputKind)
+	if _, ok := p.(DecodedType); ok {
+		// Decoded and Decoded! both take any data, null included.
+		return true
 	}
-	if elem, ok := listElementTarget(p); ok && isDecodedNonNull(elem) {
-		_, ok := listElementTarget(c)
-		return ok
-	}
-	return p == FloatType && c == IntType
-}
-
-func isDecodedNonNull(t hm.Type) bool {
-	nn, ok := t.(hm.NonNullType)
-	if !ok {
+	if prevNonNull && !curNonNull {
+		// cur takes null where prev doesn't.
 		return false
 	}
-	_, ok = nn.Type.(DecodedType)
-	return ok
+	if p.Eq(c) {
+		return true
+	}
+	if pmod, ok := p.(*Type); ok && pmod.Kind == ScalarKind && holdsAnyData(pmod) {
+		return true
+	}
+	if val, ok := mapValueTarget(p); ok {
+		if cval, ok := mapValueTarget(c); ok {
+			return decodedPatternCovers(val, cval)
+		}
+		if _, any := unwrapNonNull(val).(DecodedType); any {
+			mod, ok := c.(*Type)
+			return ok && (mod.Kind == ObjectKind || mod.Kind == InputKind)
+		}
+		return false
+	}
+	if elem, ok := listElementTarget(p); ok {
+		celem, ok := listElementTarget(c)
+		return ok && decodedPatternCovers(elem, celem)
+	}
+	if p == FloatType && c == IntType {
+		return true
+	}
+	if takesAnyString(p) {
+		if c == StringType {
+			return true
+		}
+		cmod, ok := c.(*Type)
+		return ok && (cmod.Kind == ScalarKind || cmod.Kind == EnumKind) && !isPrimitiveScalar(cmod)
+	}
+	return false
+}
+
+// takesAnyString reports whether an arm of type t matches every string:
+// String, or any scalar besides the primitives (see shapeMatcher).
+func takesAnyString(t hm.Type) bool {
+	if t == StringType {
+		return true
+	}
+	mod, ok := t.(*Type)
+	return ok && mod.Kind == ScalarKind && !isPrimitiveScalar(mod)
 }
 
 // decodedOperand reports whether a case operand is decoded data, and whether

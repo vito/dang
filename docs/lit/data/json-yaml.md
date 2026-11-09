@@ -150,7 +150,8 @@ kind(d: Decoded!): String! {
 
 Order the arms from most to least specific: `1` is an `Int` and a `Float`
 (so an `Int` arm after a `Float` arm is an unreachable-clause error, as is
-an object arm after `Map[Decoded!]`), and a type reads only the fields it
+a `String` arm after a scalar arm, which takes every string, or an object
+arm after `Map[Decoded!]`), and a type reads only the fields it
 declares (an object with extra keys still matches, unless the decode was
 strict). A `x: Decoded` arm takes any data as it is, and so can stand in for
 `else`. Null data matches no other type arm. On a nullable `Decoded` operand
@@ -400,7 +401,8 @@ string literal, and two fields cannot map to the same key.
 Enum values decode from their names, custom scalars from their string forms,
 and data of any shape into `Decoded` (see [#decoded-values]). A
 missing field takes its declared default (so does an explicit `null` for a
-non-null field with a default), and a missing nullable field
+non-null field with a default, except a `Decoded!` field, which holds null
+data as it is), and a missing nullable field
 decodes to `null`:
 
 ```dang

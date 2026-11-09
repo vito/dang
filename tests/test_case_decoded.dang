@@ -184,6 +184,32 @@ assert { creds(JSON.decode("{\"user\": \"u\", \"token\": \"t\"}")) == "other" }
 assert { creds(JSON.decode("{\"kind\": \"k\", \"level\": null}")) == "opts 3" }
 assert { (JSON.decode("{\"kind\": \"k\", \"level\": null}") :: Opts!).level == 3 }
 
+# ...except a Decoded! field, which holds null data as it is.
+type Extra {
+  kind: String!
+  extra: Decoded! = JSON.decode("[1]")
+}
+
+let extra = JSON.decode("{\"kind\": \"k\", \"extra\": null}") :: Extra!
+
+assert { JSON.encode(extra) == "{\"kind\":\"k\",\"extra\":null}" }
+
+# A String arm after an enum arm still runs for other strings.
+enum Hue {
+  RED
+  GREEN
+}
+
+hue(d: Decoded!): String! {
+  case (d) {
+    h: Hue => "hue"
+    s: String => `string ${s}`
+    else => "other"
+  }
+}
+
+assert { [hue(JSON.decode("\"RED\"")), hue(JSON.decode("\"x\""))] == ["hue", "string x"] }
+
 # Value patterns alone on decoded data need no else.
 let maybe = JSON.decode("null")
 let isNull = case (maybe) {

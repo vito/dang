@@ -106,7 +106,7 @@ func (m shapeMatcher) matches(raw any, target hm.Type) bool {
 		if _, ok := raw.(string); ok {
 			return true
 		}
-		return mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil
+		return holdsAnyData(mod)
 	case ObjectKind, InputKind:
 		obj, ok := raw.(map[string]any)
 		if !ok {
@@ -115,6 +115,12 @@ func (m shapeMatcher) matches(raw any, target hm.Type) bool {
 		return m.objectMatches(obj, mod)
 	}
 	return false
+}
+
+// holdsAnyData reports whether a scalar holds decoded data of any shape: a
+// schema's scalar without a hook (it is held as JSON text).
+func holdsAnyData(mod *Type) bool {
+	return mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil
 }
 
 // objectMatches checks an object against the fields a type reads from it: a
