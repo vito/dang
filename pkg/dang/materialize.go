@@ -1107,6 +1107,11 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 				// nullable JSON maps it to Dang null.
 				return jsonScalarFromRaw(nil, mod, path)
 			}
+			if _, ok := nn.Type.(DecodedType); ok {
+				// Decoded! takes data of any shape, null included; a
+				// later cast decides what null means there.
+				return DeferredValue{Raw: nil, Codec: codec, Strict: strict != nil}, nil
+			}
 			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
 		}
 		return materializeDecoded(ctx, scope, raw, nn.Type, path, codec, strict)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"reflect"
 	"slices"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -246,8 +245,10 @@ func valuesEqual(left, right Value) bool {
 	}
 	if leftIsNull || rightIsNull {
 		// A Dang JSON value holding JSON null is null, wherever a nullable
-		// JSON got it from (a merge, say, rather than a typed slot).
-		return isJSONNullValue(left) || isJSONNullValue(right)
+		// JSON got it from (a merge, say, rather than a typed slot), and so
+		// is Decoded data holding null.
+		return isJSONNullValue(left) || isJSONNullValue(right) ||
+			isNullDecoded(left) || isNullDecoded(right)
 	}
 
 	// Compare by type
@@ -342,11 +343,10 @@ func valuesEqual(left, right Value) bool {
 			return l.QueryChain == r.QueryChain
 		}
 	case DeferredValue:
-		// Decoded data that never got a type (a [Decoded] list's elements,
-		// compared by contains/uniq) is equal when the data is. The checker
-		// rejects == on it; this is for the builtins that compare elements.
+		// Decoded data compares as data: key order and number spelling
+		// don't matter, nor which format decoded it.
 		if r, ok := right.(DeferredValue); ok {
-			return reflect.DeepEqual(l.Raw, r.Raw)
+			return decodedEqual(l, r)
 		}
 	}
 
