@@ -16,13 +16,13 @@ dang.toml declares the Dang version its source is written in.
 
 Without a dang.toml, init creates one declaring this Dang's version, which
 is what the directory's source already means. An existing dang.toml that
-declares no version gets the version it already means (` + dang.DefaultVersion.String() + `), so
-nothing changes meaning; use dang migrate to move it forward.
+declares no version follows this Dang's version too, so init pins it there;
+nothing changes meaning, but a later Dang won't move it.
 
 Source whose version something else decides (e.g. a Dagger engine version),
-or a project from a Dang older than ` + dang.DefaultVersion.String() + ` whose dang.toml predates the
-key, should use dang migrate --from instead, which records the version it
-is really written for.`,
+or a project from an older Dang whose dang.toml predates the key, should
+use dang migrate --from instead, which records the version it is really
+written for.`,
 		Example: `  # Start a project in the current directory
   dang init
 
@@ -46,9 +46,6 @@ is really written for.`,
 				_, _ = fmt.Fprintf(out, "%s already declares Dang %s\n", result.ConfigPath, result.Version)
 			default:
 				_, _ = fmt.Fprintf(out, "%s now declares Dang %s, the version it already used\n", result.ConfigPath, result.Version)
-				if result.Version.Before(dang.CurrentVersion) {
-					_, _ = fmt.Fprintf(out, "run dang migrate to move it to Dang %s\n", dang.CurrentVersion)
-				}
 			}
 			return nil
 		},

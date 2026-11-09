@@ -73,17 +73,10 @@ var (
 	// adds the first gate for a new version (a gate on a version newer than
 	// CurrentVersion could never be enabled, since ParseVersion refuses that
 	// version), and at the latest when releasing a new minor or major.
-	// Source no dang.toml governs is written in it (see VersionForDir), and
-	// `dang init` stamps it into new projects.
+	// Source whose version nothing declares is written in it: source no
+	// dang.toml governs, and source governed by a dang.toml without a `dang`
+	// key (see VersionForDir). `dang init` stamps it into new projects.
 	CurrentVersion = Version2_1
-
-	// DefaultVersion is the version of a dang.toml that does not declare
-	// one, i.e. one written before the `dang` key existed. It is the version
-	// Dang implemented when the key was introduced, so such a dang.toml
-	// keeps meaning what it meant then. It is pinned and must NOT advance:
-	// such a dang.toml would otherwise silently change meaning. `dang init`
-	// and `dang migrate` stamp it explicitly.
-	DefaultVersion = Version2_1
 )
 
 // String returns the version as written in dang.toml: major.minor, e.g.
@@ -384,16 +377,17 @@ type versionPin struct {
 // ContextWithVersion sets the version of the source evaluated directly with
 // ctx (the directory or file passed to RunDir, DeclareDir or RunFile, or
 // source with no path at all, such as REPL input or a completion fragment)
-// when no dang.toml declares one, in place of CurrentVersion (no dang.toml)
-// or DefaultVersion (a dang.toml without a `dang` key). Embedders use it for
-// source whose version they know some other way, e.g. a Dagger SDK pinning a
-// module's version from its engine version: such a module may well have a
-// dang.toml for its imports from before the key existed.
+// when no dang.toml declares one, in place of CurrentVersion: when no
+// dang.toml governs it, or one without a `dang` key does. Embedders use it
+// for source whose version they know some other way, e.g. a Dagger SDK
+// pinning a module's version from its engine version: such a module may
+// well have a dang.toml for its imports that declares no version.
 //
 // It never overrides a version a dang.toml declares (see VersionForDir). It
 // reaches the modules that source imports only if the same dang.toml without
 // a `dang` key governs them: otherwise an imported module's version depends
-// only on its own path, so an ungoverned import is CurrentVersion.
+// only on its own path, so an import whose version nothing declares is
+// CurrentVersion.
 func ContextWithVersion(ctx context.Context, v Version) context.Context {
 	return context.WithValue(ctx, versionKey{}, versionPin{version: v})
 }
@@ -445,8 +439,8 @@ func contextVersion(ctx context.Context) (Version, bool) {
 	return pin.version, true
 }
 
-// VersionFromContext returns the version of source that no dang.toml
-// governs: the version set by ContextWithVersion, or CurrentVersion.
+// VersionFromContext returns the version of source whose version no dang.toml
+// declares: the version set by ContextWithVersion, or CurrentVersion.
 func VersionFromContext(ctx context.Context) Version {
 	if v, ok := contextVersion(ctx); ok {
 		return v
@@ -457,10 +451,10 @@ func VersionFromContext(ctx context.Context) Version {
 // VersionForDir returns the version of the source files in dir. It depends
 // only on where the source lives: the nearest dang.toml walking up from dir
 // decides, regardless of who imports the source or which dang.toml
-// configured the evaluation. If that dang.toml declares no version, it is the
-// version set by ContextWithVersion, or DefaultVersion. If discovery reaches
-// a repository boundary (.git) or the filesystem root first, no dang.toml
-// governs the source, and it is VersionFromContext(ctx).
+// configured the evaluation. If discovery reaches a repository boundary
+// (.git) or the filesystem root first, no dang.toml governs the source. If
+// none does, or it declares no version, the source follows the running Dang:
+// it is VersionFromContext(ctx).
 func VersionForDir(ctx context.Context, dir string) (Version, error) {
 	_, cfg, err := FindProjectConfig(dir)
 	if err != nil {
@@ -473,15 +467,10 @@ func VersionForDir(ctx context.Context, dir string) (Version, error) {
 // of FindProjectConfig for the source's directory (nil if none was found).
 // Callers that already looked up the config use it to avoid a second lookup.
 func VersionForConfig(ctx context.Context, cfg *ProjectConfig) Version {
-	if cfg == nil {
+	if cfg == nil || cfg.Dang.IsZero() {
 		return VersionFromContext(ctx)
 	}
-	if cfg.Dang.IsZero() {
-		if v, ok := contextVersion(ctx); ok {
-			return v
-		}
-	}
-	return cfg.EffectiveVersion()
+	return cfg.Dang
 }
 
 // unmatchedCaseError is the message raised before 2.1 when no case clause

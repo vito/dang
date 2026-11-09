@@ -197,6 +197,10 @@ assert { pair.{a}.a == 1 }
 		_, err = dang.RunDir(dang.ContextWithVersion(ctx, dang.Version1_0), root, false)
 		require.NoError(t, err)
 
+		// ...and without one, it is the current version, like no dang.toml...
+		_, err = dang.RunDir(ctx, root, false)
+		require.Error(t, err)
+
 		// ...but a version it declares always wins over the embedder's.
 		writeFiles(root, map[string]string{"dang.toml": "dang = \"2.1\"\n"})
 		_, err = dang.RunDir(dang.ContextWithVersion(ctx, dang.Version1_0), root, false)

@@ -114,7 +114,7 @@ authorization = "Bearer ${API_TOKEN}"
 [imports.Remote.headers]
 X-Custom = "value"
 ```
-- `dang = "X.Y"` — the Dang version the source is written in; left out, it means `"2.1"`. Write the current syntax this skill describes. A project declaring an older version is written in that version's syntax (e.g. `for` loops, `try`/`catch`): move it forward with `dang migrate` rather than mixing the two.
+- `dang = "X.Y"` — the Dang version the source is written in; left out, it means the running Dang's version, and moves with each release (`dang init` pins it). Write the current syntax this skill describes. A project declaring an older version is written in that version's syntax (e.g. `for` loops, `try`/`catch`): move it forward with `dang migrate` rather than mixing the two.
 - One `[imports.<Name>]` per source; `<Name>` is the qualifier (`MyApi.User`). Must specify at least one of `dagger`, `schema`, `endpoint`, `service` — or `path` (native Dang module, below).
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.

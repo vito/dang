@@ -58,7 +58,8 @@ Let **V** be the major.minor that main will release as (the version that
    same commit*. A gate on a version newer than `CurrentVersion` can never be
    enabled: `ParseVersion` refuses versions newer than the binary. Also add it
    to `versions` in `version_test.go` (`TestReservedWords` fails until you
-   do). Never touch `DefaultVersion` (see invariants).
+   do). Bumping `CurrentVersion` moves every project that declares no
+   version (see invariants), so the release notes must say so.
 
 2. **Feature method** in `version.go`, named for the feature, never for the
    version:
@@ -197,12 +198,13 @@ spells names through `Id`/`ReservedName` and `f.ident`/`f.fieldName`; see
 
 ## Invariants (don't break these)
 
-- **`DefaultVersion` is pinned forever** (2.1). It's what a dang.toml without
-  the key means (absent an embedder's `ContextWithVersion`); moving it would
-  silently change existing projects.
+- **Undeclared means current**: source no dang.toml governs, and source a
+  dang.toml without the `dang` key governs, are `CurrentVersion` (absent an
+  embedder's `ContextWithVersion`). Projects roll forward with Dang unless
+  they pin a version (`dang = "X.Y"`, or `dang init`); there is no separate
+  default version for keyless dang.tomls.
 - **The version comes only from the source's path**: nearest `dang.toml`
-  walking up, stopping at `.git`; no dang.toml means `CurrentVersion` (or an
-  embedder's `ContextWithVersion`). Never from the importer, and never from
+  walking up, stopping at `.git`. Never from the importer, and never from
   the project config that happens to be on the context. Use `VersionForDir`.
 - **`ContextWithVersion` never overrides a version a dang.toml declares**,
   but does apply under a dang.toml without the key (it may predate the key,
