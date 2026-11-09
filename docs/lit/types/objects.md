@@ -36,7 +36,7 @@ Person("Alice").greet
 
 - a bare member is **public** — readable from outside the type; public is the default for a `type`
 - `let` — private to the declaring **module**: readable by any type or method in the same module, rejected across a module boundary (see [#modules])
-- `pub` is still accepted as an explicit public marker, but it is redundant and `dang fmt` removes it (see [#fields])
+- `pub` is accepted as an explicit public marker, but it is redundant and `dang fmt` removes it (see [#fields])
 
 `let` privacy is module-scoped, not type-scoped, so another type in the
 same module can read a `let` member:

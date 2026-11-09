@@ -538,15 +538,18 @@ name. `dang migrate` rewrites them to postfix `rescue` as it moves the
 project to 2.1, except a catch with clauses that can never match, which
 `rescue` rejects: that one stays a `try`/`catch` block.
 
-From 2.1 on, a `try`/`catch` block is deprecated. It runs like the
-equivalent `rescue`, with a warning:
+From 2.1 on, a `try`/`catch` block is deprecated. It runs with a warning,
+keeping its own rules: a catch with no clauses re-raises every error, and
+clauses that can never match are dead code rather than errors.
 
 ```dang
 try { halve(7) } catch { err => 0 }
 ```
 
-`dang fmt -w` rewrites it to postfix `rescue`, turning a bare `err =>`
-catch-all into `err: Error =>`.
+`dang fmt -w` rewrites it to the equivalent postfix `rescue`, turning a
+bare `err =>` catch-all into `err: Error =>`. A catch whose clauses can't
+all match has no `rescue` equivalent, since `rescue` rejects unreachable
+clauses: `dang fmt` leaves it as written, to fix by hand.
 
 ## Anti-patterns
 
