@@ -309,8 +309,9 @@ usually do, comparing runs of digits as numbers (`item2` before `item10`):
 YAML.encode(release, sortKeys: true)
 ```
 
-`toString(value)` is not an encoder: it passes strings through and writes
-anything else as a Dang literal (see [#strings]). Decoded data shows as the
+`toString(value)` is not an encoder: it passes strings, enum values and
+custom scalar values through as their bare text, and writes anything else as
+a Dang literal (see [#strings]). Decoded data shows as the
 literal of the data it holds:
 
 ```dang

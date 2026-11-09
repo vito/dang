@@ -26,9 +26,10 @@ greeting += "!"
 
 ## Conversion
 
-`toString(value)` passes strings through and writes anything else as the
-Dang literal it would be written as, its strings quoted. Interpolation,
-`List.join` and `print` show values the same way:
+`toString(value)` passes strings, enum values and custom scalar values
+through as their bare text, and writes anything else as the Dang literal it
+would be written as, its strings quoted. Interpolation, `List.join` and
+`print` show values the same way:
 
 ```dang
 [toString(42), toString(["one", "two"]), toString({{ a: 1 }}), toString("plain")]
