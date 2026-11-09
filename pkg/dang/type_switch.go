@@ -226,6 +226,45 @@ func recordFieldsMatch(a, b *Type, rel func(a, b hm.Type) bool) bool {
 	return true
 }
 
+// unraisableMember returns an option or member of pattern, a rescue clause's
+// pattern, that no error can inhabit: one that doesn't overlap Error. A
+// rescue arm only ever binds a raised error, so a union pattern is rejected
+// when any of its options or members couldn't be one. Nil means every one
+// could.
+func unraisableMember(pattern hm.Type) hm.Type {
+	return unraisableMemberVia(pattern, map[*Type]bool{})
+}
+
+func unraisableMemberVia(pattern hm.Type, seen map[*Type]bool) hm.Type {
+	if opts, ok := unionOptions(pattern); ok {
+		for _, o := range opts {
+			if bad := unraisableMemberVia(o, seen); bad != nil {
+				return bad
+			}
+		}
+		return nil
+	}
+	if mod, ok := unwrapNonNull(pattern).(*Type); ok {
+		mod = canonicalModule(mod)
+		if mod.Kind == UnionKind {
+			if seen[mod] {
+				return nil
+			}
+			seen[mod] = true
+			for _, m := range mod.GetMembers() {
+				if bad := unraisableMemberVia(hm.NonNullType{Type: unwrapNonNull(m)}, seen); bad != nil {
+					return bad
+				}
+			}
+			return nil
+		}
+	}
+	if !typesOverlap(pattern, hm.NonNullType{Type: ErrorType}) {
+		return pattern
+	}
+	return nil
+}
+
 // typesOverlap reports whether some non-null value inhabits both pattern
 // and operand, so that an arm of that pattern can match. It is
 // conservative: types it can't prove overlap, such as two unrelated

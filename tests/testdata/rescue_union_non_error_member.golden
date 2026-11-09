@@ -1,0 +1,11 @@
+[1m[31mError:[0m rescue pattern Either! includes Foo, which doesn't implement Error, so it is never raised
+  [2m[34m--> errors/rescue_union_non_error_member.dang:14:6[0m
+ [2m    |[0m
+ [2m 12 | [0m
+ [2m 13 | let x = { raise "boom" } rescue {[0m
+ [2m[34m[1m 14 | [0m  e: Either! => "either"
+[2m            [31m^^^^^^[0m
+ [2m 15 |   else => "other"[0m
+ [2m 16 | }[0m
+ [2m    |[0m
+

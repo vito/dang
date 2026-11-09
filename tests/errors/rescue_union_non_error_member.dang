@@ -1,0 +1,17 @@
+# A rescue arm only binds raised errors, so every member of a union
+# pattern must be able to be one.
+type MiniError implements Error {
+  message: String!
+}
+
+type Foo {
+  x: Int! = 1
+}
+
+union Either = MiniError | Foo
+
+let x = { raise "boom" } rescue {
+  e: Either! => "either"
+  else => "other"
+}
+print(x)

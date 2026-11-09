@@ -1,0 +1,26 @@
+# A rescue pattern may be a union, as long as every member could be raised:
+# each one implements Error.
+type NotFound implements Error {
+  message: String!
+}
+
+type Denied implements Error {
+  message: String!
+}
+
+union Problem = NotFound | Denied
+
+classify(fail: Int!): String! {
+  {
+    if (fail == 1) raise NotFound(message: "gone")
+    if (fail == 2) raise Denied(message: "no")
+    raise "boom"
+  } rescue {
+    p: Problem! => "problem"
+    e: Error! => e.message
+  }
+}
+
+assert { classify(1) == "problem" }
+assert { classify(2) == "problem" }
+assert { classify(3) == "boom" }
