@@ -1,0 +1,5 @@
+import Test
+
+# A schema's `scalar JSON` is a separate type from the builtin JSON: the codec
+# namespace is the builtin's alone, and the error says which JSON this is.
+print(Test.JSON.encode([7]))

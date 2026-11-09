@@ -1,6 +1,6 @@
 # A `scalar JSON` declared in a module shadows the builtin JSON there, codec
 # namespace included: Dang no longer grafts the builtin's encode/decode onto a
-# scalar because of its name.
+# scalar because of its name. The error says so.
 scalar JSON
 
 let raw: JSON! = "{\"ok\":true}"

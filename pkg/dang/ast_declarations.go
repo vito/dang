@@ -1364,6 +1364,20 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 		// Validate that the directive exists and arguments match
 		directiveDecl, found := env.GetDirective(d.Name)
 		if !found {
+			if d.Scope != nil {
+				if scopeMod, ok := env.(*Type); ok {
+					if scopeMod.IsMeta() {
+						scopeMod = scopeMod.InstanceType()
+					}
+					if hint := shadowedPreludeMemberHint(scopeMod, func(p *Type) bool {
+						_, ok := p.GetDirective(d.Name)
+						return ok
+					}); hint != "" {
+						return nil, fmt.Errorf("directive @%s.%s not declared; %s", d.Scope.Name, d.Name, hint)
+					}
+				}
+				return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s.%s not declared", d.Scope.Name, d.Name)
+			}
 			return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
 		}
 

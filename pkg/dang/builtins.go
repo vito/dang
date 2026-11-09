@@ -683,6 +683,28 @@ func isBuiltinStaticHost(t *Type) bool {
 	return builtins.staticModuleSeen[t]
 }
 
+// shadowedPreludeMemberHint explains a member missing from local, a type
+// declared or imported under the name of a Prelude type, when that Prelude
+// type has it (has reports whether it does): the local declaration shadows
+// the builtin. It returns "" otherwise. Only the error path calls it.
+func shadowedPreludeMemberHint(local *Type, has func(*Type) bool) string {
+	if local == nil || local.Named == "" {
+		return ""
+	}
+	sub, found := Prelude.NamedType(local.Named)
+	if !found {
+		return ""
+	}
+	builtin, ok := sub.(*Type)
+	if !ok || builtin == local || !has(builtin) {
+		return ""
+	}
+	if local.Qualifier != "" {
+		return fmt.Sprintf("%s is a different type from the builtin %s, which has it", local, local.Named)
+	}
+	return fmt.Sprintf("the %s declared here shadows the builtin %s, which has it; rename the declaration to use the builtin", local.Named, local.Named)
+}
+
 // DefineEnum creates an enum type with the given values and registers it
 // as a nested type on a parent module. It handles both type-level and
 // eval-level registration so that the enum values are available during

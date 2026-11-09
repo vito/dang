@@ -1246,6 +1246,17 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				if _, isMember := mod.InstanceType().LocalSchemeOf(d.Field.Name); isMember {
 					return tv, fmt.Errorf("field %q belongs to values of %s, not to %s itself", d.Field.Name, mod, mod)
 				}
+				if hint := shadowedPreludeMemberHint(mod.InstanceType(), func(p *Type) bool {
+					if p.meta != nil {
+						if _, ok := p.meta.LocalSchemeOf(d.Field.Name); ok {
+							return true
+						}
+					}
+					_, ok := p.LocalSchemeOf(d.Field.Name)
+					return ok
+				}); hint != "" {
+					return tv, fmt.Errorf("field %q not found in %s; %s", d.Field.Name, rec, hint)
+				}
 			}
 			if declared := importedModuleDeclarations(rec); declared != nil {
 				return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, declared.importedAs)

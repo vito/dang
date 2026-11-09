@@ -1,0 +1,10 @@
+[1m[31mError:[0m field "encode" not found in Test.JSON; Test.JSON is a different type from the builtin JSON, which has it
+  [2m[34m--> errors/schema_scalar_json_has_no_codec.dang:5:7[0m
+ [2m    |[0m
+ [2m  3 | # A schema's `scalar JSON` is a separate type from the builtin JSON: the codec[0m
+ [2m  4 | # namespace is the builtin's alone, and the error says which JSON this is.[0m
+ [2m[34m[1m  5 | [0mprint(Test.JSON.encode([7]))
+[2m             [31m^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

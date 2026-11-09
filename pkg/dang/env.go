@@ -1345,6 +1345,11 @@ func (t *Type) Normalize(k, v hm.TypeVarSet) (hm.Type, error) { return t, nil }
 func (t *Type) Types() hm.Types                               { return nil }
 
 func (t *Type) String() string {
+	if t.metaOf != nil {
+		// A meta-type displays as the type it describes, qualifier
+		// included (`Dagger.JSON`).
+		return t.metaOf.String()
+	}
 	if t.Named != "" {
 		if t.Qualifier != "" {
 			return t.Qualifier + "." + t.Named
