@@ -17,8 +17,9 @@ import (
 // print render a value.
 //
 //   - a record or object is a record literal of its public data fields,
-//     `{{a: 1}}`, in the order encoding uses (see objectBindings); one with
-//     none (a namespace, a type of methods only) shows by name;
+//     `{{a: 1}}`, in the order encoding uses (see objectBindings), `{{}}`
+//     when all of them are private; one with no data fields at all (a
+//     namespace, a type of methods only) shows by name;
 //   - decoded data is the literal of the data it holds: an object is a map
 //     literal with sorted keys, `["a": 1]`;
 //   - a float always reads back as a float (`1.0`), an enum value nested in
@@ -95,16 +96,18 @@ func writeRepr(b *strings.Builder, v Value) {
 		// Data fields only: methods and builtins are not data, and a private
 		// (`let`) field is the type's own business.
 		var fields []Keyed[Value]
+		hasData := false
 		for _, kv := range objectBindings(v) {
 			if _, isCallable := kv.Value.(Callable); isCallable {
 				continue
 			}
+			hasData = true
 			if fieldVisibility(v, kv.Key) == PrivateVisibility {
 				continue
 			}
 			fields = append(fields, kv)
 		}
-		if len(fields) == 0 {
+		if !hasData {
 			if mod, ok := v.Mod.(*Type); ok && mod.Named != "" {
 				// A namespace or a type of methods only shows by name.
 				b.WriteString(v.String())

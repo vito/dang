@@ -610,7 +610,8 @@ func diagnoseModule(have, want *Type) []string {
 	var issues []string
 	wantFields := want.Bindings(PublicVisibility)
 	if want.Named == "" && have.Named == "" {
-		// Anonymous records' fields are not public bindings; compare them all.
+		// A record's fields are all its data; compare every one, whatever
+		// visibility the record type was built with.
 		wantFields = func(yield func(string, *hm.Scheme) bool) {
 			for _, field := range want.AsRecord().Fields {
 				if !yield(field.Key, field.Value) {

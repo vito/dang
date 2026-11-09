@@ -1975,6 +1975,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 					return nil, err
 				}
 				narrowedMember.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
+				narrowedMember.SetVisibility(field.OutputKey(), PublicVisibility)
 			}
 
 			narrowedUnion.LinkMember(narrowedMember)

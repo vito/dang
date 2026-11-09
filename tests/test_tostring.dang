@@ -63,6 +63,27 @@ assert { toString(JSON) == "module JSON" }
 assert { toString(Doubler.{{a}}) == "{{a: 1}}" }
 assert { toString(JSON.decode("{\"x\": 1}") :: {{x: Int!}}!) == "{{x: 1}}" }
 
+# Inline-fragment selections are records too
+type Left {
+  x: Int! = 1
+}
+
+type Right {
+  y: Int! = 2
+}
+
+union Side = Left | Right
+
+let sides: [Side!]! = [Left, Right]
+assert { toString(sides.{{... on Left {{ x }}, ... on Right {{ y }}}}) == "[{{x: 1}}, {{y: 2}}]" }
+
+# An object whose data is all private shows no fields
+type Sealed {
+  let n: Int! = 5
+}
+
+assert { toString(Sealed) == "{{}}" }
+
 # Interpolation, join and toString agree
 let things = [{{n: 1, s: "x"}}]
 assert { `${things}` == toString(things) }

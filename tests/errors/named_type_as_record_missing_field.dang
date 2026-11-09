@@ -1,0 +1,8 @@
+# A named type passed where a record is expected names the field it lacks.
+type Cat {
+  name: String!
+}
+
+describe(r: {{name: String!, age: Int!}}!): String! { r.name }
+
+describe(Cat(name: "x"))
