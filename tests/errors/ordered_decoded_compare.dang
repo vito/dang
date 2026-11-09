@@ -1,0 +1,4 @@
+# Decoded data is not Ordered until it is given a type.
+let a = JSON.decode("1") :: Decoded!
+let b = JSON.decode("2") :: Decoded!
+a < b

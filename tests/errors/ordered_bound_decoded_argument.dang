@@ -1,0 +1,6 @@
+# A bounded type parameter rejects decoded data at the call.
+smallest[a: Ordered](xs: [a!]!): a {
+  xs.sort[0]
+}
+
+smallest(JSON.decode("[2, 1]") :: [Decoded!]!)

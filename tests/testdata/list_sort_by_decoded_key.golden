@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot sort by Decoded!: it is decoded data; give it a type first, e.g. `(JSON.decode(...) :: T)`
+[1m[31mError:[0m cannot use Decoded! for `k: Ordered`: it is decoded data; give it a type first, e.g. `(JSON.decode(...) :: T)`
   [2m[34m--> errors/list_sort_by_decoded_key.dang:3:11[0m
  [2m    |[0m
  [2m  1 | # A sort key can't be decoded data: cast it to the type it has first.[0m
