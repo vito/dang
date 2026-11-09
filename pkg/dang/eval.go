@@ -602,9 +602,6 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 
 			// Create a module for the scalar type (just a type placeholder)
 			scalarModuleVal := NewObject(scalarTypeScope)
-			// A scalar whose name matches a builtin scalar (e.g. an imported JSON
-			// scalar) doubles as that scalar's namespace.
-			attachBuiltinMethods(scalarModuleVal, scalarTypeScope)
 
 			// Add the scalar module to the environment
 			env.Bind(t.Name, scalarModuleVal, PublicVisibility)
@@ -1409,14 +1406,14 @@ func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType 
 
 // graphQLIntResultToValue and graphQLFloatResultToValue convert a GraphQL
 // number to a Dang value. GraphQL responses are decoded with UseNumber (see
-// querybuilder.unpack), so numbers arrive as json.Number — the same shape the
-// codec path produces — letting both paths share decodedNumberToInt.
+// querybuilder.unpack), so numbers arrive as json.Number, which converts to
+// DataNumber to share decodedNumberToInt with decoded data.
 func graphQLIntResultToValue(raw any) (Value, error) {
 	num, ok := raw.(json.Number)
 	if !ok {
 		return nil, fmt.Errorf("expected number for GraphQL Int, got %T", raw)
 	}
-	val, err := decodedNumberToInt(num)
+	val, err := decodedNumberToInt(DataNumber(num))
 	if err != nil {
 		return nil, fmt.Errorf("expected integral number for GraphQL Int, got %q", num.String())
 	}
@@ -1540,14 +1537,16 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 
 // DeferredValue is an opaque decoded data value returned by deserializers like
 // JSON.decode and YAML.decode. It is materialized only when an expected type is
-// available. Codec records which format produced it, so materialization can
-// honor that format's @FORMAT.field key renames. Strict records a
-// `decode(strict: true)`: materializing into an object then rejects input keys
-// that match no field. It travels with the value (and with any part of it left
-// deferred), since the target type is only known where it is materialized.
+// available. Naming is how the decoder's data names a type's fields (a
+// format's @FORMAT.field renames), so a later cast reads the data as its
+// decode would have; nil means every field under its own name. Strict
+// records a `decode(strict: true)`: materializing into an object then rejects
+// input keys that match no field. It travels with the value (and with any
+// part of it left deferred), since the target type is only known where it is
+// materialized.
 type DeferredValue struct {
 	Raw    any
-	Codec  Codec
+	Naming FieldNaming
 	Strict bool
 }
 
@@ -1558,15 +1557,11 @@ func (d DeferredValue) Type() hm.Type {
 }
 
 func (d DeferredValue) String() string {
-	bytes, err := json.Marshal(d.Raw)
-	if err != nil {
-		return fmt.Sprintf("deferred:%v", d.Raw)
-	}
-	return string(bytes)
+	return Repr(d)
 }
 
 func (d DeferredValue) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.Raw)
+	return decodedJSON(d)
 }
 
 // StringValue represents a string value
@@ -1609,9 +1604,7 @@ func (e EnumValue) MarshalJSON() ([]byte, error) {
 // ScalarValue represents a custom scalar value
 type ScalarValue struct {
 	// Val is the scalar's string form: the string itself for a string-valued
-	// scalar, and otherwise (Encoded) the JSON encoding of its value. A Dang
-	// JSON value's Val (see isJSONScalar) is always compact JSON text: decoding
-	// produces it, and a String must validate to become one.
+	// scalar, and otherwise (Encoded) the JSON encoding of its value.
 	Val        string
 	ScalarType hm.Type
 	// Encoded marks a scalar whose GraphQL value is not a string (a number,
@@ -1619,10 +1612,6 @@ type ScalarValue struct {
 	// the server as that same value and reads as the JSON text in String
 	// slots.
 	Encoded bool
-	// jsonKey is a Dang JSON value's canonical form (see canonicalJSONKey),
-	// computed once when the value is made so comparing JSON values as data
-	// needn't parse them again. Empty when unknown (a value a host built).
-	jsonKey string
 }
 
 var _ Value = ScalarValue{}

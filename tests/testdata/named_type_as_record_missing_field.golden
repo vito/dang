@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use Cat! as {age: Int!, name: String!}!:
+  - missing field "age"
+  [2m[34m--> errors/named_type_as_record_missing_field.dang:8:10[0m
+ [2m    |[0m
+ [2m  6 | describe(r: {{name: String!, age: Int!}}!): String! { r.name }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0mdescribe(Cat(name: "x"))
+[2m                [31m^^^^^^^^^^^^^^[0m
+ [2m  9 | [0m
+ [2m    |[0m
+

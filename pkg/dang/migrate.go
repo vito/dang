@@ -250,7 +250,7 @@ func migrationCanonical(n Node) Node {
 	// way.
 	if len(r.Clauses) == 1 {
 		clause := r.Clauses[0]
-		if clause.IsTypePattern() && clause.TypePattern.Name == "Error" &&
+		if clause.IsTypePattern() && clause.PatternName() == "Error" &&
 			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
 			fallbackFormSafe(clause.Expr) {
 			canonical.Clauses = nil

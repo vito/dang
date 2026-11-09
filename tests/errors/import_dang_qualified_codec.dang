@@ -1,0 +1,6 @@
+# A native Dang module's namespace holds only its own declarations: the
+# builtin codec namespaces, which the module sees, are not reachable through
+# it.
+import Lib
+
+Lib.YAML.encode(1)

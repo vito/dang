@@ -1,0 +1,275 @@
+# `case` on decoded data: a type pattern arm matches when the data has the
+# shape of its type, the first such arm wins, and `else` is required.
+describe(d: Decoded!): String! {
+  case (d) {
+    n: Int => `int ${n}`
+    s: String => `string ${s}`
+    items: [Decoded!] => `list of ${items.length}`
+    fields: Map[Decoded!] => `object with ${fields.keys.join(",")}`
+    else => "something else"
+  }
+}
+
+assert { describe(JSON.decode("42")) == "int 42" }
+assert { describe(JSON.decode("\"hi\"")) == "string hi" }
+assert { describe(JSON.decode("[1, 2, 3]")) == "list of 3" }
+assert { describe(YAML.decode("b: 1\na: 2")) == "object with a,b" }
+assert { describe(JSON.decode("true")) == "something else" }
+
+# The first matching arm wins: 1 is an Int, and a Float too, so an Int arm
+# after a Float arm is unreachable (see errors/case_decoded_int_after_float).
+asFloat(d: Decoded!): String! {
+  case (d) {
+    f: Float => `float ${f}`
+    else => "neither"
+  }
+}
+
+assert { asFloat(JSON.decode("1")) == "float 1.0" }
+
+# Types: an arm's type reads only the fields it declares, so an object with
+# more keys still matches it; put the most specific arm first.
+type Point {
+  x: Int!
+  y: Int!
+}
+
+type Named {
+  name: String!
+}
+
+shape(d: Decoded!): String! {
+  case (d) {
+    p: Point => `point ${p.x},${p.y}`
+    named: Named => `named ${named.name}`
+    else => "unknown"
+  }
+}
+
+assert { shape(JSON.decode("{\"x\": 1, \"y\": 2}")) == "point 1,2" }
+assert { shape(JSON.decode("{\"name\": \"n\", \"extra\": true}")) == "named n" }
+assert { shape(JSON.decode("[]")) == "unknown" }
+
+# Strict decoding carries over: an object with keys the arm's type doesn't
+# read does not match it.
+assert { shape(JSON.decode("{\"x\": 1, \"y\": 2, \"z\": 3}", strict: true)) == "unknown" }
+
+# Null data matches no type arm; a `null` arm or else takes it.
+nullable(d: Decoded): String! {
+  case (d) {
+    null => "null"
+    n: Int => `int ${n}`
+    else => "other"
+  }
+}
+
+assert { nullable(JSON.decode("null") :: Decoded) == "null" }
+assert { nullable(JSON.decode("null") :: Decoded!) == "null" }
+assert { nullable(JSON.decode("7")) == "int 7" }
+
+# Walking nested data a level at a time.
+let doc = JSON.decode("{\"modules\": [{\"name\": \"a\"}, 3]}") :: Map[Decoded!]!
+let kinds = (doc["modules"]! :: [Decoded!]!).map { m =>
+  case (m) {
+    mod: Named => mod.name
+    else => "?"
+  }
+}
+
+assert { kinds == ["a", "?"] }
+
+# A Decoded arm takes any data as it is, so it stands in for else; a
+# trailing `!` on a list or map pattern is allowed and changes nothing.
+listOrRest(d: Decoded!): String! {
+  case (d) {
+    xs: [Decoded!]! => `list ${xs.length}`
+    rest: Decoded => "not a list"
+  }
+}
+
+assert { listOrRest(JSON.decode("[1]")) == "list 1" }
+assert { listOrRest(JSON.decode("{}")) == "not a list" }
+
+# Null inside walked data is a Decoded! holding null: it matches no type arm
+# but a Decoded one or else.
+let holder = JSON.decode("{\"a\": null}") :: Map[Decoded!]!
+let held = case (holder["a"]!) {
+  n: Int => "int"
+  else => "null data"
+}
+
+assert { held == "null data" }
+
+# Matching looks only at the data's shape and runs no user code; only the
+# matching arm converts, like a cast, so its errors are the case's errors.
+type Pos {
+  n: Int!
+
+  new(n: Int!) {
+    if (n < 0) {
+      raise "negative"
+    }
+    self.n = n
+    self
+  }
+}
+
+type Label {
+  text: String!
+}
+
+classify(d: Decoded!): String! {
+  case (d) {
+    p: Pos => `pos ${p.n}`
+    l: Label => `label ${l.text}`
+    else => "other"
+  }
+}
+
+assert { classify(JSON.decode("{\"text\": \"hi\"}")) == "label hi" }
+assert { classify(JSON.decode("{\"n\": 3}")) == "pos 3" }
+let raised = classify(JSON.decode("{\"n\": -3, \"text\": \"x\"}")) rescue {
+  e: Error => e.message
+}
+
+assert { raised.contains("negative") }
+
+# A custom scalar arm matches any string; its hook rejecting the string is an
+# error, not a fall-through.
+scalar Upper {
+  new(raw: String!) {
+    if (raw != raw.toUpper) {
+      raise `not upper: ${raw}`
+    }
+    raw
+  }
+}
+
+shout(d: Decoded!): String! {
+  case (d) {
+    u: Upper => `upper ${u}`
+    else => "not a string"
+  }
+}
+
+assert { shout(JSON.decode("\"HI\"")) == "upper HI" }
+assert { shout(JSON.decode("1")) == "not a string" }
+let rejected = shout(JSON.decode("\"hi\"")) rescue {
+  e: Error => e.message
+}
+
+assert { rejected.contains("not upper: hi") }
+
+# An ignored field reads no key, so a type needing it can't match; an
+# explicit null for a defaulted field takes the default.
+type Creds {
+  user: String!
+  token: String! @JSON.ignore
+}
+
+type Opts {
+  kind: String!
+  level: Int! = 3
+}
+
+creds(d: Decoded!): String! {
+  case (d) {
+    c: Creds => `creds ${c.user}`
+    o: Opts => `opts ${o.level}`
+    else => "other"
+  }
+}
+
+assert { creds(JSON.decode("{\"user\": \"u\", \"token\": \"t\"}")) == "other" }
+assert { creds(JSON.decode("{\"kind\": \"k\", \"level\": null}")) == "opts 3" }
+assert { (JSON.decode("{\"kind\": \"k\", \"level\": null}") :: Opts!).level == 3 }
+
+# ...except a Decoded! field, which holds null data as it is.
+type Extra {
+  kind: String!
+  extra: Decoded! = JSON.decode("[1]")
+}
+
+let extra = JSON.decode("{\"kind\": \"k\", \"extra\": null}") :: Extra!
+
+assert { JSON.encode(extra) == "{\"kind\":\"k\",\"extra\":null}" }
+
+# A String arm after an enum arm still runs for other strings.
+enum Hue {
+  RED
+  GREEN
+}
+
+hue(d: Decoded!): String! {
+  case (d) {
+    h: Hue => "hue"
+    s: String => `string ${s}`
+    else => "other"
+  }
+}
+
+assert { [hue(JSON.decode("\"RED\"")), hue(JSON.decode("\"x\""))] == ["hue", "string x"] }
+
+# Value patterns alone on decoded data need no else.
+let maybe = JSON.decode("null")
+let isNull = case (maybe) {
+  null => true
+}
+
+assert { isNull == true }
+
+# On a nullable operand, a Decoded arm and a `null` arm cover everything.
+whole(d: Decoded): String! {
+  case (d) {
+    null => "null"
+    n: Int => `int ${n}`
+    rest: Decoded => "rest"
+  }
+}
+
+assert { whole(null) == "null" }
+assert { whole(JSON.decode("2")) == "int 2" }
+assert { whole(JSON.decode("\"s\"")) == "rest" }
+
+# On a nullable operand null data takes the `null` arm however it arrived:
+# straight from decode, through a parameter, or read out of a map.
+let decodedNull = JSON.decode("null")
+let nulls = JSON.decode("{\"a\": null}") :: Map[Decoded!]!
+
+restFirst(d: Decoded): String! {
+  case (d) {
+    rest: Decoded => "rest"
+    null => "null"
+  }
+}
+
+let direct = case (decodedNull) {
+  rest: Decoded => "rest"
+  null => "null"
+}
+
+let fromMap = case (nulls["a"]) {
+  rest: Decoded => "rest"
+  null => "null"
+}
+
+assert { [direct, restFirst(decodedNull), fromMap] == ["null", "null", "null"] }
+
+# A type holding an interface only in a nullable field can still match.
+interface Tagged {
+  tag: String!
+}
+
+type Holder {
+  label: String!
+  inner: Tagged
+}
+
+let held2 = case (JSON.decode("{\"label\": \"x\"}")) {
+  h: Holder => h.label
+  else => "?"
+}
+
+assert { held2 == "x" }
+
+print("case on Decoded tests passed!")

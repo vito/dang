@@ -1,9 +1,0 @@
-[1m[31mError:[0m "a" is not JSON (invalid JSON: invalid character 'a' looking for beginning of value); a JSON string is written with its quotes: "\"a\""
-  [2m[34m--> errors/json_literal_not_json.dang:2:25[0m
- [2m    |[0m
- [2m  1 | let kinds = JSON.decode("{\"kind\": \"a\"}") :: Map[JSON!]![0m
- [2m[34m[1m  2 | [0mprint(kinds["kind"]! == "a")
-[2m                               [31m^^^[0m
- [2m  3 | [0m
- [2m    |[0m
-

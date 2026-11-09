@@ -214,6 +214,17 @@ assert { u.name == "Jane Smith" }
 		require.True(t, strings.HasPrefix(queries[0], "mutation "), queries[0])
 		require.NotContains(t, queries[0], "__typename")
 	})
+
+	t.Run("does not re-send a mutation to show its result", func(ctx context.Context, t *testctx.T) {
+		queries := run(t, `
+let n = Mutation.touchNode(id: "Post:1")
+print(n)
+print(`+"`shown: ${n}`"+`)
+assert { n.id == "Post:1" }
+`)
+		require.Len(t, queries, 1)
+		require.True(t, strings.HasPrefix(queries[0], "mutation "), queries[0])
+	})
 }
 
 // `case` matches a GraphQL interface or union handle by its concrete type. A

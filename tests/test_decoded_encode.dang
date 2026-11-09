@@ -1,0 +1,68 @@
+# Encoding embeds Decoded data as the data it is, and JSON.encode's options
+# reach inside it.
+let written = JSON.decode("{\"b\": 1, \"a\": {\"d\": \"<x>\", \"c\": [2, 1]}}") :: Decoded!
+assert { JSON.encode(written) == "{\"a\":{\"c\":[2,1],\"d\":\"\\u003cx\\u003e\"},\"b\":1}" }
+assert { JSON.encode(written, escapeHTML: false) == "{\"a\":{\"c\":[2,1],\"d\":\"<x>\"},\"b\":1}" }
+assert { JSON.encode({{v: written}}, indent: "  ", escapeHTML: false) == "{\n  \"v\": {\n    \"a\": {\n      \"c\": [\n        2,\n        1\n      ],\n      \"d\": \"<x>\"\n    },\n    \"b\": 1\n  }\n}" }
+assert { JSON.encode(JSON.decode("{\"z\": 1.50, \"y\": 2}") :: Decoded!, sortKeys: true) == "{\"y\":2,\"z\":1.50}" }
+
+# Strict decoding checks keys against a type, so it leaves a Decoded field's
+# insides alone: they are data, like a Map's keys. Keys around it are still
+# checked, and a key repeated anywhere in the document is still rejected.
+type Entry {
+  name: String!
+  extra: Decoded!
+}
+
+let strictEntry = JSON.decode(
+  "{\"name\": \"e\", \"extra\": {\"anything\": {\"goes\": 1, \"more\": 2}}}",
+  strict: true,
+) :: Entry!
+assert { JSON.encode(strictEntry.extra) == "{\"anything\":{\"goes\":1,\"more\":2}}" }
+let unknownAround = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": 1, \"typo\": 2}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { unknownAround.contains("field typo not found") }
+let repeatedInside = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": {\"k\": 1, \"k\": 2}}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { repeatedInside.contains("field k already set") }
+
+# TOML decodes into Decoded as well.
+let fromTOML = TOML.decode("[server]\nport = 8080\n") :: Map[Decoded!]!
+assert { JSON.encode(fromTOML["server"]!) == "{\"port\":8080}" }
+
+# TOML's nan and inf decode like YAML's .inf: kept, and an error only where
+# a finite number is needed. A byte that is not UTF-8 encodes as U+FFFD.
+let odd = TOML.decode("g = nan\nh = 1.5") :: Map[Decoded!]!
+assert { JSON.encode(odd["h"]!) == "1.5" }
+let nanError = JSON.encode(odd["g"]!) rescue {
+  e: Error => e.message
+}
+assert { nanError.contains("no finite value") }
+let nanFloat = toString(TOML.decode("g = nan") :: Map[Float!]!) rescue {
+  e: Error => e.message
+}
+assert { nanFloat.contains("invalid number") }
+assert { TOML.encode({{k: "\xff"}}) == "k = \"�\"" }
+# JSON escapes such a byte, as encoding/json does.
+assert { JSON.encode(["k\xff": "v\xff"]) == "{\"k\\ufffd\":\"v\\ufffd\"}" }
+
+# toString, join and interpolation render Decoded data as the Dang literal of
+# the data it holds, as they do other non-string values: an object is a map
+# literal with sorted keys, and a decoded string is quoted.
+let nested = JSON.decode("{\"s\": \"x\", \"a\": {\"b\": 1.50}}") :: Map[Decoded!]!
+assert { toString(nested) == "[\"a\": [\"b\": 1.50], \"s\": \"x\"]" }
+assert { toString({{v: nested["a"]!}}) == "{{v: [\"b\": 1.50]}}" }
+assert { [nested["a"]!, nested["s"]!].join(" ") == "[\"b\": 1.50] \"x\"" }
+let s = nested["s"]!
+assert { `s is ${s}` == "s is \"x\"" }
+assert { toString(JSON.decode("[]") :: Decoded!) == "[]" }
+assert { toString(JSON.decode("{}") :: Decoded!) == "[:]" }
+assert { toString(YAML.decode("n: -.5") :: Decoded!) == "[\"n\": -0.5]" }
+
+print("Decoded encoding tests passed!")

@@ -1,0 +1,5 @@
+import Test
+
+# An import's namespace holds only what its schema defines: Dang's codec
+# namespaces are not reachable through it.
+Test.YAML.encode(1)

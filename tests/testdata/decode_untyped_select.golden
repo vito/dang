@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot select "name" from decoded data (Decoded) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T).name`
+[1m[31mError:[0m cannot select "name" from decoded data (Decoded) before giving it a type; cast it to the type it has first, e.g. `(data :: T).name`
   [2m[34m--> errors/decode_untyped_select.dang:3:1[0m
  [2m    |[0m
  [2m  1 | # A decode result has no fields until it is given a type.[0m

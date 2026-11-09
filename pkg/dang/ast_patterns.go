@@ -22,6 +22,11 @@ type Case struct {
 	// every member of a non-null union). A non-exhaustive case can fall
 	// through and evaluate to null, so its result type is nullable.
 	exhaustive bool
+
+	// nullableDecoded is set during inference when the operand is nullable
+	// Decoded: there, null data is the operand being null, so it takes only
+	// a `null` arm or else, however the null was decoded or passed along.
+	nullableDecoded bool
 }
 
 var _ Node = (*Case)(nil)
@@ -40,6 +45,9 @@ func (c *Case) ReferencedSymbols() []string {
 		}
 		if clause.TypePattern != nil {
 			symbols = append(symbols, clause.TypePattern.Name)
+		}
+		if clause.PatternType != nil {
+			symbols = append(symbols, clause.PatternType.ReferencedSymbols()...)
 		}
 		symbols = append(symbols, clause.Expr.ReferencedSymbols()...)
 	}
@@ -88,6 +96,13 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 		if len(c.Clauses) == 0 {
 			return nil, fmt.Errorf("Case.Infer: no case clauses")
+		}
+
+		if unionHoldsDecoded(exprType) {
+			// Its arms would mix two kinds of matching: by a value's
+			// type for the other options, and by the data's shape for
+			// the Decoded one, which could also match those arms.
+			return nil, NewInferError(fmt.Errorf("a case can't match %s, a union holding decoded data: separate the decoded data first, e.g. rescue to null rather than to a value of another type", exprType), c.Expr)
 		}
 
 		hasElse := false
@@ -143,7 +158,11 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				caseType, err = inferArm(clause, func() (hm.Type, error) {
 					return WithInferErrorHandling(clause, func() (hm.Type, error) {
 						clauseEnv := env.Clone()
-						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
+						var bound hm.Type = hm.NonNullType{Type: clause.resolvedMemberType}
+						if clause.decodedPatternType != nil {
+							bound = clause.decodedPatternType
+						}
+						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, bound))
 						return clause.Expr.Infer(ctx, clauseEnv, fresh)
 					})
 				})
@@ -209,6 +228,33 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		c.exhaustive = hasElse || c.coversOperand(env, exprType, valuePatterns)
+		inner, nullable := decodedOperand(exprType)
+		c.nullableDecoded = inner && nullable
+		if inner && !hasElse {
+			hasTypeArm, catchAll := false, false
+			for _, clause := range c.Clauses {
+				if clause.decodedPatternType == nil {
+					continue
+				}
+				hasTypeArm = true
+				// A Decoded arm takes any non-null data; null data
+				// needs a `null` pattern too.
+				if isDecodedCatchAll(clause) {
+					catchAll = true
+				}
+			}
+			switch {
+			case catchAll && (!nullable || hasNullPattern(valuePatterns)):
+				hasElse = true
+				c.exhaustive = true
+			case catchAll:
+				return nil, NewInferError(fmt.Errorf("a case on nullable decoded data needs a `null` arm or an else: a Decoded arm takes no null"), c)
+			case hasTypeArm:
+				// Decoded data may have the shape of none of the
+				// patterns' types, and nothing about its type says which.
+				return nil, NewInferError(fmt.Errorf("a case on decoded data needs an else: the data may match none of the patterns"), c)
+			}
+		}
 		if !c.exhaustive {
 			// Nothing guarantees a clause matches, so the case can fall
 			// through and evaluate to null.
@@ -386,9 +432,8 @@ func moduleCoveredBy(mod *Type, patterns []*Type) bool {
 
 // inferTypePatternClause validates a type pattern clause against the operand type.
 // The operand must be a union (or interface), and the type pattern must name one of its members.
-func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Fresher, clause *CaseClause, exprType hm.Type) error {
-	typeScope, ok := env.(TypeScope)
-	if !ok {
+func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, exprType hm.Type) error {
+	if _, ok := env.(TypeScope); !ok {
 		return NewInferError(fmt.Errorf("type patterns require a module environment"), clause)
 	}
 
@@ -398,8 +443,49 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 		unwrapped = nn.Type
 	}
 
+	if _, ok := unwrapped.(DecodedType); ok {
+		// Decoded data matches a pattern when it has its type's shape.
+		var pattern TypeNode = clause.PatternType
+		if pattern == nil {
+			if clause.PatternBase != nil {
+				// Report a bad qualified name as on any other operand.
+				if _, err := clause.lookupNamedPattern(ctx, env, fresh); err != nil {
+					return NewInferError(err, clause.TypePattern)
+				}
+			}
+			pattern = clause.namedPatternNode()
+		}
+		t, err := pattern.Infer(ctx, env, fresh)
+		if err != nil {
+			return WrapInferError(err, clause.patternNode())
+		}
+		if _, nn := t.(hm.NonNullType); !nn {
+			t = hm.NonNullType{Type: t}
+		}
+		if len(t.FreeTypeVar()) > 0 {
+			return NewInferError(fmt.Errorf("a pattern on decoded data needs a concrete type, not %s", t), clause.patternNode())
+		}
+		if bad, at := abstractDecodeTarget(t); bad != nil {
+			if at != "" {
+				return NewInferError(fmt.Errorf("decoded data never materializes as %s %s, which %s holds", bad.Kind, bad.Name(), at), clause.patternNode())
+			}
+			return NewInferError(fmt.Errorf("decoded data never materializes as %s %s: match its member types instead", bad.Kind, bad.Name()), clause.patternNode())
+		}
+		if err := checkDecodeTarget(env, t); err != nil {
+			return WrapInferError(err, clause.patternNode())
+		}
+		clause.decodedPatternType = t
+		return nil
+	}
+	if clause.PatternType != nil {
+		return NewInferError(fmt.Errorf("list and map type patterns match only decoded data, not %s", exprType), clause.patternNode())
+	}
+
 	// Resolve the type pattern from the operand's members first (handles
 	// narrowed unions from inline fragments), falling back to the environment.
+	// A qualified pattern names its type outright, so it is looked up first
+	// and then found among the operand's members by identity.
+	patternName := clause.PatternName()
 	var memberMod *Type
 	if operandMod, ok := unwrapped.(*Type); ok {
 		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
@@ -407,25 +493,42 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 		}
 
 		if operandMod.Kind == UnionKind {
+			var named *Type
+			if clause.PatternBase != nil {
+				var err error
+				named, err = clause.lookupNamedPattern(ctx, env, fresh)
+				if err != nil {
+					return NewInferError(err, clause.TypePattern)
+				}
+			}
 			for _, m := range operandMod.GetMembers() {
-				if mod, ok := m.(*Type); ok && mod.Name() == clause.TypePattern.Name {
+				mod, ok := m.(*Type)
+				if !ok {
+					continue
+				}
+				if named != nil && canonicalModule(mod) == canonicalModule(named) ||
+					named == nil && mod.Name() == clause.TypePattern.Name {
 					memberMod = mod
 					break
 				}
 			}
 			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod), clause.TypePattern)
+				return NewInferError(fmt.Errorf("type %s is not a member of union %s", patternName, operandMod), clause.TypePattern)
 			}
 		} else if operandMod.Kind == InterfaceKind {
-			var err error
-			memberMod, err = resolveInterfaceTypePattern(typeScope, operandMod, clause.TypePattern.Name)
+			named, err := clause.lookupNamedPattern(ctx, env, fresh)
+			if err == nil {
+				memberMod, err = resolveInterfaceTypePattern(operandMod, named, patternName)
+			}
 			if err != nil {
 				return NewInferError(err, clause.TypePattern)
 			}
 		}
 	} else if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
-		var err error
-		memberMod, err = resolveInlineUnionTypePattern(typeScope, operandUnion, clause.TypePattern.Name)
+		named, err := clause.lookupNamedPattern(ctx, env, fresh)
+		if err == nil {
+			memberMod, err = resolveInlineUnionTypePattern(operandUnion, named, patternName)
+		}
 		if err != nil {
 			return NewInferError(err, clause.TypePattern)
 		}
@@ -438,16 +541,10 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 	return nil
 }
 
-func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string) (*Type, error) {
-	memberType, found := env.NamedType(patternName)
-	if !found {
-		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
-	}
-	memberMod, ok := memberType.(*Type)
-	if !ok {
-		return nil, fmt.Errorf("type pattern %s is not an object type", patternName)
-	}
-
+// resolveInterfaceTypePattern checks that memberMod, the type a pattern
+// names, matches values of iface: iface itself (a typed catch-all) or an
+// implementer.
+func resolveInterfaceTypePattern(iface *Type, memberMod *Type, patternName string) (*Type, error) {
 	// Allow the interface itself as a type pattern (matches any implementer,
 	// like a typed catch-all).
 	if memberMod == iface {
@@ -463,16 +560,9 @@ func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string)
 	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
 
-func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternName string) (*Type, error) {
-	patternType, found := env.NamedType(patternName)
-	if !found {
-		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
-	}
-	patternMod, ok := patternType.(*Type)
-	if !ok {
-		return nil, fmt.Errorf("type pattern %s is not a named type", patternName)
-	}
-
+// resolveInlineUnionTypePattern checks that patternMod, the type a pattern
+// names, is one of union's options or a member of one.
+func resolveInlineUnionTypePattern(union *hm.UnionType, patternMod *Type, patternName string) (*Type, error) {
 	for _, option := range union.Options {
 		optionMod, ok := moduleType(option)
 		if !ok {
@@ -485,7 +575,7 @@ func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternNa
 			return patternMod, nil
 		}
 		if optionMod.Kind == InterfaceKind {
-			if _, err := resolveInterfaceTypePattern(env, optionMod, patternName); err == nil {
+			if _, err := resolveInterfaceTypePattern(optionMod, patternMod, patternName); err == nil {
 				return patternMod, nil
 			}
 		}
@@ -511,7 +601,9 @@ func (c *Case) Walk(fn func(Node) bool) {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)
 		}
-		if clause.TypePattern != nil {
+		if clause.TypePattern != nil && clause.PatternBase == nil {
+			// A qualified pattern's name is not a bare reference to a
+			// type in scope (see PatternBase), so it isn't walked as one.
 			fn(clause.TypePattern)
 		}
 		clause.Expr.Walk(fn)
@@ -558,6 +650,24 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			}
 
 			// Type pattern clauses: check against the resolved type
+			if clause.IsTypePattern() && clause.decodedPatternType != nil {
+				// Decoded data matches an arm by its shape alone, which runs
+				// no user code; the first matching arm's data is then
+				// materialized like a cast, and its errors (a scalar hook
+				// rejecting the data, a constructor raising) are the case's.
+				data, ok := typedVal.(DeferredValue)
+				if !ok || (c.nullableDecoded && data.Raw == nil) ||
+					!decodedShapeMatches(ctx, scope, data, clause.decodedPatternType) {
+					continue
+				}
+				matched, err := materializeDeferred(ctx, scope, data, clause.decodedPatternType, "")
+				if err != nil {
+					return nil, err
+				}
+				childScope := scope.Derive(false)
+				childScope.Bind(clause.Binding, matched, PrivateVisibility)
+				return EvalNode(ctx, childScope, clause.Expr)
+			}
 			if clause.IsTypePattern() {
 				if matchesType(typedVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding. It is unsealed, like
@@ -639,13 +749,13 @@ func (c *Case) needsConcreteType(g GraphQLValue) bool {
 func (c *Case) unresolvedMutationPatternError(g GraphQLValue, clause *CaseClause) error {
 	var fragments []string
 	for _, cl := range c.Clauses {
-		if cl.IsTypePattern() && cl.TypePattern.Name != g.TypeName {
-			fragments = append(fragments, fmt.Sprintf("... on %s {{ ... }}", cl.TypePattern.Name))
+		if cl.TypePattern != nil && cl.PatternName() != g.TypeName {
+			fragments = append(fragments, fmt.Sprintf("... on %s {{ ... }}", cl.PatternName()))
 		}
 	}
 	return fmt.Errorf(
 		"cannot match type pattern %s against a %s reached through mutation %s: finding its concrete type would send the mutation again; select each possible type's fields on the mutation call instead, e.g. .{{ %s }}",
-		clause.TypePattern.Name, g.TypeName, g.Name, strings.Join(fragments, ", "),
+		clause.PatternName(), g.TypeName, g.Name, strings.Join(fragments, ", "),
 	)
 }
 
@@ -710,13 +820,132 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 			if typePatternCovers(prev.resolvedMemberType, clause.resolvedMemberType) {
 				return NewInferError(
 					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
-						clause.TypePattern.Name, prev.TypePattern.Name, prev.Loc.Line),
+						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
 					clause.TypePattern,
 				)
 			}
 		}
 	}
+	if clause.IsTypePattern() && clause.decodedPatternType != nil {
+		// On decoded data, an arm is dead after one of the same type, or
+		// after a Decoded arm, which takes any data.
+		for _, prev := range priorPatterns {
+			if prev.decodedPatternType == nil {
+				continue
+			}
+			if isDecodedCatchAll(prev) || decodedPatternCovers(prev.decodedPatternType, clause.decodedPatternType) {
+				return NewInferError(
+					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
+						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
+					clause.patternNode(),
+				)
+			}
+		}
+	}
 	return nil
+}
+
+// decodedPatternCovers reports whether every piece of data with the shape of
+// cur also has the shape of prev (see shapeMatcher), so an arm for cur after
+// one for prev never runs. Besides the same type: `Float` covers `Int`; a
+// String or scalar arm (which takes any string) covers String, scalar and
+// enum arms, and a schema scalar without a hook takes any data at all; a
+// list or map arm covers one whose elements its elements cover, and
+// `Map[Decoded]` covers every object.
+func decodedPatternCovers(prev, cur hm.Type) bool {
+	if prev.Eq(cur) {
+		return true
+	}
+	_, prevNonNull := prev.(hm.NonNullType)
+	_, curNonNull := cur.(hm.NonNullType)
+	p, c := unwrapNonNull(prev), unwrapNonNull(cur)
+	if _, ok := p.(DecodedType); ok {
+		// Decoded and Decoded! both take any data, null included.
+		return true
+	}
+	if prevNonNull && !curNonNull {
+		// cur takes null where prev doesn't.
+		return false
+	}
+	if p.Eq(c) {
+		return true
+	}
+	if pmod, ok := p.(*Type); ok && pmod.Kind == ScalarKind && holdsAnyData(pmod) {
+		return true
+	}
+	if val, ok := mapValueTarget(p); ok {
+		if cval, ok := mapValueTarget(c); ok {
+			return decodedPatternCovers(val, cval)
+		}
+		if _, any := unwrapNonNull(val).(DecodedType); any {
+			mod, ok := c.(*Type)
+			return ok && (mod.Kind == ObjectKind || mod.Kind == InputKind)
+		}
+		return false
+	}
+	if elem, ok := listElementTarget(p); ok {
+		celem, ok := listElementTarget(c)
+		return ok && decodedPatternCovers(elem, celem)
+	}
+	if p == FloatType && c == IntType {
+		return true
+	}
+	if takesAnyString(p) {
+		if c == StringType {
+			return true
+		}
+		cmod, ok := c.(*Type)
+		return ok && (cmod.Kind == ScalarKind || cmod.Kind == EnumKind) && !isPrimitiveScalar(cmod)
+	}
+	return false
+}
+
+// takesAnyString reports whether an arm of type t matches every string:
+// String, or any scalar besides the primitives (see shapeMatcher).
+func takesAnyString(t hm.Type) bool {
+	if t == StringType {
+		return true
+	}
+	mod, ok := t.(*Type)
+	return ok && mod.Kind == ScalarKind && !isPrimitiveScalar(mod)
+}
+
+// unionHoldsDecoded reports whether a case operand is an inline union with
+// a Decoded option, like `JSON.decode(t) rescue 0` (Decoded | Int!).
+func unionHoldsDecoded(exprType hm.Type) bool {
+	union, ok := unwrapNonNull(exprType).(*hm.UnionType)
+	if !ok {
+		return false
+	}
+	for _, option := range union.Options {
+		if _, decoded := unwrapNonNull(option).(DecodedType); decoded {
+			return true
+		}
+	}
+	return false
+}
+
+// decodedOperand reports whether a case operand is decoded data, and whether
+// it may be null.
+func decodedOperand(exprType hm.Type) (decoded, nullable bool) {
+	inner := exprType
+	if nn, ok := exprType.(hm.NonNullType); ok {
+		inner = nn.Type
+	} else {
+		nullable = true
+	}
+	_, decoded = inner.(DecodedType)
+	return decoded, nullable
+}
+
+// isDecodedCatchAll reports whether a clause on decoded data is a Decoded
+// arm, which takes any non-null data as it is.
+func isDecodedCatchAll(clause *CaseClause) bool {
+	if clause.decodedPatternType == nil {
+		return false
+	}
+	_, ok := unwrapNonNull(clause.decodedPatternType).(DecodedType)
+	return ok
 }
 
 // valueModule extracts the *Type backing a runtime value.
@@ -764,18 +993,180 @@ type CaseClause struct {
 	IsElse      bool    // true if this is an else clause
 	Binding     string  // variable name for type pattern (e.g. "user" in "user: User => ...")
 	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User => ...")
+	// PatternBase qualifies TypePattern: the `Lib` in `g: Lib.Greeter =>`,
+	// resolved like the same qualified type written anywhere else.
+	PatternBase *NamedTypeNode
+	// PatternType is a list or map type pattern (`items: [Decoded!] => ...`,
+	// `obj: Map[Decoded!] => ...`), which only decoded data can match.
+	PatternType TypeNode
 	Loc         *SourceLocation
 
 	// resolvedMemberType is set during inference to the concrete member type
 	// for this type pattern clause. For narrowed unions (from inline fragment
 	// selections), this is the narrowed type with only the selected fields.
 	resolvedMemberType *Type
+
+	// decodedPatternType is set during inference when the operand is
+	// decoded data: the non-null type whose shape the data must have for
+	// the clause to match, and which the matching data materializes at.
+	decodedPatternType hm.Type
 }
 
 var _ SourceLocatable = (*CaseClause)(nil)
 
 func (c *CaseClause) IsTypePattern() bool {
-	return c.TypePattern != nil
+	return c.TypePattern != nil || c.PatternType != nil
+}
+
+// PatternName is how a type pattern is written: `User`, `Lib.User`,
+// `[Decoded!]`.
+func (c *CaseClause) PatternName() string {
+	if c.TypePattern != nil {
+		return typeNodeString(c.namedPatternNode())
+	}
+	if c.PatternType != nil {
+		return typeNodeString(c.PatternType)
+	}
+	return ""
+}
+
+// namedPatternNode is a named type pattern as the type node it spells,
+// qualifier included.
+func (c *CaseClause) namedPatternNode() *NamedTypeNode {
+	return &NamedTypeNode{Base: c.PatternBase, Name: c.TypePattern.Name, Loc: c.TypePattern.Loc}
+}
+
+// lookupNamedPattern resolves a named type pattern to the type it names: a
+// qualified one like any qualified type, an unqualified one by name in env.
+func (c *CaseClause) lookupNamedPattern(ctx context.Context, env hm.Env, fresh hm.Fresher) (*Type, error) {
+	name := c.PatternName()
+	var t hm.Type
+	if c.PatternBase != nil {
+		resolved, err := c.namedPatternNode().Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("unknown type %s in type pattern", name)
+		}
+		t = unwrapNonNull(resolved)
+	} else {
+		typeScope, ok := env.(TypeScope)
+		if !ok {
+			return nil, fmt.Errorf("type patterns require a module environment")
+		}
+		found, ok := typeScope.NamedType(c.TypePattern.Name)
+		if !ok {
+			return nil, fmt.Errorf("unknown type %s in type pattern", name)
+		}
+		t = found
+	}
+	mod, ok := t.(*Type)
+	if !ok {
+		return nil, fmt.Errorf("type pattern %s is not a named type", name)
+	}
+	return mod, nil
+}
+
+// patternNode is the node to blame for a type pattern's errors.
+func (c *CaseClause) patternNode() SourceLocatable {
+	if c.TypePattern != nil {
+		return c.TypePattern
+	}
+	if loc, ok := c.PatternType.(SourceLocatable); ok && loc.GetSourceLocation() != nil {
+		return loc
+	}
+	return c
+}
+
+// abstractDecodeTarget returns an interface or union that materializing t
+// would have to build, which decoded data never materializes as, with the
+// field path that holds it ("" at t itself). At t itself it looks through
+// non-null, lists and maps; below that, only through the fields every match
+// needs — an anonymous record's non-null fields and a named object's
+// non-null constructor parameters without defaults, except those every
+// codec ignores — since data can match a type that holds an interface only
+// in a nullable or defaulted field, or in a list that may be empty.
+func abstractDecodeTarget(t hm.Type) (*Type, string) {
+	seen := map[*Type]bool{}
+	var walk func(t hm.Type, via string) (*Type, string)
+	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) (*Type, string) {
+		for _, field := range fields {
+			if ignoredByAllCodecs(mod, field.Key) {
+				continue
+			}
+			ft, mono := field.Value.Type()
+			if !mono {
+				continue
+			}
+			if _, required := ft.(hm.NonNullType); !required {
+				continue
+			}
+			next := field.Key
+			if via != "" {
+				next = via + "." + field.Key
+			} else if mod.Named != "" {
+				next = mod.Named + "." + field.Key
+			}
+			if bad, at := walk(ft, next); bad != nil {
+				return bad, at
+			}
+		}
+		return nil, ""
+	}
+	walk = func(t hm.Type, via string) (*Type, string) {
+		t = unwrapNonNull(t)
+		if via == "" {
+			if elem, ok := listElementTarget(t); ok {
+				return walk(elem, via)
+			}
+			if val, ok := mapValueTarget(t); ok {
+				return walk(val, via)
+			}
+		}
+		v, ok := t.(*Type)
+		if !ok {
+			return nil, ""
+		}
+		mod := canonicalModule(v)
+		if mod.Kind == InterfaceKind || mod.Kind == UnionKind {
+			return mod, via
+		}
+		if seen[mod] || mod.Kind != ObjectKind {
+			return nil, ""
+		}
+		seen[mod] = true
+		if mod.Named == "" {
+			return walkFields(mod, mod.AsRecord().Fields, via)
+		}
+		if mod.constructorType != nil {
+			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
+				return walkFields(mod, args.Fields, via)
+			}
+		}
+		return nil, ""
+	}
+	return walk(t, "")
+}
+
+// typeNodeString writes a type as source spells it, for messages.
+func typeNodeString(t TypeNode) string {
+	switch tn := t.(type) {
+	case *NamedTypeNode:
+		if tn.Base != nil {
+			return typeNodeString(tn.Base) + "." + tn.Name
+		}
+		return tn.Name
+	case NonNullTypeNode:
+		return typeNodeString(tn.Elem) + "!"
+	case ListTypeNode:
+		return "[" + typeNodeString(tn.Elem) + "]"
+	case *AppliedTypeNode:
+		args := make([]string, len(tn.Args))
+		for i, a := range tn.Args {
+			args[i] = typeNodeString(a)
+		}
+		return typeNodeString(tn.Base) + "[" + strings.Join(args, ", ") + "]"
+	default:
+		return fmt.Sprintf("%v", t)
+	}
 }
 
 func (c *CaseClause) GetSourceLocation() *SourceLocation {

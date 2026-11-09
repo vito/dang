@@ -1,0 +1,11 @@
+# A custom scalar arm takes every string, so a String arm after it never
+# runs: the scalar's new() rejecting a string is an error, not a fall-through.
+scalar Upper
+
+let d = JSON.decode("\"hi\"")
+
+case (d) {
+  u: Upper => "upper"
+  s: String => "string"
+  else => "other"
+}

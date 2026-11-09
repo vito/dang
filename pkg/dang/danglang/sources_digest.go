@@ -5,4 +5,4 @@ package danglang
 // sourcesDigest is a SHA-256 of the treesitter/src files this package
 // #includes. Go's build cache doesn't track them, so this changing is what
 // makes Go rebuild the package when the grammar is regenerated.
-const sourcesDigest = "86933a83125b364a33f011198b6381b2bfa77a8e85d81882b71350cbe09be165"
+const sourcesDigest = "8dab80bfda6c509184afa5c1818a77d38df6874dad0ee49712d1857b43f9cf71"

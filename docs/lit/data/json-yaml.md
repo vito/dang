@@ -6,10 +6,11 @@
 > Meta: short page. The defining characteristic is type-driven parsing — `JSON.decode` produces values of the *expected* type. Open with that.
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
-`encode` / `decode` static methods. The names double as scalar types (`:: JSON`)
-and are owned by Dang, so they work with no schema import. A schema's scalar of
-the same name (e.g. Dagger's `JSON`) gets the codec's methods grafted on rather
-than colliding, while unqualified `JSON` stays Dang's own (see
+`encode` / `decode` static methods. They are plain modules owned by Dang, like
+`Random`, so they work with no schema import. Data of unknown shape, whichever
+format it came from, is `Decoded` (see [#decoded-values]). A schema's scalar
+of the same name (e.g. Dagger's `JSON`) is a separate type, reached qualified
+(`Dagger.JSON`), while unqualified `JSON` stays Dang's own (see
 [#enums-scalars]).
 
 > The examples on this page are live: they share one Dang environment, so
@@ -45,7 +46,9 @@ parseSummary(text: String!): Summary! { JSON.decode(text) }
 ```
 
 Until it has a type, a decode result has the opaque type `Decoded`. You can
-store it, pass it on, or return it, but nothing else:
+store it, pass it on, return it, encode it, or compare it with other decoded
+data (see [#decoded-values]), but not use it as an `Int`, a `String` or any
+other particular type:
 
 ```dang-failure
 JSON.decode("1") + 1
@@ -76,6 +79,93 @@ let parsed = (JSON.decode("oops") :: Int!) rescue 0
 parsed + 1
 ```
 
+### Keeping data undecoded {#decoded-values}
+
+`Decoded` is a type you can write, too. Decoding into `Map[Decoded!]!` (or
+`[Decoded!]!`) reads the outer object's keys and leaves each value undecoded,
+so data whose shape you don't know yet can be walked a level at a time. Each
+step is a cast:
+
+```dang
+let doc = JSON.decode("""
+{"modules": [{"name": "a", "pin": {"rev": 3}}], "version": 2}
+""") :: Map[Decoded!]!
+
+let mods = doc["modules"]! :: [Map[Decoded!]!]!
+[doc.keys, mods[0]!.keys]
+```
+
+```dang
+(mods[0]!["pin"]! :: Map[Int!]!)["rev"]
+```
+
+A field typed `Decoded!` keeps whatever it was given, and encoding writes it
+back as the data it is:
+
+```dang
+type Entry {
+  name: String!
+  extra: Decoded!
+}
+
+let entry = JSON.decode("""{"name": "e", "extra": {"deep": [true]}}""") :: Entry!
+JSON.encode(entry)
+```
+
+Decoded data compares with other decoded data as data: key order, number
+spelling and even the format it came from don't matter. Comparing it with a
+typed value still needs a cast first:
+
+```dang
+(JSON.decode("""{"a": 1.50, "b": [true]}""") :: Decoded!) ==
+  (YAML.decode("b: [true]\na: 1.5") :: Decoded!)
+```
+
+A later cast reads the data the way its decode would have: under the decoding
+format's field names, and strictly if the decode was strict (see
+[#strict-decoding]).
+
+To branch on what decoded data holds, `case` on it with type patterns. An
+arm matches when the data has its type's shape: the right kind of value
+(number, string, boolean, list, map or object), and for an object every key
+the type requires, all the way down. Matching runs none of your code; only
+the matching arm's data is then converted, exactly like a cast, so a
+constructor that raises or a scalar's `new()` that rejects the data is an
+error of the `case`, not a reason to try the next arm. The first matching
+arm wins. Lists and maps can be patterns too, for decoded data only. Since
+any data may match none of the arms, `else` is required:
+
+```dang
+kind(d: Decoded!): String! {
+  case (d) {
+    n: Int => `the number ${n}`
+    items: [Decoded!] => `${items.length} items`
+    fields: Map[Decoded!] => `fields ${fields.keys.join(", ")}`
+    else => "something else"
+  }
+}
+
+[kind(JSON.decode("3")), kind(JSON.decode("[1, true]")), kind(YAML.decode("b: 1\na: 2"))]
+```
+
+Order the arms from most to least specific: `1` is an `Int` and a `Float`
+(so an `Int` arm after a `Float` arm is an unreachable-clause error, as is
+a `String` arm after a scalar arm, which takes every string, or an object
+arm after `Map[Decoded!]`), and a type reads only the fields it
+declares (an object with extra keys still matches, unless the decode was
+strict). A `x: Decoded` arm takes any data as it is, and so can stand in for
+`else`. An arm of a schema's scalar without a body matches any data too,
+since such a scalar holds data of any shape (see [#enums-scalars]). Null data
+matches no other type arm. On a nullable `Decoded` operand
+null is the operand itself being null, so it goes only to a `null` arm or
+`else`, and a `Decoded` arm stands in for `else` together with a `null` arm;
+on `Decoded!`, null data goes to a `Decoded` arm or `else`.
+
+A `case` can't take a union that holds decoded data, such as the
+`Decoded | Int!` from `JSON.decode(text) rescue 0`: its arms would match the
+`Int!` by type and the data by shape. Separate the decoded data first, e.g.
+by rescuing to `null`.
+
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded
 maps have sorted keys:
@@ -91,7 +181,7 @@ let lenient: Summary! = JSON.decode("""{"name": "x", "count": 1, "extra": true}"
 lenient.name
 ```
 
-### Strict decoding
+### Strict decoding {#strict-decoding}
 
 Pass `strict: true` to catch typos and stale keys instead. A key that no field
 of the expected type reads is an error, naming the object's path and the key.
@@ -111,7 +201,8 @@ The check applies at every level of a type or record, under each field's
 unknown too. Every field the type declares counts, including ones its
 constructor doesn't take (a `let` field), so a value's own encoding always
 decodes back. A `Map[T]`'s keys are data, so it takes any key, and so does a
-`JSON` value (see [#json-values]), which holds whatever it is given:
+`Decoded` value until it is cast: a later cast of it is strict too (see
+[#decoded-values]):
 
 ```dang
 let counts = JSON.decode("""{"zed": 1, "amy": 2}""", strict: true) :: Map[Int!]!
@@ -186,77 +277,13 @@ type Options {
 YAML.decode("") :: Options!
 ```
 
-## Data of unknown shape {#json-values}
-
-`JSON` is also a type for data whose shape you don't know: decoding into
-`JSON` takes any value and keeps it as its JSON text. A `Map[JSON!]!` reads
-an object without saying anything about its values, so you can check its
-keys:
-
-```dang
-let config = YAML.decode("""
-modules:
-  - name: lint
-    source: ./lint
-    pin: 3
-version: 2
-""") :: Map[JSON!]!
-
-config.keys
-```
-
-A JSON value reads as its text wherever a `String` is expected. A string
-value keeps its quotes, so the text is always JSON:
-
-```dang
-[toString(config["version"]!), `modules: ${config["modules"]!}`]
-```
-
-`JSON.decode` takes a JSON value too, so going a level deeper is decoding
-again, at the type the data has there:
-
-```dang
-let modules = JSON.decode(config["modules"]!) :: [Map[JSON!]!]!
-
-modules[0]!.keys.filter { key => !["name", "source"].contains(key) }
-```
-
-```dang
-JSON.decode(modules[0]!["name"]!) :: String!
-```
-
-Encoding puts a JSON value back as the data it holds, not as a string, so
-it round-trips:
-
-```dang
-JSON.encode({{ first: modules[0]! }})
-```
-
-A `String` turns into a JSON value only if it is JSON. It is compacted on
-the way in, keeping its keys in the order written. JSON values compare as
-data, so key order and spacing don't affect equality:
-
-```dang
-let written = """{ "name": "lint", "pin": 3 }"""
-
-toString(written :: JSON!)
-```
-
-```dang
-(written :: JSON!) == """{"pin": 3, "name": "lint"}"""
-```
-
-```dang-failure
-"{name: lint}" :: JSON!
-```
-
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
-a `String!`. `JSON.encode` keeps fields in the order they are declared, as
-Go does for struct fields: a record's as written (see [#literals]), a type's
-as the type declares them; a JSON value keeps its own keys' order (a decoded
-one's are sorted). YAML and TOML sort them alphabetically:
+a `String!`. `JSON.encode` and `YAML.encode` keep fields in the order they
+are declared, as Go does for struct fields: a record's as written (see
+[#literals]), a type's as the type declares them; `Decoded` data has its keys
+sorted. TOML sorts them alphabetically:
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})
@@ -316,11 +343,20 @@ let release = Release(version: "2.2", name: "dang")
 JSON.encode(["zed": 1, "amy": 2], sortKeys: true)
 ```
 
-`toString(value)` passes strings through and JSON-encodes everything else
-(see [#strings]):
+`YAML.encode` takes `sortKeys: true` too. It sorts keys as YAML tools
+usually do, comparing runs of digits as numbers (`item2` before `item10`):
 
 ```dang
-[toString("plain"), toString([1, 2])]
+YAML.encode(release, sortKeys: true)
+```
+
+`toString(value)` is not an encoder: it passes strings, enum values and
+custom scalar values through as their bare text, and writes anything else as
+a Dang literal (see [#strings]). Decoded data shows as the
+literal of the data it holds:
+
+```dang
+[toString("plain"), toString(JSON.decode("""{"b": [1], "a": "x"}"""))]
 ```
 
 ## Field directives
@@ -369,10 +405,12 @@ string literal, and two fields cannot map to the same key.
 
 ## Coercion during parsing
 
-Enum values decode from their names, and custom scalars from their string
-forms (except `JSON`, which takes any value; see [#json-values]). A missing
-field takes its declared default, and a missing nullable field decodes to
-`null`:
+Enum values decode from their names, custom scalars from their string forms,
+and data of any shape into `Decoded` (see [#decoded-values]). A
+missing field takes its declared default (so does an explicit `null` for a
+non-null field with a default, except a `Decoded!` field, which holds null
+data as it is), and a missing nullable field
+decodes to `null`:
 
 ```dang
 enum Outcome { PASSED FAILED }

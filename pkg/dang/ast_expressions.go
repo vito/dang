@@ -1059,8 +1059,8 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				if named, found := ts.NamedType(sym.Name); found {
 					// An enum's meta-type holds its values, which are read off
 					// the enum's namespace value like any field, not from
-					// statics; so do a builtin scalar's members (JSON.encode).
-					if owner, ok := named.(*Type); ok && owner.Kind != EnumKind && !isBuiltinScalarMember(owner, d.Field.Name) {
+					// statics.
+					if owner, ok := named.(*Type); ok && owner.Kind != EnumKind {
 						// A public static is reachable as `Type.member`
 						// anywhere; a private (let) static only from within its
 						// declaring module (module-level visibility, matching
@@ -1204,7 +1204,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		var isNullable bool
 
 		if _, ok := unwrapNonNull(lt).(DecodedType); ok {
-			return nil, fmt.Errorf("cannot select %q from decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T).%s`", d.Field.Name, lt, d.Field.Name)
+			return nil, fmt.Errorf("cannot select %q from decoded data (%s) before giving it a type; cast it to the type it has first, e.g. `(data :: T).%s`", d.Field.Name, lt, d.Field.Name)
 		}
 
 		if nn, ok := lt.(hm.NonNullType); ok {
@@ -1244,6 +1244,20 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				// The meta-type prints as the type's own name; say which.
 				if _, isMember := mod.InstanceType().LocalSchemeOf(d.Field.Name); isMember {
 					return tv, fmt.Errorf("field %q belongs to values of %s, not to %s itself", d.Field.Name, mod, mod)
+				}
+				if hint := shadowedPreludeMemberHint(mod.InstanceType(), func(p *Type) bool {
+					// A type's name holds its statics, on its meta-type.
+					if p.meta == nil {
+						return false
+					}
+					_, ok := p.meta.LocalSchemeOf(d.Field.Name)
+					return ok
+				}, func(p *Type) bool {
+					// A namespace module's name holds its own members.
+					_, ok := p.LocalSchemeOf(d.Field.Name)
+					return ok
+				}); hint != "" {
+					return tv, fmt.Errorf("field %q not found in %s; %s", d.Field.Name, rec, hint)
 				}
 			}
 			if declared := importedModuleDeclarations(rec); declared != nil {
@@ -1961,6 +1975,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 					return nil, err
 				}
 				narrowedMember.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
+				narrowedMember.SetVisibility(field.OutputKey(), PublicVisibility)
 			}
 
 			narrowedUnion.LinkMember(narrowedMember)
@@ -2093,6 +2108,8 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 			return nil, err
 		}
 		mod.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
+		// A selection is a record: its fields are public data.
+		mod.SetVisibility(field.OutputKey(), PublicVisibility)
 	}
 	o.Inferred = mod
 	return mod, nil

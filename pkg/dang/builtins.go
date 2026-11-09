@@ -132,6 +132,8 @@ func ToValue(v any) (Value, error) {
 	case float64:
 		return FloatValue{Val: val}, nil
 
+	case DataNumber:
+		return ToValue(json.Number(val))
 	case json.Number:
 		// Untyped fallback (no declared type to honor): keep the JSON author's
 		// intent — a bare integer literal becomes an Int, anything fractional a
@@ -674,107 +676,37 @@ func StaticModules() []*Type {
 	return append([]*Type(nil), builtins.staticModules...)
 }
 
-// Dang can staple its own APIs onto a scalar by name. A builtin scalar is a
-// ScalarKind module Dang ships members for (JSON, YAML, TOML); it is installed
-// in the Prelude so its name resolves with no import. A scalar of the same
-// name that a schema imports or a user declares is grafted the identical
-// members, so the two merge rather than colliding: Dang's members ride along
-// on the other scalar. A user's declaration shadows the builtin (and, for
-// JSON, shares its value semantics); a schema's scalar doesn't, since imports
-// never shadow builtins, so the unqualified name stays the builtin and the
-// schema's scalar keeps its own values (see isJSONScalar). This is general —
-// any future builtin scalar behaves the same way.
-
-// BuiltinScalarModule returns the builtin scalar module of the given name, if
-// Dang ships one. These are the ScalarKind entries among the static modules.
-func BuiltinScalarModule(name string) (*Type, bool) {
-	for _, mod := range builtins.staticModules {
-		if mod.Kind == ScalarKind && mod.Named == name {
-			return mod, true
-		}
-	}
-	return nil, false
-}
-
-// attachBuiltinSchemes staples the type schemes of every member Dang registers
-// for a scalar of this name onto scalarType's meta-type, the type of its name,
-// so `Name.member` type-checks whether Name resolves to the builtin scalar or
-// to a same-named scalar a schema or user declared. Values of the scalar don't
-// get them: they're plain strings. No-op for non-scalars and names Dang ships
-// no API for; idempotent (skips members the namespace already declares).
-func attachBuiltinSchemes(scalarType *Type) {
-	if scalarType == nil || scalarType.Kind != ScalarKind {
-		return
-	}
-	host, ok := BuiltinScalarModule(scalarType.Named)
-	if !ok {
-		return
-	}
-	meta := scalarType.MetaType()
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		if _, exists := meta.LocalSchemeOf(def.Name); exists {
-			return
-		}
-		meta.Add(def.Name, hm.NewScheme(nil, createFunctionTypeFromDef(def)))
-		meta.SetVisibility(def.Name, PublicVisibility)
-		if def.Doc != "" {
-			meta.SetDocString(def.Name, def.Doc)
-		}
-	})
-	// Graft the builtin scalar's directives (e.g. @JSON.field / @JSON.ignore)
-	// too, so they resolve whether the scope name refers to the builtin module
-	// or to a same-named scalar a schema or user declared.
-	for name, decl := range host.directives {
-		if _, exists := scalarType.directives[name]; exists {
-			continue
-		}
-		scalarType.AddDirective(name, decl)
-	}
-}
-
-// isBuiltinScalarMember reports whether name is one of the members Dang
-// staples onto a scalar of t's name (attachBuiltinSchemes). Those are read off
-// the namespace value at runtime (attachBuiltinMethods), not from statics.
-func isBuiltinScalarMember(t *Type, name string) bool {
-	if t.Kind != ScalarKind {
-		return false
-	}
-	host, ok := BuiltinScalarModule(t.Named)
-	if !ok {
-		return false
+// shadowedPreludeMemberHint explains a member missing from local, a type
+// declared or imported under a name the Prelude also binds, when what the
+// Prelude binds there has it: the local declaration shadows the builtin.
+// hasType reports whether the Prelude's type of that name has the member,
+// and hasValue whether the module a Prelude value of that name is (a
+// namespace such as JSON) has it. It returns "" otherwise. Only the error
+// path calls it.
+func shadowedPreludeMemberHint(local *Type, hasType, hasValue func(*Type) bool) string {
+	if local == nil || local.Named == "" {
+		return ""
 	}
 	found := false
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		if def.Name == name {
+	if sub, ok := Prelude.NamedType(local.Named); ok {
+		if t, ok := sub.(*Type); ok && t != local && hasType(t) {
 			found = true
 		}
-	})
-	return found
-}
-
-// attachBuiltinMethods binds the implementations of every member Dang registers
-// for a scalar of this name onto its runtime object, so `Name.member` resolves
-// at eval. No-op for non-scalars and names Dang ships no API for.
-func attachBuiltinMethods(obj *Object, scalarType TypeScope) {
-	mod, ok := scalarType.(*Type)
-	if !ok || mod.Kind != ScalarKind {
-		return
 	}
-	host, found := BuiltinScalarModule(mod.Named)
+	if scheme, ok := Prelude.LocalSchemeOf(local.Named); ok && !found {
+		if t, mono := scheme.Type(); mono {
+			if mod, ok := unwrapNonNull(t).(*Type); ok && mod != local && mod.metaOf != local && hasValue(mod) {
+				found = true
+			}
+		}
+	}
 	if !found {
-		return
+		return ""
 	}
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		obj.Bind(def.Name, BuiltinFunction{
-			Name:         def.Name,
-			FnType:       createFunctionTypeFromDef(def),
-			AllDefaulted: allParamsDefaulted(def),
-			Deprecated:   def.Deprecated,
-			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-				return def.Impl(ctx, nil, Args{Values: applyDefaults(args, def)})
-			},
-		}, PublicVisibility)
-	})
+	if local.Qualifier != "" {
+		return fmt.Sprintf("%s is a different type from the builtin %s, which has it", local, local.Named)
+	}
+	return fmt.Sprintf("the %s declared here shadows the builtin %s, which has it; rename the declaration to use the builtin", local.Named, local.Named)
 }
 
 // DefineEnum creates an enum type with the given values and registers it

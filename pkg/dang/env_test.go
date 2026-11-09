@@ -501,6 +501,103 @@ useContainer: String! = container
 	require.Equal(t, "local", str.Val)
 }
 
+func TestRunDirImportDoesNotShadowPreludeDecoded(t *testing.T) {
+	// Decoded is a Prelude type, so an unqualified import of a schema that
+	// defines its own Decoded leaves the name meaning the builtin; the
+	// schema's type is still reachable qualified.
+	schema, err := SchemaFromSDL(`
+type Query { decoded: Decoded! }
+type Decoded { id: String! }
+`, "schema.graphqls")
+	require.NoError(t, err)
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Schema",
+		Schema: schema,
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+import Schema
+
+double(d: Decoded!): Int! { (d :: Int!) * 2 }
+idOf(d: Schema.Decoded!): String! { d.id }
+
+pub doubled: Int! = double(JSON.decode("21"))
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	doubled, found := requireEvalGet(t, env, "doubled")
+	require.True(t, found)
+	require.Equal(t, IntValue{Val: 42}, doubled)
+}
+
+func TestRunDirImportedDirectiveArgsUseSchemaTypes(t *testing.T) {
+	// An imported directive's argument types are the schema's own, not
+	// whatever the applying file binds to those names: here the file
+	// declares its own Level, yet @meta still takes the schema's.
+	schema, err := SchemaFromSDL(`
+enum Level { LOW HIGH }
+directive @meta(level: Level) on FIELD_DEFINITION
+type Query { value: String! }
+`, "schema.graphqls")
+	require.NoError(t, err)
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Schema",
+		Schema: schema,
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+import Schema
+
+enum Level { OTHER }
+
+type Item {
+  pub tagged: String! @meta(level: Schema.Level.HIGH) = "b"
+}
+
+pub item: String! = Item().tagged
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	item, found := requireEvalGet(t, env, "item")
+	require.True(t, found)
+	require.Equal(t, StringValue{Val: "b"}, item)
+}
+
+func TestRunDirImportedNativeDirectiveArgsUseModuleTypes(t *testing.T) {
+	// Likewise a directive declared in an imported Dang module types its
+	// arguments with that module's types.
+	native := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(native, "main.dang"), []byte(`
+enum Level { LOW HIGH }
+
+directive @meta(level: Level) on FIELD_DEFINITION
+`), 0o600))
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+import Other
+
+enum Level { OTHER }
+
+type Item {
+  pub tagged: String! @meta(level: Other.Level.HIGH) = "b"
+}
+
+pub item: String! = Item().tagged
+`), 0o600))
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{Name: "Other", DangModuleDir: native})
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	item, found := requireEvalGet(t, env, "item")
+	require.True(t, found)
+	require.Equal(t, StringValue{Val: "b"}, item)
+}
+
 func TestRunDirImportsAreFileLocal(t *testing.T) {
 	// File A imports Dagger and uses an unqualified imported symbol.
 	// File B never imports Dagger and so cannot see container.

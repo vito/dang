@@ -124,18 +124,22 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 	})
 }
 
-// checkDecodedComparison rejects an equality comparison (== or !=) with an
-// operand still carrying codec-decoded data (DecodedType). Equality is
-// defined across all types, but decoded data is only materialized where it
-// meets an expected type, so comparing it as is compares the raw data and is
-// always unequal — even to the very value it decodes to.
+// checkDecodedComparison rejects an equality comparison (== or !=) between
+// codec-decoded data (DecodedType) and anything but other decoded data of the
+// same shape or null. Equality is defined across all types, but decoded data
+// is only materialized where it meets an expected type, so comparing it with
+// a typed value compares the raw data and is always unequal — even to the
+// very value it decodes to. Decoded data compares with decoded data as data.
 func checkDecodedComparison(left Node, lt hm.Type, right Node, rt hm.Type) error {
+	if decodedComparable(left, lt, right, rt) {
+		return nil
+	}
 	for _, side := range []struct {
 		node Node
 		typ  hm.Type
 	}{{left, lt}, {right, rt}} {
 		if containsDecoded(side.typ) {
-			return NewInferError(fmt.Errorf("cannot compare decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T)`", side.typ), side.node)
+			return NewInferError(fmt.Errorf("cannot compare decoded data (%s) before giving it a type; cast it to the type it has first, e.g. `(data :: T)`", side.typ), side.node)
 		}
 	}
 	return nil
@@ -765,8 +769,9 @@ func (d *Default) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, fmt.Errorf("evaluating left side: %w", err)
 		}
 
-		// Check if left value is null
-		if _, isNull := leftVal.(NullValue); isNull {
+		// Check if left value is null; Decoded data holding null is null
+		// here too, as it is to ==.
+		if _, isNull := leftVal.(NullValue); isNull || isNullDecoded(leftVal) {
 			// Use the right side as default
 			return EvalNode(ctx, scope, d.Right)
 		}

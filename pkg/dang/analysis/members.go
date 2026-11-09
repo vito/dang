@@ -185,6 +185,11 @@ func Members(ctx context.Context, scope dang.TypeScope, of string) (*MemberList,
 			Members: typeNameMembers(of, named),
 		}, nil
 	}
+	if m, ok := preludeTypeMember(scope, of); ok {
+		// A Prelude type that is not a module (Decoded) has no members:
+		// its data is read at a type first.
+		return &MemberList{Of: of, Type: m.Type, Members: []Member{}}, nil
+	}
 	t, err := inferExpr(ctx, scope, of)
 	if err != nil {
 		return nil, err
@@ -277,7 +282,48 @@ func Lookup(scope dang.TypeScope, name string) (Member, bool) {
 	if named, ok := scope.NamedType(name); ok {
 		return namedTypeMember(name, named), true
 	}
+	if m, ok := preludeTypeMember(scope, name); ok {
+		return m, true
+	}
 	return Member{}, false
+}
+
+// preludeTypeMember describes a Prelude type that is not a module
+// (Decoded), which scope's NamedType can't find, when scope is one that sees
+// the Prelude: a lexical scope, not a type's or an import's namespace.
+func preludeTypeMember(scope dang.TypeScope, name string) (Member, bool) {
+	pt, ok := dang.PreludeType(name)
+	if !ok || !seesPrelude(scope) {
+		return Member{}, false
+	}
+	if _, shadowed := scope.NamedType(name); shadowed {
+		return Member{}, false
+	}
+	return Member{
+		Name: name,
+		Kind: KindType,
+		Type: pt.Name(),
+		Doc:  dang.PreludeTypeDoc(name),
+	}, true
+}
+
+// seesPrelude reports whether scope resolves names through the Prelude, as a
+// lexical scope does; a type's or an import's namespace holds only its own.
+// A scope sees the Prelude when one of the Prelude's own object or interface
+// types (not a GraphQL builtin scalar, which a schema's namespace has too)
+// resolves through it unshadowed.
+func seesPrelude(scope dang.TypeScope) bool {
+	preludeScope() // loads the Prelude
+	for name, t := range dang.Prelude.NamedTypes() {
+		mod, ok := t.(*dang.Type)
+		if !ok || (mod.Kind != dang.ObjectKind && mod.Kind != dang.InterfaceKind) {
+			continue
+		}
+		if got, ok := scope.NamedType(name); ok && got == t {
+			return true
+		}
+	}
+	return false
 }
 
 // scopeMembers lists scope's bindings of at least the given visibility, the
@@ -331,6 +377,18 @@ func scopeMembers(scope dang.TypeScope, visibility dang.Visibility, own bool) []
 		m.TypeOnly = true
 		types = append(types, m)
 	}
+	if !own {
+		for _, name := range dang.PreludeTypeNames() {
+			if seen[name] {
+				continue
+			}
+			if m, ok := preludeTypeMember(scope, name); ok {
+				seen[name] = true
+				m.TypeOnly = true
+				types = append(types, m)
+			}
+		}
+	}
 	sort.Slice(types, func(i, j int) bool { return types[i].Name < types[j].Name })
 	return append(members, types...)
 }
@@ -361,7 +419,7 @@ func typeMembers(t hm.Type) []Member {
 
 // typeNameMembers lists the members of the type a type name names: its
 // values' members (for an enum, its values), then the static members of the
-// name itself, e.g. JSON.encode or what a `self { }` block declares.
+// name itself, e.g. what a `self { }` block declares.
 func typeNameMembers(name string, named dang.TypeScope) []Member {
 	members := scopeMembers(named, dang.PublicVisibility, true)
 	seen := map[string]bool{}
@@ -638,13 +696,6 @@ func builtinMember(mod *dang.Type, name string) (dang.BuiltinDef, bool) {
 	host := mod
 	if host.IsMeta() {
 		host = host.InstanceType()
-	}
-	if host.Kind == dang.ScalarKind {
-		// A schema's or user's scalar of a builtin scalar's name is grafted
-		// the builtin's members.
-		if builtin, ok := dang.BuiltinScalarModule(host.Named); ok {
-			host = builtin
-		}
 	}
 	var found dang.BuiltinDef
 	var ok bool

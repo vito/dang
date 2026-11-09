@@ -20,7 +20,8 @@ them before you use them.
 - `Int!`, `Float!`, `String!`, `Boolean!`, `ID!`
 - `[T]` and `[T]!` — lists
 - `{{ ... }}` — records
-- custom GraphQL scalars: `URL`, `Timestamp`, `JSON`, ...
+- `Decoded` — decoded data not yet given a type (see [#decoded-values])
+- custom GraphQL scalars: `URL`, `Timestamp`, ...
 - user-defined: `type`, `interface`, `union`, `enum`, `scalar` (see their pages)
 
 ## The `!` sigil

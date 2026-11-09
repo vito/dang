@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -1240,6 +1241,44 @@ type DirectiveDecl struct {
 	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
+
+	// declScope is the scope the directive is declared in, where its
+	// argument types resolve: an imported module's directive names that
+	// module's types (its own scalar JSON), not whatever the applying
+	// file's scope binds to those names. Nil resolves them where applied.
+	declScope TypeScope
+
+	// Validate, when set, checks a type whose fields apply the directive,
+	// once per type however many of its fields do. Directives checked
+	// together (a format's @field and @ignore) share one validator, which
+	// then runs once. Set by Go code declaring a builtin directive.
+	Validate *DirectiveValidator
+}
+
+// DirectiveValidator checks the applications of a set of directives across
+// one type's fields, as a type is inferred, so mistakes surface as compile
+// errors.
+type DirectiveValidator struct {
+	Check func(owner *Type) error
+}
+
+// validateAppliedDirectives runs the validators of the directives applied to
+// mod's fields, each once.
+func validateAppliedDirectives(mod *Type) error {
+	var seen []*DirectiveValidator
+	for name := range mod.Bindings(PrivateVisibility) {
+		for _, app := range mod.GetDirectives(name) {
+			decl := app.Decl()
+			if decl == nil || decl.Validate == nil || slices.Contains(seen, decl.Validate) {
+				continue
+			}
+			seen = append(seen, decl.Validate)
+			if err := decl.Validate.Check(mod); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 var _ Node = &DirectiveDecl{}
@@ -1271,6 +1310,7 @@ func (d *DirectiveDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	if pass == 0 {
 		// Add directive to environment during hoisting so it's available for later use
 		if e, ok := env.(TypeScope); ok {
+			d.declScope = e
 			e.AddDirective(d.Name, d)
 		}
 	}
@@ -1323,7 +1363,21 @@ type DirectiveApplication struct {
 	Args     []Keyed[Node]
 	IsPrefix bool // True if directive appeared before the name (prefix position)
 	Loc      *SourceLocation
+
+	// scopeType and decl are what Scope and Name resolved to when the
+	// application was inferred, so readers match a directive by identity
+	// (the JSON namespace's @field) rather than by how it is spelled.
+	scopeType *Type
+	decl      *DirectiveDecl
 }
+
+// ScopeType is the type the application's scope resolved to (JSONModule for
+// @JSON.field), or nil if it is unscoped or not yet inferred.
+func (d *DirectiveApplication) ScopeType() *Type { return d.scopeType }
+
+// Decl is the declaration the application resolved to, or nil if it is not
+// yet inferred.
+func (d *DirectiveApplication) Decl() *DirectiveDecl { return d.decl }
 
 var _ Node = (*DirectiveApplication)(nil)
 
@@ -1354,6 +1408,7 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 				return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
 			}
 			env = scopeType.(TypeScope)
+			d.scopeType, _ = scopeType.(*Type)
 		}
 
 		// Check for import conflicts before resolving
@@ -1364,6 +1419,21 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 		// Validate that the directive exists and arguments match
 		directiveDecl, found := env.GetDirective(d.Name)
 		if !found {
+			if d.Scope != nil {
+				if scopeMod, ok := env.(*Type); ok {
+					if scopeMod.IsMeta() {
+						scopeMod = scopeMod.InstanceType()
+					}
+					hasDirective := func(p *Type) bool {
+						_, ok := p.GetDirective(d.Name)
+						return ok
+					}
+					if hint := shadowedPreludeMemberHint(scopeMod, hasDirective, hasDirective); hint != "" {
+						return nil, fmt.Errorf("directive @%s.%s not declared; %s", d.Scope.Name, d.Name, hint)
+					}
+				}
+				return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s.%s not declared", d.Scope.Name, d.Name)
+			}
 			return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
 		}
 
@@ -1372,6 +1442,7 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 		if err != nil {
 			return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
 		}
+		d.decl = directiveDecl
 
 		// Directive applications don't have a meaningful type for inference
 		return hm.TypeVariable('d'), nil
@@ -1409,6 +1480,12 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 	positionalIndex := 0
 	providedArgs := make(map[string]Node)
 
+	// Argument types name types where the directive is declared.
+	var declEnv hm.Env = env
+	if decl.declScope != nil {
+		declEnv = decl.declScope
+	}
+
 	for i, arg := range d.Args {
 		if arg.Positional {
 			if positionalIndex >= len(decl.Args) {
@@ -1435,7 +1512,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 			if declArg.Value == nil {
 				// Check if the argument type is nullable (optional)
 				if declArg.Type_ != nil {
-					argType, err := declArg.Type_.Infer(ctx, env, fresh)
+					argType, err := declArg.Type_.Infer(ctx, declEnv, fresh)
 					if err != nil {
 						return err
 					}
@@ -1449,7 +1526,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 
 		// Validate provided argument type matches declared type
 		if declArg.Type_ != nil {
-			expectedType, err := declArg.Type_.Infer(ctx, env, fresh)
+			expectedType, err := declArg.Type_.Infer(ctx, declEnv, fresh)
 			if err != nil {
 				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Name.Name, err)
 			}

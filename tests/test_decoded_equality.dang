@@ -1,0 +1,50 @@
+# Decoded data compares as data: key order and number spelling don't matter,
+# nor which format decoded it.
+let whole = JSON.decode("{\"z\": 1.50, \"y\": {\"k\": [true]}}") :: Decoded!
+assert { whole == (YAML.decode("y: {k: [true]}\nz: 1.5") :: Decoded!) }
+assert { whole == (TOML.decode("z = 1.5\n[y]\nk = [true]") :: Decoded!) }
+assert { whole != (YAML.decode("y: {k: [false]}\nz: 1.5") :: Decoded!) }
+assert { [whole, JSON.decode("{\"y\": {\"k\": [true]}, \"z\": 1.5}") :: Decoded!].uniq.length == 1 }
+assert { [whole].contains(YAML.decode("{z: 1.5, y: {k: [true]}}") :: Decoded!) }
+
+# Collections of it compare element by element.
+let pair = JSON.decode("[1, \"a\"]") :: [Decoded!]!
+assert { pair == (YAML.decode("[1.0, a]") :: [Decoded!]!) }
+
+# Null is data too: Decoded! holds it, and it equals null.
+let held = JSON.decode("{\"a\": null, \"b\": 1}") :: Map[Decoded!]!
+assert { held["a"]! == null }
+assert { held["b"]! != null }
+assert { (held["a"]! :: Int) == null }
+let nullFailure = toString(held["a"]! :: Int!) rescue {
+  e: Error => e.message
+}
+assert { nullFailure.contains("null is not allowed") }
+
+# ?? sees null data as null too, so an optional key can take a default.
+let port = (held["a"] ?? (JSON.decode("8080") :: Decoded!)) :: Int!
+assert { port == 8080 }
+
+# Exact numbers compare by value however they were spelled, and a number with
+# no exact value, like YAML's .inf, by its spelling.
+let a = YAML.decode("[-.5, +1, 0755, .inf, +12345678901234567890]") :: [Decoded!]!
+let b = JSON.decode("[-0.5, 1, 755, 0, 12345678901234567890]") :: [Decoded!]!
+assert { [a[0]! == b[0]!, a[1]! == b[1]!, a[2]! == b[2]!, a[4]! == b[4]!] == [true, true, true, true] }
+assert { a[3]! == a[3]! }
+assert { [a[3]!, a[3]!].uniq.length == 1 }
+
+# Empty literals of a Decoded shape compare too.
+assert { (JSON.decode("[]") :: [Decoded!]!) == [] }
+assert { (JSON.decode("{}") :: Map[Decoded!]!) == [:] }
+
+# Decoded fields honor omitEmpty and omitNull like any other.
+type Sparse {
+  name: String!
+  extra: Decoded! @JSON.field(omitEmpty: true)
+  maybe: Decoded! @JSON.field(omitNull: true)
+}
+
+let sparse = JSON.decode("{\"name\": \"s\", \"extra\": [], \"maybe\": null}") :: Sparse!
+assert { JSON.encode(sparse) == "{\"name\":\"s\"}" }
+
+print("Decoded equality tests passed!")

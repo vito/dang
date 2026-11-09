@@ -756,9 +756,6 @@ func declareLocalType(ctx context.Context, env TypeScope, name string, kind Kind
 		}
 	}
 	env.AddObject(name, mod)
-	// A scalar whose name matches a builtin scalar (e.g. JSON) doubles as that
-	// scalar's namespace: staple Dang's members onto its type.
-	attachBuiltinSchemes(mod)
 	return mod, nil
 }
 
@@ -1134,7 +1131,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Members are bound as inference reaches them, which puts annotated
 	// fields (bound when hoisted) before ones whose type comes from their
 	// initializer. The type lists them as declared instead, so whatever
-	// iterates them (JSON.encode, toString) sees the declaration order.
+	// iterates them (JSON.encode, toString's Repr) sees the declaration order.
 	var declared []string
 	for _, form := range bodyForms {
 		declared = append(declared, form.DeclaredSymbols()...)
@@ -1146,9 +1143,10 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, err
 	}
 
-	// Validate codec field directives (@JSON.field, @YAML.ignore, ...) now that
-	// every field's type and directives are known.
-	if err := validateCodecFieldDirectives(object); err != nil {
+	// Run the checks of the directives applied to fields (@JSON.field,
+	// @YAML.ignore, ...) now that every field's type and directives are
+	// known.
+	if err := validateAppliedDirectives(object); err != nil {
 		return nil, err
 	}
 
@@ -1844,8 +1842,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	// The scalar's value binding. A scalar with new() binds its constructor
 	// function instead (added in pass 1 below). Otherwise the name is the
 	// scalar's namespace, typed as its meta-type: it holds the scalar's
-	// statics, and for a builtin scalar's name (JSON, ...) Dang's members
-	// (attachBuiltinSchemes). It is not a value of the scalar.
+	// statics. It is not a value of the scalar.
 	newDecl := findNewConstructorIn(s.Value)
 	if newDecl == nil {
 		scalarScheme := hm.NewScheme(nil, typeNameValueType(scalarType))
@@ -2037,21 +2034,16 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			return ctor, nil
 		}
 
-		// No constructor: the scalar's name binds its namespace object. A
-		// scalar whose name matches a builtin scalar (e.g. JSON) doubles as
-		// that scalar's namespace: bind Dang's members onto its runtime object.
+		// No constructor: the scalar's name binds its namespace object.
 		scalarModule := NewObject(s.Inferred)
-		attachBuiltinMethods(scalarModule, s.Inferred)
 		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
 		if err := evalScalarStatics(); err != nil {
 			return nil, err
 		}
 		// The name is typed as the scalar's meta-type, which holds its
 		// statics (see Hoist), so as a value it is the statics namespace:
-		// `let ns = Tag; ns.sep` reads it. A builtin scalar's members ride
-		// along.
+		// `let ns = Tag; ns.sep` reads it.
 		if statics := s.Inferred.Statics(); statics != nil {
-			attachBuiltinMethods(statics, s.Inferred)
 			scope.Bind(s.Name.Name, statics, s.Visibility)
 			return statics, nil
 		}

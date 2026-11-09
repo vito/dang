@@ -1,0 +1,6 @@
+# A qualified pattern that names no type reports it the same way on every
+# operand, decoded data included.
+case (JSON.decode("{}")) {
+  g: Nope.Greeter => 1
+  else => 2
+}

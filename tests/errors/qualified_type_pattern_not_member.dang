@@ -1,0 +1,10 @@
+# A qualified pattern names its type outright; it must still be a member of
+# the operand's union.
+import Lib
+
+let pet: Lib.Pet = Lib.Dog
+
+case (pet) {
+  d: Lib.Dog => d.sound
+  g: Lib.Greeter => g.greeting
+}

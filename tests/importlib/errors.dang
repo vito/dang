@@ -1,0 +1,11 @@
+# An error type, so code importing Lib can rescue it by its qualified name
+# (`e: Lib.LibError =>`).
+
+type LibError implements Error {
+  message: String!
+  code: Int!
+}
+
+fail(code: Int!): String! {
+  raise LibError(message: "lib failed", code: code)
+}

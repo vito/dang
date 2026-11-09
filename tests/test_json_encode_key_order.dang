@@ -122,11 +122,10 @@ assert {
 let back = JSON.decode(JSON.encode(mod, indent: "  ", sortKeys: true), strict: true) :: Module!
 assert { back.pin == "abc" and back.source == mod.source and back.deps == [] }
 
-# toString and List.join JSON-encode in the same order, but under the fields'
+# toString and List.join render records in the same order, under the fields'
 # own names: codec field directives are JSON.encode's alone.
-assert { toString(mod.{{source, name}}) == JSON.encode(mod.{{source, name}}) }
-assert { toString(Pair(1, 2)) == """{"second":2,"first":1}""" }
+assert { toString(Pair(1, 2)) == "{{second: 2, first: 1}}" }
 assert {
-  toString(Module(name: "a", source: "b", pin: "c")) == """{"name":"a","source":"b","version":null,"pin":"c","deps":[]}"""
+  toString(Module(name: "a", source: "b", pin: "c")) == "{{name: \"a\", source: \"b\", version: null, pin: \"c\", deps: []}}"
 }
-assert { [byName].join("") == JSON.encode(byName) }
+assert { [byName].join("") == toString(byName) }

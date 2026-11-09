@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot compare decoded data ({count: Decoded}!) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T)`
+[1m[31mError:[0m cannot compare decoded data ({count: Decoded}!) before giving it a type; cast it to the type it has first, e.g. `(data :: T)`
   [2m[34m--> errors/decode_untyped_record_equality.dang:4:10[0m
  [2m    |[0m
  [2m  2 | # the raw data too.[0m

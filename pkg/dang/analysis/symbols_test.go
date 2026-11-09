@@ -165,7 +165,7 @@ pub s = toString(1)
 	sym, err = a.Inspect("main.dang", at(t, src, "toString(1)", 0, 0))
 	require.NoError(t, err)
 	require.Nil(t, sym.Definition)
-	require.Equal(t, `toString(42)`, sym.Member.Example)
+	require.Equal(t, `toString(["a": [1, 2]])`, sym.Member.Example)
 	require.Nil(t, a.References("main.dang", at(t, src, "toString(1)", 0, 0)))
 
 	// Nothing.

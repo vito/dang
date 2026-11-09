@@ -1,0 +1,8 @@
+# A pattern on decoded data needs a concrete type: data never materializes
+# at a type variable.
+let d = JSON.decode("[1]")
+
+case (d) {
+  items: [a!] => items.length
+  else => 0
+}

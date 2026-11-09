@@ -1,0 +1,9 @@
+# Every number with an Int's shape has a Float's too, so an Int arm after a
+# Float arm never runs.
+let d = JSON.decode("1")
+
+case (d) {
+  f: Float => "float"
+  n: Int => "int"
+  else => "other"
+}

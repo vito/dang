@@ -116,8 +116,9 @@ case (1 + 1) {
 ```
 
 Provably dead clauses are rejected at compile time: nothing may follow an
-`else`, and a *type pattern* (below) that repeats an earlier one — or is
-already covered by an earlier interface pattern — is an error:
+`else`, and a *type pattern* (below) that repeats an earlier one — or that an
+earlier pattern already covers, such as an interface pattern its type
+implements — is an error:
 
 ```dang-failure
 case (1) {
@@ -180,8 +181,13 @@ mismatch`).
 ### Type patterns
 
 A type pattern has the form `binding: Type => expr`; the binding is the
-operand narrowed to that type inside the clause. Here it takes apart the
-`Cat! | Dog!` union `pet` picked up under `if`/`else` above:
+operand narrowed to that type inside the clause. The type can be qualified
+(`g: Lib.Greeter =>`), naming an imported type even where a type of your own
+shadows the bare name. The operand is a union or
+an interface, or decoded data, where an arm matches when the data has its
+type's shape and `else` is required (see [#decoded-values]).
+Here it takes apart the `Cat! | Dog!` union `pet` picked up under
+`if`/`else` above:
 
 ```dang
 case (pet) {
@@ -219,7 +225,8 @@ signal(light: Light): String! {
 [signal(Light.RED), signal(null)]
 ```
 
-The operand must be a union or an interface (see [#interfaces-unions]) — a
+The operand must be a union, an interface (see [#interfaces-unions]), or
+decoded data — a
 plain object type is already fully known, so there is nothing to narrow:
 
 ```dang-failure

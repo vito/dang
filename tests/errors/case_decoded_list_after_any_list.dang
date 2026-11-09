@@ -1,0 +1,9 @@
+# A list arm covers a later one whose elements its own elements cover:
+# [Decoded] takes every list, null elements included.
+let d = JSON.decode("[1]")
+
+case (d) {
+  xs: [Decoded] => "any list"
+  ns: [Int!] => "ints"
+  else => "other"
+}

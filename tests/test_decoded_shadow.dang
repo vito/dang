@@ -1,0 +1,10 @@
+# A declaration named Decoded shadows the Prelude's Decoded, like any other
+# builtin type.
+type Decoded {
+  n: Int! = 1
+}
+
+let mine: Decoded! = Decoded
+assert { mine.n == 1 }
+
+print("Decoded shadow tests passed!")

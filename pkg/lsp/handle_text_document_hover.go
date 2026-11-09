@@ -298,7 +298,15 @@ func formatNamedTypeForHover(f *File, pos Position, symbolName string) (codeBloc
 		return "", ""
 	}
 
-	mod, ok := resolveNamedTypeForHover(f, pos, symbolName).(*dang.Type)
+	typ := resolveNamedTypeForHover(f, pos, symbolName)
+	if typ == nil && len(qualifiedNameAtPosition(f, pos)) == 0 {
+		// A Prelude type that is not a module (Decoded) has no
+		// declaration to show; give its name and doc.
+		if pt, ok := dang.PreludeType(symbolName); ok {
+			return pt.Name(), dang.PreludeTypeDoc(symbolName)
+		}
+	}
+	mod, ok := typ.(*dang.Type)
 	if !ok {
 		return "", ""
 	}

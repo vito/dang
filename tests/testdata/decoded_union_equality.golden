@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot compare decoded data (Decoded | Int!) before giving it a type; cast it to the type it has first, e.g. `(data :: T)`
+  [2m[34m--> errors/decoded_union_equality.dang:6:7[0m
+ [2m    |[0m
+ [2m  4 | let b = JSON.decode("oops") rescue 0[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mprint(a == b)
+[2m             [31m^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

@@ -1,0 +1,6 @@
+import Test
+
+# A GraphQL object renders as its quoted ID, as it is sent back to the server.
+let u = user(id: "User:1")!
+assert { toString(u) == "\"User:1\"" }
+assert { toString([u]) == "[\"User:1\"]" }

@@ -1,0 +1,11 @@
+[1m[31mError:[0m list and map type patterns match only decoded data, not [Int!]!
+  [2m[34m--> errors/case_list_pattern_needs_decoded.dang:5:3[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 | case (xs) {[0m
+ [2m[34m[1m  5 | [0m  items: [Int!] => items.length
+[2m         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 |   else => 0[0m
+ [2m  7 | }[0m
+ [2m    |[0m
+

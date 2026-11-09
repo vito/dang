@@ -5,7 +5,6 @@ import Test
 # Test 1: Scalar declarations
 scalar Email
 scalar PhoneNumber
-scalar JSON
 
 # Test 2: Scalar values from GraphQL
 let ts = now

@@ -238,20 +238,69 @@ func TestMembersOfTheScope(t *testing.T) {
 	}
 }
 
+func TestMembersOfThePreludeDecodedType(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope(t, membersSource)
+
+	// Decoded is a Prelude type that is not a module, so no NamedTypes
+	// lists it; the scope's members and lookups still do.
+	list, err := analysis.Members(ctx, scope, "")
+	require.NoError(t, err)
+	decoded := member(t, list, "Decoded")
+	require.Equal(t, analysis.KindType, decoded.Kind)
+	require.True(t, decoded.TypeOnly)
+	require.NotEmpty(t, decoded.Doc)
+
+	looked, ok := analysis.Lookup(scope, "Decoded")
+	require.True(t, ok)
+	require.Equal(t, "Decoded", looked.Type)
+
+	byName, err := analysis.Members(ctx, scope, "Decoded")
+	require.NoError(t, err)
+	require.Equal(t, "Decoded", byName.Type)
+	require.Empty(t, byName.Members, "decoded data is read at a type first")
+
+	// An import's namespace holds only what its schema defines.
+	_, err = analysis.Doc(ctx, scope, "Test.Decoded")
+	require.Error(t, err)
+}
+
+func TestDeclarationShadowsPreludeDecodedType(t *testing.T) {
+	scope := testScope(t, `type Decoded { raw: String! }`)
+
+	looked, ok := analysis.Lookup(scope, "Decoded")
+	require.True(t, ok)
+	require.NotNil(t, looked.Scope, "the declared type, not the Prelude's")
+}
+
+func TestPreludeDecodedTypeBesideShadowedPreludeTypes(t *testing.T) {
+	// A module declaring its own Error still sees the Prelude's Decoded.
+	scope := testScope(t, `type Error { id: String! = "x" }
+
+pub keep(d: Decoded!): Decoded! { d }
+`)
+
+	looked, ok := analysis.Lookup(scope, "Decoded")
+	require.True(t, ok)
+	require.Equal(t, "Decoded", looked.Type)
+}
+
 func TestDocOfStatics(t *testing.T) {
 	ctx := context.Background()
 	scope := testScope(t, membersSource)
 
+	// JSON is a namespace like Random: encode is its member, documented by
+	// its builtin definition.
 	encode, err := analysis.Doc(ctx, scope, "JSON.encode")
 	require.NoError(t, err)
-	require.True(t, encode.Static)
 	require.True(t, encode.Builtin)
-	require.NotEmpty(t, encode.Doc, "a static's docs come from its builtin definition")
+	require.NotEmpty(t, encode.Doc, "a builtin's docs come from its definition")
 	require.NotEmpty(t, encode.Example)
 
 	random, err := analysis.Doc(ctx, scope, "Random.int")
 	require.NoError(t, err)
 	require.NotEmpty(t, random.Doc)
+	require.Equal(t, random.Static, encode.Static)
 
 	escape, err := analysis.Doc(ctx, scope, "Regexp.escape")
 	require.NoError(t, err)

@@ -1,0 +1,30 @@
+# Decoded data keeps the decode's strictness and field names: a later cast
+# reads it the way the decode would have.
+type Inner {
+  goes: Int!
+}
+
+let lax = JSON.decode("{\"x\": {\"goes\": 1, \"more\": 2}}") :: Map[Decoded!]!
+assert { (lax["x"]! :: Inner!).goes == 1 }
+
+let strictly = JSON.decode("{\"x\": {\"goes\": 1, \"more\": 2}}", strict: true) :: Map[Decoded!]!
+let innerError = toString(strictly["x"]! :: Inner!) rescue {
+  e: Error => e.message
+}
+assert { innerError.contains("field more not found") }
+
+# Field names are the decoding format's.
+type Renamed {
+  fooBar: String! @JSON.field(name: "foo_bar") @YAML.field(name: "foo-bar")
+}
+
+let fromYAML = YAML.decode("r: {foo-bar: y}") :: Map[Decoded!]!
+assert { (fromYAML["r"]! :: Renamed!).fooBar == "y" }
+let fromJSON = JSON.decode("{\"r\": {\"foo_bar\": \"j\"}}") :: Map[Decoded!]!
+assert { (fromJSON["r"]! :: Renamed!).fooBar == "j" }
+
+# Untyped data has no fields to rename: encoding it keeps its own keys.
+assert { JSON.encode(fromYAML["r"]!) == "{\"foo-bar\":\"y\"}" }
+assert { JSON.encode(fromYAML["r"]! :: Renamed!) == "{\"foo_bar\":\"y\"}" }
+
+print("Decoded strictness tests passed!")

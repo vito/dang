@@ -6,32 +6,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
+	"math"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 )
 
-// JSON, YAML, and TOML are string-shaped data-interchange formats that double as
-// their own encode/decode namespace. Each is a builtin scalar — a ScalarKind
-// module Dang ships members for. As such they are installed in the Prelude (so
-// `:: JSON` and `JSON.encode` resolve with no import), and a schema- or
-// user-declared scalar of the same name (e.g. Dagger's `scalar JSON`) merges
-// with them through the general scalar-attach mechanism in builtins.go
-// (BuiltinScalarModule / attachBuiltinSchemes / attachBuiltinMethods). As a
-// type, JSON is also Dang's untyped JSON value (see isJSONScalar), which the
-// codecs decode into and encode from. See issue #105.
+// JSON, YAML, and TOML are data-interchange formats, each a plain namespace
+// module (like Random) holding its encode/decode and field directives,
+// installed in the Prelude so `JSON.encode` resolves with no import. Decoding
+// produces Decoded data, which no format owns. A schema's or user's type of
+// the same name is a separate type. See issue #105.
 var (
-	JSONModule = NewType("JSON", ScalarKind)
-	YAMLModule = NewType("YAML", ScalarKind)
-	TOMLModule = NewType("TOML", ScalarKind)
+	JSONModule = NewType("JSON", ObjectKind)
+	YAMLModule = NewType("YAML", ObjectKind)
+	TOMLModule = NewType("TOML", ObjectKind)
 )
 
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
-// with the builtin DSL like the Random/UUID modules. Being ScalarKind static
-// modules, they are installed in the Prelude and merge with a same-named schema
-// or user scalar automatically (see builtins.go: BuiltinScalarModule).
+// with the builtin DSL like the Random/UUID modules (see env.go for how they
+// are installed in the Prelude).
 func registerCodecs() {
 	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
 	// encode takes an arbitrary value, so it cannot live on the String type
@@ -63,10 +60,9 @@ func registerCodecs() {
 			return ToValue(out)
 		})
 	// decode returns an opaque value materialized against the expected type
-	// supplied via a `:: T` hint at the call boundary. A JSON value degrades
-	// into data (it is JSON text), so decoding one walks data held as JSON.
+	// supplied via a `:: T` hint at the call boundary.
 	StaticMethod(JSONModule, "decode").
-		Doc("parses JSON text (a string, or a JSON value) into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
+		Doc("parses JSON text into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
 		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
 		Params(
 			"data", NonNull(StringType),
@@ -79,7 +75,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("JSON.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: jsonCodec, Strict: strict}, nil
+			return DeferredValue{Raw: raw, Naming: jsonNaming, Strict: strict}, nil
 		})
 
 	// toJSON / fromJSON / fromYAML are the deprecated top-level predecessors of
@@ -116,18 +112,23 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("fromJSON: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
+			return DeferredValue{Raw: raw, Naming: jsonNaming}, nil
 		})
 
 	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
 	StaticMethod(YAMLModule, "encode").
-		Doc("serializes a value to a YAML string").
-		Example(`YAML.encode([1, 2, 3])`).
-		Params("value", TypeVar('a')).
+		Doc("serializes a value to a YAML string. " +
+			"Fields come out in declaration order (a type's as declared, a record's as written) " +
+			"and map entries in insertion order; sortKeys: true sorts every mapping's keys instead.").
+		Example(`YAML.encode({{name: "ci", tags: ["a", "b"]}})`).
+		Params(
+			"value", TypeVar('a'),
+			"sortKeys", NonNull(BooleanType), BoolValue{Val: false},
+		).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-			out, err := encodeYAML(val)
+			out, err := encodeYAML(val, args.GetBool("sortKeys"))
 			if err != nil {
 				return nil, fmt.Errorf("YAML.encode: %w", err)
 			}
@@ -147,7 +148,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("YAML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: yamlCodec, Strict: strict}, nil
+			return DeferredValue{Raw: raw, Naming: yamlNaming, Strict: strict}, nil
 		})
 	Builtin("fromYAML").
 		Doc("parses a YAML string into an opaque value that is materialized by an expected type. Deprecated: use YAML.decode instead.").
@@ -161,7 +162,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("fromYAML: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
+			return DeferredValue{Raw: raw, Naming: yamlNaming}, nil
 		})
 
 	TOMLModule.SetTypeDocString("functions for encoding and decoding TOML")
@@ -191,10 +192,12 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("TOML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: tomlCodec, Strict: args.GetBool("strict")}, nil
+			return DeferredValue{Raw: raw, Naming: tomlNaming, Strict: args.GetBool("strict")}, nil
 		})
 
-	registerCodecFieldDirectives()
+	registerFieldDirectives(jsonNaming)
+	registerFieldDirectives(yamlNaming)
+	registerFieldDirectives(tomlNaming)
 }
 
 // --- JSON ---
@@ -218,57 +221,32 @@ type jsonOptions struct {
 
 var defaultJSONOptions = jsonOptions{escapeHTML: true}
 
-// marshalOrderedJSON encodes val with e and marshals the result compactly.
-func marshalOrderedJSON(e valueEncoder, val Value) ([]byte, error) {
+// marshalOrderedJSON encodes val with e and renders the tree as compact JSON.
+func marshalOrderedJSON(e valueEncoder, val Value, sortKeys bool) ([]byte, error) {
 	tree, err := e.encode(val)
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(tree)
-}
-
-// toStringJSON is the JSON text toString and List.join turn a non-string value
-// into. Its layout is JSON.encode's default — compact, HTML-escaped, fields in
-// declaration order, map entries in insertion order — but, as toString always
-// has, it writes every field under its own name: codec field directives do
-// not apply.
-func toStringJSON(val Value) (string, error) {
-	out, err := marshalOrderedJSON(valueEncoder{codec: jsonCodec, rawFields: true}, val)
-	if err != nil {
-		return "", err
+	var buf bytes.Buffer
+	if err := renderJSON(&buf, tree, sortKeys); err != nil {
+		return nil, err
 	}
-	return string(out), nil
+	return buf.Bytes(), nil
 }
 
 func encodeJSON(val Value, opts jsonOptions) (string, error) {
 	if strings.Trim(opts.indent, " \t") != "" {
 		return "", fmt.Errorf("indent must contain only spaces and tabs, got %q", opts.indent)
 	}
-	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries and
-	// assembles objects in order; json.Marshal then produces compact output
-	// (json.Number leaves render as numbers).
-	jsonBytes, err := marshalOrderedJSON(valueEncoder{codec: jsonCodec}, val)
+	// The encoder applies @JSON.field / @JSON.ignore at object boundaries
+	// and keeps objects in order; the renderer writes compact output.
+	jsonBytes, err := marshalOrderedJSON(valueEncoder{naming: jsonNaming}, val, opts.sortKeys)
 	if err != nil {
 		return "", err
 	}
-	if opts.sortKeys {
-		// Decoding into Go maps and marshaling again sorts every object's
-		// keys, including those of leaves that brought their own JSON (raw
-		// scalars), which the encoder never looks inside. Numbers stay
-		// json.Number, so their text is kept as written.
-		raw, err := jsonBytesToRaw(jsonBytes)
-		if err != nil {
-			return "", err
-		}
-		if jsonBytes, err = json.Marshal(raw); err != nil {
-			return "", err
-		}
-	}
-	// Layout is applied to the compact output as a whole rather than through
-	// json.MarshalIndent or a json.Encoder, because parts of the tree are
-	// already-encoded json.RawMessage (ordered maps, leaves) that were
-	// HTML-escaped when they were marshaled. Both passes leave every other
-	// byte alone, so the defaults are exactly json.Marshal's output.
+	// Layout is applied to the compact output as a whole. Both passes leave
+	// every other byte alone, so the defaults are exactly json.Marshal's
+	// output.
 	if !opts.escapeHTML {
 		jsonBytes = unescapeJSONHTML(jsonBytes)
 	}
@@ -346,7 +324,7 @@ func decodeJSON(data string, strict bool) (any, error) {
 		}
 	}
 
-	return raw, nil
+	return dataFromJSON(raw), nil
 }
 
 // checkJSONDuplicateKeys reports the first object in data that repeats a key,
@@ -402,56 +380,20 @@ func checkJSONValueDuplicateKeys(decoder *json.Decoder, data, path string) error
 
 // --- YAML ---
 
-func encodeYAML(val Value) (string, error) {
-	tree, err := encodeValue(val, yamlCodec)
+func encodeYAML(val Value, sortKeys bool) (string, error) {
+	tree, err := encodeValue(val, yamlNaming)
 	if err != nil {
 		return "", err
 	}
-	out, err := yaml.Marshal(quoteYAMLMergeKeys(numbersToGo(tree)))
+	node, err := yamlNode(tree, sortKeys)
+	if err != nil {
+		return "", err
+	}
+	out, err := yaml.Marshal(node)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
-}
-
-// yamlQuotedKey is a map key yaml.v3 must emit double-quoted. yaml.v3 writes a
-// "<<" string key bare, which any YAML reader — YAML.decode included — takes
-// as a merge key, so YAML.encode's output would not round-trip.
-type yamlQuotedKey string
-
-func (k yamlQuotedKey) MarshalYAML() (any, error) {
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: string(k), Style: yaml.DoubleQuotedStyle}, nil
-}
-
-// quoteYAMLMergeKeys rewrites every map holding a "<<" key so that key
-// marshals quoted (see yamlQuotedKey). Other maps, and "<<" values, which
-// cannot merge, are left exactly as yaml.Marshal renders them.
-func quoteYAMLMergeKeys(v any) any {
-	switch x := v.(type) {
-	case []any:
-		for i := range x {
-			x[i] = quoteYAMLMergeKeys(x[i])
-		}
-		return x
-	case map[string]any:
-		for k := range x {
-			x[k] = quoteYAMLMergeKeys(x[k])
-		}
-		if _, ok := x["<<"]; !ok {
-			return x
-		}
-		quoted := make(map[any]any, len(x))
-		for k, val := range x {
-			if k == "<<" {
-				quoted[yamlQuotedKey(k)] = val
-			} else {
-				quoted[k] = val
-			}
-		}
-		return quoted
-	default:
-		return v
-	}
 }
 
 // decodeYAMLRaw wraps decodeYAML (deferred_yaml.go) with the "invalid YAML:"
@@ -468,17 +410,18 @@ func decodeYAMLRaw(data string, strict bool) (any, error) {
 // --- TOML ---
 
 func encodeTOML(val Value) (string, error) {
-	tree, err := encodeValue(val, tomlCodec)
+	tree, err := encodeValue(val, tomlNaming)
 	if err != nil {
 		return "", err
 	}
-	plain := numbersToGo(tree)
 	// TOML's top level must be a table; a bare scalar or array has no TOML
 	// representation. Report that in Dang terms rather than emitting something
 	// surprising or leaking a Go type name.
-	if _, ok := plain.(map[string]any); !ok {
-		return "", fmt.Errorf("TOML requires a table (record) at the top level, got %s", plainKindName(plain))
+	if _, ok := dataEntries(tree, false); !ok {
+		return "", fmt.Errorf("TOML requires a table (record) at the top level, got %s", dataKindName(tree))
 	}
+	// The TOML encoder takes Go maps, whose keys it sorts.
+	plain := plainData(tree)
 	if err := tomlRejectNullInList(plain); err != nil {
 		return "", err
 	}
@@ -494,196 +437,68 @@ func decodeTOML(data string) (any, error) {
 	if _, err := toml.Decode(data, &m); err != nil {
 		return nil, fmt.Errorf("invalid TOML: %w", err)
 	}
-	// Bridge through JSON so the decoded shape matches what the materializer
-	// already handles for JSON/YAML decode — in particular, numbers arrive as
-	// json.Number rather than TOML's native int64/float64.
-	jsonBytes, err := json.Marshal(m)
-	if err != nil {
-		return nil, err
+	if m == nil {
+		m = map[string]any{}
 	}
-	return jsonBytesToRaw(jsonBytes)
+	raw, err := tomlToData(m)
+	if err != nil {
+		return nil, fmt.Errorf("invalid TOML: %w", err)
+	}
+	return raw, nil
+}
+
+// tomlToData converts what the TOML decoder produces into the neutral tree:
+// integers and floats become DataNumber, and a date-time becomes its
+// RFC 3339 text.
+func tomlToData(v any) (any, error) {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			c, err := tomlToData(e)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", k, err)
+			}
+			out[k] = c
+		}
+		return out, nil
+	case []map[string]any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			c, err := tomlToData(e)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = c
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			c, err := tomlToData(e)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = c
+		}
+		return out, nil
+	case int64:
+		return DataNumber(strconv.FormatInt(x, 10)), nil
+	case float64:
+		// nan and inf keep their spelling, as YAML's .inf does: they fail
+		// only where a finite number is needed.
+		if math.IsInf(x, 0) || math.IsNaN(x) {
+			return DataNumber(strconv.FormatFloat(x, 'g', -1, 64)), nil
+		}
+		return floatData(x)
+	case time.Time:
+		return x.Format(time.RFC3339Nano), nil
+	default:
+		return v, nil
+	}
 }
 
 // --- shared value conversion ---
-
-// encodeValue converts a Dang Value into a plain Go value (map / slice / string
-// / bool / json.Number / nil) for a codec, applying that codec's field
-// directives at every object boundary: @FORMAT.field renames the key and omits
-// it when null, @FORMAT.ignore drops it entirely. Numbers stay as json.Number so
-// each codec can render them (json.Marshal directly; yaml/toml after
-// numbersToGo). Renames are a codec concern only — Object.MarshalJSON, used for
-// internal state retention, keeps canonical field names.
-func encodeValue(val Value, c Codec) (any, error) {
-	return valueEncoder{codec: c}.encode(val)
-}
-
-// valueEncoder is encodeValue with its options.
-//
-// For JSON it assembles every object as an ordered json.RawMessage: fields in
-// declaration order (see objectBindings), like encoding/json does for struct
-// fields, and map entries in insertion order. YAML/TOML render Go maps, which
-// their encoders sort.
-type valueEncoder struct {
-	codec Codec
-	// rawFields encodes every object field under its own name, ignoring the
-	// codec's field directives, as toString does.
-	rawFields bool
-}
-
-func (e valueEncoder) encode(val Value) (any, error) {
-	c := e.codec
-	switch v := val.(type) {
-	case NullValue:
-		return nil, nil
-	case *Object:
-		var entries []jsonEntry
-		for _, kv := range e.objectBindings(v) {
-			if _, isFn := kv.Value.(FunctionValue); isFn {
-				continue
-			}
-			var opts codecFieldOpts
-			if v.Mod != nil && !e.rawFields {
-				opts = c.options(v.Mod.GetDirectives(kv.Key))
-			}
-			if opts.ignore {
-				continue
-			}
-			if opts.omitNull {
-				if _, isNull := kv.Value.(NullValue); isNull {
-					continue
-				}
-			}
-			if opts.omitEmpty && isEmptyValue(kv.Value) {
-				continue
-			}
-			encoded, err := e.encode(kv.Value)
-			if err != nil {
-				return nil, err
-			}
-			entries = append(entries, jsonEntry{key: opts.key(kv.Key), val: encoded})
-		}
-		if c == jsonCodec {
-			return marshalJSONObject(entries)
-		}
-		result := make(map[string]any, len(entries))
-		for _, entry := range entries {
-			result[entry.key] = entry.val
-		}
-		return result, nil
-	case ListValue:
-		// Use a non-nil slice so an empty list encodes as [] rather than null.
-		items := make([]any, len(v.Elements))
-		for i, elem := range v.Elements {
-			encoded, err := e.encode(elem)
-			if err != nil {
-				return nil, err
-			}
-			items[i] = encoded
-		}
-		return items, nil
-	case MapValue:
-		// Map keys are runtime data and are never renamed, but the values may be
-		// objects with field directives, so recurse into them.
-		if c == jsonCodec {
-			entries := make([]jsonEntry, len(v.Keys))
-			for i, k := range v.Keys {
-				encoded, err := e.encode(v.Entries[k])
-				if err != nil {
-					return nil, err
-				}
-				entries[i] = jsonEntry{key: k, val: encoded}
-			}
-			return marshalJSONObject(entries)
-		}
-		result := make(map[string]any, len(v.Keys))
-		for _, k := range v.Keys {
-			encoded, err := e.encode(v.Entries[k])
-			if err != nil {
-				return nil, err
-			}
-			result[k] = encoded
-		}
-		return result, nil
-	default:
-		// Scalars, enums, and other leaves have no renamable fields of their own,
-		// so they keep their canonical encoding — except a JSON value, which
-		// is embedded as the data it holds.
-		if s, ok := val.(ScalarValue); ok {
-			if mod, ok := s.ScalarType.(*Type); ok && isJSONScalar(mod) {
-				return e.encodeJSONScalar(s)
-			}
-		}
-		return c.encodeLeaf(val)
-	}
-}
-
-// objectBindings returns an object's bindings in the order its fields are
-// encoded. For JSON they follow the order the object's own type declares its
-// members — a type's fields, a record literal's fields as written, a
-// selection's as selected — with anything the type does not declare after
-// them, by name. That is the type the value was built with: a record literal
-// annotated with a record type listing its fields differently keeps the
-// literal's order. Other codecs collect fields into a map, so the order does
-// not matter and is left as the object holds them.
-func (e valueEncoder) objectBindings(obj *Object) []Keyed[Value] {
-	bindings := obj.Bindings(PrivateVisibility)
-	if e.codec != jsonCodec {
-		return bindings
-	}
-	rank := map[string]int{}
-	if obj.Mod != nil {
-		for name := range obj.Mod.Bindings(PrivateVisibility) {
-			if _, seen := rank[name]; !seen {
-				rank[name] = len(rank)
-			}
-		}
-	}
-	sort.SliceStable(bindings, func(i, j int) bool {
-		ri, iDeclared := rank[bindings[i].Key]
-		rj, jDeclared := rank[bindings[j].Key]
-		switch {
-		case iDeclared && jDeclared:
-			return ri < rj
-		case iDeclared != jDeclared:
-			return iDeclared
-		default:
-			return bindings[i].Key < bindings[j].Key
-		}
-	})
-	return bindings
-}
-
-// jsonEntry is one member of a JSON object assembled in a chosen order.
-type jsonEntry struct {
-	key string
-	val any
-}
-
-// marshalJSONObject renders entries as a JSON object in the order given — a Go
-// map would be re-sorted by encoding/json. The result is a json.RawMessage so
-// the final json.Marshal emits it verbatim.
-func marshalJSONObject(entries []jsonEntry) (any, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	for i, entry := range entries {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		keyBytes, err := json.Marshal(entry.key)
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(keyBytes)
-		buf.WriteByte(':')
-		valBytes, err := json.Marshal(entry.val)
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(valBytes)
-	}
-	buf.WriteByte('}')
-	return json.RawMessage(buf.Bytes()), nil
-}
 
 // isEmptyValue reports whether a value counts as empty for @FORMAT.field's
 // omitEmpty, matching Go's encoding/json omitempty: null, the empty string, a
@@ -705,56 +520,38 @@ func isEmptyValue(v Value) bool {
 		return len(x.Elements) == 0
 	case MapValue:
 		return len(x.Keys) == 0
+	case DeferredValue:
+		// Decoded data is empty when the data it holds is.
+		return isEmptyData(x.Raw)
 	default:
 		return false
 	}
 }
 
-// encodeLeaf converts a leaf Dang Value to its canonical form for this codec.
-// JSON preserves the value's own MarshalJSON output verbatim (as
-// json.RawMessage), so map keys keep their insertion order through the final
-// marshal. YAML/TOML produce a plain Go value (numbers as json.Number) that
-// those encoders can render — they sort map keys regardless.
-func (c Codec) encodeLeaf(val Value) (any, error) {
-	jsonBytes, err := json.Marshal(val)
-	if err != nil {
-		return nil, err
+// isEmptyData reports whether decoded data counts as empty for omitEmpty,
+// as isEmptyValue does for the values it decodes to.
+func isEmptyData(raw any) bool {
+	switch x := raw.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case bool:
+		return !x
+	case DataNumber:
+		f, err := x.Float64()
+		return err == nil && f == 0
+	case []any:
+		return len(x) == 0
+	case map[string]any:
+		return len(x) == 0
+	default:
+		return false
 	}
-	if c == jsonCodec {
-		return json.RawMessage(jsonBytes), nil
-	}
-	return jsonBytesToRaw(jsonBytes)
-}
-
-// encodeJSONScalar embeds a JSON value as the data its text spells, not as a
-// string, so decoding into JSON and encoding back round-trips. Text that is
-// not JSON (only a host embedding Dang can build one, since a String must
-// validate to become a JSON value) is an error rather than output a
-// reader would choke on — except for toString, which shows it as the string
-// it is.
-func (e valueEncoder) encodeJSONScalar(s ScalarValue) (any, error) {
-	if e.codec == jsonCodec {
-		// The text is embedded as it is; it only needs to be JSON.
-		if json.Valid([]byte(s.Val)) {
-			return json.RawMessage(s.Val), nil
-		}
-		if e.rawFields {
-			return s.Val, nil
-		}
-		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
-	}
-	raw, err := decodeJSON(s.Val, false)
-	if err != nil {
-		if e.rawFields {
-			return s.Val, nil
-		}
-		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
-	}
-	return raw, nil
 }
 
 // jsonBytesToRaw decodes JSON bytes into a generic value, preserving numbers as
-// json.Number — the shape the materializer expects from a decode.
+// json.Number, the shape GraphQL clients send and receive.
 func jsonBytesToRaw(jsonBytes []byte) (any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(jsonBytes))
 	decoder.UseNumber()
@@ -768,7 +565,7 @@ func jsonBytesToRaw(jsonBytes []byte) (any, error) {
 // tomlRejectNullInList reports a Dang-framed error for a null list element,
 // which TOML cannot represent. Without this, BurntSushi surfaces its own
 // internal message ("toml: cannot encode array with nil element"), unlike the
-// rest of the encoder which keeps errors in Dang terms (see plainKindName). A
+// rest of the encoder which keeps errors in Dang terms (see dataKindName). A
 // null *table* value the encoder drops silently, which we leave as-is.
 func tomlRejectNullInList(v any) error {
 	switch x := v.(type) {
@@ -789,55 +586,4 @@ func tomlRejectNullInList(v any) error {
 		}
 	}
 	return nil
-}
-
-// plainKindName names a plain Go value (as produced by plainFromValue) in
-// Dang-facing terms, so error messages describe what the user passed rather
-// than leaking a Go type name like []interface {} or int64.
-func plainKindName(v any) string {
-	switch v.(type) {
-	case nil:
-		return "null"
-	case bool:
-		return "a boolean"
-	case string:
-		return "a string"
-	case int64:
-		return "an integer"
-	case float64:
-		return "a float"
-	case []any:
-		return "a list"
-	case map[string]any:
-		return "a record"
-	default:
-		return fmt.Sprintf("%T", v)
-	}
-}
-
-// numbersToGo walks a decoded structure and converts json.Number to int64 or
-// float64 so non-JSON encoders render numbers as numbers.
-func numbersToGo(v any) any {
-	switch x := v.(type) {
-	case json.Number:
-		if i, err := x.Int64(); err == nil {
-			return i
-		}
-		if f, err := x.Float64(); err == nil {
-			return f
-		}
-		return x.String()
-	case []any:
-		for i := range x {
-			x[i] = numbersToGo(x[i])
-		}
-		return x
-	case map[string]any:
-		for k := range x {
-			x[k] = numbersToGo(x[k])
-		}
-		return x
-	default:
-		return v
-	}
 }

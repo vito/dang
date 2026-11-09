@@ -1,7 +1,6 @@
 package dang
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -118,7 +117,7 @@ func yamlNodeToDeferredRaw(node *yaml.Node, seen map[*yaml.Node]bool) (any, erro
 			}
 			return b, nil
 		case "!!int", "!!float":
-			return json.Number(normalizeYAMLNumber(node.Value)), nil
+			return DataNumber(normalizeYAMLNumber(node.Value)), nil
 		case "!!str", "":
 			return node.Value, nil
 		default:
