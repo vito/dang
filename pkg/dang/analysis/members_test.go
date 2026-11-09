@@ -273,6 +273,18 @@ func TestDeclarationShadowsPreludeDecodedType(t *testing.T) {
 	require.NotNil(t, looked.Scope, "the declared type, not the Prelude's")
 }
 
+func TestPreludeDecodedTypeBesideShadowedPreludeTypes(t *testing.T) {
+	// A module declaring its own Error still sees the Prelude's Decoded.
+	scope := testScope(t, `type Error { id: String! = "x" }
+
+pub keep(d: Decoded!): Decoded! { d }
+`)
+
+	looked, ok := analysis.Lookup(scope, "Decoded")
+	require.True(t, ok)
+	require.Equal(t, "Decoded", looked.Type)
+}
+
 func TestDocOfStatics(t *testing.T) {
 	ctx := context.Background()
 	scope := testScope(t, membersSource)

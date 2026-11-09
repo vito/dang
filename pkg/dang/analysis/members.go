@@ -309,9 +309,21 @@ func preludeTypeMember(scope dang.TypeScope, name string) (Member, bool) {
 
 // seesPrelude reports whether scope resolves names through the Prelude, as a
 // lexical scope does; a type's or an import's namespace holds only its own.
+// A scope sees the Prelude when one of the Prelude's own object or interface
+// types (not a GraphQL builtin scalar, which a schema's namespace has too)
+// resolves through it unshadowed.
 func seesPrelude(scope dang.TypeScope) bool {
-	errType, ok := scope.NamedType("Error")
-	return ok && errType == dang.TypeScope(dang.ErrorType)
+	preludeScope() // loads the Prelude
+	for name, t := range dang.Prelude.NamedTypes() {
+		mod, ok := t.(*dang.Type)
+		if !ok || (mod.Kind != dang.ObjectKind && mod.Kind != dang.InterfaceKind) {
+			continue
+		}
+		if got, ok := scope.NamedType(name); ok && got == t {
+			return true
+		}
+	}
+	return false
 }
 
 // scopeMembers lists scope's bindings of at least the given visibility, the
