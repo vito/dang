@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: Point is already matched by the Map[Decoded!] clause on line 10
+  [2m[34m--> errors/case_decoded_covered_arm.dang:11:6[0m
+ [2m    |[0m
+ [2m  9 | case (d) {[0m
+ [2m 10 |   m: Map[Decoded!] => "map"[0m
+ [2m[34m[1m 11 | [0m  p: Point => "point"
+[2m            [31m^^^^^[0m
+ [2m 12 |   else => "other"[0m
+ [2m 13 | }[0m
+ [2m    |[0m
+

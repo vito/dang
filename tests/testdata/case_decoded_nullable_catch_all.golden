@@ -1,4 +1,4 @@
-[1m[31mError:[0m a case on decoded data needs an else: the data may match none of the patterns
+[1m[31mError:[0m a case on nullable decoded data needs a `null` arm or an else: a Decoded arm takes no null
   [2m[34m--> errors/case_decoded_nullable_catch_all.dang:5:1[0m
  [2m    |[0m
  [2m  3 | let d = JSON.decode("1")[0m

@@ -222,7 +222,8 @@ signal(light: Light): String! {
 [signal(Light.RED), signal(null)]
 ```
 
-The operand must be a union or an interface (see [#interfaces-unions]) — a
+The operand must be a union, an interface (see [#interfaces-unions]), or
+decoded data — a
 plain object type is already fully known, so there is nothing to narrow:
 
 ```dang-failure

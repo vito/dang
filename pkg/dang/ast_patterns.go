@@ -22,6 +22,11 @@ type Case struct {
 	// every member of a non-null union). A non-exhaustive case can fall
 	// through and evaluate to null, so its result type is nullable.
 	exhaustive bool
+
+	// nullableDecoded is set during inference when the operand is nullable
+	// Decoded: there, null data is the operand being null, so it takes only
+	// a `null` arm or else, however the null was decoded or passed along.
+	nullableDecoded bool
 }
 
 var _ Node = (*Case)(nil)
@@ -216,8 +221,10 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		c.exhaustive = hasElse || c.coversOperand(env, exprType, valuePatterns)
-		if inner, nullable := decodedOperand(exprType); inner && !hasElse {
-			hasTypeArm := false
+		inner, nullable := decodedOperand(exprType)
+		c.nullableDecoded = inner && nullable
+		if inner && !hasElse {
+			hasTypeArm, catchAll := false, false
 			for _, clause := range c.Clauses {
 				if clause.decodedPatternType == nil {
 					continue
@@ -225,12 +232,17 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				hasTypeArm = true
 				// A Decoded arm takes any non-null data; null data
 				// needs a `null` pattern too.
-				if isDecodedCatchAll(clause) && (!nullable || hasNullPattern(valuePatterns)) {
-					hasElse = true
-					c.exhaustive = true
+				if isDecodedCatchAll(clause) {
+					catchAll = true
 				}
 			}
-			if hasTypeArm && !hasElse {
+			switch {
+			case catchAll && (!nullable || hasNullPattern(valuePatterns)):
+				hasElse = true
+				c.exhaustive = true
+			case catchAll:
+				return nil, NewInferError(fmt.Errorf("a case on nullable decoded data needs a `null` arm or an else: a Decoded arm takes no null"), c)
+			case hasTypeArm:
 				// Decoded data may have the shape of none of the
 				// patterns' types, and nothing about its type says which.
 				return nil, NewInferError(fmt.Errorf("a case on decoded data needs an else: the data may match none of the patterns"), c)
@@ -623,7 +635,8 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				// materialized like a cast, and its errors (a scalar hook
 				// rejecting the data, a constructor raising) are the case's.
 				data, ok := typedVal.(DeferredValue)
-				if !ok || !decodedShapeMatches(ctx, scope, data, clause.decodedPatternType) {
+				if !ok || (c.nullableDecoded && data.Raw == nil) ||
+					!decodedShapeMatches(ctx, scope, data, clause.decodedPatternType) {
 					continue
 				}
 				matched, err := materializeDeferred(ctx, scope, data, clause.decodedPatternType, "")
@@ -799,7 +812,7 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 			if prev.decodedPatternType == nil {
 				continue
 			}
-			if isDecodedCatchAll(prev) || prev.decodedPatternType.Eq(clause.decodedPatternType) {
+			if isDecodedCatchAll(prev) || decodedPatternCovers(prev.decodedPatternType, clause.decodedPatternType) {
 				return NewInferError(
 					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
 						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
@@ -809,6 +822,38 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 		}
 	}
 	return nil
+}
+
+// decodedPatternCovers reports whether every piece of data with the shape of
+// cur also has the shape of prev, so an arm for cur after one for prev never
+// runs: the same type; a `Map[Decoded!]` arm before any object or map arm; a
+// `[Decoded!]` arm before any list arm; `Float` before `Int`.
+func decodedPatternCovers(prev, cur hm.Type) bool {
+	if prev.Eq(cur) {
+		return true
+	}
+	p, c := unwrapNonNull(prev), unwrapNonNull(cur)
+	if val, ok := mapValueTarget(p); ok && isDecodedNonNull(val) {
+		if _, ok := mapValueTarget(c); ok {
+			return true
+		}
+		mod, ok := c.(*Type)
+		return ok && (mod.Kind == ObjectKind || mod.Kind == InputKind)
+	}
+	if elem, ok := listElementTarget(p); ok && isDecodedNonNull(elem) {
+		_, ok := listElementTarget(c)
+		return ok
+	}
+	return p == FloatType && c == IntType
+}
+
+func isDecodedNonNull(t hm.Type) bool {
+	nn, ok := t.(hm.NonNullType)
+	if !ok {
+		return false
+	}
+	_, ok = nn.Type.(DecodedType)
+	return ok
 }
 
 // decodedOperand reports whether a case operand is decoded data, and whether
@@ -925,10 +970,12 @@ func (c *CaseClause) patternNode() SourceLocatable {
 
 // abstractDecodeTarget returns an interface or union that materializing t
 // would have to build, which decoded data never materializes as, with the
-// field path that holds it ("" at t itself). Like checkDecodeTarget, it
-// walks non-null, lists and maps, an anonymous record's fields and a named
-// object's constructor parameters, except those every codec ignores: a
-// pattern whose type holds an interface anywhere could never match.
+// field path that holds it ("" at t itself). At t itself it looks through
+// non-null, lists and maps; below that, only through the fields every match
+// needs — an anonymous record's non-null fields and a named object's
+// non-null constructor parameters without defaults, except those every
+// codec ignores — since data can match a type that holds an interface only
+// in a nullable or defaulted field, or in a list that may be empty.
 func abstractDecodeTarget(t hm.Type) (*Type, string) {
 	seen := map[*Type]bool{}
 	var walk func(t hm.Type, via string) (*Type, string)
@@ -939,6 +986,9 @@ func abstractDecodeTarget(t hm.Type) (*Type, string) {
 			}
 			ft, mono := field.Value.Type()
 			if !mono {
+				continue
+			}
+			if _, required := ft.(hm.NonNullType); !required {
 				continue
 			}
 			next := field.Key
@@ -955,11 +1005,13 @@ func abstractDecodeTarget(t hm.Type) (*Type, string) {
 	}
 	walk = func(t hm.Type, via string) (*Type, string) {
 		t = unwrapNonNull(t)
-		if elem, ok := listElementTarget(t); ok {
-			return walk(elem, via)
-		}
-		if val, ok := mapValueTarget(t); ok {
-			return walk(val, via)
+		if via == "" {
+			if elem, ok := listElementTarget(t); ok {
+				return walk(elem, via)
+			}
+			if val, ok := mapValueTarget(t); ok {
+				return walk(val, via)
+			}
 		}
 		v, ok := t.(*Type)
 		if !ok {

@@ -148,12 +148,15 @@ kind(d: Decoded!): String! {
 [kind(JSON.decode("3")), kind(JSON.decode("[1, true]")), kind(YAML.decode("b: 1\na: 2"))]
 ```
 
-Order the arms from most to least specific: `1` is an `Int` and a `Float`, and
-a type reads only the fields it declares (an object with extra keys still
-matches, unless the decode was strict). Null data matches no type arm: it
-goes to `else`, a `x: Decoded` arm (which takes any data as it is, and so
-can stand in for `else`, joined by a `null` arm on a nullable operand), or,
-on a nullable `Decoded` operand, a `null` arm.
+Order the arms from most to least specific: `1` is an `Int` and a `Float`
+(so an `Int` arm after a `Float` arm is an unreachable-clause error, as is
+an object arm after `Map[Decoded!]`), and a type reads only the fields it
+declares (an object with extra keys still matches, unless the decode was
+strict). A `x: Decoded` arm takes any data as it is, and so can stand in for
+`else`. Null data matches no other type arm. On a nullable `Decoded` operand
+null is the operand itself being null, so it goes only to a `null` arm or
+`else`, and a `Decoded` arm stands in for `else` together with a `null` arm;
+on `Decoded!`, null data goes to a `Decoded` arm or `else`.
 
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded

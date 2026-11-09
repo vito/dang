@@ -16,11 +16,11 @@ assert { describe(JSON.decode("[1, 2, 3]")) == "list of 3" }
 assert { describe(YAML.decode("b: 1\na: 2")) == "object with a,b" }
 assert { describe(JSON.decode("true")) == "something else" }
 
-# The first matching arm wins: 1 is an Int, and a Float too.
+# The first matching arm wins: 1 is an Int, and a Float too, so an Int arm
+# after a Float arm is unreachable (see errors/case_decoded_int_after_float).
 asFloat(d: Decoded!): String! {
   case (d) {
     f: Float => `float ${f}`
-    n: Int => `int ${n}`
     else => "neither"
   }
 }
@@ -204,5 +204,46 @@ whole(d: Decoded): String! {
 assert { whole(null) == "null" }
 assert { whole(JSON.decode("2")) == "int 2" }
 assert { whole(JSON.decode("\"s\"")) == "rest" }
+
+# On a nullable operand null data takes the `null` arm however it arrived:
+# straight from decode, through a parameter, or read out of a map.
+let decodedNull = JSON.decode("null")
+let nulls = JSON.decode("{\"a\": null}") :: Map[Decoded!]!
+
+restFirst(d: Decoded): String! {
+  case (d) {
+    rest: Decoded => "rest"
+    null => "null"
+  }
+}
+
+let direct = case (decodedNull) {
+  rest: Decoded => "rest"
+  null => "null"
+}
+
+let fromMap = case (nulls["a"]) {
+  rest: Decoded => "rest"
+  null => "null"
+}
+
+assert { [direct, restFirst(decodedNull), fromMap] == ["null", "null", "null"] }
+
+# A type holding an interface only in a nullable field can still match.
+interface Tagged {
+  tag: String!
+}
+
+type Holder {
+  label: String!
+  inner: Tagged
+}
+
+let held2 = case (JSON.decode("{\"label\": \"x\"}")) {
+  h: Holder => h.label
+  else => "?"
+}
+
+assert { held2 == "x" }
 
 print("case on Decoded tests passed!")
