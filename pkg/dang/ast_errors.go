@@ -420,7 +420,8 @@ func (t *RescueExpr) Walk(fn func(Node) bool) {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)
 		}
-		if clause.TypePattern != nil {
+		if clause.TypePattern != nil && clause.PatternBase == nil {
+			// Not for a qualified pattern: see Case.Walk.
 			fn(clause.TypePattern)
 		}
 		clause.Expr.Walk(fn)

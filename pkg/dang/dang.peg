@@ -802,13 +802,13 @@ RescueClause <- ElseToken _ ArrowToken _ expr:Form {
     TypePattern: typeName.(*Symbol),
     Loc: c.Loc(),
   }, nil
-} / binding:Symbol _ ColonToken _ qual:(q:Id DotToken { return q, nil })+ typeName:Symbol _ ArrowToken _ expr:Form {
+} / binding:Symbol _ ColonToken _ qual:(q:Id DotToken { return &NamedTypeNode{Name: q.(string), Loc: c.Loc()}, nil })+ typeName:Symbol _ ArrowToken _ expr:Form {
   // e: Lib.SomeError => ... names an error type through its qualifier
   return &CaseClause{
     Expr: expr.(Node),
     Binding: binding.(*Symbol).Name,
     TypePattern: typeName.(*Symbol),
-    PatternBase: qualifiedTypeBase(qual, c.Loc()),
+    PatternBase: qualifiedTypeBase(qual),
     Loc: c.Loc(),
   }, nil
 } / binding:Symbol _ ArrowToken _ expr:Form {
@@ -1345,14 +1345,14 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
     TypePattern: typeName.(*Symbol),
     Loc: c.Loc(),
   }, nil
-} / binding:Symbol _ ColonToken _ qual:(q:Id DotToken { return q, nil })+ typeName:Symbol _ ArrowToken _ expr:Form {
+} / binding:Symbol _ ColonToken _ qual:(q:Id DotToken { return &NamedTypeNode{Name: q.(string), Loc: c.Loc()}, nil })+ typeName:Symbol _ ArrowToken _ expr:Form {
   // binding: Lib.TypeName => ... names the type through its qualifier
   return &CaseClause{
     Value: nil,
     Expr: expr.(Node),
     Binding: binding.(*Symbol).Name,
     TypePattern: typeName.(*Symbol),
-    PatternBase: qualifiedTypeBase(qual, c.Loc()),
+    PatternBase: qualifiedTypeBase(qual),
     Loc: c.Loc(),
   }, nil
 } / binding:Symbol _ ColonToken _ patternType:(AppliedType / ListType) bang:BangToken? _ ArrowToken _ expr:Form {

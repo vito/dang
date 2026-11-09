@@ -67,7 +67,11 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			if err != nil {
 				return nil, fmt.Errorf("NamedType.Infer: base type: %w", err)
 			}
-			typeScope = base.(TypeScope)
+			scope, ok := base.(TypeScope)
+			if !ok {
+				return nil, fmt.Errorf("%s has no member types", base)
+			}
+			typeScope = scope
 		}
 
 		s, found := typeScope.NamedType(t.Name)

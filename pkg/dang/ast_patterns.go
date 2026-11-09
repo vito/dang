@@ -447,6 +447,12 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		// Decoded data matches a pattern when it has its type's shape.
 		var pattern TypeNode = clause.PatternType
 		if pattern == nil {
+			if clause.PatternBase != nil {
+				// Report a bad qualified name as on any other operand.
+				if _, err := clause.lookupNamedPattern(ctx, env, fresh); err != nil {
+					return NewInferError(err, clause.TypePattern)
+				}
+			}
 			pattern = clause.namedPatternNode()
 		}
 		t, err := pattern.Infer(ctx, env, fresh)
@@ -595,7 +601,9 @@ func (c *Case) Walk(fn func(Node) bool) {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)
 		}
-		if clause.TypePattern != nil {
+		if clause.TypePattern != nil && clause.PatternBase == nil {
+			// A qualified pattern's name is not a bare reference to a
+			// type in scope (see PatternBase), so it isn't walked as one.
 			fn(clause.TypePattern)
 		}
 		clause.Expr.Walk(fn)
