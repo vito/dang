@@ -676,37 +676,35 @@ func StaticModules() []*Type {
 
 // shadowedPreludeMemberHint explains a member missing from local, a type
 // declared or imported under a name the Prelude also binds, when what the
-// Prelude binds there — a type of that name, or the module a value of that
-// name is (a namespace such as JSON) — has it (has reports whether it does):
-// the local declaration shadows the builtin. It returns "" otherwise. Only
-// the error path calls it.
-func shadowedPreludeMemberHint(local *Type, has func(*Type) bool) string {
+// Prelude binds there has it: the local declaration shadows the builtin.
+// hasType reports whether the Prelude's type of that name has the member,
+// and hasValue whether the module a Prelude value of that name is (a
+// namespace such as JSON) has it. It returns "" otherwise. Only the error
+// path calls it.
+func shadowedPreludeMemberHint(local *Type, hasType, hasValue func(*Type) bool) string {
 	if local == nil || local.Named == "" {
 		return ""
 	}
-	var candidates []*Type
-	if sub, found := Prelude.NamedType(local.Named); found {
-		if t, ok := sub.(*Type); ok {
-			candidates = append(candidates, t)
+	found := false
+	if sub, ok := Prelude.NamedType(local.Named); ok {
+		if t, ok := sub.(*Type); ok && t != local && hasType(t) {
+			found = true
 		}
 	}
-	if scheme, found := Prelude.LocalSchemeOf(local.Named); found {
+	if scheme, ok := Prelude.LocalSchemeOf(local.Named); ok && !found {
 		if t, mono := scheme.Type(); mono {
-			if mod, ok := unwrapNonNull(t).(*Type); ok {
-				candidates = append(candidates, mod)
+			if mod, ok := unwrapNonNull(t).(*Type); ok && mod != local && mod.metaOf != local && hasValue(mod) {
+				found = true
 			}
 		}
 	}
-	for _, builtin := range candidates {
-		if builtin == local || builtin.metaOf == local || !has(builtin) {
-			continue
-		}
-		if local.Qualifier != "" {
-			return fmt.Sprintf("%s is a different type from the builtin %s, which has it", local, local.Named)
-		}
-		return fmt.Sprintf("the %s declared here shadows the builtin %s, which has it; rename the declaration to use the builtin", local.Named, local.Named)
+	if !found {
+		return ""
 	}
-	return ""
+	if local.Qualifier != "" {
+		return fmt.Sprintf("%s is a different type from the builtin %s, which has it", local, local.Named)
+	}
+	return fmt.Sprintf("the %s declared here shadows the builtin %s, which has it; rename the declaration to use the builtin", local.Named, local.Named)
 }
 
 // DefineEnum creates an enum type with the given values and registers it

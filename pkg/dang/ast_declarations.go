@@ -1369,10 +1369,11 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 					if scopeMod.IsMeta() {
 						scopeMod = scopeMod.InstanceType()
 					}
-					if hint := shadowedPreludeMemberHint(scopeMod, func(p *Type) bool {
+					hasDirective := func(p *Type) bool {
 						_, ok := p.GetDirective(d.Name)
 						return ok
-					}); hint != "" {
+					}
+					if hint := shadowedPreludeMemberHint(scopeMod, hasDirective, hasDirective); hint != "" {
 						return nil, fmt.Errorf("directive @%s.%s not declared; %s", d.Scope.Name, d.Name, hint)
 					}
 				}

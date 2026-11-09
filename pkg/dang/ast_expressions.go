@@ -1246,11 +1246,14 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 					return tv, fmt.Errorf("field %q belongs to values of %s, not to %s itself", d.Field.Name, mod, mod)
 				}
 				if hint := shadowedPreludeMemberHint(mod.InstanceType(), func(p *Type) bool {
-					if p.meta != nil {
-						if _, ok := p.meta.LocalSchemeOf(d.Field.Name); ok {
-							return true
-						}
+					// A type's name holds its statics, on its meta-type.
+					if p.meta == nil {
+						return false
 					}
+					_, ok := p.meta.LocalSchemeOf(d.Field.Name)
+					return ok
+				}, func(p *Type) bool {
+					// A namespace module's name holds its own members.
 					_, ok := p.LocalSchemeOf(d.Field.Name)
 					return ok
 				}); hint != "" {
