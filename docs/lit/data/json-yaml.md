@@ -46,8 +46,9 @@ parseSummary(text: String!): Summary! { JSON.decode(text) }
 ```
 
 Until it has a type, a decode result has the opaque type `Decoded`. You can
-store it, pass it on, return it, or compare it with other decoded data (see
-[#decoded-values]), but nothing else:
+store it, pass it on, return it, encode it, or compare it with other decoded
+data (see [#decoded-values]), but not use it as an `Int`, a `String` or any
+other particular type:
 
 ```dang-failure
 JSON.decode("1") + 1
