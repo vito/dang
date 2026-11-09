@@ -45,16 +45,23 @@ assert { toString(1234567.5) == "1234567.5" }
 assert { toString([1.0, 2.5]) == "[1.0, 2.5]" }
 assert { `${0.0000001}` == "1e-07" }
 
-# An object shows its data fields, not its methods, and a namespace shows by
-# name
+# An object shows its public data fields, not its methods or private (`let`)
+# fields, and a namespace shows by name
 type Doubler {
   a: Int! = 1
+  let secret: String! = "hidden"
 
   twice: Int! { a * 2 }
 }
 
 assert { toString(Doubler) == "{{a: 1}}" }
+assert { `${Doubler}` == "{{a: 1}}" }
+assert { [Doubler].join(" ") == "{{a: 1}}" }
 assert { toString(JSON) == "module JSON" }
+
+# Records are data: literals, selections and decoded records show every field
+assert { toString(Doubler.{{a}}) == "{{a: 1}}" }
+assert { toString(JSON.decode("{\"x\": 1}") :: {{x: Int!}}!) == "{{x: 1}}" }
 
 # Interpolation, join and toString agree
 let things = [{{n: 1, s: "x"}}]

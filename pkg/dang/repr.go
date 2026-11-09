@@ -16,9 +16,9 @@ import (
 // grammar), and, through Display, how toString, List.join, interpolation and
 // print render a value.
 //
-//   - a record or object is a record literal of its data fields, `{{a: 1}}`,
-//     in the order encoding uses (see objectBindings); one with none (a
-//     namespace, a type of methods only) shows by name;
+//   - a record or object is a record literal of its public data fields,
+//     `{{a: 1}}`, in the order encoding uses (see objectBindings); one with
+//     none (a namespace, a type of methods only) shows by name;
 //   - decoded data is the literal of the data it holds: an object is a map
 //     literal with sorted keys, `["a": 1]`;
 //   - a float always reads back as a float (`1.0`), an enum value nested in
@@ -92,11 +92,14 @@ func writeRepr(b *strings.Builder, v Value) {
 			b.WriteString(v.String())
 			return
 		}
-		// Data fields only: methods and builtins are not data. Every data
-		// field shows, as encoding writes it.
+		// Data fields only: methods and builtins are not data, and a private
+		// (`let`) field is the type's own business.
 		var fields []Keyed[Value]
 		for _, kv := range objectBindings(v) {
 			if _, isCallable := kv.Value.(Callable); isCallable {
+				continue
+			}
+			if fieldVisibility(v, kv.Key) == PrivateVisibility {
 				continue
 			}
 			fields = append(fields, kv)
@@ -144,6 +147,18 @@ func writeRepr(b *strings.Builder, v Value) {
 	default:
 		b.WriteString(v.String())
 	}
+}
+
+// fieldVisibility is a field's visibility as the object's type declares it
+// (a `let` field is private, any other public), or, for a field the type
+// doesn't declare, as the object holds it.
+func fieldVisibility(obj *Object, name string) Visibility {
+	if mod, ok := obj.Mod.(*Type); ok {
+		if _, declared := mod.LocalSchemeOf(name); declared {
+			return mod.Visibility(name)
+		}
+	}
+	return obj.Visibility(name)
 }
 
 // floatRepr spells a float as a Dang float literal: plainly, with an
