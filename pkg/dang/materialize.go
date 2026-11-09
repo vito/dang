@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -871,7 +872,9 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			return nil, materializeDeferredError(path, "expected number, got %s", decodedKind(raw))
 		}
 		val, err := num.Float64()
-		if err != nil {
+		if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
+			// A Float is finite, as Dang arithmetic keeps it: nan and inf
+			// (TOML's nan, YAML's .inf) have no Float.
 			return nil, materializeDeferredError(path, "invalid number %q", num.String())
 		}
 		return FloatValue{Val: val}, nil

@@ -44,7 +44,13 @@ let nanError = JSON.encode(odd["g"]!) rescue {
   e: Error => e.message
 }
 assert { nanError.contains("no finite value") }
+let nanFloat = toString(TOML.decode("g = nan") :: Map[Float!]!) rescue {
+  e: Error => e.message
+}
+assert { nanFloat.contains("invalid number") }
 assert { TOML.encode({{k: "\xff"}}) == "k = \"�\"" }
+# JSON escapes such a byte, as encoding/json does.
+assert { JSON.encode(["k\xff": "v\xff"]) == "{\"k\\ufffd\":\"v\\ufffd\"}" }
 
 # toString and join render Decoded data as JSON, as they do other non-string
 # values.

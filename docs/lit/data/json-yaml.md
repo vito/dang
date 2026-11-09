@@ -302,7 +302,8 @@ let release = Release(version: "2.2", name: "dang")
 JSON.encode(["zed": 1, "amy": 2], sortKeys: true)
 ```
 
-`YAML.encode` takes `sortKeys: true` too:
+`YAML.encode` takes `sortKeys: true` too. It sorts keys as YAML tools
+usually do, comparing runs of digits as numbers (`item2` before `item10`):
 
 ```dang
 YAML.encode(release, sortKeys: true)

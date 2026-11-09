@@ -104,11 +104,11 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			obj.entries[i] = dataEntry{key: dataText(k), val: encoded}
+			obj.entries[i] = dataEntry{key: k, val: encoded}
 		}
 		return obj, nil
 	case StringValue:
-		return dataText(v.Val), nil
+		return v.Val, nil
 	case EnumValue:
 		return v.Val, nil
 	case BoolValue:
@@ -123,7 +123,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			// JSON its server sent; it encodes as that data.
 			return decodeOrderedJSON([]byte(v.Val))
 		}
-		return dataText(v.Val), nil
+		return v.Val, nil
 	default:
 		// A value with no data form of its own (a GraphQL object, by its ID)
 		// encodes as what it marshals to.
@@ -135,9 +135,9 @@ func (e valueEncoder) encode(val Value) (any, error) {
 	}
 }
 
-// dataText is a string as text every format can write: each byte that is not
-// part of valid UTF-8 (a `\xff` escape, binary contents) becomes U+FFFD, as
-// encoding/json writes it.
+// dataText is a string as text YAML and TOML can write: each byte that is
+// not part of valid UTF-8 (a `\xff` escape, binary contents) becomes U+FFFD,
+// the character encoding/json escapes such a byte as.
 func dataText(s string) string {
 	if utf8.ValidString(s) {
 		return s
@@ -430,6 +430,7 @@ func yamlNode(node any, sortKeys bool) (*yaml.Node, error) {
 // would otherwise read back as something else.
 func yamlLeaf(v any) (*yaml.Node, error) {
 	if s, ok := v.(string); ok {
+		s = dataText(s)
 		// Tagged !!str, the emitter quotes a plain string that would read
 		// back as another type, and writes a multi-line one as a literal
 		// block. yaml.Marshal also quotes YAML 1.1's booleans and base-60
@@ -478,12 +479,12 @@ func plainNumber(v any) any {
 }
 
 // plainData converts a data tree to plain Go maps, slices and leaves, for
-// encoders that order keys themselves.
+// encoders that order keys themselves; strings become valid UTF-8.
 func plainData(node any) any {
 	if entries, ok := dataEntries(node, false); ok {
 		out := make(map[string]any, len(entries))
 		for _, entry := range entries {
-			out[entry.key] = plainData(entry.val)
+			out[dataText(entry.key)] = plainData(entry.val)
 		}
 		return out
 	}
@@ -493,6 +494,9 @@ func plainData(node any) any {
 			out[i] = plainData(item)
 		}
 		return out
+	}
+	if s, ok := node.(string); ok {
+		return dataText(s)
 	}
 	return plainNumber(node)
 }
