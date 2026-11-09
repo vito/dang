@@ -66,7 +66,7 @@ users.{{ name }}[0].name   # index to force the query
 GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.field`, `.{{...}}`, args); no request is sent until the value is **forced** — materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single request. This is what makes `user.{{ name, posts.{{ title }} }}` one round-trip.
 - **Exception — nullable object fields:** a nullable object/interface/union field (`parent: Agent`), or anything selected off one, is **checked for null when it escapes the chain** (bound with `let`, passed as an argument, returned, compared, …) with one `{ id __typename }` query, so `== null`, `??`, `!`, `null` patterns and flow narrowing work. Selecting through it (`me.parent.name`, `me.parent.{{ id }}`) sends no check: the leaf or projection reveals the null. Non-null object fields stay lazy.
 - A checked value is **loaded by its ID**: later selections start from it, passing it as an ID argument is free, and it has its **concrete** type, so `case` type patterns match it without another query.
-- **`case` on an interface/union value** that only knows its declared type (e.g. a non-null `favoriteNode: Node!`) asks for its `id`/`__typename` once, unless there are no type patterns or the first pattern is the declared type itself (`n: Node =>`).
+- **`case` on an interface/union value** that only knows its declared type (e.g. a non-null `favoriteNode: Node!`) asks for its `id`/`__typename` once, unless there are no type patterns or the first pattern is the declared type itself (`n: Node! =>`).
 
 ## Equality
 - `==`/`!=` on GraphQL objects compare by **reference identity** (the query that produced them), with no network call: `primaryUser == user(id: "User:1")` is `false` even if both are the same user. Compare an identifying field instead: `a.id == b.id`.
@@ -99,7 +99,7 @@ Mutation.createUser(input: CreateUserInput(name: "Alice", email: "..."))
 
 ### `dang.toml`
 ```toml
-dang = "2.1"
+dang = "2.4"
 
 [imports.Dagger]
 dagger = "v0.19.0"
@@ -114,7 +114,7 @@ authorization = "Bearer ${API_TOKEN}"
 [imports.Remote.headers]
 X-Custom = "value"
 ```
-- `dang = "X.Y"` — the Dang version the source is written in; left out, it means the running Dang's version, and moves with each release (`dang init` pins it). Write the current syntax this skill describes. A project declaring an older version is written in that version's syntax (e.g. `for` loops, `try`/`catch`): move it forward with `dang migrate` rather than mixing the two.
+- `dang = "X.Y"` — the Dang version the source is written in; left out, it means the running Dang's version, and moves with each release (`dang init` pins it). Write the current syntax this skill describes. A project declaring an older version is written in that version's syntax (e.g. `for` loops, `try`/`catch`, type patterns without their `!` before 2.4): move it forward with `dang migrate` rather than mixing the two.
 - One `[imports.<Name>]` per source; `<Name>` is the qualifier (`MyApi.User`). Must specify at least one of `dagger`, `schema`, `endpoint`, `service` — or `path` (native Dang module, below).
 - `schema` — path to a local `.graphqls` SDL file (relative to `dang.toml`); used for type-checking and the LSP.
 - `endpoint` — GraphQL HTTP URL for runtime queries; if set without `schema`, the schema is introspected (and cached) from it.

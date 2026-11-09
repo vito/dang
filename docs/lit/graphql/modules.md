@@ -46,7 +46,7 @@ mymod/
 a `.git` boundary).
 
 ```toml
-dang = "2.1"
+dang = "2.4"
 
 [imports.Dagger]
 dagger = "v0.19.0"

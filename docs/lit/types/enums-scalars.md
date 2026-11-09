@@ -344,7 +344,7 @@ scalar Upper {
   }
 }
 
-Upper("nope") rescue { e: Error => e.message }
+Upper("nope") rescue { e: Error! => e.message }
 ```
 
 A scalar's `self { }` block declares statics exactly like a `type`'s (see

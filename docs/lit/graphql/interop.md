@@ -119,8 +119,8 @@ let hit = node(id: "Post:1").{{
 }}
 
 case (hit) {
-  u: User => `user ${u.name}`
-  p: Post => `post ${p.title}`
+  u: User! => `user ${u.name}`
+  p: Post! => `post ${p.title}`
 }
 ```
 
@@ -290,7 +290,7 @@ user(id: "User:99").name
 ```
 
 ```dang
-user(id: "User:1").alwaysFails rescue { e: GraphQLError => e.message }
+user(id: "User:1").alwaysFails rescue { e: GraphQLError! => e.message }
 ```
 
 ## Talking to multiple endpoints

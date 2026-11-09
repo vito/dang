@@ -286,8 +286,8 @@ speak(p: Pet!): String! {
   # if you add a Mouse without a Mouse branch here, you'll get a
   # String vs. String! type error thanks to the return type
   case (p) {
-    c: Cat => `${c.name} says ${c.sound}`
-    d: Dog => `${d.name} says ${d.sound}`
+    c: Cat! => `${c.name} says ${c.sound}`
+    d: Dog! => `${d.name} says ${d.sound}`
   }
 }
 
@@ -315,7 +315,7 @@ half(n: Int!): Int! {
 ## postfix `rescue` handles them: `half(7) rescue 0`,
 ## or match on error types like `case`
 half(7) rescue {
-  e: OddError => e.message
+  e: OddError! => e.message
 }
 }}}{
 See [#errors] for more details.
