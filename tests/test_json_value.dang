@@ -132,6 +132,16 @@ assert { JSON.encode(held) == "{\"a\":null}" }
 assert { toString(JSON.decode("null") :: JSON!) == "null" }
 let widened: JSON = JSON.decode("null") :: JSON!
 assert { widened == null }
+# However a nullable JSON came by it (a merge rather than a typed slot).
+let heldNull = held["a"]!
+let merged = if (true) { heldNull } else { null }
+assert { merged == null }
+assert { [heldNull, null].filter { x => x == null }.length == 2 }
+
+# A cast with a repeated key is rejected, like strict decoding, since its text
+# would not decode back strictly.
+let repeated = "{\"a\": 1, \"a\": 2}"
+assert { ((repeated :: JSON!) rescue null) == null }
 
 # A String becomes a JSON value only if it is JSON, compacted: whitespace goes,
 # while object keys keep the order they were written in. So equal data

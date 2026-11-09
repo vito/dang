@@ -733,15 +733,22 @@ func (c Codec) encodeLeaf(val Value) (any, error) {
 // reader would choke on — except for toString, which shows it as the string
 // it is.
 func (e valueEncoder) encodeJSONScalar(s ScalarValue) (any, error) {
+	if e.codec == jsonCodec {
+		// The text is embedded as it is; it only needs to be JSON.
+		if json.Valid([]byte(s.Val)) {
+			return json.RawMessage(s.Val), nil
+		}
+		if e.rawFields {
+			return s.Val, nil
+		}
+		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
+	}
 	raw, err := decodeJSON(s.Val, false)
 	if err != nil {
 		if e.rawFields {
 			return s.Val, nil
 		}
 		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
-	}
-	if e.codec == jsonCodec {
-		return json.RawMessage(s.Val), nil
 	}
 	return raw, nil
 }

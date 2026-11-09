@@ -425,7 +425,7 @@ func checkEnumLiterals(value Node, want hm.Type) error {
 		if isJSONScalar(t) {
 			// Likewise a literal handed to a JSON slot must be JSON.
 			if v, ok := value.(*String); ok {
-				if _, err := decodeJSON(v.Value, false); err != nil {
+				if _, err := decodeJSON(v.Value, true); err != nil {
 					msg := fmt.Sprintf("%q is not JSON (%v)", v.Value, err)
 					if t := strings.TrimSpace(v.Value); t == "" || !strings.ContainsAny(t[:1], "{[\"") {
 						// A bare word is most likely a JSON string
@@ -509,6 +509,17 @@ func isJSONValue(v ScalarValue) bool {
 	return ok && isJSONScalar(mod)
 }
 
+// isJSONNullValue reports whether v is a Dang-owned JSON value holding JSON
+// null, which a nullable JSON treats as null.
+func isJSONNullValue(v Value) bool {
+	s, ok := v.(ScalarValue)
+	if !ok || s.Val != "null" {
+		return false
+	}
+	mod, ok := s.ScalarType.(*Type)
+	return ok && isJSONScalar(mod) && mod.SourceSchema == nil
+}
+
 // jsonScalarFromRaw holds decoded data as a value of the JSON scalar mod: its
 // compact JSON text, numbers exactly as decoded.
 func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
@@ -536,7 +547,9 @@ func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
 // else stays as written: object keys keep their order, and strings and
 // numbers their spelling.
 func compactJSONText(s string) (string, any, error) {
-	raw, err := decodeJSON(s, false)
+	// Strict, so a repeated key is rejected: kept as written, it would
+	// encode as text that no longer decodes back strictly.
+	raw, err := decodeJSON(s, true)
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot use %s as JSON: %w", truncateForError(s), err)
 	}

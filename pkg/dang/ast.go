@@ -245,7 +245,9 @@ func valuesEqual(left, right Value) bool {
 		return true
 	}
 	if leftIsNull || rightIsNull {
-		return false
+		// A Dang JSON value holding JSON null is null, wherever a nullable
+		// JSON got it from (a merge, say, rather than a typed slot).
+		return isJSONNullValue(left) || isJSONNullValue(right)
 	}
 
 	// Compare by type
