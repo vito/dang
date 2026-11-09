@@ -140,7 +140,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 // plainly, switching to an exponent for very large or small magnitudes.
 func floatData(f float64) (any, error) {
 	if math.IsInf(f, 0) || math.IsNaN(f) {
-		return nil, fmt.Errorf("cannot encode %v: it is not a finite number", f)
+		return nil, fmt.Errorf("%v is not a finite number", f)
 	}
 	abs := math.Abs(f)
 	format := byte('f')

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
@@ -445,18 +447,60 @@ func decodeTOML(data string) (any, error) {
 	if _, err := toml.Decode(data, &m); err != nil {
 		return nil, fmt.Errorf("invalid TOML: %w", err)
 	}
-	// Bridge through JSON so the decoded shape matches what the materializer
-	// already handles for JSON/YAML decode — in particular, numbers arrive as
-	// json.Number rather than TOML's native int64/float64.
-	jsonBytes, err := json.Marshal(m)
-	if err != nil {
-		return nil, err
+	if m == nil {
+		m = map[string]any{}
 	}
-	raw, err := jsonBytesToRaw(jsonBytes)
+	raw, err := tomlToData(m)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid TOML: %w", err)
 	}
-	return dataFromJSON(raw), nil
+	return raw, nil
+}
+
+// tomlToData converts what the TOML decoder produces into the neutral tree:
+// integers and floats become DataNumber, and a date-time becomes its
+// RFC 3339 text.
+func tomlToData(v any) (any, error) {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			c, err := tomlToData(e)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", k, err)
+			}
+			out[k] = c
+		}
+		return out, nil
+	case []map[string]any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			c, err := tomlToData(e)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = c
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			c, err := tomlToData(e)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = c
+		}
+		return out, nil
+	case int64:
+		return DataNumber(strconv.FormatInt(x, 10)), nil
+	case float64:
+		return floatData(x)
+	case time.Time:
+		return x.Format(time.RFC3339Nano), nil
+	default:
+		return v, nil
+	}
 }
 
 // --- shared value conversion ---
