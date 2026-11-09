@@ -77,6 +77,52 @@ let parsed = (JSON.decode("oops") :: Int!) rescue 0
 parsed + 1
 ```
 
+### Keeping data undecoded {#decoded-values}
+
+`Decoded` is a type you can write, too. Decoding into `Map[Decoded!]!` (or
+`[Decoded!]!`) reads the outer object's keys and leaves each value undecoded,
+so data whose shape you don't know yet can be walked a level at a time. Each
+step is a cast:
+
+```dang
+let doc = JSON.decode("""
+{"modules": [{"name": "a", "pin": {"rev": 3}}], "version": 2}
+""") :: Map[Decoded!]!
+
+let mods = doc["modules"]! :: [Map[Decoded!]!]!
+[doc.keys, mods[0]!.keys]
+```
+
+```dang
+(mods[0]!["pin"]! :: Map[Int!]!)["rev"]
+```
+
+A field typed `Decoded!` keeps whatever it was given, and encoding writes it
+back as the data it is:
+
+```dang
+type Entry {
+  name: String!
+  extra: Decoded!
+}
+
+let entry = JSON.decode("""{"name": "e", "extra": {"deep": [true]}}""") :: Entry!
+JSON.encode(entry)
+```
+
+Decoded data compares with other decoded data as data: key order, number
+spelling and even the format it came from don't matter. Comparing it with a
+typed value still needs a cast first:
+
+```dang
+(JSON.decode("""{"a": 1.50, "b": [true]}""") :: Decoded!) ==
+  (YAML.decode("b: [true]\na: 1.5") :: Decoded!)
+```
+
+A later cast reads the data the way its decode would have: under the decoding
+format's field names, and strictly if the decode was strict (see
+[#strict-decoding]).
+
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded
 maps have sorted keys:
@@ -92,7 +138,7 @@ let lenient: Summary! = JSON.decode("""{"name": "x", "count": 1, "extra": true}"
 lenient.name
 ```
 
-### Strict decoding
+### Strict decoding {#strict-decoding}
 
 Pass `strict: true` to catch typos and stale keys instead. A key that no field
 of the expected type reads is an error, naming the object's path and the key.
