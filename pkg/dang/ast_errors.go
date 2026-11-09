@@ -101,7 +101,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		// A try/catch keeps its own rules, in every version: a catch with no
 		// clauses re-raises every error, and clauses that can never match
 		// are dead code, not errors. (Before 2.1 it is the error handling
-		// syntax; from 2.1 on it still runs as it did, with a warning.)
+		// syntax; from 2.1 on it is deprecated and warns.)
 		current := t.TryCatch
 
 		if len(t.Clauses) == 0 {
@@ -170,7 +170,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 						)
 					}
 					if t.Legacy {
-						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` isn't supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
+						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is deprecated; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
 					}
 				}
 				// Unlike case — whose nullable operands fall through every

@@ -201,7 +201,7 @@ print(x)
 `,
 			wants: []string{
 				"try/catch is deprecated in favor of postfix `rescue`",
-				"bare catch-all `err =>` isn't supported",
+				"bare catch-all `err =>` is deprecated",
 			},
 			wantsErr: false,
 		},
