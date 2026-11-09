@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -497,6 +498,11 @@ func tomlToData(v any) (any, error) {
 	case int64:
 		return DataNumber(strconv.FormatInt(x, 10)), nil
 	case float64:
+		// nan and inf keep their spelling, as YAML's .inf does: they fail
+		// only where a finite number is needed.
+		if math.IsInf(x, 0) || math.IsNaN(x) {
+			return DataNumber(strconv.FormatFloat(x, 'g', -1, 64)), nil
+		}
 		return floatData(x)
 	case time.Time:
 		return x.Format(time.RFC3339Nano), nil

@@ -36,6 +36,16 @@ assert { repeatedInside.contains("field k already set") }
 let fromTOML = TOML.decode("[server]\nport = 8080\n") :: Map[Decoded!]!
 assert { JSON.encode(fromTOML["server"]!) == "{\"port\":8080}" }
 
+# TOML's nan and inf decode like YAML's .inf: kept, and an error only where
+# a finite number is needed. A byte that is not UTF-8 encodes as U+FFFD.
+let odd = TOML.decode("g = nan\nh = 1.5") :: Map[Decoded!]!
+assert { JSON.encode(odd["h"]!) == "1.5" }
+let nanError = JSON.encode(odd["g"]!) rescue {
+  e: Error => e.message
+}
+assert { nanError.contains("no finite value") }
+assert { TOML.encode({{k: "\xff"}}) == "k = \"�\"" }
+
 # toString and join render Decoded data as JSON, as they do other non-string
 # values.
 let nested = JSON.decode("{\"a\": {\"b\": 1}, \"s\": \"x\"}") :: Map[Decoded!]!

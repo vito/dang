@@ -1406,8 +1406,8 @@ func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType 
 
 // graphQLIntResultToValue and graphQLFloatResultToValue convert a GraphQL
 // number to a Dang value. GraphQL responses are decoded with UseNumber (see
-// querybuilder.unpack), so numbers arrive as json.Number — the same shape the
-// codec path produces — letting both paths share decodedNumberToInt.
+// querybuilder.unpack), so numbers arrive as json.Number, which converts to
+// DataNumber to share decodedNumberToInt with decoded data.
 func graphQLIntResultToValue(raw any) (Value, error) {
 	num, ok := raw.(json.Number)
 	if !ok {

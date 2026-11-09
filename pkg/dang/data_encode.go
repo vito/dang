@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -101,11 +104,11 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			obj.entries[i] = dataEntry{key: k, val: encoded}
+			obj.entries[i] = dataEntry{key: dataText(k), val: encoded}
 		}
 		return obj, nil
 	case StringValue:
-		return v.Val, nil
+		return dataText(v.Val), nil
 	case EnumValue:
 		return v.Val, nil
 	case BoolValue:
@@ -120,7 +123,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			// JSON its server sent; it encodes as that data.
 			return decodeOrderedJSON([]byte(v.Val))
 		}
-		return v.Val, nil
+		return dataText(v.Val), nil
 	default:
 		// A value with no data form of its own (a GraphQL object, by its ID)
 		// encodes as what it marshals to.
@@ -130,6 +133,26 @@ func (e valueEncoder) encode(val Value) (any, error) {
 		}
 		return decodeOrderedJSON(jsonBytes)
 	}
+}
+
+// dataText is a string as text every format can write: each byte that is not
+// part of valid UTF-8 (a `\xff` escape, binary contents) becomes U+FFFD, as
+// encoding/json writes it.
+func dataText(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			b.WriteRune(utf8.RuneError)
+		} else {
+			b.WriteString(s[i : i+size])
+		}
+		i += size
+	}
+	return b.String()
 }
 
 // floatData spells a float as a number the way every format reads one back:
@@ -186,25 +209,82 @@ func objectBindings(obj *Object) []Keyed[Value] {
 
 // dataEntries returns an object node's entries: a dataObject's in order, or
 // sorted when sortKeys is set; decoded data's always sorted, having no order.
+// Keys sort by byte order, as encoding/json sorts a map's.
 func dataEntries(node any, sortKeys bool) ([]dataEntry, bool) {
+	return sortedDataEntries(node, sortKeys, func(a, b string) bool { return a < b })
+}
+
+// sortedDataEntries is dataEntries with the key order less.
+func sortedDataEntries(node any, sortKeys bool, less func(a, b string) bool) ([]dataEntry, bool) {
 	switch x := node.(type) {
 	case *dataObject:
 		if !sortKeys {
 			return x.entries, true
 		}
 		entries := append([]dataEntry(nil), x.entries...)
-		sort.SliceStable(entries, func(i, j int) bool { return entries[i].key < entries[j].key })
+		sort.SliceStable(entries, func(i, j int) bool { return less(entries[i].key, entries[j].key) })
 		return entries, true
 	case map[string]any:
 		entries := make([]dataEntry, 0, len(x))
 		for k, v := range x {
 			entries = append(entries, dataEntry{key: k, val: v})
 		}
-		sort.Slice(entries, func(i, j int) bool { return entries[i].key < entries[j].key })
+		sort.Slice(entries, func(i, j int) bool { return less(entries[i].key, entries[j].key) })
 		return entries, true
 	default:
 		return nil, false
 	}
+}
+
+// yamlKeyLess orders mapping keys the way yaml.Marshal sorts a map's: runs of
+// digits compare as numbers (item2 before item10), and a letter sorts after
+// a non-letter except right after digits. A port of yaml.v3's keyList.Less
+// for string keys.
+func yamlKeyLess(a, b string) bool {
+	ar, br := []rune(a), []rune(b)
+	digits := false
+	for i := 0; i < len(ar) && i < len(br); i++ {
+		if ar[i] == br[i] {
+			digits = unicode.IsDigit(ar[i])
+			continue
+		}
+		al := unicode.IsLetter(ar[i])
+		bl := unicode.IsLetter(br[i])
+		if al && bl {
+			return ar[i] < br[i]
+		}
+		if al || bl {
+			if digits {
+				return al
+			}
+			return bl
+		}
+		var ai, bi int
+		var an, bn int64
+		if ar[i] == '0' || br[i] == '0' {
+			for j := i - 1; j >= 0 && unicode.IsDigit(ar[j]); j-- {
+				if ar[j] != '0' {
+					an = 1
+					bn = 1
+					break
+				}
+			}
+		}
+		for ai = i; ai < len(ar) && unicode.IsDigit(ar[ai]); ai++ {
+			an = an*10 + int64(ar[ai]-'0')
+		}
+		for bi = i; bi < len(br) && unicode.IsDigit(br[bi]); bi++ {
+			bn = bn*10 + int64(br[bi]-'0')
+		}
+		if an != bn {
+			return an < bn
+		}
+		if ai != bi {
+			return ai < bi
+		}
+		return ar[i] < br[i]
+	}
+	return len(ar) < len(br)
 }
 
 // decodeOrderedJSON reads JSON text into a data tree whose objects keep
@@ -310,9 +390,9 @@ func renderJSON(buf *bytes.Buffer, node any, sortKeys bool) error {
 // --- YAML rendering ---
 
 // yamlNode builds the YAML node of a data tree, so mappings keep their
-// entries' order.
+// entries' order; sorted ones sort as yaml.Marshal would.
 func yamlNode(node any, sortKeys bool) (*yaml.Node, error) {
-	if entries, ok := dataEntries(node, sortKeys); ok {
+	if entries, ok := sortedDataEntries(node, sortKeys, yamlKeyLess); ok {
 		mapping := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		for _, entry := range entries {
 			key, err := yamlLeaf(entry.key)
