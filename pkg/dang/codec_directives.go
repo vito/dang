@@ -289,14 +289,19 @@ func isCodecDataField(scheme *hm.Scheme) bool {
 
 // isNullableScheme reports whether a field can hold null, controlling whether
 // omitNull is meaningful. Non-monomorphic schemes are treated as nullable so an
-// unresolved type never produces a spurious error.
+// unresolved type never produces a spurious error, and so is Decoded!, whose
+// data may be null.
 func isNullableScheme(scheme *hm.Scheme) bool {
 	t, mono := scheme.Type()
 	if !mono {
 		return true
 	}
-	_, nonNull := t.(hm.NonNullType)
-	return !nonNull
+	nn, nonNull := t.(hm.NonNullType)
+	if !nonNull {
+		return true
+	}
+	_, decoded := nn.Type.(DecodedType)
+	return decoded
 }
 
 // validateCodecName rejects field names that would corrupt the encoded output:

@@ -29,18 +29,11 @@ func decodedJSON(d DeferredValue) ([]byte, error) {
 
 // decodedEqual compares two Decoded values as data: objects by their keys
 // and values in any order, lists element by element, numbers by value
-// (`1.50` is `1.5`). Which format decoded them, and whether strictly, does
-// not matter.
+// (`1.50` is `1.5`, YAML's `-.5` is `-0.5`; a number with no exact value,
+// like YAML's `.inf`, by its spelling). Which format decoded them, and
+// whether strictly, does not matter.
 func decodedEqual(l, r DeferredValue) bool {
-	lr, err := canonicalDecoded(l)
-	if err != nil {
-		return false
-	}
-	rr, err := canonicalDecoded(r)
-	if err != nil {
-		return false
-	}
-	return canonicalJSONKey(lr) == canonicalJSONKey(rr)
+	return canonicalJSONKey(l.Raw) == canonicalJSONKey(r.Raw)
 }
 
 // isNullDecoded reports whether v is Decoded data holding null, which equals
@@ -52,26 +45,85 @@ func isNullDecoded(v Value) bool {
 
 // decodedComparable reports whether an equality between left and right
 // compares Decoded data with Decoded data of the same shape (up to
-// nullability), or with the null literal. Comparing Decoded data with any
-// other type stays an error: the data has no type to compare at.
+// nullability, through lists, maps and records), with an empty literal of
+// that shape, or with the null literal. Comparing Decoded data with any other
+// type stays an error, as does a union that only might be Decoded: the data
+// has no type to compare at.
 func decodedComparable(left Node, lt hm.Type, right Node, rt hm.Type) bool {
-	if isNullNode(left) || isNullNode(right) {
-		return true
+	if isNullNode(left) {
+		return isDecodedShape(rt)
 	}
-	return stripNonNulls(lt).Eq(stripNonNulls(rt))
+	if isNullNode(right) {
+		return isDecodedShape(lt)
+	}
+	return decodedShapesMatch(lt, rt)
 }
 
-// stripNonNulls removes non-null wrappers from t and its list and map
-// element types.
-func stripNonNulls(t hm.Type) hm.Type {
-	switch v := t.(type) {
-	case hm.NonNullType:
-		return stripNonNulls(v.Type)
+// isDecodedShape reports whether t is Decoded, or a list, map or record built
+// only of Decoded.
+func isDecodedShape(t hm.Type) bool {
+	return decodedShapesMatch(t, t)
+}
+
+// decodedShapesMatch reports whether a and b are the same shape built of
+// Decoded, up to nullability: Decoded itself, or lists, maps or records of
+// it. A type variable (an empty literal's element) matches any such shape.
+func decodedShapesMatch(a, b hm.Type) bool {
+	a, b = unwrapNonNull(a), unwrapNonNull(b)
+	aVar, bVar := isTypeVar(a), isTypeVar(b)
+	switch {
+	case aVar && bVar:
+		return false
+	case aVar:
+		return isDecodedShape(b)
+	case bVar:
+		return isDecodedShape(a)
+	}
+	switch av := a.(type) {
+	case DecodedType:
+		_, ok := b.(DecodedType)
+		return ok
 	case ListType:
-		return ListType{stripNonNulls(v.Type)}
+		bv, ok := b.(ListType)
+		return ok && decodedShapesMatch(av.Type, bv.Type)
 	case MapType:
-		return MapType{stripNonNulls(v.Type)}
+		bv, ok := b.(MapType)
+		return ok && decodedShapesMatch(av.Type, bv.Type)
+	case *Type:
+		bv, ok := b.(*Type)
+		if !ok || av.Kind != ObjectKind || bv.Kind != ObjectKind || av.Named != "" || bv.Named != "" {
+			return false
+		}
+		af, bf := av.AsRecord().Fields, bv.AsRecord().Fields
+		if len(af) != len(bf) {
+			return false
+		}
+		byName := make(map[string]*hm.Scheme, len(bf))
+		for _, f := range bf {
+			byName[f.Key] = f.Value
+		}
+		for _, f := range af {
+			other, ok := byName[f.Key]
+			if !ok {
+				return false
+			}
+			at, mono := f.Value.Type()
+			bt, bmono := other.Type()
+			if !mono || !bmono || !decodedShapesMatch(at, bt) {
+				return false
+			}
+		}
+		return true
 	default:
-		return t
+		return false
+	}
+}
+
+func isTypeVar(t hm.Type) bool {
+	switch t.(type) {
+	case hm.TypeVariable, hm.NullableTypeVariable:
+		return true
+	default:
+		return false
 	}
 }

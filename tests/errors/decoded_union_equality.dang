@@ -1,0 +1,6 @@
+# A union that only might be decoded data has no type to compare at: one side
+# could be raw data and the other a typed value.
+let a = JSON.decode("0") rescue 0
+let b = JSON.decode("oops") rescue 0
+
+print(a == b)

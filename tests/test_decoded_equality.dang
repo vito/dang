@@ -21,4 +21,30 @@ let nullFailure = toString(held["a"]! :: Int!) rescue {
 }
 assert { nullFailure.contains("null is not allowed") }
 
+# ?? sees null data as null too, so an optional key can take a default.
+let port = (held["a"] ?? (JSON.decode("8080") :: Decoded!)) :: Int!
+assert { port == 8080 }
+
+# Exact numbers compare by value however they were spelled, and a number with
+# no exact value, like YAML's .inf, by its spelling.
+let a = YAML.decode("[-.5, +1, 0755, .inf, +12345678901234567890]") :: [Decoded!]!
+let b = JSON.decode("[-0.5, 1, 755, 0, 12345678901234567890]") :: [Decoded!]!
+assert { [a[0]! == b[0]!, a[1]! == b[1]!, a[2]! == b[2]!, a[4]! == b[4]!] == [true, true, true, true] }
+assert { a[3]! == a[3]! }
+assert { [a[3]!, a[3]!].uniq.length == 1 }
+
+# Empty literals of a Decoded shape compare too.
+assert { (JSON.decode("[]") :: [Decoded!]!) == [] }
+assert { (JSON.decode("{}") :: Map[Decoded!]!) == [:] }
+
+# Decoded fields honor omitEmpty and omitNull like any other.
+type Sparse {
+  name: String!
+  extra: Decoded! @JSON.field(omitEmpty: true)
+  maybe: Decoded! @JSON.field(omitNull: true)
+}
+
+let sparse = JSON.decode("{\"name\": \"s\", \"extra\": [], \"maybe\": null}") :: Sparse!
+assert { JSON.encode(sparse) == "{\"name\":\"s\"}" }
+
 print("Decoded equality tests passed!")

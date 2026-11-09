@@ -769,8 +769,9 @@ func (d *Default) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, fmt.Errorf("evaluating left side: %w", err)
 		}
 
-		// Check if left value is null
-		if _, isNull := leftVal.(NullValue); isNull {
+		// Check if left value is null; Decoded data holding null is null
+		// here too, as it is to ==.
+		if _, isNull := leftVal.(NullValue); isNull || isNullDecoded(leftVal) {
 			// Use the right side as default
 			return EvalNode(ctx, scope, d.Right)
 		}

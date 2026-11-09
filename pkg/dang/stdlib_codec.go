@@ -556,7 +556,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 				continue
 			}
 			if opts.omitNull {
-				if _, isNull := kv.Value.(NullValue); isNull {
+				if _, isNull := kv.Value.(NullValue); isNull || isNullDecoded(kv.Value) {
 					continue
 				}
 			}
@@ -712,6 +712,31 @@ func isEmptyValue(v Value) bool {
 		return len(x.Elements) == 0
 	case MapValue:
 		return len(x.Keys) == 0
+	case DeferredValue:
+		// Decoded data is empty when the data it holds is.
+		return isEmptyData(x.Raw)
+	default:
+		return false
+	}
+}
+
+// isEmptyData reports whether decoded data counts as empty for omitEmpty,
+// as isEmptyValue does for the values it decodes to.
+func isEmptyData(raw any) bool {
+	switch x := raw.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case bool:
+		return !x
+	case json.Number:
+		f, err := x.Float64()
+		return err == nil && f == 0
+	case []any:
+		return len(x) == 0
+	case map[string]any:
+		return len(x) == 0
 	default:
 		return false
 	}
