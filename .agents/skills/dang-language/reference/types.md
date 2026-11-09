@@ -4,6 +4,7 @@
 - `Int!`, `Float!`, `String!`, `Boolean!`, `ID!`
 - `[T]` and `[T]!` — lists
 - `{{ ... }}` — records (always non-null)
+- `Decoded` — decoded data not yet given a type (see stdlib.md)
 - custom GraphQL scalars: `URL`, `Timestamp`, `JSON`, ...
 - user-defined: `type`, `interface`, `union`, `enum`, `scalar`
 
