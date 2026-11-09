@@ -5,7 +5,7 @@
 - `[T]` and `[T]!` — lists
 - `{{ ... }}` — records (always non-null)
 - `Decoded` — decoded data not yet given a type (see stdlib.md)
-- custom GraphQL scalars: `URL`, `Timestamp`, `JSON`, ...
+- custom GraphQL scalars: `URL`, `Timestamp`, ...
 - user-defined: `type`, `interface`, `union`, `enum`, `scalar`
 
 ## The `!` sigil (nullability)
@@ -143,7 +143,7 @@ scalar URL
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
 - Equality, list membership, records/lists all work between values of the same scalar. A string *literal* converts to the scalar (`urlValue == "https://…"`); a non-literal `String` needs a cast (`urlValue == (s :: URL!)` or `(urlValue :: String!) == s`).
 - The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.
-- There is no builtin JSON value type: `JSON` is the codec namespace, and untyped data of any shape is `Decoded` (see stdlib.md). A schema's `scalar JSON` (e.g. `Dagger.JSON`) is an ordinary schema scalar, below.
+- A schema's `scalar JSON` (e.g. `Dagger.JSON`) is an ordinary schema scalar, below; unqualified, `JSON` is the codec namespace (see stdlib.md).
 - A scalar from a connected schema whose server returns a non-string value (a number, object, …) holds that value's JSON text, and sends it back as the same value.
 
 ### Scalar bodies: methods and the `new()` hook

@@ -157,7 +157,7 @@ Equality ignores order (`["a": 1, "b": 2] == ["b": 2, "a": 1]`). `JSON.encode` e
 
 ## JSON, YAML, and TOML
 
-Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods, a plain module like `Random`, owned by Dang so it works with **no `import`**. No format has a value type of its own: untyped data is `Decoded` (below), whichever format decoded it. A schema's scalar of the same name (e.g. Dagger's `scalar JSON`) is a separate type: an ordinary schema scalar, reached qualified (`Dagger.JSON`); unqualified `JSON` stays the builtin namespace.
+Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods, a plain module like `Random`, owned by Dang so it works with **no `import`**. Untyped data is `Decoded` (below), whichever format decoded it. A schema's scalar of the same name (e.g. Dagger's `scalar JSON`) is a separate type: an ordinary schema scalar, reached qualified (`Dagger.JSON`); unqualified `JSON` stays the builtin namespace.
 
 Parsing is **type-driven** — `JSON.decode` / `YAML.decode` / `TOML.decode` produce values of the *expected* type, which comes from a `::` cast, an annotation, or the parameter/return type at the call site:
 ```dang
@@ -182,9 +182,9 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - **Which scalars accept non-string JSON** depends on who owns them. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's scalar works. **Dang-owned** scalars — `Path`, `Regexp`, and any `scalar` you declare — materialize **only from a string**: decoding a number into `scalar Foo` raises `expected string for scalar Foo, got number`. Model such a value as a record/`Map` of concrete types, as `Decoded`, or keep the raw text in a `String!`.
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
-### No JSON value type
-- Untyped data is `Decoded` (above); `JSON` is only the codec namespace, like `YAML` and `TOML` (and `Random`): written as a type, `JSON!` is the namespace's own type, so old `JSON!` value code fails with a plain `cannot use String! as JSON!` — migrate `JSON!` values to `Decoded!`, or to the schema's scalar (`Dagger.JSON!`). Parse text with `JSON.decode(s) :: Decoded!`; get text back with `JSON.encode(d)`.
-- A `scalar JSON` you declare is an ordinary scalar that shadows the builtin in its module — codec namespace included, so `JSON.encode`/`JSON.decode` and the `@JSON.field`/`@JSON.ignore` directives are then not found there (the error says the declaration shadows the builtin). A schema's `scalar JSON` (e.g. `Dagger.JSON`) is a plain schema scalar: servers disagree on its wire form, so its values stay as the server sends them (a string is held bare). Unqualified, `JSON` always names the builtin, since imports never shadow builtins; hand data to the schema's JSON as text: `JSON.encode(d) :: Dagger.JSON!`.
+### Scalars named `JSON`
+- A `scalar JSON` you declare is an ordinary scalar that shadows the builtin in its module — codec namespace included, so `JSON.encode`/`JSON.decode` and the `@JSON.field`/`@JSON.ignore` directives are then not found there (the error says the declaration shadows the builtin).
+- A schema's `scalar JSON` (e.g. `Dagger.JSON`) is a plain schema scalar: servers disagree on its wire form, so its values stay as the server sends them (a string is held bare). Unqualified, `JSON` always names the builtin, since imports never shadow builtins; hand data to the schema's JSON as text: `JSON.encode(d) :: Dagger.JSON!`.
 
 ### Serialization
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)`. `JSON.encode` keeps keys in **declaration order** (below); `YAML.encode`/`TOML.encode` emit them in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.

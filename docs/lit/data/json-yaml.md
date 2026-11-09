@@ -7,8 +7,8 @@
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
 `encode` / `decode` static methods. They are plain modules owned by Dang, like
-`Random`, so they work with no schema import. They hold functions, not data:
-data of unknown shape is `Decoded` (see [#decoded-values]). A schema's scalar
+`Random`, so they work with no schema import. Data of unknown shape, whichever
+format it came from, is `Decoded` (see [#decoded-values]). A schema's scalar
 of the same name (e.g. Dagger's `JSON`) is a separate type, reached qualified
 (`Dagger.JSON`), while unqualified `JSON` stays Dang's own (see
 [#enums-scalars]).
@@ -354,8 +354,8 @@ string literal, and two fields cannot map to the same key.
 
 ## Coercion during parsing
 
-Enum values decode from their names, and custom scalars from their string
-forms (data of any shape decodes into `Decoded`; see [#decoded-values]). A
+Enum values decode from their names, custom scalars from their string forms,
+and data of any shape into `Decoded` (see [#decoded-values]). A
 missing field takes its declared default, and a missing nullable field
 decodes to `null`:
 
