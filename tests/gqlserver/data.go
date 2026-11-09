@@ -27,7 +27,7 @@ func init() {
 		{ID: "Post:6", Title: "Sixth Post", Content: "More content for pagination", Author: users[0], CreatedAt: "2024-01-06T00:00:00Z"},
 	}
 
-	// Posts field is now handled by the resolver - no need to populate it here
+	// The Posts field is handled by the resolver, so it isn't populated here
 }
 
 var serverStartTime = time.Now()

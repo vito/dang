@@ -146,7 +146,7 @@ func (ev *entryView) Render(ctx tuist.Context) {
 	ctx.Lines(lines...)
 }
 
-// (completion menu overlay and detail bubble are now provided by tuist.CompletionMenu)
+// (the completion menu overlay and detail bubble are tuist.CompletionMenu)
 
 // ── REPL component ─────────────────────────────────────────────────────────
 

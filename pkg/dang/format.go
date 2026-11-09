@@ -3339,7 +3339,7 @@ func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*Cas
 
 // tryCatchModernizes reports whether a try/catch prints as its postfix
 // equivalent where postfix rescue is available (see modernizeTryCatch),
-// rather than as written, which still runs there, with a warning. It does
+// rather than as written, which runs there too, with a warning. It does
 // unless that would lose something: a catch whose clauses can't all match
 // (postfix rescue rejects unreachable clauses), or one with no clauses but
 // with comments, which the equivalent has nowhere to put.

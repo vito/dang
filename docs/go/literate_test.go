@@ -12,7 +12,7 @@ import (
 )
 
 // valueText returns the plain text of a literate block's Value partial,
-// stripping the syntax-highlight markup the result is now rendered with
+// stripping the syntax-highlight markup the result is rendered with
 // (tags and HTML entities).
 var htmlTagRE = regexp.MustCompile(`<[^>]*>`)
 

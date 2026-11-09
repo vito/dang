@@ -145,8 +145,7 @@ func checkDecodedComparison(left Node, lt hm.Type, right Node, rt hm.Type) error
 // domain and returns the result type. Arithmetic callers use that type
 // directly; ordering-comparison callers discard it and return Boolean. It
 // rejects operands outside the domain (e.g. `"a" * "b"` or `"a" < "b"`) and
-// allows Int and Float to mix, widening to Float when either side is Float —
-// something the old "assign right to left" check rejected.
+// allows Int and Float to mix, widening to Float when either side is Float.
 func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, error) {
 	// An operator is not defined for an unconstrained generic type variable: a
 	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work

@@ -154,9 +154,9 @@ func TestSignaturesAreValidDeclarations(t *testing.T) {
 	}
 }
 
-// A comment trailing code on the same line highlights as a comment. The
-// external scanner used to refuse the `#` because the inline spaces before it
-// were never skipped, turning the comment into a parse error.
+// A comment trailing code on the same line highlights as a comment: the
+// external scanner must skip the inline spaces before the `#`, or the comment
+// turns into a parse error.
 func TestTrailingCommentHighlighting(t *testing.T) {
 	runs := classify(t, "dang", "twice { 21 }                  # body takes no args\ntwice { let n = 21; n }       # multi-statement\n")
 	assertClass(t, runs, "# body takes no args", "tok-comment")

@@ -441,7 +441,7 @@ SelfBlockDecl <- SelfToken _ block:Block {
 
 FieldDecl <- TypeAndArgsAndBlockField  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockField         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
-      / TypeAndValueField         // pub a: Int! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
+      / TypeAndValueField         // pub a: Int! = 1    <- not a required arg, default pre-initialized (don't need to worry about mutation)
       / ValueOnlyField            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlyField             // pub a: Int              <- as above, type inferred as Int!
 
