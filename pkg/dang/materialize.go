@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -459,117 +458,6 @@ func isDegradableScalar(mod *Type) bool {
 	return mod.Kind == ScalarKind && !isPrimitiveScalar(mod)
 }
 
-// canonicalJSONKey renders decoded JSON data so that equal data renders the
-// same: object keys sorted, strings quoted the same way, and numbers by value
-// (as a fraction, so `1.50`, `1.5` and `15e-1` agree).
-func canonicalJSONKey(raw any) string {
-	var b strings.Builder
-	writeCanonicalJSON(&b, raw)
-	return b.String()
-}
-
-func writeCanonicalJSON(b *strings.Builder, raw any) {
-	switch x := raw.(type) {
-	case map[string]any:
-		keys := make([]string, 0, len(x))
-		for k := range x {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		b.WriteByte('{')
-		for i, k := range keys {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			b.WriteString(strconv.Quote(k))
-			b.WriteByte(':')
-			writeCanonicalJSON(b, x[k])
-		}
-		b.WriteByte('}')
-	case []any:
-		b.WriteByte('[')
-		for i, e := range x {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			writeCanonicalJSON(b, e)
-		}
-		b.WriteByte(']')
-	case json.Number:
-		b.WriteString(canonicalNumber(x))
-	case string:
-		b.WriteString(strconv.Quote(x))
-	case bool:
-		b.WriteString(strconv.FormatBool(x))
-	case nil:
-		b.WriteString("null")
-	default:
-		fmt.Fprintf(b, "%v", x)
-	}
-}
-
-// canonicalNumber spells a number by its value. A huge exponent is left as
-// written rather than expanded, which only costs equality across spellings of
-// such numbers.
-func canonicalNumber(n json.Number) string {
-	s := n.String()
-	if i := strings.IndexAny(s, "eE"); i >= 0 {
-		exp, err := strconv.Atoi(strings.TrimPrefix(s[i+1:], "+"))
-		if err != nil || exp > 1000 || exp < -1000 {
-			return "#" + s
-		}
-	}
-	r, ok := new(big.Rat).SetString(s)
-	if !ok {
-		return "#" + s
-	}
-	return r.RatString()
-}
-
-// canonicalJSONNumbers returns raw with every number spelled as JSON. JSON
-// and TOML decode numbers in JSON form already, but YAML keeps a number's
-// source text (`0755`, `+1`, `-.5`), which is not JSON; those are respelled
-// as the value `:: Int!` or `:: Float!` would read. Containers are copied,
-// never modified: decoded data may be materialized more than once.
-func canonicalJSONNumbers(raw any) (any, error) {
-	switch x := raw.(type) {
-	case json.Number:
-		if json.Valid([]byte(x)) {
-			return x, nil
-		}
-		if i, err := decodedNumberToInt(x); err == nil {
-			return json.Number(strconv.Itoa(i)), nil
-		}
-		f, err := x.Float64()
-		if err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
-			return nil, fmt.Errorf("number %s has no JSON representation", x)
-		}
-		return json.Number(strconv.FormatFloat(f, 'g', -1, 64)), nil
-	case []any:
-		out := make([]any, len(x))
-		for i, e := range x {
-			c, err := canonicalJSONNumbers(e)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = c
-		}
-		return out, nil
-	case map[string]any:
-		out := make(map[string]any, len(x))
-		for k, e := range x {
-			c, err := canonicalJSONNumbers(e)
-			if err != nil {
-				return nil, err
-			}
-			out[k] = c
-		}
-		return out, nil
-	default:
-		return raw, nil
-	}
-}
-
 // containsDegradableScalar reports whether t carries a degradable custom
 // scalar at any depth reachable by matched-wrapper unification (NonNull,
 // lists, maps) — i.e. whether AssignableWithCoercion could apply the
@@ -966,7 +854,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 	}
 
 	if target == IntType {
-		num, ok := raw.(json.Number)
+		num, ok := raw.(DataNumber)
 		if !ok {
 			return nil, materializeDeferredError(path, "expected int, got %s", decodedKind(raw))
 		}
@@ -978,7 +866,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 	}
 
 	if target == FloatType {
-		num, ok := raw.(json.Number)
+		num, ok := raw.(DataNumber)
 		if !ok {
 			return nil, materializeDeferredError(path, "expected number, got %s", decodedKind(raw))
 		}
@@ -1461,7 +1349,7 @@ func isPrimitiveScalar(mod *Type) bool {
 	}
 }
 
-func decodedNumberToInt(num json.Number) (int, error) {
+func decodedNumberToInt(num DataNumber) (int, error) {
 	rat, ok := new(big.Rat).SetString(num.String())
 	if !ok || !rat.IsInt() {
 		return 0, fmt.Errorf("not an integer")
@@ -1520,7 +1408,7 @@ func decodedKind(raw any) string {
 		return "null"
 	case string:
 		return "string"
-	case json.Number:
+	case DataNumber:
 		return "number"
 	case bool:
 		return "boolean"

@@ -340,7 +340,7 @@ func decodeJSON(data string, strict bool) (any, error) {
 		}
 	}
 
-	return raw, nil
+	return dataFromJSON(raw), nil
 }
 
 // checkJSONDuplicateKeys reports the first object in data that repeats a key,
@@ -495,7 +495,11 @@ func decodeTOML(data string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return jsonBytesToRaw(jsonBytes)
+	raw, err := jsonBytesToRaw(jsonBytes)
+	if err != nil {
+		return nil, err
+	}
+	return dataFromJSON(raw), nil
 }
 
 // --- shared value conversion ---
@@ -717,7 +721,7 @@ func isEmptyData(raw any) bool {
 		return x == ""
 	case bool:
 		return !x
-	case json.Number:
+	case DataNumber:
 		f, err := x.Float64()
 		return err == nil && f == 0
 	case []any:
@@ -742,7 +746,11 @@ func (c Codec) encodeLeaf(val Value) (any, error) {
 	if c == jsonCodec {
 		return json.RawMessage(jsonBytes), nil
 	}
-	return jsonBytesToRaw(jsonBytes)
+	raw, err := jsonBytesToRaw(jsonBytes)
+	if err != nil {
+		return nil, err
+	}
+	return dataFromJSON(raw), nil
 }
 
 // jsonBytesToRaw decodes JSON bytes into a generic value, preserving numbers as
@@ -807,11 +815,11 @@ func plainKindName(v any) string {
 	}
 }
 
-// numbersToGo walks a decoded structure and converts json.Number to int64 or
+// numbersToGo walks a decoded structure and converts DataNumber to int64 or
 // float64 so non-JSON encoders render numbers as numbers.
 func numbersToGo(v any) any {
 	switch x := v.(type) {
-	case json.Number:
+	case DataNumber:
 		if i, err := x.Int64(); err == nil {
 			return i
 		}

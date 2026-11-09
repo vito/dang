@@ -132,6 +132,8 @@ func ToValue(v any) (Value, error) {
 	case float64:
 		return FloatValue{Val: val}, nil
 
+	case DataNumber:
+		return ToValue(json.Number(val))
 	case json.Number:
 		// Untyped fallback (no declared type to honor): keep the JSON author's
 		// intent — a bare integer literal becomes an Int, anything fractional a

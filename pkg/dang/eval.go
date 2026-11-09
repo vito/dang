@@ -1413,7 +1413,7 @@ func graphQLIntResultToValue(raw any) (Value, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected number for GraphQL Int, got %T", raw)
 	}
-	val, err := decodedNumberToInt(num)
+	val, err := decodedNumberToInt(DataNumber(num))
 	if err != nil {
 		return nil, fmt.Errorf("expected integral number for GraphQL Int, got %q", num.String())
 	}
