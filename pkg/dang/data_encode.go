@@ -44,8 +44,7 @@ func encodeValue(val Value, naming FieldNaming) (any, error) {
 
 // valueEncoder is encodeValue with its options.
 type valueEncoder struct {
-	// naming names objects' fields; nil writes each under its own name, as
-	// toString does.
+	// naming names objects' fields; nil writes each under its own name.
 	naming FieldNaming
 }
 

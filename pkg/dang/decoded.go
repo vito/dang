@@ -18,7 +18,7 @@ func canonicalDecoded(d DeferredValue) (any, error) {
 	return canonicalNumbers(d.Raw)
 }
 
-// decodedJSON is d's data as JSON, for printing it.
+// decodedJSON is d's data as JSON, for MarshalJSON (printing uses Repr).
 func decodedJSON(d DeferredValue) ([]byte, error) {
 	raw, err := canonicalDecoded(d)
 	if err != nil {

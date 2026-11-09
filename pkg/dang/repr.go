@@ -1,7 +1,9 @@
 package dang
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,15 +16,17 @@ import (
 // grammar), and, through Display, how toString, List.join, interpolation and
 // print render a value.
 //
-//   - a record or object is a record literal of its fields, `{{a: 1}}`, in
-//     the order encoding uses (see objectBindings);
+//   - a record or object is a record literal of its data fields, `{{a: 1}}`,
+//     in the order encoding uses (see objectBindings); one with none (a
+//     namespace, a type of methods only) shows by name;
 //   - decoded data is the literal of the data it holds: an object is a map
 //     literal with sorted keys, `["a": 1]`;
-//   - a custom scalar nested in a collection is the string literal it
-//     refines from, `"https://…"`.
+//   - a float always reads back as a float (`1.0`), an enum value nested in
+//     a collection is `Color.RED`, a custom scalar the string literal it
+//     refines from, and a GraphQL object its quoted ID.
 //
-// Types without a distinct literal form — modules, functions, enums — fall
-// back to String().
+// Types without a distinct literal form — modules, functions — fall back to
+// String().
 func Repr(v Value) string {
 	var b strings.Builder
 	writeRepr(&b, v)
@@ -83,26 +87,52 @@ func writeRepr(b *strings.Builder, v Value) {
 		}
 		b.WriteString("]")
 	case *Object:
-		if mod, ok := v.Mod.(*Type); ok && mod.IsMeta() {
-			// A type's own name, not a value of it.
+		if mod, ok := v.Mod.(*Type); ok && (mod.IsMeta() || mod.Kind != ObjectKind) {
+			// A type's own name or an enum's namespace, not a value.
 			b.WriteString(v.String())
 			return
 		}
-		b.WriteString("{{")
-		first := true
+		// Data fields only: methods and builtins are not data. Every data
+		// field shows, as encoding writes it.
+		var fields []Keyed[Value]
 		for _, kv := range objectBindings(v) {
-			if _, isFn := kv.Value.(FunctionValue); isFn {
+			if _, isCallable := kv.Value.(Callable); isCallable {
 				continue
 			}
-			if !first {
+			fields = append(fields, kv)
+		}
+		if len(fields) == 0 {
+			if mod, ok := v.Mod.(*Type); ok && mod.Named != "" {
+				// A namespace or a type of methods only shows by name.
+				b.WriteString(v.String())
+				return
+			}
+		}
+		b.WriteString("{{")
+		for i, kv := range fields {
+			if i > 0 {
 				b.WriteString(", ")
 			}
-			first = false
 			b.WriteString(kv.Key)
 			b.WriteString(": ")
 			writeRepr(b, kv.Value)
 		}
 		b.WriteString("}}")
+	case EnumValue:
+		if t, ok := unwrapNonNull(v.EnumType).(*Type); ok && t.Named != "" {
+			b.WriteString(t.Named)
+			b.WriteString(".")
+		}
+		b.WriteString(v.Val)
+	case FloatValue:
+		b.WriteString(floatRepr(v.Val))
+	case GraphQLValue:
+		// A GraphQL object stands for its ID, as it does when sent back.
+		if id, err := v.ID(context.TODO()); err == nil {
+			b.WriteString(strconv.Quote(id))
+			return
+		}
+		b.WriteString(v.String())
 	case DeferredValue:
 		raw, err := canonicalDecoded(v)
 		if err != nil {
@@ -114,6 +144,24 @@ func writeRepr(b *strings.Builder, v Value) {
 	default:
 		b.WriteString(v.String())
 	}
+}
+
+// floatRepr spells a float as a Dang float literal: plainly, with an
+// exponent only for very large or small magnitudes, and always with a
+// fraction or exponent so it does not read back as an Int.
+func floatRepr(f float64) string {
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return strconv.FormatFloat(f, 'g', -1, 64)
+	}
+	abs := math.Abs(f)
+	if abs != 0 && (abs < 1e-6 || abs >= 1e21) {
+		return strconv.FormatFloat(f, 'e', -1, 64)
+	}
+	s := strconv.FormatFloat(f, 'f', -1, 64)
+	if !strings.Contains(s, ".") {
+		s += ".0"
+	}
+	return s
 }
 
 // writeDataRepr writes decoded data as the Dang literal of the same data.

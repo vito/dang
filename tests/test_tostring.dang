@@ -34,10 +34,27 @@ assert { toString(["k": [1]]) == "[\"k\": [1]]" }
 let result6 = toString(null)
 assert { result6 == "null" }
 
-# Enum values render as their bare name
+# Enum values render as their bare name; nested, as the enum literal
 enum Color { RED GREEN BLUE }
 let result7 = toString(Color.RED)
 assert { result7 == "RED" }
+assert { toString([Color.RED]) == "[Color.RED]" }
+
+# Floats read back as floats
+assert { toString(1234567.5) == "1234567.5" }
+assert { toString([1.0, 2.5]) == "[1.0, 2.5]" }
+assert { `${0.0000001}` == "1e-07" }
+
+# An object shows its data fields, not its methods, and a namespace shows by
+# name
+type Doubler {
+  a: Int! = 1
+
+  twice: Int! { a * 2 }
+}
+
+assert { toString(Doubler) == "{{a: 1}}" }
+assert { toString(JSON) == "module JSON" }
 
 # Interpolation, join and toString agree
 let things = [{{n: 1, s: "x"}}]

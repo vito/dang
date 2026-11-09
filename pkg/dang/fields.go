@@ -1131,7 +1131,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Members are bound as inference reaches them, which puts annotated
 	// fields (bound when hoisted) before ones whose type comes from their
 	// initializer. The type lists them as declared instead, so whatever
-	// iterates them (JSON.encode, toString) sees the declaration order.
+	// iterates them (JSON.encode, toString's Repr) sees the declaration order.
 	var declared []string
 	for _, form := range bodyForms {
 		declared = append(declared, form.DeclaredSymbols()...)
