@@ -1,0 +1,16 @@
+# A pattern whose type holds an interface anywhere could never match:
+# decoded data never materializes as one.
+interface HasName {
+  name: String!
+}
+
+type Holder {
+  inner: HasName!
+}
+
+let d = JSON.decode("{\"inner\": {\"name\": \"x\"}}")
+
+case (d) {
+  h: Holder => h.inner.name
+  else => "?"
+}

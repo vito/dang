@@ -1092,7 +1092,10 @@ func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[s
 			fieldPath := joinFieldPath(path, name)
 			key, ignore := fieldKey(naming, mod, name)
 			if !ignore {
-				if rawVal, found := obj[key]; found {
+				// An explicit null for a defaulted non-null parameter
+				// counts as missing, so the default applies rather than
+				// leaving null in a non-null field.
+				if rawVal, found := obj[key]; found && !(rawVal == nil && nullTakesDefault(param)) {
 					materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath, naming, strict)
 					if err != nil {
 						return nil, err
@@ -1277,6 +1280,17 @@ func (s *strictDecode) noteUnknownKeys(obj map[string]any, mod *Type, params []s
 	for _, k := range unknown {
 		s.unknown = append(s.unknown, materializeDeferredError(path, "field %s not found", k).Error())
 	}
+}
+
+// nullTakesDefault reports whether decoded null for param means "use the
+// default": param has one and is non-null as declared. (Its type in the
+// constructor's signature is nullable, since the argument may be omitted.)
+func nullTakesDefault(param *FieldDecl) bool {
+	if param.Value == nil {
+		return false
+	}
+	_, nonNull := param.GetInferredType().(hm.NonNullType)
+	return nonNull
 }
 
 func parameterTypes(val Value) map[string]hm.Type {

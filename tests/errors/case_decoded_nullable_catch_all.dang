@@ -1,0 +1,8 @@
+# On a nullable Decoded operand, a Decoded arm takes any non-null data, but
+# null still needs a `null` arm (or else).
+let d = JSON.decode("1")
+
+case (d) {
+  n: Int => "int"
+  rest: Decoded => "rest"
+}

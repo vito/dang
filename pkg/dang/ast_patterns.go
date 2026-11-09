@@ -216,21 +216,25 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		c.exhaustive = hasElse || c.coversOperand(env, exprType, valuePatterns)
-		if nn, decoded := exprType.(hm.NonNullType); decoded && !hasElse {
-			if _, ok := nn.Type.(DecodedType); ok {
-				for _, clause := range c.Clauses {
-					if isDecodedCatchAll(clause) {
-						// A Decoded arm takes any non-null data.
-						hasElse = true
-						c.exhaustive = true
-					}
+		if inner, nullable := decodedOperand(exprType); inner && !hasElse {
+			hasTypeArm := false
+			for _, clause := range c.Clauses {
+				if clause.decodedPatternType == nil {
+					continue
+				}
+				hasTypeArm = true
+				// A Decoded arm takes any non-null data; null data
+				// needs a `null` pattern too.
+				if isDecodedCatchAll(clause) && (!nullable || hasNullPattern(valuePatterns)) {
+					hasElse = true
+					c.exhaustive = true
 				}
 			}
-		}
-		if _, decoded := unwrapNonNull(exprType).(DecodedType); decoded && !hasElse {
-			// Decoded data may materialize at none of the patterns' types,
-			// and nothing about its type says which it will.
-			return nil, NewInferError(fmt.Errorf("a case on decoded data needs an else: the data may match none of the patterns"), c)
+			if hasTypeArm && !hasElse {
+				// Decoded data may have the shape of none of the
+				// patterns' types, and nothing about its type says which.
+				return nil, NewInferError(fmt.Errorf("a case on decoded data needs an else: the data may match none of the patterns"), c)
+			}
 		}
 		if !c.exhaustive {
 			// Nothing guarantees a clause matches, so the case can fall
@@ -422,7 +426,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 	}
 
 	if _, ok := unwrapped.(DecodedType); ok {
-		// Decoded data matches a pattern when it materializes at its type.
+		// Decoded data matches a pattern when it has its type's shape.
 		var pattern TypeNode = clause.PatternType
 		if pattern == nil {
 			pattern = &NamedTypeNode{Name: clause.TypePattern.Name, Loc: clause.TypePattern.Loc}
@@ -437,7 +441,10 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		if len(t.FreeTypeVar()) > 0 {
 			return NewInferError(fmt.Errorf("a pattern on decoded data needs a concrete type, not %s", t), clause.patternNode())
 		}
-		if bad := abstractDecodeTarget(t); bad != nil {
+		if bad, at := abstractDecodeTarget(t); bad != nil {
+			if at != "" {
+				return NewInferError(fmt.Errorf("decoded data never materializes as %s %s, which %s holds", bad.Kind, bad.Name(), at), clause.patternNode())
+			}
 			return NewInferError(fmt.Errorf("decoded data never materializes as %s %s: match its member types instead", bad.Kind, bad.Name()), clause.patternNode())
 		}
 		if err := checkDecodeTarget(env, t); err != nil {
@@ -804,6 +811,19 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 	return nil
 }
 
+// decodedOperand reports whether a case operand is decoded data, and whether
+// it may be null.
+func decodedOperand(exprType hm.Type) (decoded, nullable bool) {
+	inner := exprType
+	if nn, ok := exprType.(hm.NonNullType); ok {
+		inner = nn.Type
+	} else {
+		nullable = true
+	}
+	_, decoded = inner.(DecodedType)
+	return decoded, nullable
+}
+
 // isDecodedCatchAll reports whether a clause on decoded data is a Decoded
 // arm, which takes any non-null data as it is.
 func isDecodedCatchAll(clause *CaseClause) bool {
@@ -870,8 +890,8 @@ type CaseClause struct {
 	resolvedMemberType *Type
 
 	// decodedPatternType is set during inference when the operand is
-	// decoded data: the non-null type the data must materialize at for the
-	// clause to match.
+	// decoded data: the non-null type whose shape the data must have for
+	// the clause to match, and which the matching data materializes at.
 	decodedPatternType hm.Type
 }
 
@@ -903,23 +923,67 @@ func (c *CaseClause) patternNode() SourceLocatable {
 	return c
 }
 
-// abstractDecodeTarget returns an interface or union at the top of t (through
-// non-null, lists and maps), which decoded data can't materialize as.
-func abstractDecodeTarget(t hm.Type) *Type {
-	t = unwrapNonNull(t)
-	if elem, ok := listElementTarget(t); ok {
-		return abstractDecodeTarget(elem)
-	}
-	if val, ok := mapValueTarget(t); ok {
-		return abstractDecodeTarget(val)
-	}
-	if mod, ok := t.(*Type); ok {
-		mod = canonicalModule(mod)
-		if mod.Kind == InterfaceKind || mod.Kind == UnionKind {
-			return mod
+// abstractDecodeTarget returns an interface or union that materializing t
+// would have to build, which decoded data never materializes as, with the
+// field path that holds it ("" at t itself). Like checkDecodeTarget, it
+// walks non-null, lists and maps, an anonymous record's fields and a named
+// object's constructor parameters, except those every codec ignores: a
+// pattern whose type holds an interface anywhere could never match.
+func abstractDecodeTarget(t hm.Type) (*Type, string) {
+	seen := map[*Type]bool{}
+	var walk func(t hm.Type, via string) (*Type, string)
+	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) (*Type, string) {
+		for _, field := range fields {
+			if ignoredByAllCodecs(mod, field.Key) {
+				continue
+			}
+			ft, mono := field.Value.Type()
+			if !mono {
+				continue
+			}
+			next := field.Key
+			if via != "" {
+				next = via + "." + field.Key
+			} else if mod.Named != "" {
+				next = mod.Named + "." + field.Key
+			}
+			if bad, at := walk(ft, next); bad != nil {
+				return bad, at
+			}
 		}
+		return nil, ""
 	}
-	return nil
+	walk = func(t hm.Type, via string) (*Type, string) {
+		t = unwrapNonNull(t)
+		if elem, ok := listElementTarget(t); ok {
+			return walk(elem, via)
+		}
+		if val, ok := mapValueTarget(t); ok {
+			return walk(val, via)
+		}
+		v, ok := t.(*Type)
+		if !ok {
+			return nil, ""
+		}
+		mod := canonicalModule(v)
+		if mod.Kind == InterfaceKind || mod.Kind == UnionKind {
+			return mod, via
+		}
+		if seen[mod] || mod.Kind != ObjectKind {
+			return nil, ""
+		}
+		seen[mod] = true
+		if mod.Named == "" {
+			return walkFields(mod, mod.AsRecord().Fields, via)
+		}
+		if mod.constructorType != nil {
+			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
+				return walkFields(mod, args.Fields, via)
+			}
+		}
+		return nil, ""
+	}
+	return walk(t, "")
 }
 
 // typeNodeString writes a type as source spells it, for messages.

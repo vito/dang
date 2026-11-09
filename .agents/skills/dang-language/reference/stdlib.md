@@ -180,7 +180,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
 - Custom scalars decode from their string forms.
 - **Which scalars accept non-string JSON** depends on who owns them. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's scalar works. **Dang-owned** scalars — `Path`, `Regexp`, and any `scalar` you declare — materialize **only from a string**: decoding a number into `scalar Foo` raises `expected string for scalar Foo, got number`. Model such a value as a record/`Map` of concrete types, as `Decoded`, or keep the raw text in a `String!`.
-- Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
+- Record/object fields fall back to declared defaults when absent (or explicitly `null` for a non-null field with a default); nullable fields absent from input decode to `null`.
 
 ### Scalars named `JSON`
 - A `scalar JSON` you declare is an ordinary scalar that shadows the builtin in its module — codec namespace included, so `JSON.encode`/`JSON.decode` and the `@JSON.field`/`@JSON.ignore` directives are then not found there (the error says the declaration shadows the builtin).

@@ -1,5 +1,5 @@
-# `case` on decoded data: a type pattern arm matches when the data
-# materializes at its type, the first such arm wins, and `else` is required.
+# `case` on decoded data: a type pattern arm matches when the data has the
+# shape of its type, the first such arm wins, and `else` is required.
 describe(d: Decoded!): String! {
   case (d) {
     n: Int => `int ${n}`
@@ -159,5 +159,50 @@ let rejected = shout(JSON.decode("\"hi\"")) rescue {
 }
 
 assert { rejected.contains("not upper: hi") }
+
+# An ignored field reads no key, so a type needing it can't match; an
+# explicit null for a defaulted field takes the default.
+type Creds {
+  user: String!
+  token: String! @JSON.ignore
+}
+
+type Opts {
+  kind: String!
+  level: Int! = 3
+}
+
+creds(d: Decoded!): String! {
+  case (d) {
+    c: Creds => `creds ${c.user}`
+    o: Opts => `opts ${o.level}`
+    else => "other"
+  }
+}
+
+assert { creds(JSON.decode("{\"user\": \"u\", \"token\": \"t\"}")) == "other" }
+assert { creds(JSON.decode("{\"kind\": \"k\", \"level\": null}")) == "opts 3" }
+assert { (JSON.decode("{\"kind\": \"k\", \"level\": null}") :: Opts!).level == 3 }
+
+# Value patterns alone on decoded data need no else.
+let maybe = JSON.decode("null")
+let isNull = case (maybe) {
+  null => true
+}
+
+assert { isNull == true }
+
+# On a nullable operand, a Decoded arm and a `null` arm cover everything.
+whole(d: Decoded): String! {
+  case (d) {
+    null => "null"
+    n: Int => `int ${n}`
+    rest: Decoded => "rest"
+  }
+}
+
+assert { whole(null) == "null" }
+assert { whole(JSON.decode("2")) == "int 2" }
+assert { whole(JSON.decode("\"s\"")) == "rest" }
 
 print("case on Decoded tests passed!")

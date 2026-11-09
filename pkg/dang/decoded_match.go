@@ -126,6 +126,8 @@ func (m shapeMatcher) objectMatches(obj map[string]any, mod *Type) bool {
 		name       string
 		typ        hm.Type
 		hasDefault bool
+		// nullDefault: null data means the default (see nullTakesDefault).
+		nullDefault bool
 	}
 	var params []param
 	if mod.Named == "" {
@@ -148,7 +150,12 @@ func (m shapeMatcher) objectMatches(obj map[string]any, mod *Type) bool {
 				if t == nil {
 					t = p.GetInferredType()
 				}
-				params = append(params, param{name: p.Name.Name, typ: t, hasDefault: p.Value != nil})
+				params = append(params, param{
+					name:        p.Name.Name,
+					typ:         t,
+					hasDefault:  p.Value != nil,
+					nullDefault: nullTakesDefault(p),
+				})
 			}
 		} else {
 			for _, name := range callable.ParameterNames() {
@@ -159,12 +166,17 @@ func (m shapeMatcher) objectMatches(obj map[string]any, mod *Type) bool {
 
 	known := map[string]bool{}
 	for _, p := range params {
+		// An ignored field reads no key, so it is as good as missing.
 		key, ignore := fieldKey(m.naming, mod, p.name)
-		if ignore {
-			continue
+		var v any
+		found := false
+		if !ignore {
+			known[key] = true
+			v, found = obj[key]
 		}
-		known[key] = true
-		v, found := obj[key]
+		if found && v == nil && p.nullDefault {
+			found = false
+		}
 		if !found {
 			if _, nonNull := p.typ.(hm.NonNullType); nonNull && !p.hasDefault {
 				return false

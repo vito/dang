@@ -152,7 +152,8 @@ Order the arms from most to least specific: `1` is an `Int` and a `Float`, and
 a type reads only the fields it declares (an object with extra keys still
 matches, unless the decode was strict). Null data matches no type arm: it
 goes to `else`, a `x: Decoded` arm (which takes any data as it is, and so
-can stand in for `else`), or, on a nullable `Decoded` operand, a `null` arm.
+can stand in for `else`, joined by a `null` arm on a nullable operand), or,
+on a nullable `Decoded` operand, a `null` arm.
 
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded
@@ -395,7 +396,8 @@ string literal, and two fields cannot map to the same key.
 
 Enum values decode from their names, custom scalars from their string forms,
 and data of any shape into `Decoded` (see [#decoded-values]). A
-missing field takes its declared default, and a missing nullable field
+missing field takes its declared default (so does an explicit `null` for a
+non-null field with a default), and a missing nullable field
 decodes to `null`:
 
 ```dang
