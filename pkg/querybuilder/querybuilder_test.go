@@ -19,6 +19,39 @@ func TestQuery(t *testing.T) {
 	require.Equal(t, `{core{image(ref:"alpine"){file(path:"/etc/alpine-release")}}}`, q)
 }
 
+// unmarshallable fails the test if anything tries to marshal it.
+type unmarshallable struct{ t *testing.T }
+
+func (u unmarshallable) XXX_GraphQLType() string   { return "Thing" }
+func (u unmarshallable) XXX_GraphQLIDType() string { return "ThingID" }
+func (u unmarshallable) XXX_GraphQLID(context.Context) (string, error) {
+	u.t.Error("Steps marshalled an argument")
+	return "", nil
+}
+func (u unmarshallable) MarshalJSON() ([]byte, error) {
+	u.t.Error("Steps marshalled an argument")
+	return nil, nil
+}
+
+func TestSteps(t *testing.T) {
+	thing := unmarshallable{t}
+	q := Query().
+		Select("core").
+		SelectWithAlias("img", "image").Arg("ref", "alpine").Arg("platform", "linux").
+		InlineFragment("Image").
+		Select("withThing").Arg("thing", thing).
+		SelectMultiple("a", "b")
+
+	require.Equal(t, []Step{
+		{Name: "core"},
+		{Alias: "img", Name: "image", Args: []StepArg{{Name: "platform", Value: "linux"}, {Name: "ref", Value: "alpine"}}},
+		{InlineFragment: "Image"},
+		{Name: "withThing", Args: []StepArg{{Name: "thing", Value: thing}}},
+		{Fields: []string{"a", "b"}},
+	}, q.Steps())
+	require.Empty(t, Query().Steps())
+}
+
 func TestAlias(t *testing.T) {
 	root := Query().
 		Select("core").

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 
@@ -237,6 +238,67 @@ func (q *QueryBuilder) scheduleArgMarshalling(eg *errgroup.Group, ctx context.Co
 			}
 		}
 	}
+}
+
+// Step is one selection of a query chain, as Steps reports it.
+type Step struct {
+	// Alias and Name are the selected field, for a single-field step.
+	Alias string
+	Name  string
+
+	// Args are the field's arguments, sorted by name. Values are as passed
+	// to Arg: never marshalled, so describing a chain runs nothing.
+	Args []StepArg
+
+	// InlineFragment is the type condition of an inline fragment step.
+	InlineFragment string
+
+	// Fields are the fields of a multi-field step, as "alias:name" when
+	// aliased.
+	Fields []string
+}
+
+// StepArg is one argument of a Step.
+type StepArg struct {
+	Name  string
+	Value any
+}
+
+// Steps returns the selections of the chain ending at q, from the root
+// down, without building or executing anything.
+func (q *QueryBuilder) Steps() []Step {
+	path := q.path()
+	steps := make([]Step, 0, len(path))
+	for _, sel := range path {
+		step := Step{
+			Alias:          sel.alias,
+			InlineFragment: sel.inlineFragment,
+		}
+		switch {
+		case sel.multiple:
+			step.Fields = strings.Split(sel.name, " ")
+		case len(sel.selections) > 0:
+			for _, f := range sel.selections {
+				name := f.name
+				if f.alias != "" {
+					name = f.alias + ":" + f.name
+				}
+				step.Fields = append(step.Fields, name)
+			}
+		default:
+			step.Name = sel.name
+		}
+		names := make([]string, 0, len(sel.args))
+		for name := range sel.args {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			step.Args = append(step.Args, StepArg{Name: name, Value: sel.args[name].value})
+		}
+		steps = append(steps, step)
+	}
+	return steps
 }
 
 // writeArgs renders a GraphQL argument list, e.g. (first:3, after:"x").

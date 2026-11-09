@@ -196,6 +196,20 @@ func parseFileBlueprintWithCache(filename string, version Version, cache *Syntax
 	if err != nil {
 		return nil, err
 	}
+	return parseSourceBlueprintWithCache(filename, source, version, cache)
+}
+
+// parseSourceWithSyntaxCache is parseFileWithSyntaxCache for source already
+// read, e.g. from an fs.FS.
+func parseSourceWithSyntaxCache(ctx context.Context, filename string, source []byte, version Version) (any, error) {
+	cache, _ := ctx.Value(syntaxCacheKey{}).(*SyntaxCache)
+	if cache == nil {
+		return ParseWithRecovery(filename, source, GlobalStore("filePath", filename), WithVersion(version))
+	}
+	return parseSourceBlueprintWithCache(filename, source, version, cache)
+}
+
+func parseSourceBlueprintWithCache(filename string, source []byte, version Version, cache *SyntaxCache) (any, error) {
 	key := parseBlueprintKey{digest: sha256.Sum256(source), version: version.orCurrent()}
 	for {
 		// Calls that miss the same source together, such as parallel loads
