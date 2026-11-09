@@ -28,15 +28,15 @@ assert { parsed == [1, 2, 3] }
 let roundtrip = JSON.encode(JSON.decode("[4, 5, 6]") :: [Int!]!)
 assert { roundtrip == "[4,5,6]" }
 
-# `JSON` is both the type of untyped JSON values and the namespace holding
-# encode/decode: `:: JSON` resolves the type while `JSON.encode` resolves the
-# namespace's member.
+# `JSON` names two separate things: the type of untyped JSON values and the
+# namespace holding encode/decode. `:: JSON` resolves the type while
+# `JSON.encode` resolves the namespace's member.
 let raw: JSON! = "{\"ok\":true}"
 assert { JSON.encode(raw) == "{\"ok\":true}" }
 let parsed2 = JSON.decode("[9, 10]") :: [Int!]!
 assert { parsed2 == [9, 10] }
 
-# The namespace also holds the @JSON.field / @JSON.ignore directives.
+# The @JSON.field / @JSON.ignore directives are scoped by the type `JSON`.
 type Renamed {
   fooBar: String! @JSON.field(name: "foo_bar")
 }

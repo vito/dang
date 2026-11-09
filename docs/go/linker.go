@@ -124,13 +124,6 @@ func receiverKey(receiverType hm.Type, method string, statics map[*dang.Type]map
 	if names, ok := statics[mod]; ok && names[method] {
 		return mod.Named, true
 	}
-	// A builtin scalar's name (JSON) is typed as its meta-type, which
-	// holds its statics.
-	if mod.IsMeta() {
-		if inst := mod.InstanceType(); statics[inst][method] {
-			return inst.Named, true
-		}
-	}
 	return "", false
 }
 

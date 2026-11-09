@@ -9,7 +9,7 @@ import (
 )
 
 // A Codec is one of Dang's string-shaped data-interchange formats — JSON, YAML,
-// or TOML. It wraps the format's builtin ScalarKind module and owns that
+// or TOML. It wraps the type that scopes the format's directives and owns that
 // format's field mapping: the reading of the @FORMAT.field / @FORMAT.ignore
 // directives. A DeferredValue carries the Codec that produced it (rather than a
 // format string) so materialization can apply the right directives when reading

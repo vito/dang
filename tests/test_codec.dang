@@ -1,8 +1,8 @@
-# Codec scalars (JSON, YAML, TOML) are owned by Dang and installed in both
-# namespaces, so encode/decode and `:: Format` type ascription all work with no
-# schema import and no `scalar` declaration in scope, for all three formats
-# alike. A schema's same-named scalar (Dagger defines `scalar JSON`) is a
-# separate type; see tests/test_json_import.dang.
+# The codec namespaces (JSON, YAML, TOML) are owned by Dang and installed in
+# the Prelude like Random, so encode/decode work with no schema import and no
+# `scalar` declaration in scope, for all three formats alike. A schema's
+# same-named scalar (Dagger defines `scalar JSON`) is a separate type; see
+# tests/test_json_import.dang.
 
 # JSON
 let nums = JSON.decode("[1, 2, 3]") :: [Int!]!
