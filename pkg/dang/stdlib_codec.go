@@ -74,7 +74,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("JSON.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: jsonCodec, Strict: strict}, nil
+			return DeferredValue{Raw: raw, Naming: jsonNaming, Strict: strict}, nil
 		})
 
 	// toJSON / fromJSON / fromYAML are the deprecated top-level predecessors of
@@ -111,7 +111,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("fromJSON: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
+			return DeferredValue{Raw: raw, Naming: jsonNaming}, nil
 		})
 
 	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
@@ -147,7 +147,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("YAML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: yamlCodec, Strict: strict}, nil
+			return DeferredValue{Raw: raw, Naming: yamlNaming, Strict: strict}, nil
 		})
 	Builtin("fromYAML").
 		Doc("parses a YAML string into an opaque value that is materialized by an expected type. Deprecated: use YAML.decode instead.").
@@ -161,7 +161,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("fromYAML: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
+			return DeferredValue{Raw: raw, Naming: yamlNaming}, nil
 		})
 
 	TOMLModule.SetTypeDocString("functions for encoding and decoding TOML")
@@ -191,10 +191,12 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("TOML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Codec: tomlCodec, Strict: args.GetBool("strict")}, nil
+			return DeferredValue{Raw: raw, Naming: tomlNaming, Strict: args.GetBool("strict")}, nil
 		})
 
-	registerCodecFieldDirectives()
+	registerFieldDirectives(jsonNaming)
+	registerFieldDirectives(yamlNaming)
+	registerFieldDirectives(tomlNaming)
 }
 
 // --- JSON ---
@@ -237,7 +239,7 @@ func marshalOrderedJSON(e valueEncoder, val Value, sortKeys bool) ([]byte, error
 // has, it writes every field under its own name: codec field directives do
 // not apply.
 func toStringJSON(val Value) (string, error) {
-	out, err := marshalOrderedJSON(valueEncoder{codec: jsonCodec, rawFields: true}, val, false)
+	out, err := marshalOrderedJSON(valueEncoder{}, val, false)
 	if err != nil {
 		return "", err
 	}
@@ -250,7 +252,7 @@ func encodeJSON(val Value, opts jsonOptions) (string, error) {
 	}
 	// The encoder applies @JSON.field / @JSON.ignore at object boundaries
 	// and keeps objects in order; the renderer writes compact output.
-	jsonBytes, err := marshalOrderedJSON(valueEncoder{codec: jsonCodec}, val, opts.sortKeys)
+	jsonBytes, err := marshalOrderedJSON(valueEncoder{naming: jsonNaming}, val, opts.sortKeys)
 	if err != nil {
 		return "", err
 	}
@@ -391,7 +393,7 @@ func checkJSONValueDuplicateKeys(decoder *json.Decoder, data, path string) error
 // --- YAML ---
 
 func encodeYAML(val Value, sortKeys bool) (string, error) {
-	tree, err := encodeValue(val, yamlCodec)
+	tree, err := encodeValue(val, yamlNaming)
 	if err != nil {
 		return "", err
 	}
@@ -420,7 +422,7 @@ func decodeYAMLRaw(data string, strict bool) (any, error) {
 // --- TOML ---
 
 func encodeTOML(val Value) (string, error) {
-	tree, err := encodeValue(val, tomlCodec)
+	tree, err := encodeValue(val, tomlNaming)
 	if err != nil {
 		return "", err
 	}

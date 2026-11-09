@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -1246,6 +1247,38 @@ type DirectiveDecl struct {
 	// module's types (its own scalar JSON), not whatever the applying
 	// file's scope binds to those names. Nil resolves them where applied.
 	declScope TypeScope
+
+	// Validate, when set, checks a type whose fields apply the directive,
+	// once per type however many of its fields do. Directives checked
+	// together (a format's @field and @ignore) share one validator, which
+	// then runs once. Set by Go code declaring a builtin directive.
+	Validate *DirectiveValidator
+}
+
+// DirectiveValidator checks the applications of a set of directives across
+// one type's fields, as a type is inferred, so mistakes surface as compile
+// errors.
+type DirectiveValidator struct {
+	Check func(owner *Type) error
+}
+
+// validateAppliedDirectives runs the validators of the directives applied to
+// mod's fields, each once.
+func validateAppliedDirectives(mod *Type) error {
+	var seen []*DirectiveValidator
+	for name := range mod.Bindings(PrivateVisibility) {
+		for _, app := range mod.GetDirectives(name) {
+			decl := app.Decl()
+			if decl == nil || decl.Validate == nil || slices.Contains(seen, decl.Validate) {
+				continue
+			}
+			seen = append(seen, decl.Validate)
+			if err := decl.Validate.Check(mod); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 var _ Node = &DirectiveDecl{}
@@ -1330,7 +1363,21 @@ type DirectiveApplication struct {
 	Args     []Keyed[Node]
 	IsPrefix bool // True if directive appeared before the name (prefix position)
 	Loc      *SourceLocation
+
+	// scopeType and decl are what Scope and Name resolved to when the
+	// application was inferred, so readers match a directive by identity
+	// (the JSON namespace's @field) rather than by how it is spelled.
+	scopeType *Type
+	decl      *DirectiveDecl
 }
+
+// ScopeType is the type the application's scope resolved to (JSONModule for
+// @JSON.field), or nil if it is unscoped or not yet inferred.
+func (d *DirectiveApplication) ScopeType() *Type { return d.scopeType }
+
+// Decl is the declaration the application resolved to, or nil if it is not
+// yet inferred.
+func (d *DirectiveApplication) Decl() *DirectiveDecl { return d.decl }
 
 var _ Node = (*DirectiveApplication)(nil)
 
@@ -1361,6 +1408,7 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 				return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
 			}
 			env = scopeType.(TypeScope)
+			d.scopeType, _ = scopeType.(*Type)
 		}
 
 		// Check for import conflicts before resolving
@@ -1394,6 +1442,7 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 		if err != nil {
 			return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
 		}
+		d.decl = directiveDecl
 
 		// Directive applications don't have a meaningful type for inference
 		return hm.TypeVariable('d'), nil

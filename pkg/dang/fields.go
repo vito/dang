@@ -1143,9 +1143,10 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, err
 	}
 
-	// Validate codec field directives (@JSON.field, @YAML.ignore, ...) now that
-	// every field's type and directives are known.
-	if err := validateCodecFieldDirectives(object); err != nil {
+	// Run the checks of the directives applied to fields (@JSON.field,
+	// @YAML.ignore, ...) now that every field's type and directives are
+	// known.
+	if err := validateAppliedDirectives(object); err != nil {
 		return nil, err
 	}
 

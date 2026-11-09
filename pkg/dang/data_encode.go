@@ -30,21 +30,20 @@ type dataEntry struct {
 	val any
 }
 
-// encodeValue converts a Dang value into a data tree for a codec, applying
-// that codec's field directives at every object boundary: @FORMAT.field
-// renames the key and omits it when null or empty, @FORMAT.ignore drops it
-// entirely. Renames are a codec concern only — Object.MarshalJSON, used for
-// internal state retention, keeps canonical field names.
-func encodeValue(val Value, c Codec) (any, error) {
-	return valueEncoder{codec: c}.encode(val)
+// encodeValue converts a Dang value into a data tree, naming each object's
+// fields with naming (a format's @FORMAT.field renames the key and omits it
+// when null or empty, @FORMAT.ignore drops it entirely). Renames belong to
+// the format only — Object.MarshalJSON, used for internal state retention,
+// keeps canonical field names.
+func encodeValue(val Value, naming FieldNaming) (any, error) {
+	return valueEncoder{naming: naming}.encode(val)
 }
 
 // valueEncoder is encodeValue with its options.
 type valueEncoder struct {
-	codec Codec
-	// rawFields encodes every object field under its own name, ignoring the
-	// codec's field directives, as toString does.
-	rawFields bool
+	// naming names objects' fields; nil writes each under its own name, as
+	// toString does.
+	naming FieldNaming
 }
 
 func (e valueEncoder) encode(val Value) (any, error) {
@@ -63,19 +62,16 @@ func (e valueEncoder) encode(val Value) (any, error) {
 			if _, isFn := kv.Value.(FunctionValue); isFn {
 				continue
 			}
-			var opts codecFieldOpts
-			if v.Mod != nil && !e.rawFields {
-				opts = e.codec.options(v.Mod.GetDirectives(kv.Key))
-			}
-			if opts.ignore {
+			opts := fieldOptions(e.naming, v.Mod, kv.Key)
+			if opts.Ignore {
 				continue
 			}
-			if opts.omitNull {
+			if opts.OmitNull {
 				if _, isNull := kv.Value.(NullValue); isNull || isNullDecoded(kv.Value) {
 					continue
 				}
 			}
-			if opts.omitEmpty && isEmptyValue(kv.Value) {
+			if opts.OmitEmpty && isEmptyValue(kv.Value) {
 				continue
 			}
 			encoded, err := e.encode(kv.Value)
