@@ -9,9 +9,9 @@ require (
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.4.4
 	github.com/charmbracelet/x/ansi v0.11.6
-	github.com/creachadair/jrpc2 v1.3.3
 	github.com/dagger/otel-go v1.43.1-0.20260515012101-af7cd0684887
 	github.com/dagger/testctx v0.1.2
+	github.com/gumeniukcom/golang-jsonrpc2/v2 v2.6.1
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
@@ -27,6 +27,8 @@ require (
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
+	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )
@@ -43,7 +45,6 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
-	github.com/creachadair/mds v0.25.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

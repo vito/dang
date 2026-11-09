@@ -3,21 +3,11 @@ package lsp
 import (
 	"context"
 
-	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params CompletionParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, params CompletionParams) (any, error) {
 	f := h.waitForFile(params.TextDocument.URI)
 	if f == nil {
 		return []CompletionItem{}, nil

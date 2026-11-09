@@ -4,20 +4,10 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
 )
 
-func (h *langHandler) handleTextDocumentRename(ctx context.Context, req *jrpc2.Request) (any, error) {
-	if !req.HasParams() {
-		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
-	}
-
-	var params RenameParams
-	if err := req.UnmarshalParams(&params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentRename(ctx context.Context, params RenameParams) (any, error) {
 	slog.InfoContext(ctx, "rename request", "uri", params.TextDocument.URI, "position", params.Position, "newName", params.NewName)
 
 	f := h.waitForFile(params.TextDocument.URI)
