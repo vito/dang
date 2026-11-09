@@ -230,8 +230,8 @@ describe(n: Named!): String! {
 - see [#control-flow] for full `case` semantics; flow typing of the binding is covered in [#flow-typing]
 
 A pattern must name a type some value of the operand may have. A plain object
-type matches only itself, so on such an operand its own type is the only arm
-there is, and another object type is an error:
+matches its own type, the interfaces it implements and the unions it belongs
+to; another object type is an error:
 
 ```dang-failure
 case (Person("Ada", 36)) { c: Company! => c.name }

@@ -277,7 +277,7 @@ case (picked) {
 
 A list matches by the element type it was built with — its static type where
 it was written, or where it last passed a typed boundary such as an
-annotation or a parameter — not by what it happens to hold. `[1, x]` with a
+annotation or a parameter of a concrete list type — not by what it happens to hold. `[1, x]` with a
 nullable `x` is an `[Int]!`, so it doesn't match `[Int!]!` even while `x`
 isn't null, and a list typed `[Animal!]!` doesn't match `[Cat!]!` even when
 every animal in it is a cat. Only where that type isn't known (a list built
