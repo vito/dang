@@ -5450,6 +5450,22 @@
               }
             },
             {
+              "type": "FIELD",
+              "name": "bang",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "bang_token"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              }
+            },
+            {
               "type": "SYMBOL",
               "name": "arrow_token"
             },

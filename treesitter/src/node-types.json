@@ -1046,6 +1046,16 @@
     "type": "case_clause",
     "named": true,
     "fields": {
+      "bang": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bang_token",
+            "named": true
+          }
+        ]
+      },
       "binding": {
         "multiple": false,
         "required": false,

@@ -216,6 +216,17 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		c.exhaustive = hasElse || c.coversOperand(env, exprType, valuePatterns)
+		if nn, decoded := exprType.(hm.NonNullType); decoded && !hasElse {
+			if _, ok := nn.Type.(DecodedType); ok {
+				for _, clause := range c.Clauses {
+					if isDecodedCatchAll(clause) {
+						// A Decoded arm takes any non-null data.
+						hasElse = true
+						c.exhaustive = true
+					}
+				}
+			}
+		}
 		if _, decoded := unwrapNonNull(exprType).(DecodedType); decoded && !hasElse {
 			// Decoded data may materialize at none of the patterns' types,
 			// and nothing about its type says which it will.
@@ -418,13 +429,19 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		}
 		t, err := pattern.Infer(ctx, env, fresh)
 		if err != nil {
-			return NewInferError(err, clause.patternNode())
+			return WrapInferError(err, clause.patternNode())
 		}
 		if _, nn := t.(hm.NonNullType); !nn {
 			t = hm.NonNullType{Type: t}
 		}
+		if len(t.FreeTypeVar()) > 0 {
+			return NewInferError(fmt.Errorf("a pattern on decoded data needs a concrete type, not %s", t), clause.patternNode())
+		}
+		if bad := abstractDecodeTarget(t); bad != nil {
+			return NewInferError(fmt.Errorf("decoded data never materializes as %s %s: match its member types instead", bad.Kind, bad.Name()), clause.patternNode())
+		}
 		if err := checkDecodeTarget(env, t); err != nil {
-			return NewInferError(err, clause.patternNode())
+			return WrapInferError(err, clause.patternNode())
 		}
 		clause.decodedPatternType = t
 		return nil
@@ -769,7 +786,33 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 			}
 		}
 	}
+	if clause.IsTypePattern() && clause.decodedPatternType != nil {
+		// On decoded data, an arm is dead after one of the same type, or
+		// after a Decoded arm, which takes any data.
+		for _, prev := range priorPatterns {
+			if prev.decodedPatternType == nil {
+				continue
+			}
+			if isDecodedCatchAll(prev) || prev.decodedPatternType.Eq(clause.decodedPatternType) {
+				return NewInferError(
+					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
+						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
+					clause.patternNode(),
+				)
+			}
+		}
+	}
 	return nil
+}
+
+// isDecodedCatchAll reports whether a clause on decoded data is a Decoded
+// arm, which takes any non-null data as it is.
+func isDecodedCatchAll(clause *CaseClause) bool {
+	if clause.decodedPatternType == nil {
+		return false
+	}
+	_, ok := unwrapNonNull(clause.decodedPatternType).(DecodedType)
+	return ok
 }
 
 // valueModule extracts the *Type backing a runtime value.
@@ -855,7 +898,29 @@ func (c *CaseClause) patternNode() SourceLocatable {
 	if c.TypePattern != nil {
 		return c.TypePattern
 	}
+	if loc, ok := c.PatternType.(SourceLocatable); ok && loc.GetSourceLocation() != nil {
+		return loc
+	}
 	return c
+}
+
+// abstractDecodeTarget returns an interface or union at the top of t (through
+// non-null, lists and maps), which decoded data can't materialize as.
+func abstractDecodeTarget(t hm.Type) *Type {
+	t = unwrapNonNull(t)
+	if elem, ok := listElementTarget(t); ok {
+		return abstractDecodeTarget(elem)
+	}
+	if val, ok := mapValueTarget(t); ok {
+		return abstractDecodeTarget(val)
+	}
+	if mod, ok := t.(*Type); ok {
+		mod = canonicalModule(mod)
+		if mod.Kind == InterfaceKind || mod.Kind == UnionKind {
+			return mod
+		}
+	}
+	return nil
 }
 
 // typeNodeString writes a type as source spells it, for messages.

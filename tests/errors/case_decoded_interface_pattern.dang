@@ -1,0 +1,12 @@
+# Decoded data never materializes as an interface or union: match its
+# member types instead.
+interface HasName {
+  name: String!
+}
+
+let d = JSON.decode("{\"name\": \"x\"}")
+
+case (d) {
+  n: HasName => n.name
+  else => "?"
+}

@@ -1,0 +1,8 @@
+# On decoded data, an arm after one of the same type can never match.
+let d = JSON.decode("1")
+
+case (d) {
+  n: Int => n
+  m: Int => m + 1
+  else => 0
+}

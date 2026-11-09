@@ -143,10 +143,12 @@ kind(d: Decoded!): String! {
 [kind(JSON.decode("3")), kind(JSON.decode("[1, true]")), kind(YAML.decode("b: 1\na: 2"))]
 ```
 
-Order the arms from most to least specific: `1` is an `Int` and a `Float`, a
-type reads only the fields it declares (an object with extra keys still
-matches, unless the decode was strict), and null data matches no type arm,
-only a `null` arm or `else`.
+Order the arms from most to least specific: `1` is an `Int` and a `Float`, and
+a type reads only the fields it declares (an object with extra keys still
+matches, unless the decode was strict). A type whose constructor raises for
+the data doesn't match it. Null data matches no type arm: it goes to `else`,
+a `x: Decoded` arm (which takes any data as it is, and so can stand in for
+`else`), or, on a nullable `Decoded` operand, a `null` arm.
 
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded

@@ -78,4 +78,26 @@ let kinds = (doc["modules"]! :: [Decoded!]!).map { m =>
 
 assert { kinds == ["a", "?"] }
 
+# A Decoded arm takes any data as it is, so it stands in for else; a
+# trailing `!` on a list or map pattern is allowed and changes nothing.
+listOrRest(d: Decoded!): String! {
+  case (d) {
+    xs: [Decoded!]! => `list ${xs.length}`
+    rest: Decoded => "not a list"
+  }
+}
+
+assert { listOrRest(JSON.decode("[1]")) == "list 1" }
+assert { listOrRest(JSON.decode("{}")) == "not a list" }
+
+# Null inside walked data is a Decoded! holding null: it matches no type arm
+# but a Decoded one or else.
+let holder = JSON.decode("{\"a\": null}") :: Map[Decoded!]!
+let held = case (holder["a"]!) {
+  n: Int => "int"
+  else => "null data"
+}
+
+assert { held == "null data" }
+
 print("case on Decoded tests passed!")
