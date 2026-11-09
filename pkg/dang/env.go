@@ -425,9 +425,8 @@ func init() {
 	}
 
 	// GraphQLError additionally exposes the response path and extensions.
-	// extensions is the JSON-encoded extensions object ("{}" when absent) so
-	// it can feed JSON.decode; a builtin-JSON-typed field would be opaque to
-	// both JSON.decode(data: String!) and imported JSON scalars.
+	// extensions is the JSON-encoded extensions object ("{}" when absent),
+	// text to decode at whatever type the caller expects.
 	GraphQLErrorType.Add("path", hm.NewScheme(nil, NonNull(ListType{NonNull(StringType)})))
 	GraphQLErrorType.SetVisibility("path", PublicVisibility)
 	GraphQLErrorType.Add("extensions", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))

@@ -139,7 +139,7 @@ func checkDecodedComparison(left Node, lt hm.Type, right Node, rt hm.Type) error
 		typ  hm.Type
 	}{{left, lt}, {right, rt}} {
 		if containsDecoded(side.typ) {
-			return NewInferError(fmt.Errorf("cannot compare decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T)`", side.typ), side.node)
+			return NewInferError(fmt.Errorf("cannot compare decoded data (%s) before giving it a type; cast it to the type it has first, e.g. `(data :: T)`", side.typ), side.node)
 		}
 	}
 	return nil

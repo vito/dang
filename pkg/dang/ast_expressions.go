@@ -1204,7 +1204,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		var isNullable bool
 
 		if _, ok := unwrapNonNull(lt).(DecodedType); ok {
-			return nil, fmt.Errorf("cannot select %q from decoded data (%s) before giving it a type; cast it first, e.g. `(JSON.decode(...) :: T).%s`", d.Field.Name, lt, d.Field.Name)
+			return nil, fmt.Errorf("cannot select %q from decoded data (%s) before giving it a type; cast it to the type it has first, e.g. `(data :: T).%s`", d.Field.Name, lt, d.Field.Name)
 		}
 
 		if nn, ok := lt.(hm.NonNullType); ok {
