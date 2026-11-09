@@ -1,0 +1,11 @@
+[1m[31mError:[0m a case on decoded data needs an else: the data may match none of the patterns
+  [2m[34m--> errors/case_decoded_needs_else.dang:4:1[0m
+ [2m    |[0m
+ [2m  2 | let d = JSON.decode("1")[0m
+ [2m  3 | [0m
+ [2m[34m[1m  4 | [0mcase (d) {
+[2m       [31m^^^^^^^^^^[0m
+ [2m  5 |   n: Int => n[0m
+ [2m  6 | }[0m
+ [2m    |[0m
+

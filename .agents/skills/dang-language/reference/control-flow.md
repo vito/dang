@@ -40,7 +40,8 @@ case (animal) {
 }
 ```
 - Form `binding: Type => expr`; the binding is the operand narrowed to `Type` inside the clause.
-- Operand must be a **union or interface**; on a plain object → `type pattern requires a union or interface operand`.
+- Operand must be a **union or interface**, or **`Decoded` data** (below); on a plain object → `type pattern requires a union or interface operand`.
+- **On `Decoded` data**, an arm matches when the data materializes at its type (`n: Int`, `p: Point`, and — for decoded data only — list/map patterns `items: [Decoded!]`, `obj: Map[Decoded!]`); the first matching arm wins, and **`else` is required** (`a case on decoded data needs an else`). Caveats: `1` matches both `Int` and `Float` (order arms); a type arm accepts any object holding its fields (extra keys pass unless the decode was strict); arms bind non-null values, so null data goes to a `null =>` arm or `else`. List/map patterns on any other operand → `list and map type patterns match only decoded data`.
 - The named type must be a member of the union / an implementer of the interface, else `type X is not a member of union Y`.
 - An interface itself works as a pattern (matches any implementer — a typed catch-all); place specific types before it.
 - Also used in `rescue` clauses over `Error` subtypes.

@@ -1336,6 +1336,16 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
     TypePattern: typeName.(*Symbol),
     Loc: c.Loc(),
   }, nil
+} / binding:Symbol _ ColonToken _ patternType:(AppliedType / ListType) _ ArrowToken _ expr:Form {
+  // binding: [T] => ... or binding: Map[T] => ... matches decoded data
+  // that materializes as a list or map of T
+  return &CaseClause{
+    Value: nil,
+    Expr: expr.(Node),
+    Binding: binding.(*Symbol).Name,
+    PatternType: patternType.(TypeNode),
+    Loc: c.Loc(),
+  }, nil
 } / value:Form _ ArrowToken _ expr:Form {
   return &CaseClause{
     Value: value.(Node),

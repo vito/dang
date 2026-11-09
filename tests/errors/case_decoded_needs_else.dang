@@ -1,0 +1,6 @@
+# A case on decoded data needs an else: the data may match none of the arms.
+let d = JSON.decode("1")
+
+case (d) {
+  n: Int => n
+}

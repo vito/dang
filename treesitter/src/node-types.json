@@ -1066,6 +1066,20 @@
           }
         ]
       },
+      "pattern_type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "applied_type",
+            "named": true
+          },
+          {
+            "type": "list_type",
+            "named": true
+          }
+        ]
+      },
       "type_name": {
         "multiple": false,
         "required": false,

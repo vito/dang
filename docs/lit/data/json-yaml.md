@@ -125,6 +125,29 @@ A later cast reads the data the way its decode would have: under the decoding
 format's field names, and strictly if the decode was strict (see
 [#strict-decoding]).
 
+To branch on what decoded data holds, `case` on it with type patterns. An
+arm matches when the data materializes at its type, and the first match
+wins. Lists and maps can be patterns too, for decoded data only. Since any
+data may match none of the arms, `else` is required:
+
+```dang
+kind(d: Decoded!): String! {
+  case (d) {
+    n: Int => `the number ${n}`
+    items: [Decoded!] => `${items.length} items`
+    fields: Map[Decoded!] => `fields ${fields.keys.join(", ")}`
+    else => "something else"
+  }
+}
+
+[kind(JSON.decode("3")), kind(JSON.decode("[1, true]")), kind(YAML.decode("b: 1\na: 2"))]
+```
+
+Order the arms from most to least specific: `1` is an `Int` and a `Float`, a
+type reads only the fields it declares (an object with extra keys still
+matches, unless the decode was strict), and null data matches no type arm,
+only a `null` arm or `else`.
+
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded
 maps have sorted keys:

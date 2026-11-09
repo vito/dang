@@ -3212,7 +3212,11 @@ func (f *Formatter) formatCase(c *Case) {
 			} else if clause.IsTypePattern() {
 				f.write(f.ident(clause.Binding))
 				f.write(": ")
-				f.write(f.ident(clause.TypePattern.Name))
+				if clause.PatternType != nil {
+					f.formatTypeNode(clause.PatternType)
+				} else {
+					f.write(f.ident(clause.TypePattern.Name))
+				}
 			} else {
 				f.formatNode(clause.Value)
 			}
@@ -3363,7 +3367,7 @@ func tryCatchHasDeadClauses(t *RescueExpr) bool {
 		}
 		switch {
 		case clause.IsTypePattern():
-			name := clause.TypePattern.Name
+			name := clause.PatternName()
 			if seen[name] {
 				return true
 			}

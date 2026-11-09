@@ -41,6 +41,9 @@ func (c *Case) ReferencedSymbols() []string {
 		if clause.TypePattern != nil {
 			symbols = append(symbols, clause.TypePattern.Name)
 		}
+		if clause.PatternType != nil {
+			symbols = append(symbols, clause.PatternType.ReferencedSymbols()...)
+		}
 		symbols = append(symbols, clause.Expr.ReferencedSymbols()...)
 	}
 	return symbols
@@ -143,7 +146,11 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				caseType, err = inferArm(clause, func() (hm.Type, error) {
 					return WithInferErrorHandling(clause, func() (hm.Type, error) {
 						clauseEnv := env.Clone()
-						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
+						var bound hm.Type = hm.NonNullType{Type: clause.resolvedMemberType}
+						if clause.decodedPatternType != nil {
+							bound = clause.decodedPatternType
+						}
+						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, bound))
 						return clause.Expr.Infer(ctx, clauseEnv, fresh)
 					})
 				})
@@ -209,6 +216,11 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 		}
 
 		c.exhaustive = hasElse || c.coversOperand(env, exprType, valuePatterns)
+		if _, decoded := unwrapNonNull(exprType).(DecodedType); decoded && !hasElse {
+			// Decoded data may materialize at none of the patterns' types,
+			// and nothing about its type says which it will.
+			return nil, NewInferError(fmt.Errorf("a case on decoded data needs an else: the data may match none of the patterns"), c)
+		}
 		if !c.exhaustive {
 			// Nothing guarantees a clause matches, so the case can fall
 			// through and evaluate to null.
@@ -386,7 +398,7 @@ func moduleCoveredBy(mod *Type, patterns []*Type) bool {
 
 // inferTypePatternClause validates a type pattern clause against the operand type.
 // The operand must be a union (or interface), and the type pattern must name one of its members.
-func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Fresher, clause *CaseClause, exprType hm.Type) error {
+func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, exprType hm.Type) error {
 	typeScope, ok := env.(TypeScope)
 	if !ok {
 		return NewInferError(fmt.Errorf("type patterns require a module environment"), clause)
@@ -396,6 +408,29 @@ func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Freshe
 	unwrapped := exprType
 	if nn, ok := unwrapped.(hm.NonNullType); ok {
 		unwrapped = nn.Type
+	}
+
+	if _, ok := unwrapped.(DecodedType); ok {
+		// Decoded data matches a pattern when it materializes at its type.
+		var pattern TypeNode = clause.PatternType
+		if pattern == nil {
+			pattern = &NamedTypeNode{Name: clause.TypePattern.Name, Loc: clause.TypePattern.Loc}
+		}
+		t, err := pattern.Infer(ctx, env, fresh)
+		if err != nil {
+			return NewInferError(err, clause.patternNode())
+		}
+		if _, nn := t.(hm.NonNullType); !nn {
+			t = hm.NonNullType{Type: t}
+		}
+		if err := checkDecodeTarget(env, t); err != nil {
+			return NewInferError(err, clause.patternNode())
+		}
+		clause.decodedPatternType = t
+		return nil
+	}
+	if clause.PatternType != nil {
+		return NewInferError(fmt.Errorf("list and map type patterns match only decoded data, not %s", exprType), clause.patternNode())
 	}
 
 	// Resolve the type pattern from the operand's members first (handles
@@ -558,6 +593,24 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			}
 
 			// Type pattern clauses: check against the resolved type
+			if clause.IsTypePattern() && clause.decodedPatternType != nil {
+				// Decoded data matches when it materializes at the
+				// pattern's type; the first such clause wins.
+				data, ok := typedVal.(DeferredValue)
+				if !ok {
+					continue
+				}
+				matched, err := materializeDeferred(ctx, scope, data, clause.decodedPatternType, "")
+				if err != nil {
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
+					continue
+				}
+				childScope := scope.Derive(false)
+				childScope.Bind(clause.Binding, matched, PrivateVisibility)
+				return EvalNode(ctx, childScope, clause.Expr)
+			}
 			if clause.IsTypePattern() {
 				if matchesType(typedVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding. It is unsealed, like
@@ -639,13 +692,13 @@ func (c *Case) needsConcreteType(g GraphQLValue) bool {
 func (c *Case) unresolvedMutationPatternError(g GraphQLValue, clause *CaseClause) error {
 	var fragments []string
 	for _, cl := range c.Clauses {
-		if cl.IsTypePattern() && cl.TypePattern.Name != g.TypeName {
+		if cl.TypePattern != nil && cl.TypePattern.Name != g.TypeName {
 			fragments = append(fragments, fmt.Sprintf("... on %s {{ ... }}", cl.TypePattern.Name))
 		}
 	}
 	return fmt.Errorf(
 		"cannot match type pattern %s against a %s reached through mutation %s: finding its concrete type would send the mutation again; select each possible type's fields on the mutation call instead, e.g. .{{ %s }}",
-		clause.TypePattern.Name, g.TypeName, g.Name, strings.Join(fragments, ", "),
+		clause.PatternName(), g.TypeName, g.Name, strings.Join(fragments, ", "),
 	)
 }
 
@@ -764,18 +817,68 @@ type CaseClause struct {
 	IsElse      bool    // true if this is an else clause
 	Binding     string  // variable name for type pattern (e.g. "user" in "user: User => ...")
 	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User => ...")
+	// PatternType is a list or map type pattern (`items: [Decoded!] => ...`,
+	// `obj: Map[Decoded!] => ...`), which only decoded data can match.
+	PatternType TypeNode
 	Loc         *SourceLocation
 
 	// resolvedMemberType is set during inference to the concrete member type
 	// for this type pattern clause. For narrowed unions (from inline fragment
 	// selections), this is the narrowed type with only the selected fields.
 	resolvedMemberType *Type
+
+	// decodedPatternType is set during inference when the operand is
+	// decoded data: the non-null type the data must materialize at for the
+	// clause to match.
+	decodedPatternType hm.Type
 }
 
 var _ SourceLocatable = (*CaseClause)(nil)
 
 func (c *CaseClause) IsTypePattern() bool {
-	return c.TypePattern != nil
+	return c.TypePattern != nil || c.PatternType != nil
+}
+
+// PatternName is how a type pattern is written: `User`, `[Decoded!]`.
+func (c *CaseClause) PatternName() string {
+	if c.TypePattern != nil {
+		return c.TypePattern.Name
+	}
+	if c.PatternType != nil {
+		return typeNodeString(c.PatternType)
+	}
+	return ""
+}
+
+// patternNode is the node to blame for a type pattern's errors.
+func (c *CaseClause) patternNode() SourceLocatable {
+	if c.TypePattern != nil {
+		return c.TypePattern
+	}
+	return c
+}
+
+// typeNodeString writes a type as source spells it, for messages.
+func typeNodeString(t TypeNode) string {
+	switch tn := t.(type) {
+	case *NamedTypeNode:
+		if tn.Base != nil {
+			return typeNodeString(tn.Base) + "." + tn.Name
+		}
+		return tn.Name
+	case NonNullTypeNode:
+		return typeNodeString(tn.Elem) + "!"
+	case ListTypeNode:
+		return "[" + typeNodeString(tn.Elem) + "]"
+	case *AppliedTypeNode:
+		args := make([]string, len(tn.Args))
+		for i, a := range tn.Args {
+			args[i] = typeNodeString(a)
+		}
+		return typeNodeString(tn.Base) + "[" + strings.Join(args, ", ") + "]"
+	default:
+		return fmt.Sprintf("%v", t)
+	}
 }
 
 func (c *CaseClause) GetSourceLocation() *SourceLocation {

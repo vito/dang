@@ -5422,6 +5422,52 @@
           "members": [
             {
               "type": "FIELD",
+              "name": "binding",
+              "content": {
+                "type": "SYMBOL",
+                "name": "symbol"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "colon_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "pattern_type",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "applied_type"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "list_type"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "arrow_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "expr",
+              "content": {
+                "type": "SYMBOL",
+                "name": "form"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
               "name": "value",
               "content": {
                 "type": "SYMBOL",
