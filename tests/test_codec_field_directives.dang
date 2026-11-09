@@ -21,10 +21,12 @@ assert { JSON.encode(withEmail) == "{\"display_name\":\"Mary\",\"email_address\"
 
 # --- Format isolation: YAML honors only @YAML.* ---
 # display-name uses YAML's own rename; email keeps its declared name and its null
-# value (omitNull is JSON-only here); secret is dropped by @YAML.ignore.
-assert { YAML.encode(nullEmail) == "balance: 100\ndisplay-name: Ada\nemail: null" }
+# value (omitNull is JSON-only here); secret is dropped by @YAML.ignore. Fields
+# keep their declared order, unless sortKeys sorts them.
+assert { YAML.encode(nullEmail) == "display-name: Ada\nemail: null\nbalance: 100" }
+assert { YAML.encode(nullEmail, sortKeys: true) == "balance: 100\ndisplay-name: Ada\nemail: null" }
 
-# --- TOML honors only @TOML.* ---
+# --- TOML honors only @TOML.* (and sorts its keys) ---
 assert { TOML.encode(withEmail) == "balance = 50\ndisplay_name = \"Mary\"\nemail = \"mary@x.io\"" }
 
 # --- omitEmpty drops empty values Go-style: null, "", 0, false, empty list/map ---

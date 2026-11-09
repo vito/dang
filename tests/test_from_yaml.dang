@@ -112,6 +112,13 @@ assert { YAML.encode(["a": "<<"]) == "a: <<" }
 assert { YAML.encode(["<<"]) == "- <<" }
 assert { (YAML.decode(YAML.encode(["a": "<<"])) :: Map[String!]!) == ["a": "<<"] }
 
+# YAML.encode keeps a map's insertion order and a record's written order, at
+# every depth, unless sortKeys sorts them; strings that would read back as
+# something else are quoted.
+assert { YAML.encode(["zed": 1, "amy": 2]) == "zed: 1\namy: 2" }
+assert { YAML.encode({{b: 1, a: {{d: "yes", c: "1:20"}}}}) == "b: 1\na:\n    d: \"yes\"\n    c: \"1:20\"" }
+assert { YAML.encode({{b: 1, a: {{d: 2, c: 3}}}}, sortKeys: true) == "a:\n    c: 3\n    d: 2\nb: 1" }
+
 # quoting "<<" keys leaves other output alone, e.g. tab-indented block text
 assert { YAML.encode(["k": "\tx\ny"]) == "k: |-\n    \tx\n    y" }
 

@@ -239,10 +239,10 @@ YAML.decode("") :: Options!
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
-a `String!`. `JSON.encode` keeps fields in the order they are declared, as
-Go does for struct fields: a record's as written (see [#literals]), a type's
-as the type declares them; `Decoded` data has its keys sorted. YAML and TOML
-sort them alphabetically:
+a `String!`. `JSON.encode` and `YAML.encode` keep fields in the order they
+are declared, as Go does for struct fields: a record's as written (see
+[#literals]), a type's as the type declares them; `Decoded` data has its keys
+sorted. TOML sorts them alphabetically:
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})
@@ -300,6 +300,12 @@ let release = Release(version: "2.2", name: "dang")
 
 ```dang
 JSON.encode(["zed": 1, "amy": 2], sortKeys: true)
+```
+
+`YAML.encode` takes `sortKeys: true` too:
+
+```dang
+YAML.encode(release, sortKeys: true)
 ```
 
 `toString(value)` passes strings through and JSON-encodes everything else
