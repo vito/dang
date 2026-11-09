@@ -3291,15 +3291,15 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 }
 
 // formatTypePattern writes a case or rescue clause's type pattern: the
-// non-null type its arm binds, written without the `!` in versions where
-// patterns leave it out (see barePatterns).
+// non-null type its arm binds. Where the `!` is optional (see barePatterns),
+// it is written as it was.
 func (f *Formatter) formatTypePattern(clause *CaseClause) {
 	if clause.PatternType != nil {
 		f.formatTypeNode(clause.PatternType)
 	} else {
 		f.formatNamedPattern(clause)
 	}
-	if !f.version.barePatterns() {
+	if !f.version.barePatterns() || clause.PatternBang {
 		f.write("!")
 	}
 }

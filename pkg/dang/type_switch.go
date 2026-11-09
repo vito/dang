@@ -118,10 +118,12 @@ func fits(have, want hm.Type) bool {
 	}
 	have, want = unwrapNonNull(have), unwrapNonNull(want)
 	switch w := want.(type) {
-	case ListType, GraphQLListType:
-		welem, _ := listElementTarget(w)
-		helem, ok := listElementTarget(have)
-		return ok && fits(helem, welem)
+	case ListType:
+		h, ok := have.(ListType)
+		return ok && fits(h.Type, w.Type)
+	case GraphQLListType:
+		h, ok := have.(GraphQLListType)
+		return ok && fits(h.Type, w.Type)
 	case MapType:
 		h, ok := have.(MapType)
 		return ok && fits(h.Type, w.Type)
@@ -210,10 +212,9 @@ func typesOverlap(pattern, operand hm.Type) bool {
 		return false
 	}
 	switch o := operand.(type) {
-	case ListType, GraphQLListType:
-		oelem, _ := listElementTarget(o)
-		pelem, ok := listElementTarget(pattern)
-		return ok && typesOverlap(pelem, oelem)
+	case ListType:
+		p, ok := pattern.(ListType)
+		return ok && typesOverlap(p.Type, o.Type)
 	case MapType:
 		p, ok := pattern.(MapType)
 		return ok && typesOverlap(p.Type, o.Type)
@@ -307,8 +308,8 @@ func valueInhabits(val Value, t hm.Type, byContents bool) bool {
 		return true
 	}
 	switch want := t.(type) {
-	case ListType, GraphQLListType:
-		elem, _ := listElementTarget(want)
+	case ListType:
+		elem := want.Type
 		list, ok := val.(ListValue)
 		if !ok {
 			return false
@@ -456,13 +457,17 @@ func recordedRuntimeType(ctx context.Context, t hm.Type) hm.Type {
 	return recordedOr(runtimeType(ctx, t))
 }
 
-// concatLists returns the list holding l's elements, then r's.
-func concatLists(l, r ListValue) ListValue {
+// concatLists returns the list holding l's elements, then r's. It records
+// the element type of static, the concatenation's static type, like a list
+// literal does; where that isn't known (or holds type variables), a type both
+// sides' recorded types fit.
+func concatLists(l, r ListValue, static hm.Type) ListValue {
 	combined := make([]Value, len(l.Elements)+len(r.Elements))
 	copy(combined, l.Elements)
 	copy(combined[len(l.Elements):], r.Elements)
-	return ListValue{
-		Elements: combined,
-		ElemType: joinRecordedTypes(l.ElemType, len(l.Elements) == 0, r.ElemType, len(r.Elements) == 0),
+	elem := recordedElemType(static)
+	if holdsTypeVars(elem) {
+		elem = joinRecordedTypes(l.ElemType, len(l.Elements) == 0, r.ElemType, len(r.Elements) == 0)
 	}
+	return ListValue{Elements: combined, ElemType: elem}
 }

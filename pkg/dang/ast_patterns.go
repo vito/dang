@@ -461,6 +461,9 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		return NewInferError(fmt.Errorf("a type pattern needs a concrete type, not %s", t), clause.patternNode())
 	}
 	if !typesOverlap(t, exprType) {
+		if _, gqlList := unwrapped.(GraphQLListType); gqlList {
+			return NewInferError(fmt.Errorf("pattern %s can't match a GraphQL object list (%s); select fields on its elements first, e.g. value.{{id}}", t, exprType), clause.patternNode())
+		}
 		return NewInferError(fmt.Errorf("pattern %s can't match a value of type %s", t, exprType), clause.patternNode())
 	}
 	if mod, ok := unwrapNonNull(t).(*Type); ok && !isRecordModule(mod) {
@@ -789,6 +792,11 @@ func matchesType(val Value, pattern *Type) bool {
 	if valMod == nil {
 		return false
 	}
+	// An ID is a plain string at runtime (GraphQL results, ID literals), so
+	// an ID pattern takes a string; its static type alone tells them apart.
+	if canonicalModule(pattern) == IDType && valMod == StringType {
+		return true
+	}
 	// Resolve both sides to their canonical type so that narrowed
 	// projections compare against the same identity.
 	valCanon := canonicalModule(valMod)
@@ -1032,6 +1040,10 @@ type CaseClause struct {
 	// BarePattern marks a type pattern written without its `!` where that
 	// is no longer allowed, for inference to reject with a hint.
 	BarePattern bool
+	// PatternBang records that a type pattern was written with its `!`,
+	// for the formatter to keep it where the `!` is optional (see
+	// barePatterns). It is spelling only, so migration ignores it.
+	PatternBang bool `dang:"spelling"`
 	// PatternLoc is where a type pattern is written, `!` included.
 	PatternLoc *SourceLocation
 	Loc        *SourceLocation

@@ -1,0 +1,7 @@
+# A GraphQL object list is matched once its elements' fields are selected.
+import Test
+
+case (users) {
+  us: [User!]! => us
+  else => null
+}

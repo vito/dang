@@ -126,13 +126,41 @@ let wrapped = case (wrap(whiskers)) {
 }
 assert { wrapped == "cats" }
 
-# Concatenating keeps a type both sides fit.
+# A generic parameter says less than what a list recorded, so passing
+# through one keeps it.
+same(xs: [a]!): [a]! { xs }
+
+let viaGeneric = case (same(animals)) {
+  cs: [Cat!]! => "cats"
+  else => "animals"
+}
+assert { viaGeneric == "animals" }
+
+# Concatenating records the concatenation's static type, like a literal.
 let joined = [x] + [1]
 let joinedKind = case (joined) {
   a: [Int!]! => "non-null"
   b: [Int]! => "nullable"
 }
 assert { joinedKind == "nullable" }
+
+grownKind: String! {
+  let grown: [Animal!]! = []
+  grown += [whiskers]
+  case (grown) {
+    cs: [Cat!]! => "cats"
+    as: [Animal!]! => "animals"
+  }
+}
+
+assert { grownKind == "animals" }
+
+let catsAgain = cats + [Cat(name: "Tom")]
+let catsKind = case (catsAgain) {
+  cs: [Cat!]! => "cats"
+  else => "animals"
+}
+assert { catsKind == "cats" }
 
 # Records match by their fields and the fields' types.
 describeRecord(named: Boolean!): String! {

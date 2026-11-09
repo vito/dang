@@ -113,4 +113,17 @@ let selected = case (Mutation.touchResult(id: "Post:1").{{... on User {{ name }}
 }
 assert { selected == "post First Post" }
 
+# An ID is a string at runtime, and still matches an ID pattern.
+let idKind = case (favoriteNode.id) {
+  i: ID! => "id " + toString(i)
+}
+assert { idKind == "id Post:2" }
+
+# A list selected off an object list records its records' type.
+let named = users.{{name}}
+let namedKind = case (named) {
+  rs: [{{name: String!}}!]! => `${rs.length} names`
+}
+assert { namedKind == "2 names" }
+
 print("GraphQL abstract case tests passed!")

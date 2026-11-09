@@ -765,13 +765,15 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			}
 			elements[i] = materialized
 		}
-		// A generic target (`[a!]!`) is what this call has a stand for,
-		// when it knows (a return type in a generic body); where it doesn't
-		// (a generic parameter), the list's own element type says more, so
-		// a [Float!]! passed through a type variable still holds Floats.
+		// The list now has the target's type and records it (see
+		// recordedElemType): what this call has a generic target (`[a!]!`)
+		// stand for, when it knows (a return type in a generic body). Where
+		// it doesn't (a generic parameter), the list's own element type says
+		// more, so a [Float!]! passed through a type variable still holds
+		// Floats.
 		elemType := runtimeType(ctx, elemTarget)
-		if len(elemType.FreeTypeVar()) > 0 && v.ElemType != nil && len(v.ElemType.FreeTypeVar()) == 0 {
-			elemType = v.ElemType
+		if holdsTypeVars(elemType) {
+			elemType = recordedOr(v.ElemType)
 		}
 		return ListValue{Elements: elements, ElemType: elemType}, nil
 	case MapValue:
@@ -788,8 +790,8 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			entries[k] = materialized
 		}
 		valType := runtimeType(ctx, valTarget)
-		if len(valType.FreeTypeVar()) > 0 && v.ValType != nil && len(v.ValType.FreeTypeVar()) == 0 {
-			valType = v.ValType
+		if holdsTypeVars(valType) {
+			valType = recordedOr(v.ValType)
 		}
 		return MapValue{Keys: append([]string{}, v.Keys...), Entries: entries, ValType: valType}, nil
 	default:

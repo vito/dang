@@ -421,6 +421,7 @@ func TestVersionRescue(t *testing.T) {
 func TestVersionTypePatterns(t *testing.T) {
 	bare := "let x = case (p) {\n  c: Cat => 1\n  g: Lib.Dog => 2\n  xs: [Int!] => 3\n  m: Map[Int!] => 4\n}\n"
 	banged := "let x = case (p) {\n  c: Cat! => 1\n  g: Lib.Dog! => 2\n  xs: [Int!]! => 3\n  m: Map[Int!]! => 4\n}\n"
+	mixed := "let x = case (p) {\n  c: Cat => 1\n  g: Lib.Dog! => 2\n  xs: [Decoded!]! => 3\n  m: Map[Int!] => 4\n}\n"
 
 	clauses := func(t *testing.T, src string, v Version) []*CaseClause {
 		t.Helper()
@@ -452,10 +453,12 @@ func TestVersionTypePatterns(t *testing.T) {
 			_, differs := firstASTDifference(without.(Node), withBang.(Node))
 			assert.False(t, differs)
 
-			// Formatting writes them the way the version does.
-			formatted, err := FormatFileWithVersion([]byte(banged), v)
-			require.NoError(t, err)
-			assert.Equal(t, bare, formatted)
+			// Formatting keeps each pattern as written, `!` or not.
+			for _, src := range []string{bare, banged, mixed} {
+				formatted, err := FormatFileWithVersion([]byte(src), v)
+				require.NoError(t, err)
+				assert.Equal(t, src, formatted)
+			}
 		})
 	}
 
@@ -487,6 +490,15 @@ func TestVersionTypePatterns(t *testing.T) {
 
 	t.Run("migrating to 2.4 adds the !", func(t *testing.T) {
 		migrated, err := MigrateSource("version_test.dang", []byte(bare), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, banged, migrated)
+
+		migrated, err = MigrateSource("version_test.dang", []byte(mixed), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = case (p) {\n  c: Cat! => 1\n  g: Lib.Dog! => 2\n  xs: [Decoded!]! => 3\n  m: Map[Int!]! => 4\n}\n", migrated)
+
+		// Source already spelled the 2.4 way is left as it is.
+		migrated, err = MigrateSource("version_test.dang", []byte(banged), Version2_1, Version2_4)
 		require.NoError(t, err)
 		assert.Equal(t, banged, migrated)
 

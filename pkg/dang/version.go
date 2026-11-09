@@ -309,10 +309,11 @@ func (v Version) barePatterns() bool {
 // rescue, as written in version v. A pattern is the non-null type its arm
 // binds; the clause keeps the type without its `!`, since every type pattern
 // has one (TypePattern and PatternBase for a named type, PatternType for any
-// other). Where patterns may leave it out (see barePatterns), a pattern
-// written without it means the same. Elsewhere it is marked BarePattern, so
-// inference rejects it with a hint to add the `!` rather than failing the
-// parse.
+// other), and records whether it was written (PatternBang), so that
+// formatting keeps the spelling where the `!` is optional. Where patterns may
+// leave it out (see barePatterns), a pattern written without it means the
+// same. Elsewhere it is marked BarePattern, so inference rejects it with a
+// hint to add the `!` rather than failing the parse.
 func typePatternClause(v Version, binding *Symbol, pattern locatedType, expr Node, loc *SourceLocation) *CaseClause {
 	clause := &CaseClause{
 		Expr:       expr,
@@ -323,6 +324,7 @@ func typePatternClause(v Version, binding *Symbol, pattern locatedType, expr Nod
 	t := pattern.Type
 	if nn, ok := t.(NonNullTypeNode); ok {
 		t = nn.Elem
+		clause.PatternBang = true
 	} else if !v.barePatterns() {
 		clause.BarePattern = true
 	}

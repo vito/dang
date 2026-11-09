@@ -103,7 +103,12 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 
 		switch b.OpType {
 		case ArithmeticOp:
-			return b.resolveOperands(env, lt, rt)
+			t, err := b.resolveOperands(env, lt, rt)
+			if err == nil {
+				// A concatenated list records its element type from it.
+				b.SetInferredType(t)
+			}
+			return t, err
 		case ComparisonOp:
 			// Ordering comparisons (< > <= >=) carry a domain, the Ordered
 			// types, and must reject operands outside it (e.g. two
@@ -576,7 +581,16 @@ func (b *BinaryOperator) Eval(ctx context.Context, scope ValueScope) (Value, err
 			return nil, fmt.Errorf("evaluating right side: %w", err)
 		}
 
-		return b.EvalFunc(leftVal, rightVal)
+		result, err := b.EvalFunc(leftVal, rightVal)
+		if list, ok := result.(ListValue); ok && err == nil {
+			// Like a list literal, a concatenation records its static
+			// element type (see recordedElemType).
+			if elem := recordedElemType(b.GetInferredType()); !holdsTypeVars(elem) {
+				list.ElemType = elem
+				result = list
+			}
+		}
+		return result, err
 	})
 }
 
@@ -603,7 +617,7 @@ func additionEval(leftVal, rightVal Value) (Value, error) {
 		}
 	case ListValue:
 		if r, ok := rightVal.(ListValue); ok {
-			return concatLists(l, r), nil
+			return concatLists(l, r, nil), nil
 		}
 	}
 	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)
