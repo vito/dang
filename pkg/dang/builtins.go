@@ -674,35 +674,39 @@ func StaticModules() []*Type {
 	return append([]*Type(nil), builtins.staticModules...)
 }
 
-// isBuiltinStaticHost reports whether t is a module Dang registers static
-// methods on (Random, UUID, JSON, ...). Those methods are bound on the
-// module's namespace value at runtime (see the static-method loop in
-// eval.go), not on a self { } block's statics, so static-first member
-// resolution must leave them to normal receiver inference.
-func isBuiltinStaticHost(t *Type) bool {
-	return builtins.staticModuleSeen[t]
-}
-
 // shadowedPreludeMemberHint explains a member missing from local, a type
-// declared or imported under the name of a Prelude type, when that Prelude
-// type has it (has reports whether it does): the local declaration shadows
-// the builtin. It returns "" otherwise. Only the error path calls it.
+// declared or imported under a name the Prelude also binds, when what the
+// Prelude binds there — a type of that name, or the module a value of that
+// name is (a namespace such as JSON) — has it (has reports whether it does):
+// the local declaration shadows the builtin. It returns "" otherwise. Only
+// the error path calls it.
 func shadowedPreludeMemberHint(local *Type, has func(*Type) bool) string {
 	if local == nil || local.Named == "" {
 		return ""
 	}
-	sub, found := Prelude.NamedType(local.Named)
-	if !found {
-		return ""
+	var candidates []*Type
+	if sub, found := Prelude.NamedType(local.Named); found {
+		if t, ok := sub.(*Type); ok {
+			candidates = append(candidates, t)
+		}
 	}
-	builtin, ok := sub.(*Type)
-	if !ok || builtin == local || !has(builtin) {
-		return ""
+	if scheme, found := Prelude.LocalSchemeOf(local.Named); found {
+		if t, mono := scheme.Type(); mono {
+			if mod, ok := unwrapNonNull(t).(*Type); ok {
+				candidates = append(candidates, mod)
+			}
+		}
 	}
-	if local.Qualifier != "" {
-		return fmt.Sprintf("%s is a different type from the builtin %s, which has it", local, local.Named)
+	for _, builtin := range candidates {
+		if builtin == local || builtin.metaOf == local || !has(builtin) {
+			continue
+		}
+		if local.Qualifier != "" {
+			return fmt.Sprintf("%s is a different type from the builtin %s, which has it", local, local.Named)
+		}
+		return fmt.Sprintf("the %s declared here shadows the builtin %s, which has it; rename the declaration to use the builtin", local.Named, local.Named)
 	}
-	return fmt.Sprintf("the %s declared here shadows the builtin %s, which has it; rename the declaration to use the builtin", local.Named, local.Named)
+	return ""
 }
 
 // DefineEnum creates an enum type with the given values and registers it

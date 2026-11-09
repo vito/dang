@@ -1,5 +1,5 @@
-# A builtin scalar's name is its namespace, holding `encode` and `decode`,
-# not a JSON value.
+# The value JSON is the codec namespace, holding `encode` and `decode`, not a
+# value of the type JSON.
 
 let j = JSON.encode({{a: 1}})
 

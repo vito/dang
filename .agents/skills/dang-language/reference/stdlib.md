@@ -157,7 +157,7 @@ Equality ignores order (`["a": 1, "b": 2] == ["b": 2, "a": 1]`). `JSON.encode` e
 
 ## JSON, YAML, and TOML
 
-Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods. The names double as scalar types (`:: JSON`) and are owned by Dang, so they work with **no `import`**. A schema's scalar of the same name (e.g. Dagger's `scalar JSON`) is a separate type, reached qualified (`Dagger.JSON`), with no `encode`/`decode` of its own; unqualified `JSON` stays the builtin.
+Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods, a plain module like `Random`, owned by Dang so it works with **no `import`**. `JSON` also names Dang's untyped JSON value type (`:: JSON`, below), a separate type that shares the name. A schema's scalar of the same name (e.g. Dagger's `scalar JSON`) is a separate type, reached qualified (`Dagger.JSON`), with no `encode`/`decode` of its own; unqualified `JSON` stays the builtin.
 
 Parsing is **type-driven** — `JSON.decode` / `YAML.decode` / `TOML.decode` produce values of the *expected* type, which comes from a `::` cast, an annotation, or the parameter/return type at the call site:
 ```dang
@@ -177,7 +177,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 ### Coercion during parsing
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
 - Custom scalars decode from their string forms — except `JSON` (below).
-- **Which scalars accept non-string JSON** depends on who owns them. The builtin `JSON` (and a `scalar JSON` you declare) accepts any value — see below. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's scalar works. Other **Dang-owned** scalars — `YAML`/`TOML`, `Path`, `Regexp`, and any other `scalar` you declare — materialize **only from a string**: decoding a number into `scalar Foo` raises `expected string for scalar Foo, got number`. Model such a value as a record/`Map` of concrete types, as `JSON`, or keep the raw text in a `String!`.
+- **Which scalars accept non-string JSON** depends on who owns them. The builtin `JSON` (and a `scalar JSON` you declare) accepts any value — see below. A scalar from an imported GraphQL **schema** (without a Dang body) accepts any JSON value and holds it as JSON text — decoding `{"a": [1]}` into a field typed with a schema's scalar works. Other **Dang-owned** scalars — `Path`, `Regexp`, and any other `scalar` you declare — materialize **only from a string**: decoding a number into `scalar Foo` raises `expected string for scalar Foo, got number`. Model such a value as a record/`Map` of concrete types, as `JSON`, or keep the raw text in a `String!`.
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
 ### `JSON` values: untyped JSON

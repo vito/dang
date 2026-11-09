@@ -13,24 +13,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// JSON, YAML, and TOML are string-shaped data-interchange formats that double as
-// their own encode/decode namespace. Each is a builtin scalar — a ScalarKind
-// module Dang ships static methods for — installed in the Prelude, so
-// `:: JSON` and `JSON.encode` resolve with no import. A schema's or user's
-// scalar of the same name is a separate type. As a type, JSON is also Dang's
-// untyped JSON value (see isJSONScalar), which the codecs decode into and
-// encode from. See issue #105.
+// JSON, YAML, and TOML are data-interchange formats, each a plain namespace
+// module (like Random) holding its encode/decode and field directives,
+// installed in the Prelude so `JSON.encode` resolves with no import. A
+// schema's or user's type of the same name is a separate type. The type named
+// JSON is JSONType, Dang's untyped JSON value (see isJSONScalar), which the
+// codecs decode into and encode from. See issue #105.
 var (
-	JSONModule = NewType("JSON", ScalarKind)
+	JSONModule = NewType("JSON", ObjectKind)
 	YAMLModule = NewType("YAML", ObjectKind)
 	TOMLModule = NewType("TOML", ObjectKind)
+
+	// JSONType is the type named JSON: Dang's untyped JSON value. It is not
+	// the JSON namespace (JSONModule), which only shares its name.
+	JSONType = NewType("JSON", ScalarKind)
 )
 
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
-// with the builtin DSL like the Random/UUID modules. Being ScalarKind static
-// modules, they are installed in the Prelude (see env.go).
+// with the builtin DSL like the Random/UUID modules (see env.go for how they
+// are installed in the Prelude).
 func registerCodecs() {
 	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
+	JSONType.SetTypeDocString("untyped JSON data of any shape, held as its JSON text")
 	// encode takes an arbitrary value, so it cannot live on the String type
 	// (there is no universal receiver); it belongs to the format's namespace.
 	StaticMethod(JSONModule, "encode").

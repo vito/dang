@@ -1059,9 +1059,8 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				if named, found := ts.NamedType(sym.Name); found {
 					// An enum's meta-type holds its values, which are read off
 					// the enum's namespace value like any field, not from
-					// statics; so do a builtin module's static methods
-					// (JSON.encode).
-					if owner, ok := named.(*Type); ok && owner.Kind != EnumKind && !isBuiltinStaticHost(owner) {
+					// statics.
+					if owner, ok := named.(*Type); ok && owner.Kind != EnumKind {
 						// A public static is reachable as `Type.member`
 						// anywhere; a private (let) static only from within its
 						// declaring module (module-level visibility, matching

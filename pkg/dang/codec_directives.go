@@ -20,7 +20,10 @@ type Codec struct {
 }
 
 var (
-	jsonCodec = Codec{JSONModule}
+	// Directive scopes resolve in the type namespace, where `JSON` names
+	// JSONType, so JSON's directives live there; YAML and TOML have no
+	// value type, so their namespace module is also their type.
+	jsonCodec = Codec{JSONType}
 	yamlCodec = Codec{YAMLModule}
 	tomlCodec = Codec{TOMLModule}
 )

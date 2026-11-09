@@ -478,15 +478,10 @@ func enumValueNames(enum *Type) []string {
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may
 // degrade to String at value-handoff boundaries. Every non-primitive scalar
-// value is a string underneath (ScalarValue), so they all qualify — except
-// the YAML/TOML codec namespaces, scalar-kind static modules with no values
-// of their own. JSON's values are JSON text, so they degrade like any other
-// scalar's (which is how `JSON.decode(j)` re-materializes one).
+// value is a string underneath (ScalarValue), so they all qualify. (JSON's
+// values are JSON text, which is how `JSON.decode(j)` re-materializes one.)
 func isDegradableScalar(mod *Type) bool {
-	if mod.Kind != ScalarKind || isPrimitiveScalar(mod) {
-		return false
-	}
-	return mod == JSONModule || !builtins.staticModuleSeen[mod]
+	return mod.Kind == ScalarKind && !isPrimitiveScalar(mod)
 }
 
 // isJSONScalar reports whether mod is Dang's JSON value type: the builtin JSON
@@ -744,6 +739,14 @@ func diagnoseAssignment(have, want hm.Type) error {
 		// Both print as the type's name, so say which is which.
 		return fmt.Errorf("cannot use %s as %s: %s here is the type itself, not a value of that type",
 			have, want, meta.Named)
+	}
+	if haveMod, ok := haveBase.(*Type); ok && haveMod.Kind == ObjectKind {
+		if wantMod, ok := unwrapNonNull(want).(*Type); ok && wantMod.Kind == ScalarKind && wantMod.String() == haveMod.String() {
+			// Two types that print alike, e.g. the JSON namespace and the
+			// JSON type: say which is which.
+			return fmt.Errorf("cannot use %s as %s: %s here is a module, not a value of the type %s",
+				have, want, haveMod, wantMod)
+		}
 	}
 	haveMod, wantMod, issues, ok := walkAssignment(have, want)
 	if !ok {

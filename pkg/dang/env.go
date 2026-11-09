@@ -432,22 +432,21 @@ func init() {
 	// Register standard library builtins
 	registerStdlib()
 
-	// Install the codec namespaces in both namespaces, like the modules above.
-	// YAML and TOML are plain modules, like Random: they have no values. JSON
-	// is still a ScalarKind static module, AddObject'd so `:: JSON` resolves
-	// in type position, with its name bound to its meta-type, holding
-	// `encode`/`decode` (registerBuiltinTypes), so they resolve on the name but
-	// a JSON value is never mistaken for the namespace. A schema's same-named
-	// scalar (e.g. Dagger's `scalar JSON`) is a separate type, reached
-	// qualified (`Dagger.JSON`); a user's `scalar JSON` shadows these in its
-	// module like any other declaration.
+	// Install the codec namespaces (JSON/YAML/TOML) in both namespaces, like
+	// Random: plain ObjectKind modules holding encode/decode, which as types
+	// are the scopes of their field directives (directive scopes resolve in
+	// the type namespace). The type `JSON` is the exception: it is JSONType,
+	// Dang's untyped JSON value, a separate type that carries the @JSON
+	// directives. The two namespaces resolve independently, so neither needs
+	// to know about the other. A schema's same-named scalar (e.g. Dagger's
+	// `scalar JSON`) is a separate type, reached qualified (`Dagger.JSON`); a
+	// user's `scalar JSON` shadows these in its module like any other
+	// declaration.
+	Prelude.AddObject(JSONType.Named, JSONType)
+	Prelude.AddObject(YAMLModule.Named, YAMLModule)
+	Prelude.AddObject(TOMLModule.Named, TOMLModule)
 	for _, mod := range []*Type{JSONModule, YAMLModule, TOMLModule} {
-		Prelude.AddObject(mod.Named, mod)
-		if mod.Kind == ScalarKind {
-			Prelude.Add(mod.Named, hm.NewScheme(nil, typeNameValueType(mod)))
-		} else {
-			Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
-		}
+		Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
 	}
 
 	// Register builtin function types from the registry
@@ -1106,14 +1105,9 @@ func registerBuiltinTypes() {
 		})
 	}
 
-	// Register all static method types on their host modules. A builtin
-	// scalar's (JSON, ...) go on its meta-type, the type of its name: its
-	// values are plain strings, with no such members.
+	// Register all static method types on their host modules.
 	for _, hostModule := range StaticModules() {
 		target := hostModule
-		if hostModule.Kind == ScalarKind {
-			target = hostModule.MetaType()
-		}
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			target.Add(def.Name, hm.NewScheme(nil, fnType))

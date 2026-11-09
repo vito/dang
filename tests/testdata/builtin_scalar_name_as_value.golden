@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use JSON! as JSON!: JSON here is the type itself, not a value of that type
+[1m[31mError:[0m cannot use JSON! as JSON!: JSON here is a module, not a value of the type JSON
   [2m[34m--> errors/builtin_scalar_name_as_value.dang:8:16[0m
  [2m    |[0m
  [2m  6 | describe(x: JSON!): String! { toString(x) }[0m

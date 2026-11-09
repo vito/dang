@@ -6,9 +6,10 @@
 > Meta: short page. The defining characteristic is type-driven parsing — `JSON.decode` produces values of the *expected* type. Open with that.
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
-`encode` / `decode` static methods. The names double as scalar types (`:: JSON`)
-and are owned by Dang, so they work with no schema import. A schema's scalar of
-the same name (e.g. Dagger's `JSON`) is a separate type, reached qualified
+`encode` / `decode` static methods. They are plain modules owned by Dang, like
+`Random`, so they work with no schema import. `JSON` also names Dang's untyped
+JSON value type (`:: JSON`, see [#json-values]). A schema's scalar of the same
+name (e.g. Dagger's `JSON`) is a separate type, reached qualified
 (`Dagger.JSON`), while unqualified `JSON` stays Dang's own (see
 [#enums-scalars]).
 
