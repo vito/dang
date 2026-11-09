@@ -373,8 +373,8 @@ an argument meets a parameter's "must be pure" requirement, because hoisting
 infers callers before callees: `effectArg` records bindings on the
 `effectSolver` and `solve()` propagates requirements through forwarded
 parameters (a monotone boolean propagation) and reports violations, including
-blocks with non-local `return`/`break` that may escape (this replaced the old
-runtime "expired frame" checks).
+blocks with non-local `return`/`break` that may escape, so a checked program
+never targets a control frame that is gone (see `ControlFrame`).
 
 **Every inference entry point must solve.** `Infer`, `InferDirectoryFiles(Focused)`
 and `InferFormsWithPhases` install a solver when ctx has none and solve it at

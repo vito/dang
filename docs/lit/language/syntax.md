@@ -53,8 +53,8 @@ retries
 
 - `pub`, `let`, `type`, `interface`, `enum`, `union`, `scalar`, `new`, `implements`
 - `if`, `else`, `case`, `break`, `continue`, `return`
-- `raise`, `rescue` (`try` and `catch` are no longer reserved — see [#errors] for migrating legacy `try`/`catch`)
-- `pub` is optional and being retired — a declaration is public by default; see [#fields]
+- `raise`, `rescue` (not `try` or `catch`, which are identifiers)
+- `pub` is optional — a declaration is public by default; see [#fields]
 - `import`, `directive`, `on`
 - `true`, `false`, `null`
 - `and`, `or`

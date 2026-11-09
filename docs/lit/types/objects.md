@@ -141,7 +141,7 @@ Greeter("Ada").greeting
 ```
 
 - declared as `new(args) { body }` or `new { body }` (no parens when no args)
-- overrides the implicit constructor (the type's fields no longer auto-become params; `new`'s arg list defines the signature)
+- overrides the implicit constructor (the type's fields don't become params; `new`'s arg list defines the signature)
 - `new`'s parameter defaults follow the same rule as field defaults, and run after them (see [#field-defaults])
 - may end by chaining other methods, which propagate their forked `self`, e.g. `self.withSuffix("!")`
 - self-field mutation inside a loop accumulates into one fork

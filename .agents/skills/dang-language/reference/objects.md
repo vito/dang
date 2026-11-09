@@ -176,7 +176,7 @@ type Greeter {
 }
 ```
 - `new(args) { body }` or `new { body }` (no parens when no args). No visibility keyword, no return-type annotation (both errors: `'new' is a constructor, not a method`). Only valid inside a `type` body.
-- Overrides the implicit constructor (fields no longer auto-become params; `new`'s arg list defines the signature).
+- Overrides the implicit constructor (fields don't become params; `new`'s arg list defines the signature).
 - Constructor args are *local* bindings, distinct from fields even when same-named: `foo = foo + 10` rebinds the arg, does NOT touch `self.foo`; shadows same-named fields; NOT visible in method bodies (only in `new`). Its parameter defaults are scoped like field defaults (see "Field defaults").
 - Must return the constructed type (`self`, or a method chain returning it) — last expression must be `Foo!`. Returning another type → `new() must return Wrong!, got String!`; returning `null` errors.
 - May chain other methods (propagating their forked `self`); self-field mutation inside a loop accumulates into one fork. Can accept block args: `new(&condition: Boolean!) { ... }`.

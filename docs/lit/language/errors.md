@@ -530,27 +530,23 @@ went wrong upstream.
 | continuing would produce wrong results | `raise` |
 | failure crosses a boundary (validation, HTTP/GraphQL, contract) | `raise` |
 
-## Migrating from `try`/`catch`
+## `try`/`catch` blocks
 
-`rescue` replaced Dang's original `try { } catch { }` blocks. The legacy
-syntax still parses and runs, with a warning that explains the migration
-path:
+In a project whose `dang.toml` declares a Dang version before 2.1, errors
+are handled with `try { } catch { }` blocks, and `rescue` is an ordinary
+name. `dang migrate` rewrites them to postfix `rescue` as it moves the
+project to 2.1, except a catch with clauses that can never match, which
+`rescue` rejects: that one stays a `try`/`catch` block.
+
+From 2.1 on, a `try`/`catch` block is deprecated. It runs like the
+equivalent `rescue`, with a warning:
 
 ```dang
 try { halve(7) } catch { err => 0 }
 ```
 
-Run `dang fmt -w` to migrate: it rewrites `try`/`catch` to the equivalent
-postfix `rescue`, turning bare `err =>` catch-alls into `err: Error =>`
-along the way. With the block syntax gone, `try` and `catch` are ordinary
-identifiers again; `rescue` is the reserved word (see [#syntax]).
-
-That is from Dang 2.1 on. In a project whose `dang.toml` declares an older
-`dang` version, `try`/`catch` is the error handling syntax, without a
-warning, and `rescue` is an ordinary name; `dang fmt` keeps `try`/`catch`
-there, and `dang migrate` rewrites it to `rescue` as it moves the project to
-2.1 (but for a catch with clauses that can never match, which `rescue`
-rejects: it stays a `try`/`catch`, which still runs, with the warning).
+`dang fmt -w` rewrites it to postfix `rescue`, turning a bare `err =>`
+catch-all into `err: Error =>`.
 
 ## Anti-patterns
 

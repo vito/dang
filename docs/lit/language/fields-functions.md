@@ -3,7 +3,7 @@
 
 # Fields and functions {#fields-functions}
 
-> Meta: introduce the *field* concept first and let the examples carry it — the whole rule is just: `let` makes a field local, a type makes it public, and a bare `name = value` reassigns. Then the four "feels weird at first" function points: zero-arity has no parens; the body has no `return`; positional args can mix with named; `&fn` is for references. Don't mention `pub` (it's legacy and formatted away). Object-context behavior lives in [#objects] — link, don't duplicate.
+> Meta: introduce the *field* concept first and let the examples carry it — the whole rule is just: `let` makes a field local, a type makes it public, and a bare `name = value` reassigns. Then the four "feels weird at first" function points: zero-arity has no parens; the body has no `return`; positional args can mix with named; `&fn` is for references. Don't mention `pub` (it's optional and formatted away). Object-context behavior lives in [#objects] — link, don't duplicate.
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
