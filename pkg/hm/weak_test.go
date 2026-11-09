@@ -80,6 +80,31 @@ func TestWeakVariableWeakensFlexibleParts(t *testing.T) {
 	}
 }
 
+// The substitution binding a weak variable to a type with flexible parts
+// maps those parts to the weak variables they became, so a caller that
+// later pins one (through the substitution) pins the weak binding's part.
+func TestWeakBindingsReportWeakenedParts(t *testing.T) {
+	w, cell := NewWeakVar(TypeVariable('a'), nil)
+	defer runtime.KeepAlive(cell)
+
+	flex := FreshVar(2)
+	subs, err := Assignable(w, NonNullType{Type: flex})
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := flex.Apply(subs).(Type)
+	if v, ok := part.(TypeVariable); !ok || !v.IsWeak() {
+		t.Fatalf("%s should stand for a weak variable, is %s", flex, part)
+	}
+	intType := simpleType("Int")
+	if _, err := Assignable(intType, part); err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveWeak(w); !got.Eq(NonNullType{Type: intType}) {
+		t.Fatalf("w should be Int!, is %s", got)
+	}
+}
+
 // A weak variable may hold only the rigid variables in scope where its
 // binding was declared: a generic function's own `a`, for a `let` in its
 // body, but no `a` for a field, which outlives every method call.
@@ -110,6 +135,41 @@ func TestWeakVariablesKeepRigidOnesInScope(t *testing.T) {
 	}
 	if _, err := Assignable(a, other); err == nil {
 		t.Fatal("an a reached a field through a local")
+	}
+}
+
+// An open weak variable (an expression's, like an empty literal's element
+// type) may hold any rigid variable, but taken into a binding's weak
+// variable it may hold only what the binding may.
+func TestOpenWeakVariables(t *testing.T) {
+	a := Rigid(TypeVariable('a'))
+
+	expr, exprCell := NewOpenWeakVar(TypeVariable('e'))
+	defer runtime.KeepAlive(exprCell)
+	if !expr.IsOpenWeak() {
+		t.Fatal("expected an open weak variable")
+	}
+	if _, err := Assignable(a, expr); err != nil {
+		t.Fatalf("an expression's variable may hold any rigid variable: %v", err)
+	}
+	if expr.IsOpenWeak() {
+		t.Fatal("a bound variable is no longer open")
+	}
+	if got := ResolveWeak(listOf(expr)); !got.Eq(listOf(a)) {
+		t.Fatalf("resolved to %s", got)
+	}
+
+	// Bound to a binding's variable, which may hold no rigid variable,
+	// the expression's flexible parts are the binding's too.
+	inner, innerCell := NewOpenWeakVar(TypeVariable('i'))
+	defer runtime.KeepAlive(innerCell)
+	field, fieldCell := NewWeakVar(TypeVariable('f'), nil)
+	defer runtime.KeepAlive(fieldCell)
+	if _, err := Assignable(listOf(inner), field); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Assignable(a, inner); err == nil {
+		t.Fatal("an a reached a field through an expression")
 	}
 }
 

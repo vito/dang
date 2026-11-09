@@ -219,8 +219,10 @@ func (tv TypeVariable) String() string {
 	if b, ok := tv.weakBinding(); ok {
 		return b.String()
 	}
-	if tv.IsWeak() {
-		// Like OCaml's '_weak: not a generic type, one not known yet.
+	if tv.IsWeak() && !tv.IsOpenWeak() {
+		// Like OCaml's '_weak: not a generic type, one not known yet. An
+		// expression's own unknown (an empty literal's element type) reads
+		// as a plain variable, as it did before it was weak.
 		return "_" + tv.name()
 	}
 	return tv.name()
