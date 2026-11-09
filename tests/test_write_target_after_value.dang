@@ -32,7 +32,7 @@ let asserted(b: Box): String! {
     cur!.n = clear
     "written"
   } rescue {
-    e: Error => e.message
+    e: Error! => e.message
   }
 }
 
@@ -51,7 +51,7 @@ type Holder {
 }
 
 let holderReset = { Holder.reset.cur } rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 
 assert { holderReset == "non-null assertion failed: value is null" }

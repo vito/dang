@@ -8,12 +8,12 @@ describeOutcome(fail: Boolean!): String! {
   let outcome = {
     if (fail) raise "boom" else 42
   } rescue {
-    err: Error => err.message
+    err: Error! => err.message
   }
 
   case (outcome) {
-    i: Int => `int ${toString(i)}`
-    s: String => `string ${s}`
+    i: Int! => `int ${toString(i)}`
+    s: String! => `string ${s}`
   }
 }
 
@@ -27,8 +27,8 @@ type NotFoundError implements Error {
 }
 
 let mixed = { raise NotFoundError(message: "gone", resource: "User") } rescue {
-  n: NotFoundError => 404
-  err: Error => err.message
+  n: NotFoundError! => 404
+  err: Error! => err.message
 }
 
 assert { mixed == 404 }
@@ -37,7 +37,7 @@ assert { mixed == 404 }
 # of a non-null declared return type
 total: Int! {
   1 + 1 rescue {
-    err: Error => 0
+    err: Error! => 0
   }
 }
 

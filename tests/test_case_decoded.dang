@@ -2,10 +2,10 @@
 # shape of its type, the first such arm wins, and `else` is required.
 describe(d: Decoded!): String! {
   case (d) {
-    n: Int => `int ${n}`
-    s: String => `string ${s}`
-    items: [Decoded!] => `list of ${items.length}`
-    fields: Map[Decoded!] => `object with ${fields.keys.join(",")}`
+    n: Int! => `int ${n}`
+    s: String! => `string ${s}`
+    items: [Decoded!]! => `list of ${items.length}`
+    fields: Map[Decoded!]! => `object with ${fields.keys.join(",")}`
     else => "something else"
   }
 }
@@ -20,7 +20,7 @@ assert { describe(JSON.decode("true")) == "something else" }
 # after a Float arm is unreachable (see errors/case_decoded_int_after_float).
 asFloat(d: Decoded!): String! {
   case (d) {
-    f: Float => `float ${f}`
+    f: Float! => `float ${f}`
     else => "neither"
   }
 }
@@ -40,8 +40,8 @@ type Named {
 
 shape(d: Decoded!): String! {
   case (d) {
-    p: Point => `point ${p.x},${p.y}`
-    named: Named => `named ${named.name}`
+    p: Point! => `point ${p.x},${p.y}`
+    named: Named! => `named ${named.name}`
     else => "unknown"
   }
 }
@@ -58,7 +58,7 @@ assert { shape(JSON.decode("{\"x\": 1, \"y\": 2, \"z\": 3}", strict: true)) == "
 nullable(d: Decoded): String! {
   case (d) {
     null => "null"
-    n: Int => `int ${n}`
+    n: Int! => `int ${n}`
     else => "other"
   }
 }
@@ -71,7 +71,7 @@ assert { nullable(JSON.decode("7")) == "int 7" }
 let doc = JSON.decode("{\"modules\": [{\"name\": \"a\"}, 3]}") :: Map[Decoded!]!
 let kinds = (doc["modules"]! :: [Decoded!]!).map { m =>
   case (m) {
-    mod: Named => mod.name
+    mod: Named! => mod.name
     else => "?"
   }
 }
@@ -83,7 +83,7 @@ assert { kinds == ["a", "?"] }
 listOrRest(d: Decoded!): String! {
   case (d) {
     xs: [Decoded!]! => `list ${xs.length}`
-    rest: Decoded => "not a list"
+    rest: Decoded! => "not a list"
   }
 }
 
@@ -94,7 +94,7 @@ assert { listOrRest(JSON.decode("{}")) == "not a list" }
 # but a Decoded one or else.
 let holder = JSON.decode("{\"a\": null}") :: Map[Decoded!]!
 let held = case (holder["a"]!) {
-  n: Int => "int"
+  n: Int! => "int"
   else => "null data"
 }
 
@@ -120,8 +120,8 @@ type Label {
 
 classify(d: Decoded!): String! {
   case (d) {
-    p: Pos => `pos ${p.n}`
-    l: Label => `label ${l.text}`
+    p: Pos! => `pos ${p.n}`
+    l: Label! => `label ${l.text}`
     else => "other"
   }
 }
@@ -129,7 +129,7 @@ classify(d: Decoded!): String! {
 assert { classify(JSON.decode("{\"text\": \"hi\"}")) == "label hi" }
 assert { classify(JSON.decode("{\"n\": 3}")) == "pos 3" }
 let raised = classify(JSON.decode("{\"n\": -3, \"text\": \"x\"}")) rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 
 assert { raised.contains("negative") }
@@ -147,7 +147,7 @@ scalar Upper {
 
 shout(d: Decoded!): String! {
   case (d) {
-    u: Upper => `upper ${u}`
+    u: Upper! => `upper ${u}`
     else => "not a string"
   }
 }
@@ -155,7 +155,7 @@ shout(d: Decoded!): String! {
 assert { shout(JSON.decode("\"HI\"")) == "upper HI" }
 assert { shout(JSON.decode("1")) == "not a string" }
 let rejected = shout(JSON.decode("\"hi\"")) rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 
 assert { rejected.contains("not upper: hi") }
@@ -174,8 +174,8 @@ type Opts {
 
 creds(d: Decoded!): String! {
   case (d) {
-    c: Creds => `creds ${c.user}`
-    o: Opts => `opts ${o.level}`
+    c: Creds! => `creds ${c.user}`
+    o: Opts! => `opts ${o.level}`
     else => "other"
   }
 }
@@ -202,8 +202,8 @@ enum Hue {
 
 hue(d: Decoded!): String! {
   case (d) {
-    h: Hue => "hue"
-    s: String => `string ${s}`
+    h: Hue! => "hue"
+    s: String! => `string ${s}`
     else => "other"
   }
 }
@@ -222,8 +222,8 @@ assert { isNull == true }
 whole(d: Decoded): String! {
   case (d) {
     null => "null"
-    n: Int => `int ${n}`
-    rest: Decoded => "rest"
+    n: Int! => `int ${n}`
+    rest: Decoded! => "rest"
   }
 }
 
@@ -238,18 +238,18 @@ let nulls = JSON.decode("{\"a\": null}") :: Map[Decoded!]!
 
 restFirst(d: Decoded): String! {
   case (d) {
-    rest: Decoded => "rest"
+    rest: Decoded! => "rest"
     null => "null"
   }
 }
 
 let direct = case (decodedNull) {
-  rest: Decoded => "rest"
+  rest: Decoded! => "rest"
   null => "null"
 }
 
 let fromMap = case (nulls["a"]) {
-  rest: Decoded => "rest"
+  rest: Decoded! => "rest"
   null => "null"
 }
 
@@ -266,7 +266,7 @@ type Holder {
 }
 
 let held2 = case (JSON.decode("{\"label\": \"x\"}")) {
-  h: Holder => h.label
+  h: Holder! => h.label
   else => "?"
 }
 

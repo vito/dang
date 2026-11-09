@@ -186,8 +186,8 @@ assert { userName(user: maybeUser(id: "User:2")!) == "Jane Smith" }
 		queries := run(t, `
 let describe(n: Node): String! {
   case (n) {
-    u: User => "user " + u.name
-    p: Post => "post " + p.title
+    u: User! => "user " + u.name
+    p: Post! => "post " + p.title
     else => "unknown"
   }
 }
@@ -240,8 +240,8 @@ func (DangSuite) TestCaseOnAbstractHandleQueries(ctx context.Context, t *testctx
 	t.Run("resolves a non-null interface field once", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let r = case (favoriteNode) {
-  u: User => "user " + u.name
-  p: Post => "post " + p.title + " by " + p.author.name
+  u: User! => "user " + u.name
+  p: Post! => "post " + p.title + " by " + p.author.name
 }
 assert { r == "post Second Post by Jane Smith" }
 `)
@@ -256,8 +256,8 @@ assert { r == "post Second Post by Jane Smith" }
 	t.Run("resolves a non-null union field once", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let r = case (featured) {
-  u: User => u.name
-  p: Post => p.title
+  u: User! => u.name
+  p: Post! => p.title
 }
 assert { r == "Jane Smith" }
 `)
@@ -283,7 +283,7 @@ assert { r == "same" }
 	t.Run("does not resolve when the first pattern is the abstract type", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let r = case (favoriteNode) {
-  n: Node => n.id
+  n: Node! => n.id
 }
 assert { r == ("Post:2" :: ID!) }
 `)
@@ -296,8 +296,8 @@ assert { r == ("Post:2" :: ID!) }
 		queries := run(t, `
 let describe(n: Node): String! {
   case (n) {
-    u: User => "user " + u.name
-    p: Post => "post " + p.title
+    u: User! => "user " + u.name
+    p: Post! => "post " + p.title
     else => "unknown"
   }
 }
@@ -317,7 +317,7 @@ assert { describe(node(id: "User:1")) == "user John Doe" }
 	t.Run("does not resolve a mutation-returned handle", func(ctx context.Context, t *testctx.T) {
 		queries := run(t, `
 let r = case (Mutation.touchNode(id: "Post:1")) {
-  n: Node => "node " + toString(n.id)
+  n: Node! => "node " + toString(n.id)
 }
 assert { r == "node Post:1" }
 `)
@@ -332,11 +332,11 @@ assert { r == "node Post:1" }
 		queries := run(t, `
 let r = {
   case (Mutation.touchResult(id: "Post:1")) {
-    u: User => "user " + u.name
+    u: User! => "user " + u.name
     else => "else"
   }
 } rescue {
-  e: RuntimeError => e.message
+  e: RuntimeError! => e.message
 }
 assert { r.contains("cannot match type pattern User") }
 `)
@@ -357,8 +357,8 @@ func (DangSuite) TestInlineFragmentsOnConcreteHandleQueries(ctx context.Context,
 		queries := run(t, `
 let n = node(id: "Post:1")
 let r = case (n.{{... on User {{ name }}, ... on Post {{ title }}}}) {
-  u: User => u.name
-  p: Post => p.title
+  u: User! => u.name
+  p: Post! => p.title
 }
 assert { r == "First Post" }
 `)
@@ -385,10 +385,10 @@ assert { n.{{... on User}} == null }
 let n = node(id: "Post:1")
 let r = {
   case (n.{{... on User {{ name }}}}) {
-    u: User => u.name
+    u: User! => u.name
   }
 } rescue {
-  e: RuntimeError => e.message
+  e: RuntimeError! => e.message
 }
 assert { r == "no inline fragment matched __typename \"Post\"" }
 `)

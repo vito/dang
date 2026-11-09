@@ -143,7 +143,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 			var caseType hm.Type
 			if clause.IsTypePattern() {
-				// Type pattern clause: binding: TypeName => expr
+				// Type pattern clause: binding: TypeName! => expr
 				if err := c.inferTypePatternClause(ctx, env, fresh, clause, exprType); err != nil {
 					return nil, err
 				}
@@ -152,13 +152,13 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				}
 				priorPatterns = append(priorPatterns, clause)
 
-				// Infer the clause body in a scoped env with the binding.
-				// Use resolvedMemberType which respects narrowed unions from
-				// inline fragment selections.
+				// Infer the clause body in a scoped env with the binding,
+				// of the type the arm matches: for a named pattern on a
+				// union narrowed by inline fragments, the narrowed member.
 				caseType, err = inferArm(clause, func() (hm.Type, error) {
 					return WithInferErrorHandling(clause, func() (hm.Type, error) {
 						clauseEnv := env.Clone()
-						var bound hm.Type = hm.NonNullType{Type: clause.resolvedMemberType}
+						bound := clause.matchType
 						if clause.decodedPatternType != nil {
 							bound = clause.decodedPatternType
 						}
@@ -364,77 +364,31 @@ func enumPatternValue(env hm.Env, enum *Type, v Node) (string, bool) {
 
 // coversAllMembers reports whether the type pattern clauses cover every
 // possible non-null value of the operand type (its nullability is handled by
-// coversOperand).
+// coversOperand). See typeCoveredBy.
 func (c *Case) coversAllMembers(exprType hm.Type) bool {
-	var patterns []*Type
+	var patterns []hm.Type
 	for _, clause := range c.Clauses {
-		if clause.IsTypePattern() && clause.resolvedMemberType != nil {
-			patterns = append(patterns, clause.resolvedMemberType)
+		if clause.IsTypePattern() && clause.matchType != nil {
+			patterns = append(patterns, clause.matchType)
 		}
 	}
 	if len(patterns) == 0 {
 		return false
 	}
-
-	switch t := exprType.(type) {
-	case *Type:
-		return moduleCoveredBy(t, patterns)
-	case *hm.UnionType:
-		return inlineUnionCoveredBy(t, patterns)
-	}
-	return false
+	return typeCoveredBy(exprType, patterns)
 }
 
-func inlineUnionCoveredBy(union *hm.UnionType, patterns []*Type) bool {
-	for _, option := range union.Options {
-		nn, ok := option.(hm.NonNullType)
-		if !ok {
-			// A nullable option admits null, which no pattern matches.
-			return false
-		}
-		mod, ok := nn.Type.(*Type)
-		if !ok || !moduleCoveredBy(mod, patterns) {
-			return false
-		}
-	}
-	return true
-}
-
-// moduleCoveredBy reports whether every value of mod is matched by one of
-// the type patterns. A union is covered when all of its members are; an
-// interface only by itself (its implementer set is open).
-func moduleCoveredBy(mod *Type, patterns []*Type) bool {
-	modCanon := canonicalModule(mod)
-	for _, p := range patterns {
-		pCanon := canonicalModule(p)
-		if modCanon == pCanon || modCanon.Name() == pCanon.Name() {
-			return true
-		}
-		if pCanon.Kind == InterfaceKind && modCanon.ImplementsInterface(pCanon) {
-			return true
-		}
-	}
-	if modCanon.Kind == UnionKind {
-		members := modCanon.GetMembers()
-		if len(members) == 0 {
-			return false
-		}
-		for _, m := range members {
-			memberMod, ok := m.(*Type)
-			if !ok || !moduleCoveredBy(memberMod, patterns) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-// inferTypePatternClause validates a type pattern clause against the operand type.
-// The operand must be a union (or interface), and the type pattern must name one of its members.
+// inferTypePatternClause validates a type pattern clause against the operand
+// type and resolves the type the arm matches and binds: on decoded data, the
+// type whose shape the data must have (decodedPatternType); on anything
+// else, a type that some value of the operand's type may inhabit
+// (matchType), such as a member of a union operand.
 func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, exprType hm.Type) error {
 	if _, ok := env.(TypeScope); !ok {
 		return NewInferError(fmt.Errorf("type patterns require a module environment"), clause)
+	}
+	if clause.BarePattern {
+		return NewInferError(fmt.Errorf("a type pattern is the non-null type its arm binds: write `%s: %s! =>`", clause.Binding, clause.PatternName()), clause.patternNode())
 	}
 
 	// Unwrap NonNull
@@ -477,28 +431,73 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		clause.decodedPatternType = t
 		return nil
 	}
-	if clause.PatternType != nil {
-		return NewInferError(fmt.Errorf("list and map type patterns match only decoded data, not %s", exprType), clause.patternNode())
+	if clause.TypePattern != nil {
+		memberMod, ok, err := c.resolveMemberPattern(ctx, env, fresh, clause, unwrapped)
+		if err != nil {
+			return err
+		}
+		if ok {
+			// Store the resolved member type for use when inferring the
+			// clause body
+			clause.resolvedMemberType = memberMod
+			clause.matchType = hm.NonNullType{Type: memberMod}
+			return nil
+		}
 	}
 
-	// Resolve the type pattern from the operand's members first (handles
-	// narrowed unions from inline fragments), falling back to the environment.
-	// A qualified pattern names its type outright, so it is looked up first
-	// and then found among the operand's members by identity.
-	patternName := clause.PatternName()
-	var memberMod *Type
-	if operandMod, ok := unwrapped.(*Type); ok {
-		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
-			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod), c.Expr)
+	// Any other pattern matches the values inhabiting its type, which some
+	// value of the operand's type must be able to.
+	t, err := clause.patternTypeNode().Infer(ctx, env, fresh)
+	if err != nil {
+		if clause.TypePattern != nil {
+			if _, lookupErr := clause.lookupNamedPattern(ctx, env, fresh); lookupErr != nil {
+				return NewInferError(lookupErr, clause.TypePattern)
+			}
 		}
+		return WrapInferError(err, clause.patternNode())
+	}
+	t = hm.NonNullType{Type: unwrapNonNull(t)}
+	if holdsTypeVars(t) {
+		return NewInferError(fmt.Errorf("a type pattern needs a concrete type, not %s", t), clause.patternNode())
+	}
+	if !typesOverlap(t, exprType) {
+		return NewInferError(fmt.Errorf("pattern %s can't match a value of type %s", t, exprType), clause.patternNode())
+	}
+	if mod, ok := unwrapNonNull(t).(*Type); ok && !isRecordModule(mod) {
+		clause.resolvedMemberType = mod
+	}
+	clause.matchType = t
+	return nil
+}
 
-		if operandMod.Kind == UnionKind {
+// resolveMemberPattern resolves a named type pattern on a union, interface
+// or inline union operand the way it always has: to the operand's member of
+// that name (a narrowed one, for a selection's inline fragments), or the
+// interface itself or a type implementing it. ok is false where the pattern
+// is resolved like any other type pattern instead: on another operand, or a
+// type that the operand doesn't list but may still hold (a union whose
+// members implement an interface operand, say). A type that can't match at
+// all keeps its error naming the union or interface.
+func (c *Case) resolveMemberPattern(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, unwrapped hm.Type) (*Type, bool, error) {
+	patternName := clause.PatternName()
+	// overlaps reports whether the named type is still a valid pattern on
+	// the operand, though not one of the members listed.
+	overlaps := func() bool {
+		named, err := clause.lookupNamedPattern(ctx, env, fresh)
+		return err == nil && typesOverlap(hm.NonNullType{Type: named}, unwrapped)
+	}
+	if operandMod, ok := unwrapped.(*Type); ok {
+		switch operandMod.Kind {
+		case UnionKind:
+			// A qualified pattern names its type outright, so it is looked
+			// up first and then found among the operand's members by
+			// identity.
 			var named *Type
 			if clause.PatternBase != nil {
 				var err error
 				named, err = clause.lookupNamedPattern(ctx, env, fresh)
 				if err != nil {
-					return NewInferError(err, clause.TypePattern)
+					return nil, false, NewInferError(err, clause.TypePattern)
 				}
 			}
 			for _, m := range operandMod.GetMembers() {
@@ -508,37 +507,44 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 				}
 				if named != nil && canonicalModule(mod) == canonicalModule(named) ||
 					named == nil && mod.Name() == clause.TypePattern.Name {
-					memberMod = mod
-					break
+					return mod, true, nil
 				}
 			}
-			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", patternName, operandMod), clause.TypePattern)
+			if overlaps() {
+				return nil, false, nil
 			}
-		} else if operandMod.Kind == InterfaceKind {
+			return nil, false, NewInferError(fmt.Errorf("type %s is not a member of union %s", patternName, operandMod), clause.TypePattern)
+		case InterfaceKind:
 			named, err := clause.lookupNamedPattern(ctx, env, fresh)
-			if err == nil {
-				memberMod, err = resolveInterfaceTypePattern(operandMod, named, patternName)
-			}
 			if err != nil {
-				return NewInferError(err, clause.TypePattern)
+				return nil, false, NewInferError(err, clause.TypePattern)
 			}
+			memberMod, err := resolveInterfaceTypePattern(operandMod, named, patternName)
+			if err == nil {
+				return memberMod, true, nil
+			}
+			if overlaps() {
+				return nil, false, nil
+			}
+			return nil, false, NewInferError(err, clause.TypePattern)
 		}
-	} else if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
-		named, err := clause.lookupNamedPattern(ctx, env, fresh)
-		if err == nil {
-			memberMod, err = resolveInlineUnionTypePattern(operandUnion, named, patternName)
-		}
-		if err != nil {
-			return NewInferError(err, clause.TypePattern)
-		}
-	} else {
-		return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s", exprType), c.Expr)
+		return nil, false, nil
 	}
-
-	// Store the resolved member type for use when inferring the clause body
-	clause.resolvedMemberType = memberMod
-	return nil
+	if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
+		named, err := clause.lookupNamedPattern(ctx, env, fresh)
+		if err != nil {
+			return nil, false, NewInferError(err, clause.TypePattern)
+		}
+		memberMod, err := resolveInlineUnionTypePattern(operandUnion, named, patternName)
+		if err == nil {
+			return memberMod, true, nil
+		}
+		if overlaps() {
+			return nil, false, nil
+		}
+		return nil, false, NewInferError(err, clause.TypePattern)
+	}
+	return nil, false, nil
 }
 
 // resolveInterfaceTypePattern checks that memberMod, the type a pattern
@@ -669,7 +675,7 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				return EvalNode(ctx, childScope, clause.Expr)
 			}
 			if clause.IsTypePattern() {
-				if matchesType(typedVal, clause.resolvedMemberType) {
+				if valueInhabits(typedVal, clause.matchType, false) {
 					// Create a child scope with the binding. It is unsealed, like
 					// a value clause's scope, so the clause can update enclosing
 					// bindings (e.g. loop state) the same way.
@@ -700,8 +706,21 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		}
 
 		if c.exhaustive {
-			// Inference proved a clause must match; falling through here is
-			// a compiler bug, not a user error.
+			// Inference proved a clause must match, by the operand's static
+			// type. A list, map or record matches by the type it recorded,
+			// which is that type or a narrower one, so one should have; in
+			// case one recorded a type its static type doesn't fit, the
+			// first arm whose type its contents inhabit takes it rather than
+			// failing.
+			for _, clause := range c.Clauses {
+				if clause.IsTypePattern() && clause.matchType != nil &&
+					valueInhabits(typedVal, clause.matchType, true) {
+					childScope := scope.Derive(false)
+					childScope.Bind(clause.Binding, typedVal, PrivateVisibility)
+					return EvalNode(ctx, childScope, clause.Expr)
+				}
+			}
+			// Falling through here is a compiler bug, not a user error.
 			return nil, fmt.Errorf("exhaustive case did not match the value: %v", exprVal)
 		}
 
@@ -733,8 +752,11 @@ func (c *Case) needsConcreteType(g GraphQLValue) bool {
 	for _, clause := range c.Clauses {
 		if clause.IsTypePattern() {
 			// A handle that may be null must be resolved all the same, for
-			// a null to fall through to `null` patterns or else.
-			return g.MaybeNull || !matchesType(g, clause.resolvedMemberType)
+			// a null to fall through to `null` patterns or else. A handle
+			// is never a list, map or record, so only a named pattern can
+			// match its abstract type.
+			return g.MaybeNull || clause.resolvedMemberType == nil ||
+				!matchesType(g, clause.resolvedMemberType)
 		}
 	}
 	return false
@@ -778,6 +800,15 @@ func matchesType(val Value, pattern *Type) bool {
 	if patCanon.Kind == InterfaceKind {
 		return valCanon.ImplementsInterface(patCanon)
 	}
+	// Union: check if the value's type is one of its members, or (for a
+	// member union or interface) belongs to one.
+	if patCanon.Kind == UnionKind {
+		for _, m := range patCanon.GetMembers() {
+			if mm, ok := m.(*Type); ok && matchesType(val, mm) {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -789,19 +820,15 @@ func canonicalModule(m *Type) *Type {
 	return m
 }
 
-// typePatternCovers reports whether an earlier type-pattern clause already
-// matches every value a later pattern would, mirroring matchesType's
-// runtime dispatch exactly: canonical pointer identity, or an earlier
-// interface pattern that the later type implements. Strictly pairwise —
-// patterns that only *collectively* cover a later one leave it reachable,
-// so a defensive else after exhaustive union patterns stays legal.
-func typePatternCovers(earlier, later *Type) bool {
-	earlierCanon := canonicalModule(earlier)
-	laterCanon := canonicalModule(later)
-	if earlierCanon == laterCanon {
-		return true
-	}
-	return earlierCanon.Kind == InterfaceKind && laterCanon.ImplementsInterface(earlierCanon)
+// typePatternCovers reports whether an earlier type pattern already matches
+// every value a later pattern would: the later one's type fits the earlier
+// one's (see typeFits), which mirrors valueInhabits: a value inhabiting the
+// later type, or a list or map recording a type that fits it, inhabits the
+// earlier one too. Strictly pairwise — patterns that only *collectively*
+// cover a later one leave it reachable, so a defensive else after exhaustive
+// union patterns stays legal.
+func typePatternCovers(earlier, later hm.Type) bool {
+	return typeFits(later, earlier)
 }
 
 // checkClauseReachable rejects a clause that can never match: any clause
@@ -815,13 +842,13 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 			clause,
 		)
 	}
-	if clause.IsTypePattern() && clause.resolvedMemberType != nil {
+	if clause.IsTypePattern() && clause.matchType != nil {
 		for _, prev := range priorPatterns {
-			if typePatternCovers(prev.resolvedMemberType, clause.resolvedMemberType) {
+			if prev.matchType != nil && typePatternCovers(prev.matchType, clause.matchType) {
 				return NewInferError(
 					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
-						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
-					clause.TypePattern,
+						clause.patternSource(), prev.patternSource(), prev.Loc.Line),
+					clause.patternNode(),
 				)
 			}
 		}
@@ -836,7 +863,7 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 			if isDecodedCatchAll(prev) || decodedPatternCovers(prev.decodedPatternType, clause.decodedPatternType) {
 				return NewInferError(
 					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
-						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
+						clause.patternSource(), prev.patternSource(), prev.Loc.Line),
 					clause.patternNode(),
 				)
 			}
@@ -991,20 +1018,33 @@ type CaseClause struct {
 	Value       Node
 	Expr        Node
 	IsElse      bool    // true if this is an else clause
-	Binding     string  // variable name for type pattern (e.g. "user" in "user: User => ...")
-	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User => ...")
-	// PatternBase qualifies TypePattern: the `Lib` in `g: Lib.Greeter =>`,
+	Binding     string  // variable name for type pattern (e.g. "user" in "user: User! => ...")
+	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User! => ...")
+	// PatternBase qualifies TypePattern: the `Lib` in `g: Lib.Greeter! =>`,
 	// resolved like the same qualified type written anywhere else.
 	PatternBase *NamedTypeNode
-	// PatternType is a list or map type pattern (`items: [Decoded!] => ...`,
-	// `obj: Map[Decoded!] => ...`), which only decoded data can match.
+	// PatternType is any other type pattern (`items: [Decoded!]! => ...`,
+	// `obj: Map[Int!]! => ...`, `r: {{name: String!}}! => ...`).
+	//
+	// A type pattern is written as the non-null type its arm binds; the
+	// clause keeps the type without its `!` (see typePatternClause).
 	PatternType TypeNode
-	Loc         *SourceLocation
+	// BarePattern marks a type pattern written without its `!` where that
+	// is no longer allowed, for inference to reject with a hint.
+	BarePattern bool
+	// PatternLoc is where a type pattern is written, `!` included.
+	PatternLoc *SourceLocation
+	Loc        *SourceLocation
 
 	// resolvedMemberType is set during inference to the concrete member type
 	// for this type pattern clause. For narrowed unions (from inline fragment
 	// selections), this is the narrowed type with only the selected fields.
+	// It is nil for patterns that are not named types.
 	resolvedMemberType *Type
+
+	// matchType is set during inference when the operand is not decoded
+	// data: the non-null type the arm matches (see valueInhabits) and binds.
+	matchType hm.Type
 
 	// decodedPatternType is set during inference when the operand is
 	// decoded data: the non-null type whose shape the data must have for
@@ -1018,8 +1058,8 @@ func (c *CaseClause) IsTypePattern() bool {
 	return c.TypePattern != nil || c.PatternType != nil
 }
 
-// PatternName is how a type pattern is written: `User`, `Lib.User`,
-// `[Decoded!]`.
+// PatternName is the type a type pattern names, as written but without its
+// `!`: `User`, `Lib.User`, `[Decoded!]`.
 func (c *CaseClause) PatternName() string {
 	if c.TypePattern != nil {
 		return typeNodeString(c.namedPatternNode())
@@ -1028,6 +1068,19 @@ func (c *CaseClause) PatternName() string {
 		return typeNodeString(c.PatternType)
 	}
 	return ""
+}
+
+// patternSource is a type pattern as it is written: `User!`, `[Decoded!]!`.
+func (c *CaseClause) patternSource() string {
+	return c.PatternName() + "!"
+}
+
+// patternTypeNode is the type a type pattern names, without its `!`.
+func (c *CaseClause) patternTypeNode() TypeNode {
+	if c.TypePattern != nil {
+		return c.namedPatternNode()
+	}
+	return c.PatternType
 }
 
 // namedPatternNode is a named type pattern as the type node it spells,
@@ -1070,11 +1123,16 @@ func (c *CaseClause) patternNode() SourceLocatable {
 	if c.TypePattern != nil {
 		return c.TypePattern
 	}
-	if loc, ok := c.PatternType.(SourceLocatable); ok && loc.GetSourceLocation() != nil {
-		return loc
+	if c.PatternLoc != nil {
+		return patternLocation{c.PatternLoc}
 	}
 	return c
 }
+
+// patternLocation blames a pattern's errors on where it is written.
+type patternLocation struct{ loc *SourceLocation }
+
+func (p patternLocation) GetSourceLocation() *SourceLocation { return p.loc }
 
 // abstractDecodeTarget returns an interface or union that materializing t
 // would have to build, which decoded data never materializes as, with the
@@ -1164,6 +1222,14 @@ func typeNodeString(t TypeNode) string {
 			args[i] = typeNodeString(a)
 		}
 		return typeNodeString(tn.Base) + "[" + strings.Join(args, ", ") + "]"
+	case ObjectTypeNode:
+		fields := make([]string, len(tn.Fields))
+		for i, field := range tn.Fields {
+			fields[i] = field.Key + ": " + typeNodeString(field.Type)
+		}
+		return "{{" + strings.Join(fields, ", ") + "}}"
+	case VariableTypeNode:
+		return string(rune(tn.Name))
 	default:
 		return fmt.Sprintf("%v", t)
 	}

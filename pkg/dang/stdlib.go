@@ -820,7 +820,7 @@ func registerStdlib() {
 			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultElemType := fn.resultType()
+			resultElemType := recordedOr(fn.resultType())
 
 			var result []Value
 			for i, item := range list.Elements {
@@ -1361,7 +1361,7 @@ func registerStdlib() {
 			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultValType := fn.resultType()
+			resultValType := recordedOr(fn.resultType())
 
 			entries := make(map[string]Value, len(m.Keys))
 			for _, k := range m.Keys {

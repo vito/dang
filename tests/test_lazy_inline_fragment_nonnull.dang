@@ -22,7 +22,7 @@ assert { narrowed.lives == 9 }
 # The non-null form asserts the value is non-null too
 noPet: Pet = null
 let asserted = { noPet.{{... on Cat!}}.name } rescue {
-  e: RuntimeError => e.message
+  e: RuntimeError! => e.message
 }
 assert { asserted == "inline fragment type assertion failed: expected one of Cat, got null" }
 assert { noPet.{{... on Cat}} == null }
@@ -32,7 +32,7 @@ let assertedEither = {
   noPet.{{... on Cat!, ... on Dog!}}
   "unreachable"
 } rescue {
-  e: RuntimeError => e.message
+  e: RuntimeError! => e.message
 }
 assert { assertedEither == "inline fragment type assertion failed: expected one of Cat, Dog, got null" }
 assert { noPet.{{... on Cat, ... on Dog}} == null }

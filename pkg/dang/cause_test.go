@@ -60,7 +60,7 @@ func errMessage(t *testing.T, raised *RaisedError) string {
 func TestImplicitCauseRecordedInRescueArm(t *testing.T) {
 	err := evalForError(t, `
 { raise "original failure" } rescue {
-  e: Error => raise "wrapped: " + e.message
+  e: Error! => raise "wrapped: " + e.message
 }
 `)
 	raised := raisedFrom(t, err)
@@ -77,7 +77,7 @@ type WrapError implements Error {
 }
 
 { raise "root" } rescue {
-  e: Error => raise WrapError(message: "wrapper")
+  e: Error! => raise WrapError(message: "wrapper")
 }
 `)
 	raised := raisedFrom(t, err)
@@ -89,7 +89,7 @@ type WrapError implements Error {
 func TestPlainReRaiseDoesNotSelfCause(t *testing.T) {
 	err := evalForError(t, `
 { raise "pass me along" } rescue {
-  e: Error => raise e
+  e: Error! => raise e
 }
 `)
 	raised := raisedFrom(t, err)
@@ -105,7 +105,7 @@ type ChainedError implements Error {
 }
 
 { raise "root" } rescue {
-  e: Error => raise ChainedError(message: "wrapper", cause: e)
+  e: Error! => raise ChainedError(message: "wrapper", cause: e)
 }
 `)
 	raised := raisedFrom(t, err)
@@ -121,7 +121,7 @@ type ChainedError implements Error {
 }
 
 { raise "root" } rescue {
-  e: Error => raise ChainedError(message: "wrapper")
+  e: Error! => raise ChainedError(message: "wrapper")
 }
 `)
 	raised := raisedFrom(t, err)
@@ -133,10 +133,10 @@ func TestCauseChainsAcrossNestedRescues(t *testing.T) {
 	err := evalForError(t, `
 {
   { raise "innermost" } rescue {
-    e: Error => raise "middle"
+    e: Error! => raise "middle"
   }
 } rescue {
-  e: Error => raise "outermost"
+  e: Error! => raise "outermost"
 }
 `)
 	raised := raisedFrom(t, err)

@@ -1,5 +1,5 @@
 # An error type, so code importing Lib can rescue it by its qualified name
-# (`e: Lib.LibError =>`).
+# (`e: Lib.LibError! =>`).
 
 type LibError implements Error {
   message: String!

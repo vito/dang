@@ -9,7 +9,7 @@ type AppError implements Error {
 let result = {
   raise "hell"
 } rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 
 assert { result == "hell" }
@@ -22,7 +22,7 @@ describe(err: Error!): String! {
 let described = {
   raise AppError(message: "broken", code: 500)
 } rescue {
-  e: AppError => describe(e) + " (" + toString(e.code) + ")"
+  e: AppError! => describe(e) + " (" + toString(e.code) + ")"
 }
 
 assert { described == "error: broken (500)" }
@@ -31,8 +31,8 @@ assert { described == "error: broken (500)" }
 let triaged = {
   raise "surprise"
 } rescue {
-  a: AppError => "app: " + a.message
-  e: Error => "generic: " + e.message
+  a: AppError! => "app: " + a.message
+  e: Error! => "generic: " + e.message
 }
 
 assert { triaged == "generic: surprise" }

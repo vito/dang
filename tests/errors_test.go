@@ -166,7 +166,7 @@ print(x)
 `,
 			wants: []string{
 				"bare catch-all `err =>` is no longer supported",
-				"err: Error =>",
+				"err: Error! =>",
 				"else =>",
 			},
 			wantsErr: true,

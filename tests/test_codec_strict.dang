@@ -53,7 +53,7 @@ let unknownField = (
     strict: true,
   ) :: Config!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { unknownField == "modules[0].source: field tomlTabel not found" }
 
@@ -63,14 +63,14 @@ let unknownYAML = (
     strict: true,
   ) :: Config!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { unknownYAML == "modules[0].source: field tomlTabel not found" }
 
 let unknownTOML = (
   TOML.decode("name = \"a\"\nbogus = 1\n[source]\npath = \"x\"", strict: true) :: Module!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { unknownTOML == "field bogus not found" }
 
@@ -94,7 +94,7 @@ let everyUnknown = (
     strict: true,
   ) :: Config!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert {
   everyUnknown == [
@@ -112,13 +112,13 @@ let mapEntries = (
     strict: true,
   ) :: Map[Source!]!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { mapEntries == """["db"]: field prot not found""" + "\n" + """["web"]: field hots not found""" }
 
 # any other error still stops the decode on its own
 let missing = (JSON.decode("""{"typo": 1}""", strict: true) :: Source!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { missing == "path: missing required field" }
 
@@ -137,25 +137,25 @@ type Port {
 }
 
 let typoThenBadPort = (JSON.decode("""[{"n": 1, "typo": 5}, {"n": 0}]""", strict: true) :: [Port!]!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { typoThenBadPort == "[0]: field typo not found" }
 
 # a renamed field is read only under its new key
 let oldName = (JSON.decode("""{"path": "x", "table": "t"}""", strict: true) :: Source!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { oldName == "field table not found" }
 
 # an ignored field reads no key at all
 let ignored = (JSON.decode("""{"path": "x", "cache": "c"}""", strict: true) :: Source!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { ignored == "field cache not found" }
 
 # anonymous records are checked too
 let anon = (JSON.decode("""{"a": 1, "b": 2}""", strict: true) :: {{a: Int!}}!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { anon == "field b not found" }
 
@@ -174,7 +174,7 @@ assert { yamlGreeting.name == "ada" }
 # --- Strictness travels with data left Decoded until later ---
 let deferred = [JSON.decode("""{"path": "y", "nope": 1}""", strict: true)]
 let late = (deferred[0] :: Source!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { late == "field nope not found" }
 
@@ -185,14 +185,14 @@ let dupJSON = (
     strict: true,
   ) :: Module!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { dupJSON == "JSON.decode: invalid JSON: line 2: field name already set" }
 
 let dupNested = (
   JSON.decode("""[{"name": "a", "source": {"path": "x", "path": "y"}}]""", strict: true) :: [Module!]!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { dupNested == "JSON.decode: invalid JSON: [0].source: line 1: field path already set" }
 
@@ -210,13 +210,13 @@ let dupYAML = (
     strict: true,
   ) :: Config!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { dupYAML == "YAML.decode: invalid YAML: modules[0]: line 6: field source already set" }
 
 # duplicates are rejected even under a Map, whose keys are otherwise free
 let dupMap = (JSON.decode("""{"a": 1, "a": 2}""", strict: true) :: Map[Int!]!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { dupMap == "JSON.decode: invalid JSON: line 1: field a already set" }
 
@@ -225,7 +225,7 @@ assert { dupMap == "JSON.decode: invalid JSON: line 1: field a already set" }
 let dupInMap = (
   YAML.decode("web:\n  path: x\n  path: y\n", strict: true) :: Map[Source!]!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { dupInMap == "YAML.decode: invalid YAML: web: line 3: field path already set" }
 
@@ -241,7 +241,7 @@ assert { merged.source.path == "y" }
 let dupInMerge = (
   YAML.decode("source:\n  <<: {path: x, path: y}\n", strict: true) :: {{source: Source!}}!
 ) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { dupInMerge == "YAML.decode: invalid YAML: source: line 2: field path already set" }
 

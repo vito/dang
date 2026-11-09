@@ -157,23 +157,23 @@ func (l *List) Body() hm.Expression { return l }
 
 func (l *List) GetSourceLocation() *SourceLocation { return l.Loc }
 
+// Eval builds the list. It records its static element type, as inferred and
+// resolved for this evaluation (see runtimeType), so that a type pattern
+// matches the list by the type it was built as (see valueInhabits): `[1, x]`
+// with a nullable x holds Int, not Int!, even when x isn't null.
 func (l *List) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	if len(l.Elements) == 0 {
 		return ListValue{Elements: []Value{}, ElemType: emptyRuntimeType(ctx, listElem, l.GetInferredType())}, nil
 	}
+	elemType := recordedRuntimeType(ctx, recordedElemType(l.GetInferredType()))
 
 	values := make([]Value, len(l.Elements))
-	var elemType hm.Type
-
 	for i, elem := range l.Elements {
 		val, err := EvalNode(ctx, scope, elem)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating list element %d: %w", i, err)
 		}
 		values[i] = val
-		if i == 0 {
-			elemType = val.Type()
-		}
 	}
 
 	return ListValue{Elements: values, ElemType: elemType}, nil
@@ -263,10 +263,11 @@ func (m *MapLiteral) Body() hm.Expression { return m }
 
 func (m *MapLiteral) GetSourceLocation() *SourceLocation { return m.Loc }
 
+// Eval builds the map. Like a list literal, it records its static value
+// type, as inferred.
 func (m *MapLiteral) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	keys := make([]string, 0, len(m.Entries))
 	entries := make(map[string]Value, len(m.Entries))
-	var valType hm.Type
 
 	for i, entry := range m.Entries {
 		keyVal, err := EvalNode(ctx, scope, entry.Key)
@@ -286,14 +287,12 @@ func (m *MapLiteral) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			keys = append(keys, keyStr.Val)
 		}
 		entries[keyStr.Val] = val
-		if valType == nil {
-			valType = val.Type()
-		}
 	}
 
-	if valType == nil {
-		valType = emptyRuntimeType(ctx, mapValue, m.GetInferredType())
+	if len(m.Entries) == 0 {
+		return MapValue{Keys: keys, Entries: entries, ValType: emptyRuntimeType(ctx, mapValue, m.GetInferredType())}, nil
 	}
+	valType := recordedRuntimeType(ctx, recordedElemType(m.GetInferredType()))
 	return MapValue{Keys: keys, Entries: entries, ValType: valType}, nil
 }
 

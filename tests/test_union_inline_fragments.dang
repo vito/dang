@@ -26,15 +26,15 @@ let results = pets.{{
 # Discriminate with case after inline fragment selection
 let first = results[0]
 let desc = case (first) {
-  c: Cat => c.name + " has " + toString(c.lives) + " lives"
-  d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+  c: Cat! => c.name + " has " + toString(c.lives) + " lives"
+  d: Dog! => d.name + " knows " + toString(d.tricks) + " tricks"
 }
 assert { desc == "Whiskers has 9 lives" }
 
 let second = results[1]
 let desc2 = case (second) {
-  c: Cat => c.name + " (cat)"
-  d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+  c: Cat! => c.name + " (cat)"
+  d: Dog! => d.name + " knows " + toString(d.tricks) + " tricks"
 }
 assert { desc2 == "Rex knows 5 tricks" }
 

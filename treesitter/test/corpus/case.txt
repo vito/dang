@@ -1,0 +1,73 @@
+===
+Case with type patterns
+===
+
+let x = case (v) {
+  c: Cat! => 1
+  xs: [Int!]! => 2
+  else => 3
+}
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (case
+          (case_token)
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token))))
+          (case_clause
+            (symbol
+              (id
+                (word_token)))
+            (colon_token)
+            (type
+              (non_null
+                (type
+                  (named_type
+                    (upper_id
+                      (upper_token))))
+                (bang_token)))
+            (arrow_token)
+            (literal
+              (int
+                (non_zero_decimal_digit))))
+          (sep)
+          (case_clause
+            (symbol
+              (id
+                (word_token)))
+            (colon_token)
+            (type
+              (non_null
+                (type
+                  (list_type
+                    (type
+                      (non_null
+                        (type
+                          (named_type
+                            (upper_id
+                              (upper_token))))
+                        (bang_token)))))
+                (bang_token)))
+            (arrow_token)
+            (literal
+              (int
+                (non_zero_decimal_digit))))
+          (sep)
+          (case_clause
+            (else_token)
+            (arrow_token)
+            (literal
+              (int
+                (non_zero_decimal_digit)))))))))

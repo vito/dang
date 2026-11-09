@@ -6,13 +6,13 @@
 # cycle, so whichever side detects it falls back to 0 and the other completes.
 let r = {{p: a, q: b}}
 let a = ga rescue {
-  e: Error => 0
+  e: Error! => 0
 }
 
 ga: Int! { b + 1 }
 
 let b = gb rescue {
-  e: Error => 0
+  e: Error! => 0
 }
 
 gb: Int! { a + 1 }

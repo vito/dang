@@ -1,9 +1,9 @@
-[1m[31mError:[0m unreachable clause: Int is already matched by the Float clause on line 6
+[1m[31mError:[0m unreachable clause: Int! is already matched by the Float! clause on line 6
   [2m[34m--> errors/case_decoded_int_after_float.dang:7:6[0m
  [2m    |[0m
  [2m  5 | case (d) {[0m
- [2m  6 |   f: Float => "float"[0m
- [2m[34m[1m  7 | [0m  n: Int => "int"
+ [2m  6 |   f: Float! => "float"[0m
+ [2m[34m[1m  7 | [0m  n: Int! => "int"
 [2m            [31m^^^[0m
  [2m  8 |   else => "other"[0m
  [2m  9 | }[0m

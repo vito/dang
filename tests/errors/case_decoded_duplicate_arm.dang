@@ -2,7 +2,7 @@
 let d = JSON.decode("1")
 
 case (d) {
-  n: Int => n
-  m: Int => m + 1
+  n: Int! => n
+  m: Int! => m + 1
   else => 0
 }

@@ -1,0 +1,11 @@
+[1m[31mError:[0m pattern Dog! can't match a value of type Cat!
+  [2m[34m--> errors/case_type_pattern_disjoint.dang:13:6[0m
+ [2m    |[0m
+ [2m 11 | [0m
+ [2m 12 | let result = case (x) {[0m
+ [2m[34m[1m 13 | [0m  d: Dog! => d.name
+[2m            [31m^^^[0m
+ [2m 14 |   else => "?"[0m
+ [2m 15 | }[0m
+ [2m    |[0m
+

@@ -9,7 +9,7 @@ push: String! { raise "connection refused" }
 
 deploy: String! {
   push rescue {
-    e: Error => raise DeployError(message: "deploy failed", stage: "push")
+    e: Error! => raise DeployError(message: "deploy failed", stage: "push")
   }
 }
 

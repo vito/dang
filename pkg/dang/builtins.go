@@ -200,9 +200,11 @@ func ToValue(v any) (Value, error) {
 			}, nil
 		}
 
-		// Convert all elements and infer common type
+		// Convert all elements and record what type they share (see
+		// joinRecordedTypes), nullable if any is null.
 		values := make([]Value, len(val))
 		var elemType hm.Type
+		sawNull := false
 		for i, item := range val {
 			converted, err := ToValue(item)
 			if err != nil {
@@ -210,14 +212,21 @@ func ToValue(v any) (Value, error) {
 			}
 			values[i] = converted
 
+			if _, isNull := converted.(NullValue); isNull {
+				sawNull = true
+				continue
+			}
 			if elemType == nil {
 				elemType = converted.Type()
 			} else {
-				// Try to unify types - if they don't match, fall back to type variable
-				if _, err := hm.Assignable(converted.Type(), elemType); err != nil {
-					elemType = hm.TypeVariable('a')
-				}
+				elemType = joinRecordedTypes(elemType, false, converted.Type(), false)
 			}
+		}
+		switch {
+		case elemType == nil:
+			elemType = unknownElemType
+		case sawNull && !holdsTypeVars(elemType):
+			elemType = unwrapNonNull(elemType)
 		}
 
 		return ListValue{

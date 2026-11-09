@@ -2264,10 +2264,13 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 			if field.Selection.ElementIsNonNull {
 				elementType = hm.NonNullType{Type: elementType}
 			}
-			listType := ListType{Type: elementType}
-			return hm.NonNullType{Type: listType}, nil
+			listType := hm.NonNullType{Type: ListType{Type: elementType}}
+			// Recorded by the lists it builds (see recordedElemType).
+			field.Selection.SetInferredType(listType)
+			return listType, nil
 		}
 
+		field.Selection.SetInferredType(hm.NonNullType{Type: t})
 		return hm.NonNullType{Type: t}, nil
 	}
 
@@ -2302,7 +2305,7 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 				if err != nil {
 					return nil, err
 				}
-				return ListValue{Elements: results, ElemType: o.GetInferredType()}, nil
+				return ListValue{Elements: results, ElemType: recordedOr(recordedElemType(o.GetInferredType()))}, nil
 			}
 			return o.evalInlineFragmentOnValue(receiverVal, ctx, scope)
 		}
@@ -2524,7 +2527,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue
 		elements = append(elements, val)
 	}
 
-	return ListValue{Elements: elements, ElemType: o.GetInferredType()}, nil
+	return ListValue{Elements: elements, ElemType: recordedOr(recordedElemType(o.GetInferredType()))}, nil
 }
 
 // matchLazyInlineFragment finds the matching fragment for a given __typename and returns
@@ -2610,7 +2613,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 			}
 			elements = append(elements, elem)
 		}
-		return ListValue{Elements: elements, ElemType: o.GetInferredType()}, nil
+		return ListValue{Elements: elements, ElemType: recordedOr(recordedElemType(o.GetInferredType()))}, nil
 	}
 
 	// Handle single object result
@@ -2724,6 +2727,13 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 }
 
 func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, scope ValueScope) (Value, error) {
+	return o.evalSelectionAt(val, o.GetInferredType(), ctx, scope)
+}
+
+// evalSelectionAt applies the selection to val, whose result has static type
+// t, which the lists it builds record as their element types (see
+// recordedElemType).
+func (o *ObjectSelection) evalSelectionAt(val Value, t hm.Type, ctx context.Context, scope ValueScope) (Value, error) {
 	switch v := val.(type) {
 	case NullValue:
 		// Null propagation for individual values in lists
@@ -2732,13 +2742,14 @@ func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, s
 		// Apply the selection element-wise. `{{ }}` is always parallel, so the
 		// elements are selected concurrently (each forks the scope for isolation)
 		// and fail fast; results stay in source order.
+		elemType := recordedElemType(t)
 		results, err := evalParallel(ctx, len(v.Elements), func(ctx context.Context, i int) (Value, error) {
-			return o.evalSelectionOnValue(v.Elements[i], ctx, forkTaskScope(scope))
+			return o.evalSelectionAt(v.Elements[i], elemType, ctx, forkTaskScope(scope))
 		})
 		if err != nil {
 			return nil, err
 		}
-		return ListValue{Elements: results}, nil
+		return ListValue{Elements: results, ElemType: recordedOr(elemType)}, nil
 	case GraphQLValue:
 		// GraphQL receivers are special-cased so the whole selection becomes a
 		// single batched query — the GraphQL server resolves the sibling fields
@@ -3059,7 +3070,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 			}
 			elements = append(elements, itemValue)
 		}
-		return ListValue{Elements: elements}, nil
+		return ListValue{Elements: elements, ElemType: recordedOr(recordedElemType(o.GetInferredType()))}, nil
 	}
 
 	resultObject := NewObject(o.Inferred)
@@ -3094,7 +3105,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 							}
 							elements = append(elements, itemResult)
 						}
-						resultObject.Bind(outKey, ListValue{Elements: elements}, PublicVisibility)
+						resultObject.Bind(outKey, ListValue{Elements: elements, ElemType: recordedOr(recordedElemType(field.Selection.GetInferredType()))}, PublicVisibility)
 					} else {
 						// Sub-selecting objects
 						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeScope, client)

@@ -15,8 +15,8 @@ let d: Dog! = {{name: "x"}}
 let p: Pet! = d
 
 let s: String! = case (p) {
-  x: Dog => x.name
-  c: Cat => c.meow
+  x: Dog! => x.name
+  c: Cat! => c.meow
 }
 
 print(s)

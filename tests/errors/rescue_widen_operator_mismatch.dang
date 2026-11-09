@@ -8,6 +8,6 @@ half(n: Int!): Int! {
 }
 
 let x = half(4) rescue {
-  e: Error => "fallback"
+  e: Error! => "fallback"
 }
 print(toString(x + 1))

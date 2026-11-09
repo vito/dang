@@ -1,0 +1,11 @@
+[1m[31mError:[0m a type pattern needs a concrete type, not [a!]!
+  [2m[34m--> errors/case_type_pattern_type_variable.dang:4:9[0m
+ [2m    |[0m
+ [2m  2 | first(xs: [a!]!): String! {[0m
+ [2m  3 |   case (xs) {[0m
+ [2m[34m[1m  4 | [0m    ys: [a!]! => "list"
+[2m               [31m^^^^^[0m
+ [2m  5 |   }[0m
+ [2m  6 | }[0m
+ [2m    |[0m
+

@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m 12 | [0m
  [2m 13 | case (d) {[0m
- [2m[34m[1m 14 | [0m  h: Holder => h.inner.name
+ [2m[34m[1m 14 | [0m  h: Holder! => h.inner.name
 [2m            [31m^^^^^^[0m
  [2m 15 |   else => "?"[0m
  [2m 16 | }[0m

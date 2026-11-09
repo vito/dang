@@ -24,8 +24,8 @@ let pet = if (true) {
 }
 
 let petName = case (pet) {
-  c: Cat => c.name
-  d: Dog => d.name
+  c: Cat! => c.name
+  d: Dog! => d.name
 }
 
 assert { petName == "Whiskers" }

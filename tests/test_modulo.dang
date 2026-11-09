@@ -14,6 +14,6 @@ assert { -7.5 % 2 == -1.5 }
 assert { 7.5 % -2 == 1.5 }
 
 let byZero = { 7.5 % 0 } rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 assert { byZero == "modulo by zero" }

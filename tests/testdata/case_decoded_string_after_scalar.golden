@@ -1,9 +1,9 @@
-[1m[31mError:[0m unreachable clause: String is already matched by the Upper clause on line 8
+[1m[31mError:[0m unreachable clause: String! is already matched by the Upper! clause on line 8
   [2m[34m--> errors/case_decoded_string_after_scalar.dang:9:6[0m
  [2m    |[0m
  [2m  7 | case (d) {[0m
- [2m  8 |   u: Upper => "upper"[0m
- [2m[34m[1m  9 | [0m  s: String => "string"
+ [2m  8 |   u: Upper! => "upper"[0m
+ [2m[34m[1m  9 | [0m  s: String! => "string"
 [2m            [31m^^^^^^[0m
  [2m 10 |   else => "other"[0m
  [2m 11 | }[0m

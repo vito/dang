@@ -25,7 +25,7 @@ rescue clause block with else
 ===
 
 let x = risky rescue {
-  e: Error => e.message
+  e: Error! => e.message
   else => "other"
 }
 
@@ -47,7 +47,8 @@ let x = risky rescue {
   (@variable "e")
   (@punctuation.delimiter ":")
   " "
-  (@variable "Error")
+  (@type "Error")
+  (@operator "!")
   " "
   (@operator "=>")
   " "

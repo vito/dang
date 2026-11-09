@@ -68,6 +68,10 @@ var (
 	// postfix `rescue`, reserving the word.
 	Version2_1 = Version{Major: 2, Minor: 1}
 
+	// Version2_4 requires the `!` on type patterns (`c: Cat! =>`), which
+	// spell the non-null type an arm binds.
+	Version2_4 = Version{Major: 2, Minor: 4}
+
 	// CurrentVersion is the language version this build of Dang implements:
 	// the major.minor that main will release as. Bump it in the commit that
 	// adds the first gate for a new version (a gate on a version newer than
@@ -76,7 +80,7 @@ var (
 	// Source whose version nothing declares is written in it: source no
 	// dang.toml governs, and source governed by a dang.toml without a `dang`
 	// key (see VersionForDir). `dang init` stamps it into new projects.
-	CurrentVersion = Version2_1
+	CurrentVersion = Version2_4
 )
 
 // String returns the version as written in dang.toml: major.minor, e.g.
@@ -291,6 +295,50 @@ func (v Version) deadClausesAfterElse() bool {
 // newline does).
 func (v Version) commaFormSep() bool {
 	return v.Before(Version2_1)
+}
+
+// barePatterns reports whether a type pattern may leave out its `!`
+// (`c: Cat =>`), as before 2.4, where every type pattern is written as the
+// non-null type its arm binds (`c: Cat! =>`). Both spellings mean the same:
+// an arm never binds null. See typePatternClause.
+func (v Version) barePatterns() bool {
+	return v.Before(Version2_4)
+}
+
+// typePatternClause builds the clause `binding: pattern => expr` of a case or
+// rescue, as written in version v. A pattern is the non-null type its arm
+// binds; the clause keeps the type without its `!`, since every type pattern
+// has one (TypePattern and PatternBase for a named type, PatternType for any
+// other). Where patterns may leave it out (see barePatterns), a pattern
+// written without it means the same. Elsewhere it is marked BarePattern, so
+// inference rejects it with a hint to add the `!` rather than failing the
+// parse.
+func typePatternClause(v Version, binding *Symbol, pattern locatedType, expr Node, loc *SourceLocation) *CaseClause {
+	clause := &CaseClause{
+		Expr:       expr,
+		Binding:    binding.Name,
+		PatternLoc: pattern.Loc,
+		Loc:        loc,
+	}
+	t := pattern.Type
+	if nn, ok := t.(NonNullTypeNode); ok {
+		t = nn.Elem
+	} else if !v.barePatterns() {
+		clause.BarePattern = true
+	}
+	if named, ok := t.(*NamedTypeNode); ok {
+		clause.TypePattern = &Symbol{Name: named.Name, Loc: named.Loc}
+		clause.PatternBase = named.Base
+	} else {
+		clause.PatternType = t
+	}
+	return clause
+}
+
+// locatedType is a type as written, with its location.
+type locatedType struct {
+	Type TypeNode
+	Loc  *SourceLocation
 }
 
 // reservedWords maps each reserved word, a word that is not an identifier

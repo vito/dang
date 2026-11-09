@@ -1,0 +1,19 @@
+# Since Dang 2.4, a type pattern is written as the non-null type its arm
+# binds.
+type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+let p: Pet! = Cat(name: "Whiskers")
+
+#nofmt
+case (p) {
+  c: Cat => c.name
+  d: Dog! => d.name
+}

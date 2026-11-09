@@ -603,18 +603,7 @@ func additionEval(leftVal, rightVal Value) (Value, error) {
 		}
 	case ListValue:
 		if r, ok := rightVal.(ListValue); ok {
-			// Concatenate the lists
-			combined := make([]Value, len(l.Elements)+len(r.Elements))
-			copy(combined, l.Elements)
-			copy(combined[len(l.Elements):], r.Elements)
-
-			// Use the element type from the left operand, or right if left is empty
-			elemType := l.ElemType
-			if len(l.Elements) == 0 && len(r.Elements) > 0 {
-				elemType = r.ElemType
-			}
-
-			return ListValue{Elements: combined, ElemType: elemType}, nil
+			return concatLists(l, r), nil
 		}
 	}
 	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)

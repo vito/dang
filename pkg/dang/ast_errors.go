@@ -20,9 +20,9 @@ import (
 // fallback form yields a replacement value on any error:
 //
 //	validate(name) rescue {
-//	  v: ValidationError => v.field
-//	  e: Error           => e.message   # typed catch-all, binds the error
-//	  else               => "?"         # catch-all, discards the error
+//	  v: ValidationError! => v.field
+//	  e: Error!           => e.message   # typed catch-all, binds the error
+//	  else                => "?"         # catch-all, discards the error
 //	}
 //
 //	dir.file("VERSION").contents rescue null
@@ -138,7 +138,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			var clauseType hm.Type
 
 			if clause.IsTypePattern() {
-				// Type pattern: v: SomeError => ...
+				// Type pattern: v: SomeError! => ...
 				// Validate that the type implements Error.
 				if err := implicitCase.inferTypePatternClause(ctx, env, fresh, clause, errorType); err != nil {
 					return nil, err
@@ -150,7 +150,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
-					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
+					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, clause.matchType))
 					return clause.Expr.Infer(ctx, clauseEnv, fresh)
 				})
 				if err != nil {
@@ -162,16 +162,16 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				// rejected with a targeted error here. Try/catch blocks
 				// predate the removal: they warn instead where try/catch
 				// itself is deprecated, and the binding behaves like
-				// `err: Error =>`.
+				// `err: Error! =>`.
 				if clause.Binding != "" {
 					if !t.TryCatch {
 						return nil, NewInferError(
-							fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
+							fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error! =>` or discard it with `else =>`", clause.Binding, clause.Binding),
 							clause,
 						)
 					}
 					if t.Legacy {
-						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding))
+						EmitInferWarning(ctx, clause, fmt.Sprintf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error! =>` or discard it with `else =>`", clause.Binding, clause.Binding))
 					}
 				}
 				// Unlike case — whose nullable operands fall through every
@@ -179,9 +179,9 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				// `e: Error` pattern is a complete catch-all and a later
 				// else can never fire.
 				for _, prev := range priorPatterns {
-					if canonicalModule(prev.resolvedMemberType) == ErrorType && !current {
+					if prev.resolvedMemberType != nil && canonicalModule(prev.resolvedMemberType) == ErrorType && !current {
 						return nil, NewInferError(
-							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.PatternName(), prev.Loc.Line),
+							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.patternSource(), prev.Loc.Line),
 							clause,
 						)
 					}
@@ -307,7 +307,7 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			}
 
 			if clause.IsTypePattern() {
-				if matchesType(errVal, clause.resolvedMemberType) {
+				if valueInhabits(errVal, clause.matchType, false) {
 					childScope := scope.Derive(false)
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(armCtx, childScope, clause.Expr)

@@ -1,0 +1,8 @@
+# A type pattern names a concrete type.
+first(xs: [a!]!): String! {
+  case (xs) {
+    ys: [a!]! => "list"
+  }
+}
+
+first([1])

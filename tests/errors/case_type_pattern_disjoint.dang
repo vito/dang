@@ -1,0 +1,15 @@
+# A type pattern must name a type some value of the operand may have.
+type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+let x = Cat(name: "Whiskers")
+
+let result = case (x) {
+  d: Dog! => d.name
+  else => "?"
+}

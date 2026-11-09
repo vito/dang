@@ -21,12 +21,12 @@ assert { Named != null }
 assert { Pet != null }
 
 let namedMatch = case (named) {
-  n: Named => n.name
+  n: Named! => n.name
   else => "namespace"
 }
 
 let petMatch = case (pet) {
-  p: Pet => "pet"
+  p: Pet! => "pet"
   else => "namespace"
 }
 

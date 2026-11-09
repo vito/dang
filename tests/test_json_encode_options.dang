@@ -98,7 +98,7 @@ assert {
 
 # The indent must be JSON whitespace, or the output would not be JSON.
 let badIndent = JSON.encode([1], indent: "--") rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 assert {
   badIndent == "JSON.encode: indent must contain only spaces and tabs, got \"--\""

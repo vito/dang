@@ -3217,11 +3217,7 @@ func (f *Formatter) formatCase(c *Case) {
 			} else if clause.IsTypePattern() {
 				f.write(f.ident(clause.Binding))
 				f.write(": ")
-				if clause.PatternType != nil {
-					f.formatTypeNode(clause.PatternType)
-				} else {
-					f.formatNamedPattern(clause)
-				}
+				f.formatTypePattern(clause)
 			} else {
 				f.formatNode(clause.Value)
 			}
@@ -3285,13 +3281,27 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 		if clause.IsTypePattern() {
 			f.write(f.ident(clause.Binding))
 			f.write(": ")
-			f.formatNamedPattern(clause)
+			f.formatTypePattern(clause)
 		} else {
 			f.write("else")
 		}
 	})
 	f.writeIndent()
 	f.write("}")
+}
+
+// formatTypePattern writes a case or rescue clause's type pattern: the
+// non-null type its arm binds, written without the `!` in versions where
+// patterns leave it out (see barePatterns).
+func (f *Formatter) formatTypePattern(clause *CaseClause) {
+	if clause.PatternType != nil {
+		f.formatTypeNode(clause.PatternType)
+	} else {
+		f.formatNamedPattern(clause)
+	}
+	if !f.version.barePatterns() {
+		f.write("!")
+	}
 }
 
 // formatNamedPattern writes a named type pattern, qualifier included
@@ -3436,7 +3446,7 @@ func (f *Formatter) hasCommentsOnLines(first, last int) bool {
 // single bare-binding catch-all that never reads its binding (`catch { err =>
 // "" }`) is the fallback form in disguise (`rescue ""`) if fallback allows
 // it; and the other bare bindings become typed catch-alls on the Error
-// interface (`err: Error =>`). t is not modified.
+// interface (`err: Error! =>`). t is not modified.
 func modernizeTryCatch(t *RescueExpr, unwrap, fallback bool) Node {
 	operand := t.Operand
 	if block, ok := operand.(*Block); ok && unwrap &&

@@ -1,0 +1,11 @@
+[1m[31mError:[0m a type pattern is the non-null type its arm binds: write `c: Cat! =>`
+  [2m[34m--> errors/case_bare_type_pattern.dang:17:6[0m
+ [2m    |[0m
+ [2m 15 | #nofmt[0m
+ [2m 16 | case (p) {[0m
+ [2m[34m[1m 17 | [0m  c: Cat => c.name
+[2m            [31m^^^[0m
+ [2m 18 |   d: Dog! => d.name[0m
+ [2m 19 | }[0m
+ [2m    |[0m
+

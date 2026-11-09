@@ -811,30 +811,17 @@ RescueClauses <- '{' _ cs:(clause:RescueClause Sep { return clause, nil })* last
 }
 
 // Rescue clauses are case clauses restricted to type patterns plus `else`:
-// `e: SomeError =>` binds and narrows, `e: Error =>` is the typed catch-all,
-// `else =>` discards. The old bare-binding catch-all gets a targeted error.
+// `e: SomeError! =>` binds and narrows, `e: Error! =>` is the typed
+// catch-all, `else =>` discards. The old bare-binding catch-all gets a
+// targeted error.
 RescueClause <- ElseToken _ ArrowToken _ expr:Form {
   return &CaseClause{
     Expr: expr.(Node),
     IsElse: true,
     Loc: c.Loc(),
   }, nil
-} / binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
-  return &CaseClause{
-    Expr: expr.(Node),
-    Binding: binding.(*Symbol).Name,
-    TypePattern: typeName.(*Symbol),
-    Loc: c.Loc(),
-  }, nil
-} / binding:Symbol _ ColonToken _ qual:(q:Id DotToken { return &NamedTypeNode{Name: q.(string), Loc: c.Loc()}, nil })+ typeName:Symbol _ ArrowToken _ expr:Form {
-  // e: Lib.SomeError => ... names an error type through its qualifier
-  return &CaseClause{
-    Expr: expr.(Node),
-    Binding: binding.(*Symbol).Name,
-    TypePattern: typeName.(*Symbol),
-    PatternBase: qualifiedTypeBase(qual),
-    Loc: c.Loc(),
-  }, nil
+} / binding:Symbol _ ColonToken _ pattern:TypePattern _ ArrowToken _ expr:Form {
+  return typePatternClause(versionFromStore(c.globalStore), binding.(*Symbol), pattern.(locatedType), expr.(Node), c.Loc()), nil
 } / binding:Symbol _ ArrowToken _ expr:Form {
   return &CaseClause{
     Expr: expr.(Node),
@@ -1360,40 +1347,10 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
     IsElse: true,
     Loc: c.Loc(),
   }, nil
-} / binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
-  // binding: TypeName => ... creates a type pattern clause
-  return &CaseClause{
-    Value: nil,
-    Expr: expr.(Node),
-    Binding: binding.(*Symbol).Name,
-    TypePattern: typeName.(*Symbol),
-    Loc: c.Loc(),
-  }, nil
-} / binding:Symbol _ ColonToken _ qual:(q:Id DotToken { return &NamedTypeNode{Name: q.(string), Loc: c.Loc()}, nil })+ typeName:Symbol _ ArrowToken _ expr:Form {
-  // binding: Lib.TypeName => ... names the type through its qualifier
-  return &CaseClause{
-    Value: nil,
-    Expr: expr.(Node),
-    Binding: binding.(*Symbol).Name,
-    TypePattern: typeName.(*Symbol),
-    PatternBase: qualifiedTypeBase(qual),
-    Loc: c.Loc(),
-  }, nil
-} / binding:Symbol _ ColonToken _ patternType:(AppliedType / ListType) bang:BangToken? _ ArrowToken _ expr:Form {
-  // binding: [T] => ... or binding: Map[T] => ... matches decoded data
-  // that has the shape of a list or map of T; a trailing ! changes nothing,
-  // since an arm binds a non-null value either way
-  pt := patternType.(TypeNode)
-  if bang != nil {
-    pt = NonNullTypeNode{pt}
-  }
-  return &CaseClause{
-    Value: nil,
-    Expr: expr.(Node),
-    Binding: binding.(*Symbol).Name,
-    PatternType: pt,
-    Loc: c.Loc(),
-  }, nil
+} / binding:Symbol _ ColonToken _ pattern:TypePattern _ ArrowToken _ expr:Form {
+  // binding: T! => ... matches the values of type T! and binds them; see
+  // typePatternClause for patterns written without the !
+  return typePatternClause(versionFromStore(c.globalStore), binding.(*Symbol), pattern.(locatedType), expr.(Node), c.Loc()), nil
 } / value:Form _ ArrowToken _ expr:Form {
   return &CaseClause{
     Value: value.(Node),
@@ -1404,6 +1361,12 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
 }
 
 CaseToken <- "case" !WordChar
+
+// The type of a case or rescue clause's type pattern, with where it is
+// written, for errors to point at.
+TypePattern <- t:Type {
+  return locatedType{Type: t.(TypeNode), Loc: c.Loc()}, nil
+}
 
 Break <- BreakToken value:(_inlineSpace v:Form { return v, nil })? {
   var val Node

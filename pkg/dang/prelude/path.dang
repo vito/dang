@@ -211,7 +211,7 @@ scalar Path {
     # range [z-a]); surface that as the same recoverable "invalid pattern"
     # raise rather than leaking the underlying regexp error
     (self :: String!).containsMatch(re :: Regexp!) rescue {
-      err: Error => raise `matches: invalid pattern "${pattern}"`
+      err: Error! => raise `matches: invalid pattern "${pattern}"`
     }
   }
 

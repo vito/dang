@@ -10,8 +10,8 @@ describeWidened(x: Int!): String! {
   }
 
   case (widened) {
-    s: String => `string ${s}`
-    i: Int => `int ${toString(i)}`
+    s: String! => `string ${s}`
+    i: Int! => `int ${toString(i)}`
   }
 }
 
@@ -50,8 +50,8 @@ union Pet = Cat | Dog
 
 describePet(pet: Pet!): String! {
   case (pet) {
-    c: Cat => `cat with ${toString(c.lives)} lives`
-    d: Dog => `dog named ${d.name}`
+    c: Cat! => `cat with ${toString(c.lives)} lives`
+    d: Dog! => `dog named ${d.name}`
   }
 }
 
@@ -61,7 +61,7 @@ assert { describePet(Dog(name: "Rex")) == "dog named Rex" }
 # Partial coverage of a union is not exhaustive: nullable result
 maybeCat(pet: Pet!): String {
   case (pet) {
-    c: Cat => c.name
+    c: Cat! => c.name
   }
 }
 
@@ -71,8 +71,8 @@ assert { maybeCat(Dog(name: "Rex")) == null }
 # A nullable operand is never exhaustive: null matches no type pattern
 maybePetName(pet: Pet): String {
   case (pet) {
-    c: Cat => c.name
-    d: Dog => d.name
+    c: Cat! => c.name
+    d: Dog! => d.name
   }
 }
 
@@ -83,8 +83,8 @@ assert { maybePetName(null) == null }
 describeInline(flag: Boolean!): String! {
   let pet = if (flag) Cat(name: "Whiskers") else Dog(name: "Rex")
   case (pet) {
-    c: Cat => "cat"
-    d: Dog => "dog"
+    c: Cat! => "cat"
+    d: Dog! => "dog"
   }
 }
 
@@ -102,7 +102,7 @@ type Bell implements Sound {
 
 play(s: Sound!): String! {
   case (s) {
-    other: Sound => other.noise
+    other: Sound! => other.noise
   }
 }
 

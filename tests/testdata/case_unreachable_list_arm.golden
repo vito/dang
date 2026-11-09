@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: [Cat!]! is already matched by the [Animal!]! clause on line 13
+  [2m[34m--> errors/case_unreachable_list_arm.dang:14:7[0m
+ [2m    |[0m
+ [2m 12 | case (animals) {[0m
+ [2m 13 |   as: [Animal!]! => as.length[0m
+ [2m[34m[1m 14 | [0m  cs: [Cat!]! => cs.length
+[2m             [31m^^^^^^^[0m
+ [2m 15 | }[0m
+ [2m 16 | [0m
+ [2m    |[0m
+

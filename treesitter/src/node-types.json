@@ -1046,16 +1046,6 @@
     "type": "case_clause",
     "named": true,
     "fields": {
-      "bang": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "bang_token",
-            "named": true
-          }
-        ]
-      },
       "binding": {
         "multiple": false,
         "required": false,
@@ -1076,50 +1066,12 @@
           }
         ]
       },
-      "pattern_type": {
+      "pattern": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "applied_type",
-            "named": true
-          },
-          {
-            "type": "list_type",
-            "named": true
-          }
-        ]
-      },
-      "q": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "qual": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "dot_token",
-            "named": true
-          },
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "type_name": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "symbol",
+            "type": "type",
             "named": true
           }
         ]
@@ -3472,36 +3424,12 @@
           }
         ]
       },
-      "q": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "qual": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "dot_token",
-            "named": true
-          },
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "type_name": {
+      "pattern": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "symbol",
+            "type": "type",
             "named": true
           }
         ]

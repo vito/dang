@@ -62,8 +62,8 @@ union Pet = Dog | Cat
 let pet: Pet = null
 
 let petName: String! = case (pet) {
-  d: Dog => d.name
-  k: Cat => k.name
+  d: Dog! => d.name
+  k: Cat! => k.name
   null => "none"
 }
 

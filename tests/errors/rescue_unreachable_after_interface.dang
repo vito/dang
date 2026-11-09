@@ -5,7 +5,7 @@ type MiniError implements Error {
 }
 
 let x = { raise "boom" } rescue {
-  e: Error => "general"
-  m: MiniError => "specific"
+  e: Error! => "general"
+  m: MiniError! => "specific"
 }
 print(x)

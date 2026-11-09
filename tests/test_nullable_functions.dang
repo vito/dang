@@ -30,7 +30,7 @@ assert { asserted(0) == 4 }
 assert { [&a][0]!(x: 1) == 1 }
 
 let assertFailed = { asserted(3) } rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 assert { assertFailed == "non-null assertion failed: value is null" }
 

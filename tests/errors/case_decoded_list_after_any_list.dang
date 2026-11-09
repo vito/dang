@@ -3,7 +3,7 @@
 let d = JSON.decode("[1]")
 
 case (d) {
-  xs: [Decoded] => "any list"
-  ns: [Int!] => "ints"
+  xs: [Decoded]! => "any list"
+  ns: [Int!]! => "ints"
   else => "other"
 }

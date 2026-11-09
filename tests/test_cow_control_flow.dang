@@ -44,8 +44,8 @@ type Acc {
 
   casePet(p: Pet!): Acc! {
     case (p) {
-      c: Cat => { total += 1; log += [c.name] }
-      d: Dog => { self.total += 2; self.log += [d.name] }
+      c: Cat! => { total += 1; log += [c.name] }
+      d: Dog! => { self.total += 2; self.log += [d.name] }
     }
     self
   }
@@ -57,14 +57,14 @@ type Acc {
 
   rescArm: Acc! {
     { raise "boom" } rescue {
-      e: Error => { total += 5; null }
+      e: Error! => { total += 5; null }
     }
     self
   }
 
   rescArmSelf: Acc! {
     { raise "boom" } rescue {
-      e: Error => { self.total += 5; null }
+      e: Error! => { self.total += 5; null }
     }
     self
   }
@@ -199,8 +199,8 @@ type Acc {
   retCase(p: Pet!): Acc! {
     [1, 2].each { x =>
       case (p) {
-        c: Cat => { total += 1; if (x == 2) { return self } }
-        d: Dog => { self.total += 10; return self }
+        c: Cat! => { total += 1; if (x == 2) { return self } }
+        d: Dog! => { self.total += 10; return self }
       }
     }
     total = 999

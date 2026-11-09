@@ -11,6 +11,6 @@ type Holder {
 let d = JSON.decode("{\"inner\": {\"name\": \"x\"}}")
 
 case (d) {
-  h: Holder => h.inner.name
+  h: Holder! => h.inner.name
   else => "?"
 }
