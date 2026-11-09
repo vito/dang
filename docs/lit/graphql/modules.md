@@ -125,6 +125,7 @@ name (see [#enums-scalars]):
 ```
 
 - imported directives are usable unqualified: `@customDirective(...)` (see [#directives])
+- the import's namespace holds only what the schema defines, plus GraphQL's built-in scalars (`Demo.String`, `Demo.Int`, …); Dang's own builtins and types aren't in it, so `Demo.print` or `Demo.Path` is an error unless the schema defines that name
 
 ## Shadowing
 

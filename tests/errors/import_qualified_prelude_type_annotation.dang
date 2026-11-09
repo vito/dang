@@ -1,0 +1,5 @@
+import Test
+
+# An import's namespace holds only what its schema defines: Dang's own
+# types are not types of it, even in type position.
+let pattern: Test.Regexp! = "a+"

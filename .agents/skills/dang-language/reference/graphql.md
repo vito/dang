@@ -137,6 +137,7 @@ import MyApi
 ```
 - Exposes both *qualified* (`MyApi.User`) and *unqualified* (`User`) names.
 - Covers types, root `Query`/`Mutation` functions, interfaces, unions, enums, scalars, and directives.
+- The namespace holds **only what the schema defines**, plus GraphQL's built-in scalars (`MyApi.String`, `MyApi.Int`, …). Dang's own builtins and prelude are not in it: `MyApi.Path`, `MyApi.Random`, `MyApi.print` are errors (`field "print" not found in MyApi`, `type "Regexp" not found in MyApi`) unless the schema itself defines that name.
 - Enum *values* become unqualified too: `ACTIVE` (== `Status.ACTIVE`) if no collision.
 - Imported directives are usable unqualified: `@customDirective(...)`.
 

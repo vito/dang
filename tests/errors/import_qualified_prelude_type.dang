@@ -1,0 +1,5 @@
+import Test
+
+# An import's namespace holds only what its schema defines: Dang's own
+# types, like the prelude's Path, are not reachable through it.
+let p = Test.Path("a/b")

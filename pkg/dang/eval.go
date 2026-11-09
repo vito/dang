@@ -510,17 +510,14 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	return builtinsFrame.Derive(false)
 }
 
-// ValueScopeFromSchema creates an evaluation environment populated with GraphQL API values
+// ValueScopeFromSchema creates the value namespace of a schema import: the
+// schema's own values (its Query fields, enums, scalars, interfaces, unions,
+// input constructors and Mutation) and nothing of Dang's, matching its type
+// scope (see TypeScopeFromSchema). Builtins are reached unqualified, never
+// through an import.
 func ValueScopeFromSchema(typeScope TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
-	// Create an Object from the type environment
 	env := NewObject(typeScope)
-
-	// Populate with GraphQL functions from the schema
 	populateSchemaFunctions(env, typeScope, client, schema)
-
-	// Add builtin functions
-	addBuiltinFunctions(env)
-
 	return env
 }
 

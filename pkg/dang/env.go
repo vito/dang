@@ -453,8 +453,21 @@ func NewPreludeTypeScope(name string) *OverlayTypeScope {
 	return &OverlayTypeScope{mod, preludeChain}
 }
 
+// graphQLBuiltinScalars holds GraphQL's built-in scalars, the only types every
+// schema has without declaring them, as Dang's types. It is the fallback of a
+// schema's type scope instead of the prelude, so an import's namespace holds
+// what the schema defines and nothing of Dang's own: `Test.String` resolves,
+// but `Test.Path` and `Test.toString` (unless the schema has a toString) don't.
+var graphQLBuiltinScalars = func() *Type {
+	scope := NewType("", ObjectKind)
+	for _, t := range []*Type{IDType, StringType, IntType, FloatType, BooleanType} {
+		scope.AddObject(t.Named, t)
+	}
+	return scope
+}()
+
 func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
-	env := NewPreludeTypeScope(name)
+	env := &OverlayTypeScope{NewType(name, ObjectKind), graphQLBuiltinScalars}
 
 	isBuiltinScalar := func(t *introspection.Type) bool {
 		if t.Kind != introspection.TypeKindScalar {
@@ -492,10 +505,9 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 		env.AddDirective(t.Name, directive)
 	}
 
-	// Track schema-owned types separately from env.NamedType. env has Prelude as
-	// a lexical fallback, which is useful for resolving built-in scalars but must
-	// not participate in schema declaration ownership. A schema type named Error,
-	// Random, etc. is a new GraphQL type that shadows the Dang Prelude type.
+	// Track schema-owned types separately from env.NamedType. env has GraphQL's
+	// built-in scalars as a lexical fallback, which must not participate in
+	// schema declaration ownership.
 	schemaTypes := map[string]TypeScope{}
 
 	for _, t := range schema.Types {
@@ -649,8 +661,9 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 	for _, t := range schema.Types {
 		install, found := schemaTypes[t.Name]
 		if !found {
-			// Built-in GraphQL scalars live in the shared Prelude and have no schema
-			// fields to install. All schema-owned types were recorded above.
+			// Built-in GraphQL scalars come from graphQLBuiltinScalars (the
+			// schema scope's fallback) and have no schema fields to install.
+			// All schema-owned types were recorded above.
 			continue
 		}
 
