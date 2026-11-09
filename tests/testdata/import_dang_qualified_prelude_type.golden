@@ -1,0 +1,25 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m type "Path" not found in Lib
+  [2m[34m--> errors/import_dang_qualified_prelude_type.dang:5:8[0m
+ [2m    |[0m
+ [2m  3 | import Lib[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet p: Lib.Path! = Path("a/b")
+[2m              [31m^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m type "Path" not found in Lib
+  [2m[34m--> errors/import_dang_qualified_prelude_type.dang:5:8[0m
+ [2m    |[0m
+ [2m  3 | import Lib[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet p: Lib.Path! = Path("a/b")
+[2m              [31m^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

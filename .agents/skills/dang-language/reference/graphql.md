@@ -127,6 +127,7 @@ X-Custom = "value"
 ### Native Dang module imports
 - `path = "./dir"` imports **another Dang module** (a directory of `.dang` files, relative to `dang.toml`) instead of a GraphQL source; mutually exclusive with `dagger`/`schema`/`endpoint`/`service` (`'path' cannot be combined with ...`).
 - The module's public (non-`let`) surface becomes the import's API; `let` stays private **across the boundary** (the public/`let` rule of objects.md "Fields", enforced between modules).
+- The namespace holds only the module's **own** declarations: Dang's builtins and prelude, which the module's code uses as usual, are not reachable through it (`Lib.toString`, `Lib.Path(...)` → `field "Path" not found in Lib`; `Lib.Path!` → `type "Path" not found in Lib`).
 - **Per-module identity:** each importing module gets its own instance — two modules importing the same directory hold distinct copies of its types, and same-named types from different instances don't unify (`the "Widget" value here is a different type from the "Widget" expected ... share behavior through an interface instead`). No MVS/version reconciliation.
 - Transitive `path` imports resolve each module's own `dang.toml`; cycles are reported (`import cycle detected: a -> b -> a`).
 

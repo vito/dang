@@ -158,7 +158,7 @@ func TestCancelledModuleEvaluationIsNotMemoized(t *testing.T) {
 assert { id(1) == 1 }
 pub v: Int! = 42
 `), 0o600))
-	mod, err := loadDangModule(context.Background(), dir)
+	mod, err := loadDangModule(context.Background(), "Lib", dir)
 	require.NoError(t, err)
 
 	cancelled, cancel := context.WithCancel(context.Background())

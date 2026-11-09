@@ -1,0 +1,5 @@
+# A native Dang module's namespace holds only its own declarations: the
+# prelude's Path, which the module sees, is not reachable through it.
+import Lib
+
+Lib.Path("a/b")

@@ -261,6 +261,12 @@ type Type struct {
 	// which visibility is never enforced. See moduleScope.
 	homeModule *moduleScope
 
+	// importedAs names a native Dang module's declarations, which importers
+	// see as its namespace (dangModule.exportsType), by the import that
+	// loaded it. The type itself is unnamed, like a record, so messages use
+	// this instead. Empty for every other type.
+	importedAs string
+
 	// localFrame is the frame declaring this type when that is a function,
 	// block or type body rather than its module's top level; nil otherwise.
 	// Such a type gets a constructor per evaluation of its declaring scope
@@ -1342,6 +1348,10 @@ func (t *Type) String() string {
 			return t.Qualifier + "." + t.Named
 		}
 		return t.Named
+	}
+	if t.importedAs != "" {
+		// A native module's namespace: name it as its importers do.
+		return t.importedAs
 	}
 	return t.AsRecord().String()
 }

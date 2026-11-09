@@ -1,0 +1,5 @@
+# Selecting a native Dang module's top-level `let` with `{{ }}` follows the
+# same rule as `.` (see import_dang_private_toplevel).
+import Lib
+
+Lib.{{salutation}}

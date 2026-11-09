@@ -977,6 +977,14 @@ func staticMemberAccessible(ctx context.Context, owner *Type, name string) bool 
 // types, an un-instrumented entry point) falls open. Bare names aren't
 // selections and are unaffected.
 func checkMemberAccessible(ctx context.Context, rec TypeScope, name string) error {
+	if declared := importedModuleDeclarations(rec); declared != nil {
+		// A native module's namespace, seen from an importer: its top-level
+		// `let`s stay with the module.
+		if declared.Visibility(name) != PublicVisibility {
+			return fmt.Errorf("%q is private to module %s and cannot be accessed from another module", name, declared.importedAs)
+		}
+		return nil
+	}
 	recType, ok := rec.(*Type)
 	if !ok {
 		return nil
@@ -1014,6 +1022,21 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	}
 	// A method taken as a value keeps its `a!` meaning (see fnValueType).
 	return fnValueType(t), nil
+}
+
+// importedModuleDeclarations returns the declarations of a native Dang
+// module when t is its namespace as importers see it (see
+// dangModule.exportsType), or nil.
+func importedModuleDeclarations(t TypeScope) *Type {
+	overlay, ok := t.(*OverlayTypeScope)
+	if !ok {
+		return nil
+	}
+	declared, ok := overlay.primary.(*Type)
+	if !ok || declared.importedAs == "" {
+		return nil
+	}
+	return declared
 }
 
 func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
@@ -1222,6 +1245,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				if _, isMember := mod.InstanceType().LocalSchemeOf(d.Field.Name); isMember {
 					return tv, fmt.Errorf("field %q belongs to values of %s, not to %s itself", d.Field.Name, mod, mod)
 				}
+			}
+			if declared := importedModuleDeclarations(rec); declared != nil {
+				return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, declared.importedAs)
 			}
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}

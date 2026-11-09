@@ -24,6 +24,11 @@ let salutation = "Hello"
 # Public top-level value: reachable qualified (Lib.answer) and unqualified.
 answer: Int! = 42
 
+# Inside the module, Dang's builtins and prelude are in scope as usual, though
+# importers can't reach them through Lib (see errors/import_dang_qualified_*).
+answerText: String! = toString(answer)
+answerPath: String! = Path("a/b").join(Path("c")).string
+
 # A scalar whose name is its statics namespace: `sep` is public, `secret`
 # private to this module — see errors/import_dang_private_static.
 scalar LibTag {

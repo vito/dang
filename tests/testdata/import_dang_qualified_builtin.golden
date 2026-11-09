@@ -1,0 +1,10 @@
+[1m[31mError:[0m field "toString" not found in Lib
+  [2m[34m--> errors/import_dang_qualified_builtin.dang:5:1[0m
+ [2m    |[0m
+ [2m  3 | import Lib[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mLib.toString(1)
+[2m       [31m^^^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

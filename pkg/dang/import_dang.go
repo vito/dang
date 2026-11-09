@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,13 +27,20 @@ import (
 // by N distinct modules therefore compiles and runs N times, once per instance.
 type dangModule struct {
 	dir       string
+	name      string // the import that loaded it (see loadDangModule)
 	typeScope TypeScope
-	blocks    []*FileBlock
+	// exportsType is the namespace importers see: the module's own top-level
+	// declarations (its typeScope's primary layer), without the prelude
+	// typeScope layers them over. It is an overlay with nothing beneath, so
+	// it keeps the identity of an import rather than unifying like a record.
+	exportsType *OverlayTypeScope
+	blocks      []*FileBlock
 
 	mu      sync.Mutex
 	running chan struct{} // closed when the run in progress ends (see valueScope)
 	done    bool
 	value   ValueScope
+	exports ValueScope // value's own declarations (see moduleExports)
 	err     error
 }
 
@@ -81,8 +89,10 @@ func pushCompileStack(ctx context.Context, dir string) context.Context {
 // importing module's cache, so its files' repeated imports of that directory
 // unify. Import cycles are reported via the ctx compile-stack rather than a
 // cache marker, because each module compiles its deps with a fresh cache and a
-// marker would not survive the boundary.
-func loadDangModule(ctx context.Context, dir string) (*dangModule, error) {
+// marker would not survive the boundary. name is the import loading it, which
+// names the module's namespace in messages (the first import's, when several
+// in one module load the same directory).
+func loadDangModule(ctx context.Context, name, dir string) (*dangModule, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -104,7 +114,7 @@ func loadDangModule(ctx context.Context, dir string) (*dangModule, error) {
 		}
 	}
 
-	mod := &dangModule{dir: dir}
+	mod := &dangModule{dir: dir, name: name}
 	if err := mod.compile(pushCompileStack(ctx, dir)); err != nil {
 		return nil, err
 	}
@@ -143,6 +153,12 @@ func (m *dangModule) compile(ctx context.Context) error {
 	}
 
 	m.typeScope = typeScope
+	declared := typeScope.primary.(*Type)
+	declared.importedAs = m.name
+	if declared.importedAs == "" {
+		declared.importedAs = filepath.Base(m.dir)
+	}
+	m.exportsType = &OverlayTypeScope{primary: declared, lexical: NewType("", ObjectKind)}
 	m.blocks = blocks
 	return nil
 }
@@ -182,13 +198,13 @@ func (m *dangModule) valueScope(ctx context.Context) (ValueScope, error) {
 	m.running = running
 	m.mu.Unlock()
 
-	var value ValueScope
+	var value, exports ValueScope
 	var err error
 	keep := false
 	defer func() {
 		m.mu.Lock()
 		if keep {
-			m.done, m.value, m.err = true, value, err
+			m.done, m.value, m.exports, m.err = true, value, exports, err
 		}
 		m.running = nil
 		close(running)
@@ -203,8 +219,40 @@ func (m *dangModule) valueScope(ctx context.Context) (ValueScope, error) {
 		keep = !cutShort(ctx, err)
 		return nil, err
 	}
-	value, keep = vs, true
+	value, exports, keep = vs, moduleExports(vs.(*Object), m.exportsType), true
 	return value, nil
+}
+
+// exportsScope evaluates the module like valueScope, and returns the
+// namespace importers see: only the module's own declarations.
+func (m *dangModule) exportsScope(ctx context.Context) (ValueScope, error) {
+	if _, err := m.valueScope(ctx); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.exports, nil
+}
+
+// moduleExports builds a native module's namespace from its evaluated scope:
+// the module's own public top-level bindings and its constructors, but not
+// its `let`s, nor the builtins and prelude its scope hangs off, which belong
+// to the importer's scope rather than to the module. evaluateDirectoryFiles
+// has forced every top-level binding, and top-level bindings are immutable
+// afterwards, so they are copied.
+func moduleExports(vs *Object, mod TypeScope) *Object {
+	exports := NewObject(mod)
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	for name, val := range vs.Values {
+		if vs.Visibilities[name] < PublicVisibility {
+			continue
+		}
+		exports.Values[name] = val
+		exports.Visibilities[name] = vs.Visibilities[name]
+	}
+	exports.constructors = maps.Clone(vs.constructors)
+	return exports
 }
 
 type evaluatingModuleKey struct{}

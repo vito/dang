@@ -1637,12 +1637,14 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 					// resolved dir in the ctx-scoped Dang-module cache, so every
 					// importer of the same dir gets one *Type identity and its
 					// types unify — the schema cache's guarantee, by directory.
-					mod, err := loadDangModule(ctx, config.DangModuleDir)
+					mod, err := loadDangModule(ctx, i.Name.Name, config.DangModuleDir)
 					if err != nil {
 						return nil, err
 					}
 					i.dangMod = mod
-					i.inferred = mod.typeScope
+					// Importers see the module's own declarations, not the
+					// prelude it was checked against.
+					i.inferred = mod.exportsType
 				} else {
 					i.client = config.Client
 					i.schema = config.Schema
@@ -1668,7 +1670,7 @@ func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 	// Native Dang module: evaluate its code (once, shared across importers) and
 	// install its public value scope.
 	if i.dangMod != nil {
-		importValueScope, err := i.dangMod.valueScope(ctx)
+		importValueScope, err := i.dangMod.exportsScope(ctx)
 		if err != nil {
 			return nil, err
 		}

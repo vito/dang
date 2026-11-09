@@ -1,0 +1,5 @@
+# A native Dang module's namespace holds only its own declarations: a builtin
+# the module doesn't declare, like toString, is not reachable through it.
+import Lib
+
+Lib.toString(1)
