@@ -52,11 +52,17 @@ assert { TOML.encode({{k: "\xff"}}) == "k = \"�\"" }
 # JSON escapes such a byte, as encoding/json does.
 assert { JSON.encode(["k\xff": "v\xff"]) == "{\"k\\ufffd\":\"v\\ufffd\"}" }
 
-# toString and join render Decoded data as JSON, as they do other non-string
-# values.
-let nested = JSON.decode("{\"a\": {\"b\": 1}, \"s\": \"x\"}") :: Map[Decoded!]!
-assert { toString(nested) == "{\"a\":{\"b\":1},\"s\":\"x\"}" }
-assert { toString({{v: nested["a"]!}}) == "{\"v\":{\"b\":1}}" }
-assert { [nested["a"]!, nested["s"]!].join(" ") == "{\"b\":1} \"x\"" }
+# toString, join and interpolation render Decoded data as the Dang literal of
+# the data it holds, as they do other non-string values: an object is a map
+# literal with sorted keys, and a decoded string is quoted.
+let nested = JSON.decode("{\"s\": \"x\", \"a\": {\"b\": 1.50}}") :: Map[Decoded!]!
+assert { toString(nested) == "[\"a\": [\"b\": 1.50], \"s\": \"x\"]" }
+assert { toString({{v: nested["a"]!}}) == "{{v: [\"b\": 1.50]}}" }
+assert { [nested["a"]!, nested["s"]!].join(" ") == "[\"b\": 1.50] \"x\"" }
+let s = nested["s"]!
+assert { `s is ${s}` == "s is \"x\"" }
+assert { toString(JSON.decode("[]") :: Decoded!) == "[]" }
+assert { toString(JSON.decode("{}") :: Decoded!) == "[:]" }
+assert { toString(YAML.decode("n: -.5") :: Decoded!) == "[\"n\": -0.5]" }
 
 print("Decoded encoding tests passed!")

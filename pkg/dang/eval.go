@@ -1557,11 +1557,7 @@ func (d DeferredValue) Type() hm.Type {
 }
 
 func (d DeferredValue) String() string {
-	bytes, err := decodedJSON(d)
-	if err != nil {
-		return fmt.Sprintf("deferred:%v", d.Raw)
-	}
-	return string(bytes)
+	return Repr(d)
 }
 
 func (d DeferredValue) MarshalJSON() ([]byte, error) {

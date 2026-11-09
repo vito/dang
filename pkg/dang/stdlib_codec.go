@@ -234,19 +234,6 @@ func marshalOrderedJSON(e valueEncoder, val Value, sortKeys bool) ([]byte, error
 	return buf.Bytes(), nil
 }
 
-// toStringJSON is the JSON text toString and List.join turn a non-string value
-// into. Its layout is JSON.encode's default — compact, HTML-escaped, fields in
-// declaration order, map entries in insertion order — but, as toString always
-// has, it writes every field under its own name: codec field directives do
-// not apply.
-func toStringJSON(val Value) (string, error) {
-	out, err := marshalOrderedJSON(valueEncoder{}, val, false)
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
-}
-
 func encodeJSON(val Value, opts jsonOptions) (string, error) {
 	if strings.Trim(opts.indent, " \t") != "" {
 		return "", fmt.Errorf("indent must contain only spaces and tabs, got %q", opts.indent)

@@ -439,11 +439,7 @@ func (t *Template) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		if err != nil {
 			return nil, fmt.Errorf("evaluating template part %d: %w", i, err)
 		}
-		if s, ok := val.(StringValue); ok {
-			buf.WriteString(s.Val)
-		} else {
-			buf.WriteString(val.String())
-		}
+		buf.WriteString(Display(val))
 	}
 	return StringValue{Val: buf.String()}, nil
 }

@@ -26,10 +26,12 @@ greeting += "!"
 
 ## Conversion
 
-`toString(value)` passes strings through and JSON-encodes anything else:
+`toString(value)` passes strings through and writes anything else as the
+Dang literal it would be written as, its strings quoted. Interpolation,
+`List.join` and `print` show values the same way:
 
 ```dang
-[toString(42), toString([1, 2]), toString("plain")]
+[toString(42), toString(["one", "two"]), toString({{ a: 1 }}), toString("plain")]
 ```
 
 `value :: String!` turns a custom scalar back into a string (see

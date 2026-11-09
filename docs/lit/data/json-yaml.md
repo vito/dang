@@ -309,11 +309,12 @@ usually do, comparing runs of digits as numbers (`item2` before `item10`):
 YAML.encode(release, sortKeys: true)
 ```
 
-`toString(value)` passes strings through and JSON-encodes everything else
-(see [#strings]):
+`toString(value)` is not an encoder: it passes strings through and writes
+anything else as a Dang literal (see [#strings]). Decoded data shows as the
+literal of the data it holds:
 
 ```dang
-[toString("plain"), toString([1, 2])]
+[toString("plain"), toString(JSON.decode("""{"b": [1], "a": "x"}"""))]
 ```
 
 ## Field directives

@@ -30,7 +30,7 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
 			writer := ioctx.StdoutFromContext(ctx)
-			_, _ = fmt.Fprintln(writer, val)
+			_, _ = fmt.Fprintln(writer, Display(val))
 			return NullValue{}, nil
 		})
 
@@ -60,32 +60,13 @@ func registerStdlib() {
 
 	// toString function: toString(value: b) -> String!
 	Builtin("toString").
-		Doc("converts a value to a string, returning strings, enum values, and custom scalar values as-is and serializing other values to JSON").
-		Example(`toString(42)`).
+		Doc("converts a value to a string: strings, enum values, and custom scalar values as-is, other values as the Dang literal they would be written as (nested strings quoted, records as {{a: 1}})").
+		Example(`toString(["a": [1, 2]])`).
 		Params("value", TypeVar('b')).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-
-			// If already a string, return as-is
-			if strVal, ok := val.(StringValue); ok {
-				return strVal, nil
-			}
-			if enumVal, ok := val.(EnumValue); ok {
-				return ToValue(enumVal.Val)
-			}
-			// Custom scalar values are strings underneath — return them
-			// bare rather than JSON-quoted, matching template interpolation.
-			if scalarVal, ok := val.(ScalarValue); ok {
-				return ToValue(scalarVal.Val)
-			}
-
-			// Otherwise, serialize to JSON
-			out, err := toStringJSON(val)
-			if err != nil {
-				return nil, fmt.Errorf("toString: %w", err)
-			}
-			return ToValue(out)
+			return StringValue{Val: Display(val)}, nil
 		})
 
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
@@ -1046,7 +1027,7 @@ func registerStdlib() {
 
 	// List.join method: join(separator: String!) -> String!
 	Method(ListTypeModule, "join").
-		Doc("joins the list elements into a string, converting each element to string and separating them with the given delimiter").
+		Doc("joins the list elements into a string, converting each element as toString does and separating them with the given delimiter").
 		Example(`["a", "b", "c"].join("-")`).
 		Params("separator", NonNull(StringType)).
 		Returns(NonNull(StringType)).
@@ -1054,20 +1035,9 @@ func registerStdlib() {
 			list := self.(ListValue)
 			separator := args.GetString("separator")
 
-			var parts []string
-			for _, item := range list.Elements {
-				// Convert each item to string using the same logic as toString
-				var strVal string
-				if sv, ok := item.(StringValue); ok {
-					strVal = sv.Val
-				} else {
-					out, err := toStringJSON(item)
-					if err != nil {
-						return nil, fmt.Errorf("join: failed to convert element to string: %w", err)
-					}
-					strVal = out
-				}
-				parts = append(parts, strVal)
+			parts := make([]string, len(list.Elements))
+			for i, item := range list.Elements {
+				parts[i] = Display(item)
 			}
 
 			return ToValue(strings.Join(parts, separator))

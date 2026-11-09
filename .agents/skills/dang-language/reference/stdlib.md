@@ -11,7 +11,7 @@ The built-in surface of Dang itself (everything here is available without any
 - `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
 - `Regexp(pattern: String!) -> Regexp!` — compiles a pattern from any String expression; raises `invalid regexp "...": ...` when it doesn't compile (see `String!` regex methods below).
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
-- `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; JSON-encode everything else.
+- `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; render everything else as the Dang literal it would be written as (`toString(["a", "b"])` → `["a", "b"]`, `toString({{a: 1}})` → `{{a: 1}}`, `toString(["k": 1])` → `["k": 1]`, Decoded data → the literal of its data, objects as map literals with sorted keys). String interpolation, `List.join` and `print` render values the same way. It is not an encoder: use `JSON.encode` for JSON.
 
 `print` and `assert` return `null` — there is no `Void` type.
 
@@ -32,7 +32,7 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 - `.truncate(length: Int!) -> String!` — at most `length` characters (code points, like `.length`); unchanged if already shorter; `length <= 0` yields `""`: `"hello world".truncate(5) == "hello"`
 - `.toInt(base: Int = 10) -> Int!` — parse an integer in base 2–36 (letters either case), optional leading `+`/`-`; raises on anything else (no whitespace, `0x` prefix, or `_`) and on overflow: `"ff".toInt(base: 16) == 255`, `("x".toInt rescue 0)`. Prefer it to a hand-written digit table
 
-Conversion: `toString(value)` (JSON-encodes non-strings) or `value :: String!` (explicit cast where types align). A `::` cast never parses (`"42" :: Int!` is a type error); use `.toInt`.
+Conversion: `toString(value)` (Dang-literal rendering of non-strings) or `value :: String!` (explicit cast where types align). A `::` cast never parses (`"42" :: Int!` is a type error); use `.toInt`.
 
 ### `String!` regex methods
 Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `` `\d+` ``. Go `regexp/syntax` (RE2); named groups use `(?P<name>...)`.
@@ -122,7 +122,7 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 - `.takeWhile { x => Boolean! }`, `.dropWhile { x => Boolean! }`
 
 ### Join
-- `.join(separator: String!) -> String!` — works on any list; non-string elements are JSON-encoded
+- `.join(separator: String!) -> String!` — works on any list; each element renders as `toString` renders it
 
 ### Nullable lists vs. lists of nullables
 - `[T]` — list might be null; `[T]!` — non-null list, elements might be null; `[T!]!` — both non-null.
@@ -190,7 +190,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)`. `JSON.encode` and `YAML.encode` keep keys in **declaration order** (below); `TOML.encode` emits them in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
 - `JSON.encode(value, indent: String! = "", escapeHTML: Boolean! = true, sortKeys: Boolean! = false)` — like Go's `json.Marshal` of structs: compact, `<`, `>`, `&` escaped as `\u003c`/`\u003e`/`\u0026`, a `type`'s fields in declaration order, a record's in the order it was built (a literal's as written — an annotation listing them differently doesn't reorder it — a selection's as selected, a decoded record's as its type lists them), a map's in insertion order, and `Decoded` data's keys sorted. `indent: "  "` pretty-prints one copy per nesting level (`json.MarshalIndent(v, "", indent)`; spaces/tabs only); `escapeHTML: false` writes `<>&` bare; `sortKeys: true` sorts the keys of **every** object, maps included. No trailing newline either way.
 - `YAML.encode(value, sortKeys: Boolean! = false)` — same order as `JSON.encode` (declaration / as-built / insertion; `Decoded` data sorted), 4-space indent, `"<<"` keys quoted so they don't read back as merges; `sortKeys: true` sorts every mapping, as yaml.Marshal sorts keys (runs of digits compare as numbers, so `item2` before `item10`; `Decoded` data is sorted that way too), where `JSON.encode` sorts by bytes. `TOML.encode(value)` always sorts keys (and puts tables after plain keys, as TOML requires).
-- `toString(value)` — pass-through for strings, JSON-encode otherwise. Like `List.join`, it JSON-encodes in the same order as `JSON.encode`'s default, but under each field's own name (`@JSON.field`/`@JSON.ignore` don't apply).
+- `toString(value)` is not JSON: it renders Dang literals (see top-level builtins); encode with `JSON.encode`.
 
 ### Errors (all recoverable with `rescue`)
 - invalid input → `<Format>.decode: invalid <Format>: ...` (e.g. `JSON.decode: invalid JSON: ...`, `YAML.decode: invalid YAML: ...`)
