@@ -133,10 +133,14 @@ func writeRepr(b *strings.Builder, v Value) {
 	case FloatValue:
 		b.WriteString(floatRepr(v.Val))
 	case GraphQLValue:
-		// A GraphQL object stands for its ID, as it does when sent back.
-		if id, err := v.ID(context.TODO()); err == nil {
-			b.WriteString(strconv.Quote(id))
-			return
+		// A GraphQL object stands for its ID, as it does when sent back. A
+		// value reached through a mutation isn't asked for its ID unless it
+		// is known: asking would send the mutation again.
+		if v.KnownID != "" || !v.IsMutation {
+			if id, err := v.ID(context.TODO()); err == nil {
+				b.WriteString(strconv.Quote(id))
+				return
+			}
 		}
 		b.WriteString(v.String())
 	case DeferredValue:
