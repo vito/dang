@@ -439,17 +439,12 @@ func init() {
 	// Install the codec namespaces (JSON/YAML/TOML) in both namespaces, like
 	// Random: plain ObjectKind modules holding encode/decode, which as types
 	// are the scopes of their field directives (directive scopes resolve in
-	// the type namespace). The type `JSON` is the exception: it is JSONType,
-	// Dang's untyped JSON value, a separate type that carries the @JSON
-	// directives. The two namespaces resolve independently, so neither needs
-	// to know about the other. A schema's same-named scalar (e.g. Dagger's
+	// the type namespace). A schema's same-named scalar (e.g. Dagger's
 	// `scalar JSON`) is a separate type, reached qualified (`Dagger.JSON`); a
 	// user's `scalar JSON` shadows these in its module like any other
 	// declaration.
-	Prelude.AddObject(JSONType.Named, JSONType)
-	Prelude.AddObject(YAMLModule.Named, YAMLModule)
-	Prelude.AddObject(TOMLModule.Named, TOMLModule)
 	for _, mod := range []*Type{JSONModule, YAMLModule, TOMLModule} {
+		Prelude.AddObject(mod.Named, mod)
 		Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
 	}
 

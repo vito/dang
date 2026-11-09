@@ -1,10 +1,8 @@
 package dang
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -396,7 +394,7 @@ func containsDecoded(t hm.Type) bool {
 }
 
 // checkEnumLiterals rejects a string literal handed to an enum slot that
-// names none of the enum's values, or to a JSON slot that is not JSON. Its
+// names none of the enum's values. Its
 // value is known statically, so there is no need to wait for
 // materialization to fail at runtime. It follows
 // the literal through lists, maps and a block's tail; anything else (a
@@ -422,28 +420,6 @@ func checkEnumLiterals(value Node, want hm.Type) error {
 			}
 		}
 	case *Type:
-		if isJSONScalar(t) {
-			// Likewise a literal handed to a JSON slot must be JSON.
-			if v, ok := value.(*String); ok {
-				if _, err := decodeJSON(v.Value, true); err != nil {
-					msg := fmt.Sprintf("%q is not JSON (%v)", v.Value, err)
-					if t := strings.TrimSpace(v.Value); t == "" || !strings.ContainsAny(t[:1], "{[\"") {
-						// A bare word is most likely a JSON string
-						// missing its quotes.
-						var quoted bytes.Buffer
-						enc := json.NewEncoder(&quoted)
-						enc.SetEscapeHTML(false)
-						_ = enc.Encode(v.Value)
-						msg += fmt.Sprintf("; a JSON string is written with its quotes: %q", strings.TrimSuffix(quoted.String(), "\n"))
-					}
-					return NewInferError(errors.New(msg), v)
-				}
-			}
-			if b, ok := value.(*Block); ok && len(b.Forms) > 0 {
-				return checkEnumLiterals(b.Forms[len(b.Forms)-1], want)
-			}
-			return nil
-		}
 		if t.Kind != EnumKind {
 			return nil
 		}
@@ -478,120 +454,9 @@ func enumValueNames(enum *Type) []string {
 
 // isDegradableScalar reports whether mod is a custom scalar whose values may
 // degrade to String at value-handoff boundaries. Every non-primitive scalar
-// value is a string underneath (ScalarValue), so they all qualify. (JSON's
-// values are JSON text, which is how `JSON.decode(j)` re-materializes one.)
+// value is a string underneath (ScalarValue), so they all qualify.
 func isDegradableScalar(mod *Type) bool {
 	return mod.Kind == ScalarKind && !isPrimitiveScalar(mod)
-}
-
-// isJSONScalar reports whether mod is Dang's JSON value type: the builtin JSON
-// scalar, or a same-named scalar a user declares, which takes on its value
-// semantics. A JSON value is untyped JSON data held as its JSON text:
-// decoding into it accepts any value, and encoding embeds it as that value
-// rather than as a string. A declared JSON with a new() hook defines its own
-// values instead, and a schema's `scalar JSON` keeps the behavior of any
-// schema scalar: servers disagree on its wire form (Dagger sends JSON text in
-// a string, graphql-type-json style servers send the value itself), so Dang
-// leaves its values exactly as the server sends them.
-func isJSONScalar(mod *Type) bool {
-	return mod.Kind == ScalarKind && mod.Named == JSONModule.Named &&
-		mod.SourceSchema == nil && !mod.hasScalarHook && mod.goScalarHook == nil
-}
-
-// isJSONValue reports whether v is a value of Dang's JSON type.
-func isJSONValue(v ScalarValue) bool {
-	mod, ok := v.ScalarType.(*Type)
-	return ok && isJSONScalar(mod)
-}
-
-// isJSONNullValue reports whether v is a Dang-owned JSON value holding JSON
-// null, which a nullable JSON treats as null.
-func isJSONNullValue(v Value) bool {
-	s, ok := v.(ScalarValue)
-	if !ok || s.Val != "null" {
-		return false
-	}
-	mod, ok := s.ScalarType.(*Type)
-	return ok && isJSONScalar(mod) && mod.SourceSchema == nil
-}
-
-// jsonScalarFromRaw holds decoded data as a value of the JSON scalar mod: its
-// compact JSON text, numbers exactly as decoded.
-func jsonScalarFromRaw(raw any, mod *Type, path string) (Value, error) {
-	raw, err := canonicalJSONNumbers(raw)
-	if err != nil {
-		return nil, materializeDeferredError(path, "%s", err)
-	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	// Keep the text as written: json.Marshal would escape <, > and & in
-	// strings.
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(raw); err != nil {
-		return nil, materializeDeferredError(path, "encoding %s value: %s", mod.Name(), err)
-	}
-	return ScalarValue{
-		Val:        strings.TrimSuffix(buf.String(), "\n"),
-		ScalarType: mod,
-		jsonKey:    canonicalJSONKey(raw),
-	}, nil
-}
-
-// compactJSONText validates s as a single JSON value and returns it with
-// insignificant whitespace removed, along with the data it holds. Everything
-// else stays as written: object keys keep their order, and strings and
-// numbers their spelling.
-func compactJSONText(s string) (string, any, error) {
-	// Strict, so a repeated key is rejected: kept as written, it would
-	// encode as text that no longer decodes back strictly.
-	raw, err := decodeJSON(s, true)
-	if err != nil {
-		return "", nil, fmt.Errorf("cannot use %s as JSON: %w", truncateForError(s), err)
-	}
-	var buf bytes.Buffer
-	if err := json.Compact(&buf, []byte(s)); err != nil {
-		return "", nil, fmt.Errorf("cannot use %s as JSON: invalid JSON: %w", truncateForError(s), err)
-	}
-	return buf.String(), raw, nil
-}
-
-// truncateForError quotes s for an error message, cut short if it is long.
-func truncateForError(s string) string {
-	const limit = 60
-	if len(s) > limit {
-		return strconv.Quote(s[:limit]) + "..."
-	}
-	return strconv.Quote(s)
-}
-
-// jsonValuesEqual reports whether two JSON values hold the same data: objects
-// with the same keys (in any order) and equal values, lists element by
-// element, strings after unescaping, and numbers by value (`1.50` is `1.5`).
-// It compares their canonical keys, made once per value; a value without one
-// (built by a host) is parsed here, and text that doesn't parse compares as
-// text.
-func jsonValuesEqual(l, r ScalarValue) bool {
-	if l.Val == r.Val {
-		return true
-	}
-	lk, rk := l.jsonKey, r.jsonKey
-	if lk == "" {
-		lk = jsonKeyOfText(l.Val)
-	}
-	if rk == "" {
-		rk = jsonKeyOfText(r.Val)
-	}
-	return lk != "" && lk == rk
-}
-
-// jsonKeyOfText is canonicalJSONKey of the data text spells, or "" when text
-// is not JSON.
-func jsonKeyOfText(text string) string {
-	raw, err := decodeJSON(text, false)
-	if err != nil {
-		return ""
-	}
-	return canonicalJSONKey(raw)
 }
 
 // canonicalJSONKey renders decoded JSON data so that equal data renders the
@@ -739,14 +604,6 @@ func diagnoseAssignment(have, want hm.Type) error {
 		// Both print as the type's name, so say which is which.
 		return fmt.Errorf("cannot use %s as %s: %s here is the type itself, not a value of that type",
 			have, want, meta.Named)
-	}
-	if haveMod, ok := haveBase.(*Type); ok && haveMod.Kind == ObjectKind {
-		if wantMod, ok := unwrapNonNull(want).(*Type); ok && wantMod.Kind == ScalarKind && wantMod.String() == haveMod.String() {
-			// Two types that print alike, e.g. the JSON namespace and the
-			// JSON type: say which is which.
-			return fmt.Errorf("cannot use %s as %s: %s here is a module, not a value of the type %s",
-				have, want, haveMod, wantMod)
-		}
 	}
 	haveMod, wantMod, issues, ok := walkAssignment(have, want)
 	if !ok {
@@ -1004,15 +861,6 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 		if unwrapNonNull(target) == StringType {
 			return StringValue{Val: v.Val}, nil
 		}
-		// A JSON! holding JSON null widens into a nullable JSON as Dang
-		// null, the null a nullable JSON holds however it was made.
-		if isJSONValue(v) && v.Val == "null" {
-			if _, nonNull := target.(hm.NonNullType); !nonNull {
-				if mod, ok := target.(*Type); ok && isJSONScalar(mod) {
-					return NullValue{}, nil
-				}
-			}
-		}
 		return val, nil
 	case ListValue:
 		elemTarget, ok := listElementTarget(target)
@@ -1064,22 +912,6 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 		if isPrimitiveScalar(mod) {
 			return val, nil
 		}
-		if isJSONScalar(mod) {
-			// A String becomes a JSON value only if it is JSON, held
-			// compact.
-			text, raw, err := compactJSONText(val.Val)
-			if err != nil {
-				return nil, materializeError(path, "%s", err.Error())
-			}
-			if raw == nil {
-				// JSON null is Dang null where null may go, and otherwise a
-				// JSON value like any other, holding null.
-				if _, nonNull := target.(hm.NonNullType); !nonNull {
-					return NullValue{}, nil
-				}
-			}
-			return ScalarValue{Val: text, ScalarType: mod, jsonKey: canonicalJSONKey(raw)}, nil
-		}
 		// A scalar with a new() hook — Dang-defined or Go-native (Regexp's
 		// compile check) — computes its canonical string at materialization.
 		if v, hooked, err := applyScalarHook(ctx, scope, mod, val.Val); hooked {
@@ -1102,11 +934,6 @@ func materializeStringValue(ctx context.Context, scope ValueScope, val StringVal
 func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string, codec Codec, strict *strictDecode) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
-			if mod, ok := nn.Type.(*Type); ok && isJSONScalar(mod) {
-				// A non-null JSON value may hold JSON null; only a
-				// nullable JSON maps it to Dang null.
-				return jsonScalarFromRaw(nil, mod, path)
-			}
 			if _, ok := nn.Type.(DecodedType); ok {
 				// Decoded! takes data of any shape, null included; a
 				// later cast decides what null means there.
@@ -1222,12 +1049,6 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			}
 			return EnumValue{Val: s, EnumType: mod}, nil
 		case ScalarKind:
-			if isJSONScalar(mod) {
-				// JSON is the untyped JSON value: any decoded value fits,
-				// and is held as its JSON text (a string included, so
-				// `"x"` is held as "\"x\"").
-				return jsonScalarFromRaw(raw, mod, path)
-			}
 			s, ok := raw.(string)
 			if !ok && mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil {
 				// A GraphQL scalar's value may be any JSON (see

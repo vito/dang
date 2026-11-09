@@ -11,16 +11,13 @@ assert { encoded == "[1,2,3]" }
 let decoded = JSON.decode("[4, 5, 6]") :: [Int!]!
 assert { decoded == [4, 5, 6] }
 
-# Unqualified, `JSON` is Dang's untyped JSON value even with the schema's JSON
-# imported: decoding into it takes any value, and encoding embeds it.
-let raw: JSON! = "{\"ok\":true}"
-assert { JSON.encode(raw) == "{\"ok\":true}" }
-let any = YAML.decode("n: 1\ns: x\no: {k: [true]}\n") :: Map[JSON!]!
+# Untyped data is Decoded, whichever format decoded it.
+let any = YAML.decode("n: 1\ns: x\no: {k: [true]}\n") :: Map[Decoded!]!
 assert { toString(any["s"]!) == "\"x\"" }
 assert { JSON.encode(any) == "{\"n\":1,\"o\":{\"k\":[true]},\"s\":\"x\"}" }
 
-# Its text goes to the schema's JSON through a String.
-assert { parseJSON((any["o"]! :: String!) :: Test.JSON!) == "Parsed JSON: {\"k\":[true]}" }
+# Data goes to the schema's JSON as JSON text.
+assert { parseJSON(JSON.encode(any["o"]!) :: Test.JSON!) == "Parsed JSON: {\"k\":[true]}" }
 
 # The schema's JSON keeps the behavior of any schema scalar, whose wire form
 # Dang leaves to the server: a string stays the string, and other values are

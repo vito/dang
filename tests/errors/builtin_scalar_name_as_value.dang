@@ -1,8 +1,8 @@
-# The value JSON is the codec namespace, holding `encode` and `decode`, not a
-# value of the type JSON.
+# The value JSON is the codec namespace, holding `encode` and `decode`, not
+# data.
 
 let j = JSON.encode({{a: 1}})
 
-describe(x: JSON!): String! { toString(x) }
+describe(x: Decoded!): String! { toString(x) }
 
 print(describe(JSON))

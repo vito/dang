@@ -15,18 +15,13 @@ import (
 
 // JSON, YAML, and TOML are data-interchange formats, each a plain namespace
 // module (like Random) holding its encode/decode and field directives,
-// installed in the Prelude so `JSON.encode` resolves with no import. A
-// schema's or user's type of the same name is a separate type. The type named
-// JSON is JSONType, Dang's untyped JSON value (see isJSONScalar), which the
-// codecs decode into and encode from. See issue #105.
+// installed in the Prelude so `JSON.encode` resolves with no import. Decoding
+// produces Decoded data, which no format owns. A schema's or user's type of
+// the same name is a separate type. See issue #105.
 var (
 	JSONModule = NewType("JSON", ObjectKind)
 	YAMLModule = NewType("YAML", ObjectKind)
 	TOMLModule = NewType("TOML", ObjectKind)
-
-	// JSONType is the type named JSON: Dang's untyped JSON value. It is not
-	// the JSON namespace (JSONModule), which only shares its name.
-	JSONType = NewType("JSON", ScalarKind)
 )
 
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
@@ -34,7 +29,6 @@ var (
 // are installed in the Prelude).
 func registerCodecs() {
 	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
-	JSONType.SetTypeDocString("untyped JSON data of any shape, held as its JSON text")
 	// encode takes an arbitrary value, so it cannot live on the String type
 	// (there is no universal receiver); it belongs to the format's namespace.
 	StaticMethod(JSONModule, "encode").
@@ -64,10 +58,9 @@ func registerCodecs() {
 			return ToValue(out)
 		})
 	// decode returns an opaque value materialized against the expected type
-	// supplied via a `:: T` hint at the call boundary. A JSON value degrades
-	// into data (it is JSON text), so decoding one walks data held as JSON.
+	// supplied via a `:: T` hint at the call boundary.
 	StaticMethod(JSONModule, "decode").
-		Doc("parses JSON text (a string, or a JSON value) into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
+		Doc("parses JSON text into an opaque value that is materialized by an expected type; with strict, an object key no field reads, or one repeated, is an error").
 		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
 		Params(
 			"data", NonNull(StringType),
@@ -613,13 +606,7 @@ func (e valueEncoder) encode(val Value) (any, error) {
 		return result, nil
 	default:
 		// Scalars, enums, and other leaves have no renamable fields of their own,
-		// so they keep their canonical encoding — except a JSON value, which
-		// is embedded as the data it holds.
-		if s, ok := val.(ScalarValue); ok {
-			if mod, ok := s.ScalarType.(*Type); ok && isJSONScalar(mod) {
-				return e.encodeJSONScalar(s)
-			}
-		}
+		// so they keep their canonical encoding.
 		return c.encodeLeaf(val)
 	}
 }
@@ -756,33 +743,6 @@ func (c Codec) encodeLeaf(val Value) (any, error) {
 		return json.RawMessage(jsonBytes), nil
 	}
 	return jsonBytesToRaw(jsonBytes)
-}
-
-// encodeJSONScalar embeds a JSON value as the data its text spells, not as a
-// string, so decoding into JSON and encoding back round-trips. Text that is
-// not JSON (only a host embedding Dang can build one, since a String must
-// validate to become a JSON value) is an error rather than output a
-// reader would choke on — except for toString, which shows it as the string
-// it is.
-func (e valueEncoder) encodeJSONScalar(s ScalarValue) (any, error) {
-	if e.codec == jsonCodec {
-		// The text is embedded as it is; it only needs to be JSON.
-		if json.Valid([]byte(s.Val)) {
-			return json.RawMessage(s.Val), nil
-		}
-		if e.rawFields {
-			return s.Val, nil
-		}
-		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
-	}
-	raw, err := decodeJSON(s.Val, false)
-	if err != nil {
-		if e.rawFields {
-			return s.Val, nil
-		}
-		return nil, fmt.Errorf("%s value is not valid JSON: %q", s.ScalarType.Name(), s.Val)
-	}
-	return raw, nil
 }
 
 // jsonBytesToRaw decodes JSON bytes into a generic value, preserving numbers as

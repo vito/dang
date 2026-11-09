@@ -236,10 +236,10 @@ text. Demo's `Opaque` scalar is one of these:
 [describeOpaque(value: opaqueNumber), `object: ${opaqueObject}`]
 ```
 
-Dang's own `JSON` goes further: it is the type for data of any shape.
-Decoding into it accepts any value, kept as its JSON text (see
-[#json-values]). A schema's `scalar JSON` stays a schema scalar like the
-ones above, its values as the server sends them.
+Dang has no `JSON` value type of its own: `JSON` is the codec namespace, and
+data of any shape is `Decoded` (see [#decoded-values]). A schema's `scalar
+JSON` is a schema scalar like the ones above, its values as the server sends
+them.
 
 ### Treating scalars as opaque
 

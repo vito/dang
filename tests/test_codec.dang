@@ -8,8 +8,8 @@
 let nums = JSON.decode("[1, 2, 3]") :: [Int!]!
 assert { nums == [1, 2, 3] }
 assert { JSON.encode([1, 2, 3]) == "[1,2,3]" }
-let blob: JSON! = "{\"ok\":true}"
-# A JSON value is JSON text, so encoding embeds it as the data it spells.
+let blob = JSON.decode("{\"ok\":true}") :: Decoded!
+# Decoded data encodes as the data it is.
 assert { JSON.encode(blob) == "{\"ok\":true}" }
 
 # YAML (no Dagger scalar exists, yet identical behavior)

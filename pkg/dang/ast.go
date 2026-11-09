@@ -244,11 +244,8 @@ func valuesEqual(left, right Value) bool {
 		return true
 	}
 	if leftIsNull || rightIsNull {
-		// A Dang JSON value holding JSON null is null, wherever a nullable
-		// JSON got it from (a merge, say, rather than a typed slot), and so
-		// is Decoded data holding null.
-		return isJSONNullValue(left) || isJSONNullValue(right) ||
-			isNullDecoded(left) || isNullDecoded(right)
+		// Decoded data holding null is null, wherever it came from.
+		return isNullDecoded(left) || isNullDecoded(right)
 	}
 
 	// Compare by type
@@ -273,13 +270,6 @@ func valuesEqual(left, right Value) bool {
 	case ScalarValue:
 		// Compare scalar values - must be same value and same type
 		if r, ok := right.(ScalarValue); ok {
-			if l.ScalarType == r.ScalarType {
-				if mod, ok := l.ScalarType.(*Type); ok && isJSONScalar(mod) {
-					// JSON values are data: key order and spelling don't
-					// matter, only what the text means.
-					return jsonValuesEqual(l, r)
-				}
-			}
 			return l.ScalarType == r.ScalarType && l.Encoded == r.Encoded && l.Val == r.Val
 		}
 		// Allow comparison with StringValue
