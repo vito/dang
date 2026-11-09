@@ -22,8 +22,8 @@ import (
 // encode from. See issue #105.
 var (
 	JSONModule = NewType("JSON", ScalarKind)
-	YAMLModule = NewType("YAML", ScalarKind)
-	TOMLModule = NewType("TOML", ScalarKind)
+	YAMLModule = NewType("YAML", ObjectKind)
+	TOMLModule = NewType("TOML", ObjectKind)
 )
 
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly

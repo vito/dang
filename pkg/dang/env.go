@@ -432,21 +432,22 @@ func init() {
 	// Register standard library builtins
 	registerStdlib()
 
-	// Install the codec scalars (JSON/YAML/TOML) in both namespaces, like the
-	// modules above. They are the ScalarKind static modules registerStdlib just
-	// registered. Each is AddObject'd so `:: JSON` resolves in type position,
-	// and its name is bound to its meta-type, holding `encode`/`decode`
-	// (registerBuiltinTypes), so they resolve on the name but a JSON value is
-	// never mistaken for the namespace. A schema's same-named scalar (e.g.
-	// Dagger's `scalar JSON`) is a separate type, reached qualified
-	// (`Dagger.JSON`); a user's `scalar JSON` shadows these in its module like
-	// any other declaration.
-	for _, mod := range StaticModules() {
-		if mod.Kind != ScalarKind {
-			continue
-		}
+	// Install the codec namespaces in both namespaces, like the modules above.
+	// YAML and TOML are plain modules, like Random: they have no values. JSON
+	// is still a ScalarKind static module, AddObject'd so `:: JSON` resolves
+	// in type position, with its name bound to its meta-type, holding
+	// `encode`/`decode` (registerBuiltinTypes), so they resolve on the name but
+	// a JSON value is never mistaken for the namespace. A schema's same-named
+	// scalar (e.g. Dagger's `scalar JSON`) is a separate type, reached
+	// qualified (`Dagger.JSON`); a user's `scalar JSON` shadows these in its
+	// module like any other declaration.
+	for _, mod := range []*Type{JSONModule, YAMLModule, TOMLModule} {
 		Prelude.AddObject(mod.Named, mod)
-		Prelude.Add(mod.Named, hm.NewScheme(nil, typeNameValueType(mod)))
+		if mod.Kind == ScalarKind {
+			Prelude.Add(mod.Named, hm.NewScheme(nil, typeNameValueType(mod)))
+		} else {
+			Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
+		}
 	}
 
 	// Register builtin function types from the registry
