@@ -223,6 +223,26 @@ print(x)
 			},
 			wantsErr: false,
 		},
+		{
+			// A try/catch keeps its own rules: a union pattern with a
+			// member that is never raised is accepted there.
+			name: "try/catch union pattern with a non-error member",
+			source: `type MiniError implements Error {
+  message: String!
+}
+type Foo {
+  x: Int! = 1
+}
+union Either = MiniError | Foo
+let x = try { raise MiniError(message: "m") } catch {
+  e: Either => "either"
+  e: Error => "other"
+}
+assert { x == "either" }
+`,
+			unwanted: []string{"rescue pattern"},
+			wantsErr: false,
+		},
 	}
 
 	for _, tt := range tests {

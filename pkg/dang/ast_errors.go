@@ -143,7 +143,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				if err := implicitCase.inferTypePatternClause(ctx, env, fresh, clause, errorType); err != nil {
 					return nil, err
 				}
-				if clause.matchType != nil {
+				if clause.matchType != nil && !current {
 					if bad := unraisableMember(clause.matchType); bad != nil {
 						return nil, NewInferError(fmt.Errorf("rescue pattern %s includes %s, which doesn't implement Error, so it is never raised", clause.matchType, unwrapNonNull(bad)), clause.patternNode())
 					}
