@@ -115,8 +115,8 @@ func TestMembersOfAList(t *testing.T) {
 	dropFirst := member(t, list, "dropFirst")
 	require.Equal(t, "dropFirst(count: Int = 1): [a]!", dropFirst.Signature())
 
-	_, err = analysis.Doc(ctx, scope, "List.sort")
-	require.ErrorContains(t, err, `no member "sort"`)
+	_, err = analysis.Doc(ctx, scope, "List.nope")
+	require.ErrorContains(t, err, `no member "nope"`)
 
 	// The same members, by the type's name.
 	byName, err := analysis.Members(ctx, scope, "List")
