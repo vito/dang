@@ -160,7 +160,8 @@ The check applies at every level of a type or record, under each field's
 unknown too. Every field the type declares counts, including ones its
 constructor doesn't take (a `let` field), so a value's own encoding always
 decodes back. A `Map[T]`'s keys are data, so it takes any key, and so does a
-`Decoded` value (see [#decoded-values]), which holds whatever it is given:
+`Decoded` value until it is cast: a later cast of it is strict too (see
+[#decoded-values]):
 
 ```dang
 let counts = JSON.decode("""{"zed": 1, "amy": 2}""", strict: true) :: Map[Int!]!
