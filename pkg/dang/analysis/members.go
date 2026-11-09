@@ -182,7 +182,7 @@ func Members(ctx context.Context, scope dang.TypeScope, of string) (*MemberList,
 		return &MemberList{
 			Of:      of,
 			Type:    named.Name(),
-			Members: typeNameMembers(of, named, nameNamespace(scope, of, named)),
+			Members: typeNameMembers(of, named),
 		}, nil
 	}
 	if m, ok := preludeTypeMember(scope, of); ok {
@@ -419,23 +419,14 @@ func typeMembers(t hm.Type) []Member {
 
 // typeNameMembers lists the members of the type a type name names: its
 // values' members (for an enum, its values), then the static members of the
-// name itself, e.g. JSON.encode or what a `self { }` block declares. ns,
-// when not nil, is a namespace the name is also bound to as a value (see
-// nameNamespace), whose members are the name's statics too.
-func typeNameMembers(name string, named dang.TypeScope, ns dang.TypeScope) []Member {
+// name itself, e.g. what a `self { }` block declares.
+func typeNameMembers(name string, named dang.TypeScope) []Member {
 	members := scopeMembers(named, dang.PublicVisibility, true)
 	seen := map[string]bool{}
 	for _, m := range members {
 		seen[m.Name] = true
 	}
-	statics := staticMembers(named)
-	if ns != nil {
-		for _, m := range scopeMembers(ns, dang.PublicVisibility, true) {
-			m.Static = true
-			statics = append(statics, m)
-		}
-	}
-	for _, m := range statics {
+	for _, m := range staticMembers(named) {
 		if !seen[m.Name] {
 			seen[m.Name] = true
 			members = append(members, m)
@@ -445,30 +436,6 @@ func typeNameMembers(name string, named dang.TypeScope, ns dang.TypeScope) []Mem
 		members[i].Receiver = name
 	}
 	return sortMembers(members)
-}
-
-// nameNamespace returns the namespace a type name is also bound to as a
-// value, when that is another scope than the type it names: the builtin JSON
-// namespace, say, whose name is also a type of its own. Nil otherwise.
-func nameNamespace(scope dang.TypeScope, name string, named dang.TypeScope) dang.TypeScope {
-	holder, last := scope, name
-	if recv, n, found := cutLast(name, "."); found {
-		h, ok := lookupTypeName(scope, recv)
-		if !ok {
-			return nil
-		}
-		holder, last = h, n
-	}
-	scheme, ok := holder.SchemeOf(last)
-	if !ok {
-		return nil
-	}
-	t, _ := scheme.Type()
-	ns, ok := unwrapNonNull(t).(*dang.Type)
-	if !ok || dang.TypeScope(ns) == named || ns.IsMeta() || ns.Kind != dang.ObjectKind {
-		return nil
-	}
-	return ns
 }
 
 // staticMembers lists the public static members of a named type: those of
