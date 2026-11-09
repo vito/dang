@@ -437,7 +437,11 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 			if at != "" {
 				return NewInferError(fmt.Errorf("decoded data never materializes as %s %s, which %s holds", bad.Kind, bad.Name(), at), clause.patternNode())
 			}
-			return NewInferError(fmt.Errorf("decoded data never materializes as %s %s: match its member types instead", bad.Kind, bad.Name()), clause.patternNode())
+			hint := "match its member types instead"
+			if bad.Kind == InterfaceKind {
+				hint = "match the types implementing it instead"
+			}
+			return NewInferError(fmt.Errorf("decoded data never materializes as %s %s: %s", bad.Kind, bad.Name(), hint), clause.patternNode())
 		}
 		if err := checkDecodeTarget(env, t); err != nil {
 			return WrapInferError(err, clause.patternNode())

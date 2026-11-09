@@ -1,4 +1,4 @@
-[1m[31mError:[0m decoded data never materializes as interface HasName: match its member types instead
+[1m[31mError:[0m decoded data never materializes as interface HasName: match the types implementing it instead
   [2m[34m--> errors/case_decoded_interface_pattern.dang:10:6[0m
  [2m    |[0m
  [2m  8 | [0m

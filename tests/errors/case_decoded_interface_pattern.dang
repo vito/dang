@@ -1,5 +1,5 @@
-# Decoded data never materializes as an interface or union: match its
-# member types instead.
+# Decoded data never materializes as an interface: match the types
+# implementing it instead.
 interface HasName {
   name: String!
 }
