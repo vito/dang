@@ -66,3 +66,15 @@ func qualifierString(val any) string {
 	}
 	return strings.Join(parts, ".")
 }
+
+// qualifiedTypeBase builds the qualifier of a qualified type pattern (the
+// `Lib` in `g: Lib.Greeter =>`) as the NamedTypeNode chain the same type
+// written elsewhere parses to. Returns nil when there is no qualifier.
+func qualifiedTypeBase(val any, loc *SourceLocation) *NamedTypeNode {
+	anys, _ := val.([]any)
+	var base *NamedTypeNode
+	for _, p := range anys {
+		base = &NamedTypeNode{Base: base, Name: p.(string), Loc: loc}
+	}
+	return base
+}

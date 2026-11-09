@@ -181,7 +181,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				for _, prev := range priorPatterns {
 					if canonicalModule(prev.resolvedMemberType) == ErrorType && !current {
 						return nil, NewInferError(
-							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.TypePattern.Name, prev.Loc.Line),
+							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.PatternName(), prev.Loc.Line),
 							clause,
 						)
 					}

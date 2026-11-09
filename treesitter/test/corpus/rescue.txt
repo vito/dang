@@ -85,6 +85,55 @@ let x = risky rescue {
                       (immediate_quote_token))))))))))))
 
 ===
+Rescue clause with a qualified type
+===
+
+let x = risky rescue {
+  e: Lib.BasicError => e.message
+}
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (default_expr
+          (rescue_expr
+            (symbol_or_call
+              (auto_call_symbol
+                (id
+                  (word_token))))
+            (rescue_token)
+            (rescue_handler
+              (rescue_clauses
+                (rescue_clause
+                  (symbol
+                    (id
+                      (word_token)))
+                  (colon_token)
+                  (id
+                    (word_token))
+                  (dot_token)
+                  (symbol
+                    (id
+                      (word_token)))
+                  (arrow_token)
+                  (select_or_call
+                    (symbol_or_call
+                      (auto_call_symbol
+                        (id
+                          (word_token))))
+                    (dot_token)
+                    (field_id)))))))))))
+
+===
 Rescue on a block operand
 ===
 

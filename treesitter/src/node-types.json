@@ -1090,6 +1090,30 @@
           }
         ]
       },
+      "q": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "qual": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "dot_token",
+            "named": true
+          },
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
       "type_name": {
         "multiple": false,
         "required": false,
@@ -3444,6 +3468,30 @@
         "types": [
           {
             "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "q": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "qual": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "dot_token",
+            "named": true
+          },
+          {
+            "type": "id",
             "named": true
           }
         ]

@@ -180,7 +180,9 @@ mismatch`).
 ### Type patterns
 
 A type pattern has the form `binding: Type => expr`; the binding is the
-operand narrowed to that type inside the clause. The operand is a union or
+operand narrowed to that type inside the clause. The type can be qualified
+(`g: Lib.Greeter =>`), naming an imported type even where a type of your own
+shadows the bare name. The operand is a union or
 an interface, or decoded data, where an arm matches when the data has its
 type's shape and `else` is required (see [#decoded-values]).
 Here it takes apart the `Cat! | Dog!` union `pet` picked up under

@@ -433,8 +433,7 @@ func moduleCoveredBy(mod *Type, patterns []*Type) bool {
 // inferTypePatternClause validates a type pattern clause against the operand type.
 // The operand must be a union (or interface), and the type pattern must name one of its members.
 func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, exprType hm.Type) error {
-	typeScope, ok := env.(TypeScope)
-	if !ok {
+	if _, ok := env.(TypeScope); !ok {
 		return NewInferError(fmt.Errorf("type patterns require a module environment"), clause)
 	}
 
@@ -448,7 +447,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		// Decoded data matches a pattern when it has its type's shape.
 		var pattern TypeNode = clause.PatternType
 		if pattern == nil {
-			pattern = &NamedTypeNode{Name: clause.TypePattern.Name, Loc: clause.TypePattern.Loc}
+			pattern = clause.namedPatternNode()
 		}
 		t, err := pattern.Infer(ctx, env, fresh)
 		if err != nil {
@@ -478,6 +477,9 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 
 	// Resolve the type pattern from the operand's members first (handles
 	// narrowed unions from inline fragments), falling back to the environment.
+	// A qualified pattern names its type outright, so it is looked up first
+	// and then found among the operand's members by identity.
+	patternName := clause.PatternName()
 	var memberMod *Type
 	if operandMod, ok := unwrapped.(*Type); ok {
 		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
@@ -485,25 +487,42 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		}
 
 		if operandMod.Kind == UnionKind {
+			var named *Type
+			if clause.PatternBase != nil {
+				var err error
+				named, err = clause.lookupNamedPattern(ctx, env, fresh)
+				if err != nil {
+					return NewInferError(err, clause.TypePattern)
+				}
+			}
 			for _, m := range operandMod.GetMembers() {
-				if mod, ok := m.(*Type); ok && mod.Name() == clause.TypePattern.Name {
+				mod, ok := m.(*Type)
+				if !ok {
+					continue
+				}
+				if named != nil && canonicalModule(mod) == canonicalModule(named) ||
+					named == nil && mod.Name() == clause.TypePattern.Name {
 					memberMod = mod
 					break
 				}
 			}
 			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod), clause.TypePattern)
+				return NewInferError(fmt.Errorf("type %s is not a member of union %s", patternName, operandMod), clause.TypePattern)
 			}
 		} else if operandMod.Kind == InterfaceKind {
-			var err error
-			memberMod, err = resolveInterfaceTypePattern(typeScope, operandMod, clause.TypePattern.Name)
+			named, err := clause.lookupNamedPattern(ctx, env, fresh)
+			if err == nil {
+				memberMod, err = resolveInterfaceTypePattern(operandMod, named, patternName)
+			}
 			if err != nil {
 				return NewInferError(err, clause.TypePattern)
 			}
 		}
 	} else if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
-		var err error
-		memberMod, err = resolveInlineUnionTypePattern(typeScope, operandUnion, clause.TypePattern.Name)
+		named, err := clause.lookupNamedPattern(ctx, env, fresh)
+		if err == nil {
+			memberMod, err = resolveInlineUnionTypePattern(operandUnion, named, patternName)
+		}
 		if err != nil {
 			return NewInferError(err, clause.TypePattern)
 		}
@@ -516,16 +535,10 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 	return nil
 }
 
-func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string) (*Type, error) {
-	memberType, found := env.NamedType(patternName)
-	if !found {
-		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
-	}
-	memberMod, ok := memberType.(*Type)
-	if !ok {
-		return nil, fmt.Errorf("type pattern %s is not an object type", patternName)
-	}
-
+// resolveInterfaceTypePattern checks that memberMod, the type a pattern
+// names, matches values of iface: iface itself (a typed catch-all) or an
+// implementer.
+func resolveInterfaceTypePattern(iface *Type, memberMod *Type, patternName string) (*Type, error) {
 	// Allow the interface itself as a type pattern (matches any implementer,
 	// like a typed catch-all).
 	if memberMod == iface {
@@ -541,16 +554,9 @@ func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string)
 	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
 
-func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternName string) (*Type, error) {
-	patternType, found := env.NamedType(patternName)
-	if !found {
-		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
-	}
-	patternMod, ok := patternType.(*Type)
-	if !ok {
-		return nil, fmt.Errorf("type pattern %s is not a named type", patternName)
-	}
-
+// resolveInlineUnionTypePattern checks that patternMod, the type a pattern
+// names, is one of union's options or a member of one.
+func resolveInlineUnionTypePattern(union *hm.UnionType, patternMod *Type, patternName string) (*Type, error) {
 	for _, option := range union.Options {
 		optionMod, ok := moduleType(option)
 		if !ok {
@@ -563,7 +569,7 @@ func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternNa
 			return patternMod, nil
 		}
 		if optionMod.Kind == InterfaceKind {
-			if _, err := resolveInterfaceTypePattern(env, optionMod, patternName); err == nil {
+			if _, err := resolveInterfaceTypePattern(optionMod, patternMod, patternName); err == nil {
 				return patternMod, nil
 			}
 		}
@@ -735,8 +741,8 @@ func (c *Case) needsConcreteType(g GraphQLValue) bool {
 func (c *Case) unresolvedMutationPatternError(g GraphQLValue, clause *CaseClause) error {
 	var fragments []string
 	for _, cl := range c.Clauses {
-		if cl.TypePattern != nil && cl.TypePattern.Name != g.TypeName {
-			fragments = append(fragments, fmt.Sprintf("... on %s {{ ... }}", cl.TypePattern.Name))
+		if cl.TypePattern != nil && cl.PatternName() != g.TypeName {
+			fragments = append(fragments, fmt.Sprintf("... on %s {{ ... }}", cl.PatternName()))
 		}
 	}
 	return fmt.Errorf(
@@ -806,7 +812,7 @@ func checkClauseReachable(clause *CaseClause, elseClause *CaseClause, priorPatte
 			if typePatternCovers(prev.resolvedMemberType, clause.resolvedMemberType) {
 				return NewInferError(
 					fmt.Errorf("unreachable clause: %s is already matched by the %s clause on line %d",
-						clause.TypePattern.Name, prev.TypePattern.Name, prev.Loc.Line),
+						clause.PatternName(), prev.PatternName(), prev.Loc.Line),
 					clause.TypePattern,
 				)
 			}
@@ -979,6 +985,9 @@ type CaseClause struct {
 	IsElse      bool    // true if this is an else clause
 	Binding     string  // variable name for type pattern (e.g. "user" in "user: User => ...")
 	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User => ...")
+	// PatternBase qualifies TypePattern: the `Lib` in `g: Lib.Greeter =>`,
+	// resolved like the same qualified type written anywhere else.
+	PatternBase *NamedTypeNode
 	// PatternType is a list or map type pattern (`items: [Decoded!] => ...`,
 	// `obj: Map[Decoded!] => ...`), which only decoded data can match.
 	PatternType TypeNode
@@ -1001,15 +1010,51 @@ func (c *CaseClause) IsTypePattern() bool {
 	return c.TypePattern != nil || c.PatternType != nil
 }
 
-// PatternName is how a type pattern is written: `User`, `[Decoded!]`.
+// PatternName is how a type pattern is written: `User`, `Lib.User`,
+// `[Decoded!]`.
 func (c *CaseClause) PatternName() string {
 	if c.TypePattern != nil {
-		return c.TypePattern.Name
+		return typeNodeString(c.namedPatternNode())
 	}
 	if c.PatternType != nil {
 		return typeNodeString(c.PatternType)
 	}
 	return ""
+}
+
+// namedPatternNode is a named type pattern as the type node it spells,
+// qualifier included.
+func (c *CaseClause) namedPatternNode() *NamedTypeNode {
+	return &NamedTypeNode{Base: c.PatternBase, Name: c.TypePattern.Name, Loc: c.TypePattern.Loc}
+}
+
+// lookupNamedPattern resolves a named type pattern to the type it names: a
+// qualified one like any qualified type, an unqualified one by name in env.
+func (c *CaseClause) lookupNamedPattern(ctx context.Context, env hm.Env, fresh hm.Fresher) (*Type, error) {
+	name := c.PatternName()
+	var t hm.Type
+	if c.PatternBase != nil {
+		resolved, err := c.namedPatternNode().Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("unknown type %s in type pattern", name)
+		}
+		t = unwrapNonNull(resolved)
+	} else {
+		typeScope, ok := env.(TypeScope)
+		if !ok {
+			return nil, fmt.Errorf("type patterns require a module environment")
+		}
+		found, ok := typeScope.NamedType(c.TypePattern.Name)
+		if !ok {
+			return nil, fmt.Errorf("unknown type %s in type pattern", name)
+		}
+		t = found
+	}
+	mod, ok := t.(*Type)
+	if !ok {
+		return nil, fmt.Errorf("type pattern %s is not a named type", name)
+	}
+	return mod, nil
 }
 
 // patternNode is the node to blame for a type pattern's errors.

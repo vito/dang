@@ -3215,7 +3215,7 @@ func (f *Formatter) formatCase(c *Case) {
 				if clause.PatternType != nil {
 					f.formatTypeNode(clause.PatternType)
 				} else {
-					f.write(f.ident(clause.TypePattern.Name))
+					f.formatNamedPattern(clause)
 				}
 			} else {
 				f.formatNode(clause.Value)
@@ -3280,13 +3280,23 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 		if clause.IsTypePattern() {
 			f.write(f.ident(clause.Binding))
 			f.write(": ")
-			f.write(f.ident(clause.TypePattern.Name))
+			f.formatNamedPattern(clause)
 		} else {
 			f.write("else")
 		}
 	})
 	f.writeIndent()
 	f.write("}")
+}
+
+// formatNamedPattern writes a named type pattern, qualifier included
+// (`Lib.Greeter`).
+func (f *Formatter) formatNamedPattern(clause *CaseClause) {
+	if clause.PatternBase != nil {
+		f.write(typeNodeString(clause.PatternBase))
+		f.write(".")
+	}
+	f.write(f.ident(clause.TypePattern.Name))
 }
 
 // formatTryCatch prints a try/catch as written: for versions without postfix
@@ -3305,7 +3315,7 @@ func (f *Formatter) formatTryCatch(t *RescueExpr) {
 		f.write(f.ident(clause.Binding))
 		if clause.IsTypePattern() {
 			f.write(": ")
-			f.write(f.ident(clause.TypePattern.Name))
+			f.formatNamedPattern(clause)
 		}
 	})
 	if t.Loc != nil && t.Loc.End != nil {
