@@ -1,0 +1,3 @@
+let config = "{name: \"lint\"}"
+let parsed = config :: JSON!
+print(parsed)

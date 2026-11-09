@@ -676,12 +676,14 @@ func StaticModules() []*Type {
 
 // Dang can staple its own APIs onto a scalar by name. A builtin scalar is a
 // ScalarKind module Dang ships members for (JSON, YAML, TOML); it is installed
-// in the Prelude so its name resolves with no import. When a schema imports —
-// or a user declares — a scalar of the same name, that scalar shadows the
-// builtin one and is grafted the identical members, so the two merge into one
-// entity rather than colliding: the declared scalar is the type, and Dang's
-// members ride along. This is general — any future builtin scalar behaves the
-// same way; encoding is just the first use.
+// in the Prelude so its name resolves with no import. A scalar of the same
+// name that a schema imports or a user declares is grafted the identical
+// members, so the two merge rather than colliding: Dang's members ride along
+// on the other scalar. A user's declaration shadows the builtin (and, for
+// JSON, shares its value semantics); a schema's scalar doesn't, since imports
+// never shadow builtins, so the unqualified name stays the builtin and the
+// schema's scalar keeps its own values (see isJSONScalar). This is general —
+// any future builtin scalar behaves the same way.
 
 // BuiltinScalarModule returns the builtin scalar module of the given name, if
 // Dang ships one. These are the ScalarKind entries among the static modules.

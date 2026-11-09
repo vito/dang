@@ -31,9 +31,11 @@ assert { e != "you@example.com" }
 assert { node(id: "User:1").id == "User:1" }
 assert { homepage == `https://danglang.org` }
 
-let empty = "null" :: JSON!
+let empty = "[]" :: JSON!
 
-assert { empty == "null" }
+assert { empty == "[]" }
+# JSON compares as data, so the literal's spacing doesn't matter.
+assert { empty == "[ ]" }
 
 # A scalar with a new() hook normalizes the literal like any other.
 assert { Path("a//b") == "a/b" }

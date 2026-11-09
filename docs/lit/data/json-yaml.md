@@ -7,9 +7,10 @@
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
 `encode` / `decode` static methods. The names double as scalar types (`:: JSON`)
-and are owned by Dang, so they work with no schema import; an in-scope scalar of
-the same name (e.g. Dagger's `JSON`) merges with the codec rather than colliding
-(see [#enums-scalars]).
+and are owned by Dang, so they work with no schema import. A schema's scalar of
+the same name (e.g. Dagger's `JSON`) gets the codec's methods grafted on rather
+than colliding, while unqualified `JSON` stays Dang's own (see
+[#enums-scalars]).
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
@@ -109,7 +110,8 @@ The check applies at every level of a type or record, under each field's
 `@JSON.field(name:)` key; an `@JSON.ignore` field reads no key, so its name is
 unknown too. Every field the type declares counts, including ones its
 constructor doesn't take (a `let` field), so a value's own encoding always
-decodes back. A `Map[T]`'s keys are data, so it takes any key:
+decodes back. A `Map[T]`'s keys are data, so it takes any key, and so does a
+`JSON` value (see [#json-values]), which holds whatever it is given:
 
 ```dang
 let counts = JSON.decode("""{"zed": 1, "amy": 2}""", strict: true) :: Map[Int!]!
@@ -184,12 +186,77 @@ type Options {
 YAML.decode("") :: Options!
 ```
 
+## Data of unknown shape {#json-values}
+
+`JSON` is also a type for data whose shape you don't know: decoding into
+`JSON` takes any value and keeps it as its JSON text. A `Map[JSON!]!` reads
+an object without saying anything about its values, so you can check its
+keys:
+
+```dang
+let config = YAML.decode("""
+modules:
+  - name: lint
+    source: ./lint
+    pin: 3
+version: 2
+""") :: Map[JSON!]!
+
+config.keys
+```
+
+A JSON value reads as its text wherever a `String` is expected. A string
+value keeps its quotes, so the text is always JSON:
+
+```dang
+[toString(config["version"]!), `modules: ${config["modules"]!}`]
+```
+
+`JSON.decode` takes a JSON value too, so going a level deeper is decoding
+again, at the type the data has there:
+
+```dang
+let modules = JSON.decode(config["modules"]!) :: [Map[JSON!]!]!
+
+modules[0]!.keys.filter { key => !["name", "source"].contains(key) }
+```
+
+```dang
+JSON.decode(modules[0]!["name"]!) :: String!
+```
+
+Encoding puts a JSON value back as the data it holds, not as a string, so
+it round-trips:
+
+```dang
+JSON.encode({{ first: modules[0]! }})
+```
+
+A `String` turns into a JSON value only if it is JSON. It is compacted on
+the way in, keeping its keys in the order written. JSON values compare as
+data, so key order and spacing don't affect equality:
+
+```dang
+let written = """{ "name": "lint", "pin": 3 }"""
+
+toString(written :: JSON!)
+```
+
+```dang
+(written :: JSON!) == """{"pin": 3, "name": "lint"}"""
+```
+
+```dang-failure
+"{name: lint}" :: JSON!
+```
+
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
 a `String!`. `JSON.encode` keeps fields in the order they are declared, as
 Go does for struct fields: a record's as written (see [#literals]), a type's
-as the type declares them. YAML and TOML sort them alphabetically:
+as the type declares them; a JSON value keeps its own keys' order (a decoded
+one's are sorted). YAML and TOML sort them alphabetically:
 
 ```dang
 JSON.encode({{ name: "nightly", count: 42, tags: ["ci"] }})
@@ -303,8 +370,9 @@ string literal, and two fields cannot map to the same key.
 ## Coercion during parsing
 
 Enum values decode from their names, and custom scalars from their string
-forms. A missing field takes its declared default, and a missing nullable
-field decodes to `null`:
+forms (except `JSON`, which takes any value; see [#json-values]). A missing
+field takes its declared default, and a missing nullable field decodes to
+`null`:
 
 ```dang
 enum Outcome { PASSED FAILED }

@@ -1060,6 +1060,9 @@ func registerStdlib() {
 				var strVal string
 				if sv, ok := item.(StringValue); ok {
 					strVal = sv.Val
+				} else if js, ok := item.(ScalarValue); ok && isJSONValue(js) {
+					// A JSON value is its text, as in toString.
+					strVal = js.Val
 				} else {
 					out, err := toStringJSON(item)
 					if err != nil {

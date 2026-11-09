@@ -1,0 +1,189 @@
+# JSON is Dang's untyped JSON value: decoding into it accepts data of any
+# shape and holds it as its JSON text, so data of unknown shape can be kept,
+# walked a level at a time, and encoded back unchanged.
+
+let config = "{\"modules\": [{\"name\": \"a\", \"source\": \"./a\", \"pin\": {\"rev\": 3}}], \"version\": 2}"
+
+# Any value fits, at any depth: here the top level's keys, whatever their
+# values hold.
+let top = JSON.decode(config) :: Map[JSON!]!
+assert { top.keys == ["modules", "version"] }
+assert { toString(top["version"]!) == "2" }
+
+# A JSON value is JSON text: toString and interpolation give that text, and a
+# string is held quoted, never as its bare contents.
+let named = JSON.decode("{\"s\": \"x\", \"html\": \"<b>&</b>\"}") :: Map[JSON!]!
+assert { toString(named["s"]!) == "\"x\"" }
+let s = named["s"]!
+assert { `s is ${s}` == "s is \"x\"" }
+assert { toString(named["html"]!) == "\"<b>&</b>\"" }
+
+# JSON.decode takes a JSON value as well as a String, so walking goes one
+# level deeper by decoding a value again at the type it has there.
+let modules = JSON.decode(top["modules"]!) :: [Map[JSON!]!]!
+assert { modules.length == 1 }
+assert { modules[0]!.keys == ["name", "pin", "source"] }
+let known = ["name", "source"]
+let unknown = modules[0]!.keys.filter { k => !known.contains(k) }
+assert { unknown == ["pin"] }
+assert { (JSON.decode(modules[0]!["name"]!) :: String!) == "a" }
+assert { (JSON.decode(modules[0]!["pin"]!) :: Map[Int!]!)["rev"] == 3 }
+
+# Lists and whole documents work the same way.
+let mixed = JSON.decode("[1, \"two\", {\"three\": 3}, [4], true]") :: [JSON!]!
+assert { mixed.map { v => toString(v) } == ["1", "\"two\"", "{\"three\":3}", "[4]", "true"] }
+let whole = JSON.decode(config) :: JSON!
+assert { toString(whole) == "{\"modules\":[{\"name\":\"a\",\"pin\":{\"rev\":3},\"source\":\"./a\"}],\"version\":2}" }
+
+# Encoding embeds a JSON value as the data it holds, not as a string, so a
+# document round-trips exactly (numbers keep their digits).
+let exact = "{\"a\":[1,2.50,1e3,{\"b\":null}],\"c\":\"x\"}"
+assert { JSON.encode(JSON.decode(exact) :: JSON!) == exact }
+assert { JSON.encode(JSON.decode(exact) :: Map[JSON!]!) == exact }
+assert { JSON.encode({{wrapped: whole}}) == "{\"wrapped\":" + toString(whole) + "}" }
+assert { YAML.encode(JSON.decode("{\"k\": [1, \"v\"]}") :: Map[JSON!]!) == "k:\n    - 1\n    - v" }
+
+# A JSON field of a type takes any value too.
+type Entry {
+  name: String!
+  extra: JSON!
+}
+
+let entry = JSON.decode("{\"name\": \"e\", \"extra\": {\"deep\": [true]}}") :: Entry!
+assert { toString(entry.extra) == "{\"deep\":[true]}" }
+assert { JSON.encode(entry) == "{\"name\":\"e\",\"extra\":{\"deep\":[true]}}" }
+
+# JSON.encode's options reach inside JSON values: a cast keeps the key order
+# it was written with until sortKeys sorts it, indent lays its insides out,
+# and escapeHTML decides how its strings' <, > and & come out.
+let written: JSON! = "{\"b\": 1, \"a\": {\"d\": \"<x>\", \"c\": [2, 1]}}"
+assert { JSON.encode(written) == "{\"b\":1,\"a\":{\"d\":\"\\u003cx\\u003e\",\"c\":[2,1]}}" }
+assert { JSON.encode(written, sortKeys: true) == "{\"a\":{\"c\":[2,1],\"d\":\"\\u003cx\\u003e\"},\"b\":1}" }
+assert { JSON.encode(written, escapeHTML: false) == "{\"b\":1,\"a\":{\"d\":\"<x>\",\"c\":[2,1]}}" }
+assert { JSON.encode({{v: written}}, indent: "  ", sortKeys: true, escapeHTML: false) == "{\n  \"v\": {\n    \"a\": {\n      \"c\": [\n        2,\n        1\n      ],\n      \"d\": \"<x>\"\n    },\n    \"b\": 1\n  }\n}" }
+assert { JSON.encode(JSON.decode("{\"z\": 1.50, \"y\": 2}") :: JSON!, sortKeys: true) == "{\"y\":2,\"z\":1.50}" }
+
+# Strict decoding checks keys against a type, so it leaves a JSON value's
+# insides alone: they are data, like a Map's keys. Keys around it are still
+# checked, and a key repeated anywhere in the document, inside a JSON value
+# too, is still rejected.
+let strictEntry = JSON.decode(
+  "{\"name\": \"e\", \"extra\": {\"anything\": {\"goes\": 1, \"more\": 2}}}",
+  strict: true,
+) :: Entry!
+assert { toString(strictEntry.extra) == "{\"anything\":{\"goes\":1,\"more\":2}}" }
+let strictAny = YAML.decode("a: {b: 1}\nc: [1, 2]\n", strict: true) :: Map[JSON!]!
+assert { strictAny.keys == ["a", "c"] }
+let unknownAround = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": 1, \"typo\": 2}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { unknownAround.contains("field typo not found") }
+let repeatedInside = toString(
+  JSON.decode("{\"name\": \"e\", \"extra\": {\"k\": 1, \"k\": 2}}", strict: true) :: Entry!,
+) rescue {
+  e: Error => e.message
+}
+assert { repeatedInside.contains("field k already set") }
+
+# Walking deeper decodes again, and strict applies at the type given there.
+type Inner {
+  goes: Int!
+}
+
+let lax = JSON.decode(strictEntry.extra) :: Map[Inner!]!
+assert { lax["anything"]!.goes == 1 }
+let innerError = toString(JSON.decode(strictEntry.extra, strict: true) :: Map[Inner!]!) rescue {
+  e: Error => e.message
+}
+assert { innerError.contains("field more not found") }
+assert { (JSON.decode(strictEntry.extra, strict: true) :: Map[JSON!]!).keys == ["anything"] }
+
+# YAML and TOML decode into JSON values as well. YAML numbers that aren't
+# spelled as JSON numbers are held as the number they are.
+let fromYAML = YAML.decode("a: 1\nb: [x, y]\nmode: 0755\nhalf: -.5\nup: +1\n") :: Map[JSON!]!
+assert { toString(fromYAML["b"]!) == "[\"x\",\"y\"]" }
+assert { [fromYAML["mode"]!, fromYAML["half"]!, fromYAML["up"]!].map { v => toString(v) } == ["755", "-0.5", "1"] }
+assert { ((YAML.decode("x: .inf") :: Map[JSON!]!) rescue null) == null }
+let fromTOML = TOML.decode("[server]\nport = 8080\n") :: Map[JSON!]!
+assert { toString(fromTOML["server"]!) == "{\"port\":8080}" }
+
+# toString of a collection holding JSON values renders them as data, the way
+# JSON.encode does, and joining them joins their texts.
+let nested = JSON.decode("{\"a\": {\"b\": 1}, \"s\": \"x\"}") :: Map[JSON!]!
+assert { toString(nested) == "{\"a\":{\"b\":1},\"s\":\"x\"}" }
+assert { toString({{v: nested["a"]!}}) == "{\"v\":{\"b\":1}}" }
+assert { [nested["a"]!, nested["s"]!].join(" ") == "{\"b\":1} \"x\"" }
+assert { [named["html"]!].join("") == "\"<b>&</b>\"" }
+
+# A JSON string compares with a quoted literal.
+assert { named["s"]! == "\"x\"" }
+assert { [named["s"]!].contains("\"x\"") }
+
+# JSON null: a nullable JSON maps it to Dang null, while a non-null JSON holds
+# it as the JSON value null, so a JSON! slot takes any JSON at all.
+let maybe = JSON.decode("{\"a\": null}") :: Map[JSON]!
+assert { maybe["a"] == null }
+let held = JSON.decode("{\"a\": null}") :: Map[JSON!]!
+assert { toString(held["a"]!) == "null" }
+assert { held["a"]! == "null" }
+assert { JSON.encode(held) == "{\"a\":null}" }
+assert { toString(JSON.decode("null") :: JSON!) == "null" }
+let widened: JSON = JSON.decode("null") :: JSON!
+assert { widened == null }
+# However a nullable JSON came by it (a merge rather than a typed slot).
+let heldNull = held["a"]!
+let merged = if (true) { heldNull } else { null }
+assert { merged == null }
+assert { [heldNull, null].filter { x => x == null }.length == 2 }
+
+# A cast with a repeated key is rejected, like strict decoding, since its text
+# would not decode back strictly.
+let repeated = "{\"a\": 1, \"a\": 2}"
+assert { ((repeated :: JSON!) rescue null) == null }
+
+# A String becomes a JSON value only if it is JSON, compacted: whitespace goes,
+# while object keys keep the order they were written in. So equal data
+# compares equal however it was spaced, and a cast equals a decode.
+let text: JSON! = "{ \"ok\": true,\n  \"n\": [1, 2.50] }"
+assert { toString(text) == "{\"ok\":true,\"n\":[1,2.50]}" }
+assert { JSON.encode([text]) == "[{\"ok\":true,\"n\":[1,2.50]}]" }
+let spaced = "{\"a\": 1}"
+assert { (spaced :: JSON!) == (JSON.decode("{\"a\":1}") :: JSON!) }
+assert { (JSON.decode(spaced) :: JSON!) == "{ \"a\" : 1 }" }
+
+# Equality compares the data, not the text: key order, string escapes and
+# number spelling don't matter, while the text keeps the order written.
+let ordered = "{\"b\": 1, \"a\": \"\\u00e9\", \"n\": 1.50}"
+assert { toString(ordered :: JSON!) == "{\"b\":1,\"a\":\"\\u00e9\",\"n\":1.50}" }
+assert { (ordered :: JSON!) == (JSON.decode(ordered) :: JSON!) }
+assert { (ordered :: JSON!) == "{\"n\": 1.5, \"a\": \"é\", \"b\": 1}" }
+assert { (ordered :: JSON!) != "{\"n\": 1.5, \"a\": \"e\", \"b\": 1}" }
+assert { [ordered :: JSON!, JSON.decode(ordered) :: JSON!].uniq.length == 1 }
+
+# Cast the same way: JSON null is Dang null only where null may go.
+let nullText = "null"
+assert { (nullText :: JSON) == null }
+assert { toString(nullText :: JSON!) == "null" }
+let empty = "[]" :: JSON!
+assert { empty != "null" }
+assert { ![empty].contains("null") }
+
+takesJSON(j: JSON!): String! { toString(j) }
+
+assert { takesJSON(" [true] ") == "[true]" }
+assert { takesJSON(`{"n": ${1 + 1}}`) == "{\"n\":2}" }
+let fromList: [JSON!]! = ["1", " \"s\" "]
+assert { fromList.map { j => toString(j) } == ["1", "\"s\""] }
+
+# Text that is not JSON raises where it becomes a JSON value.
+let notJSON = "{nope"
+let castError = (notJSON :: JSON!) rescue {
+  e: Error => e.message
+}
+assert { castError == "cannot use \"{nope\" as JSON: invalid JSON: invalid character 'n' looking for beginning of object key string" }
+let twoValues = "1 2"
+assert { (takesJSON(twoValues :: JSON!) rescue "invalid") == "invalid" }
+
+print("JSON value tests passed!")

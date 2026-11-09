@@ -1,0 +1,2 @@
+let kinds = JSON.decode("{\"kind\": \"a\"}") :: Map[JSON!]!
+print(kinds["kind"]! == "a")
