@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -265,18 +266,40 @@ func (t MapType) Supertypes() []hm.Type {
 // They resolve below every scope (NamedTypeNode.Infer), like any Prelude
 // type: a declaration of the same name shadows one, and an unqualified
 // import never does. Registered once at init.
-var preludeTypes = map[string]hm.Type{}
+var preludeTypes = map[string]preludeType{}
+
+type preludeType struct {
+	typ hm.Type
+	doc string
+}
 
 // registerPreludeType registers a Prelude type that is not a module under its
-// own name.
-func registerPreludeType(t hm.Type) {
-	preludeTypes[t.Name()] = t
+// own name, with its doc string.
+func registerPreludeType(t hm.Type, doc string) {
+	preludeTypes[t.Name()] = preludeType{typ: t, doc: doc}
 }
 
 // PreludeType returns the Prelude's non-module builtin type of that name.
 func PreludeType(name string) (hm.Type, bool) {
-	t, ok := preludeTypes[name]
-	return t, ok
+	pt, ok := preludeTypes[name]
+	return pt.typ, ok
+}
+
+// PreludeTypeDoc returns the doc string of the Prelude's non-module builtin
+// type of that name.
+func PreludeTypeDoc(name string) string {
+	return preludeTypes[name].doc
+}
+
+// PreludeTypeNames lists the Prelude's non-module builtin types, sorted, for
+// tools that enumerate type names.
+func PreludeTypeNames() []string {
+	names := make([]string, 0, len(preludeTypes))
+	for name := range preludeTypes {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
 }
 
 // DecodedType is the static type of a codec decode result (JSON.decode and

@@ -238,6 +238,41 @@ func TestMembersOfTheScope(t *testing.T) {
 	}
 }
 
+func TestMembersOfThePreludeDecodedType(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope(t, membersSource)
+
+	// Decoded is a Prelude type that is not a module, so no NamedTypes
+	// lists it; the scope's members and lookups still do.
+	list, err := analysis.Members(ctx, scope, "")
+	require.NoError(t, err)
+	decoded := member(t, list, "Decoded")
+	require.Equal(t, analysis.KindType, decoded.Kind)
+	require.True(t, decoded.TypeOnly)
+	require.NotEmpty(t, decoded.Doc)
+
+	looked, ok := analysis.Lookup(scope, "Decoded")
+	require.True(t, ok)
+	require.Equal(t, "Decoded", looked.Type)
+
+	byName, err := analysis.Members(ctx, scope, "Decoded")
+	require.NoError(t, err)
+	require.Equal(t, "Decoded", byName.Type)
+	require.Empty(t, byName.Members, "decoded data is read at a type first")
+
+	// An import's namespace holds only what its schema defines.
+	_, err = analysis.Doc(ctx, scope, "Test.Decoded")
+	require.Error(t, err)
+}
+
+func TestDeclarationShadowsPreludeDecodedType(t *testing.T) {
+	scope := testScope(t, `type Decoded { raw: String! }`)
+
+	looked, ok := analysis.Lookup(scope, "Decoded")
+	require.True(t, ok)
+	require.NotNil(t, looked.Scope, "the declared type, not the Prelude's")
+}
+
 func TestDocOfStatics(t *testing.T) {
 	ctx := context.Background()
 	scope := testScope(t, membersSource)

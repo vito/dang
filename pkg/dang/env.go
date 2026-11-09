@@ -404,7 +404,7 @@ func init() {
 
 	// Decoded, the type of decoded data not yet given a type, is not a
 	// module, so it is registered beside the Prelude's objects.
-	registerPreludeType(DecodedType{})
+	registerPreludeType(DecodedType{}, "decoded data not yet given a type: any shape, read at a type by a cast or a typed slot")
 
 	// Install Error interface with message field
 	Prelude.AddObject("Error", ErrorType)

@@ -126,6 +126,18 @@ func TestFormatNamedTypeForHoverUsesTypeScope(t *testing.T) {
 	}
 }
 
+func TestFormatNamedTypeForHoverDecoded(t *testing.T) {
+	f := &File{TypeScope: dang.NewPreludeTypeScope("")}
+
+	codeBlock, docString := formatNamedTypeForHover(f, Position{}, "Decoded")
+	if codeBlock != "Decoded" {
+		t.Fatalf("unexpected code block: %q", codeBlock)
+	}
+	if docString != dang.PreludeTypeDoc("Decoded") || docString == "" {
+		t.Fatalf("doc string = %q", docString)
+	}
+}
+
 func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	imported := dang.NewType("ServerInfo", dang.ObjectKind)
 	imported.SetTypeDocString("Imported GraphQL type.")
