@@ -120,8 +120,8 @@ func (p Plugin) DangFeature(title, code booklit.Content, notes ...booklit.Conten
 // an editor that resolves `import GitHub` against GitHub's real schema from the
 // browser. Unlike DangFeature it is NOT evaluated at build time — it needs the
 // live API and a token — so it carries no baked output and runs only on demand.
-// This is the home of what used to be a standalone GitHub-playground page: the
-// example was always the point, and here it sits among the offline ones.
+// This is where the GitHub playground lives: the example is the point, and
+// here it sits among the offline ones.
 //
 //	\dang-github-feature{Live GraphQL}{{{
 //	import GitHub

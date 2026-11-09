@@ -48,10 +48,11 @@ func requireStackOverflow(t *testing.T, err error, maxDepth int) {
 	require.Contains(t, err.Error(), "stack overflow")
 }
 
-// Runaway recursion used to grow the Go stack until the runtime aborted the
-// whole process with an unrecoverable "fatal error: stack overflow". These
-// run at the default limit under a Go stack cap well below the runtime's
-// default 1 GB, so they also prove the limit trips with plenty of headroom.
+// Runaway recursion must fail with a Dang error rather than grow the Go stack
+// until the runtime aborts the whole process with an unrecoverable "fatal
+// error: stack overflow". These run at the default limit under a Go stack cap
+// well below the runtime's default 1 GB, so they also prove the limit trips
+// with plenty of headroom.
 func TestUnboundedRecursionFailsWithStackOverflow(t *testing.T) {
 	defer debug.SetMaxStack(debug.SetMaxStack(64 << 20))
 	t.Run("function", func(t *testing.T) {

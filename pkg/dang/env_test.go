@@ -582,8 +582,8 @@ func TestRunDirImportsFileLocalReachableViaClosure(t *testing.T) {
 }
 
 func TestRunDirMultipleFilesCanImportSameSchema(t *testing.T) {
-	// Both files import Test independently. With file-local imports this is
-	// no longer an alias conflict; each file gets its own Test in scope.
+	// Both files import Test independently. Imports are file-local, so this
+	// is not an alias conflict; each file gets its own Test in scope.
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),

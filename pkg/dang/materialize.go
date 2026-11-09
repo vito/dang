@@ -1514,7 +1514,7 @@ func (s *strictDecode) failed() bool {
 }
 
 // err reports every collected key, one per line, in the order materialization
-// met them: an object's own keys (sorted, since decoded objects no longer
+// met them: an object's own keys (sorted, since decoded objects don't
 // remember document order) before those of its fields, fields in declaration
 // order, list elements by index and map entries by key.
 func (s *strictDecode) err() error {

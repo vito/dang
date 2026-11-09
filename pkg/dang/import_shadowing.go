@@ -8,8 +8,8 @@ import "context"
 // which, in a single-file module, is the same frame the module's own
 // declarations go in. Hoisting can register a declaration before the import is
 // inferred, while evaluation binds the import before any declaration, so
-// whichever came first used to win, differently in the checker and at
-// runtime. Phased inference and evaluation instead tell the import which
+// letting whichever came first win would differ between the checker and the
+// runtime. Instead, phased inference and evaluation tell the import which
 // names the forms beside it declare, and it leaves them alone: the local
 // declaration always wins, in both. (A declaration after an import in a plain
 // block, inferred and evaluated in source order, replaces it; see

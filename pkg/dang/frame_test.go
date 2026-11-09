@@ -99,8 +99,8 @@ func rootLookups(t *testing.T, src string, depth int, withEvalContext bool) int6
 // Evaluation state lives in a single frame, so lookups for it stop at the
 // nearest frame instead of walking a context chain that grows with the
 // recursion. A lookup for state that is absent (no EvalContext, no stdout, no
-// force chain, ...) used to walk to the root at every node of every level of
-// recursion, making deep recursion quadratic.
+// force chain, ...) must not walk to the root at every node of every level of
+// recursion, which would make deep recursion quadratic.
 func TestRecursionDoesNotWalkToContextRoot(t *testing.T) {
 	for _, prog := range recursionPrograms {
 		for _, withEvalContext := range []bool{false, true} {

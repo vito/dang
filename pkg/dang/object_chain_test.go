@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Walking an Object's Parent chain used to recurse once per layer, so a deep
-// enough chain overflowed the Go stack (a runaway self-recursive method crashed
-// with millions of Object.Lookup frames). The walks are loops now: under a
-// small stack cap, every one of them still reaches the root of a chain far
-// deeper than that cap could hold as recursion.
+// Walking an Object's Parent chain must not recurse once per layer: a deep
+// enough chain would overflow the Go stack (a runaway self-recursive method
+// would crash with millions of Object.Lookup frames). Under a small stack cap,
+// every walk reaches the root of a chain far deeper than that cap could hold
+// as recursion.
 func TestDeepParentChainWalksAreIterative(t *testing.T) {
 	defer debug.SetMaxStack(debug.SetMaxStack(4 << 20))
 

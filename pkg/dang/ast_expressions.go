@@ -396,8 +396,8 @@ func autoCallInstantiated(t hm.Type) (hm.Type, bool, error) {
 // Returns the substitutions produced by unifying the block arg's inferred type
 // with the expected function type.
 func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Subs, error) {
-	// Get the expected block type from the function type
-	// The block type is now stored directly on the FunctionType
+	// Get the expected block type from the function type, which stores it
+	// directly
 	expectedFnType := ft.Block()
 
 	// If there's no block type, the function doesn't accept a block argument
@@ -788,8 +788,8 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 		}
 
 		// Check if this parameter is required (hm.NonNullType)
-		// With our transformation, arguments with defaults are now nullable in the signature,
-		// so only truly required arguments (without defaults) will be NonNull here
+		// Arguments with defaults are nullable in the signature, so only
+		// truly required arguments (without defaults) are NonNull here
 		if _, isNonNull := paramType.(hm.NonNullType); isNonNull {
 			return NewInferError(fmt.Errorf("missing required argument: %q", paramName), c)
 		}

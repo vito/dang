@@ -28,8 +28,8 @@ import (
 //
 // Gate syntax on a named feature method (see singleBraceSelection) defined by
 // comparing against the version that changed it, e.g. v.Before(Version2_0).
-// Dang versions are major.minor: from now on, patch releases must not change
-// the language, so a patch in `dang = "..."` is accepted and ignored. Before
+// Dang versions are major.minor: patch releases must not change the
+// language, so a patch in `dang = "..."` is accepted and ignored. Before
 // versions were declared, some did: 2.1.x patches switched inline fragment
 // bodies to double braces and replaced try/catch with postfix `rescue`. So a
 // version means the syntax of that minor's latest release, e.g. 2.1 is

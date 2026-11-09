@@ -232,7 +232,7 @@ func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope Va
 //  5. Typecheck constants
 //  6. Declare variable signatures
 //  7. Declare function signatures (without bodies)
-//  8. Typecheck types, including method/computed-field bodies (which can now
+//  8. Typecheck types, including method/computed-field bodies (which can
 //     reference variable and function signatures declared above)
 //  9. Typecheck variables in dependency order
 //  10. Typecheck function bodies last (can reference all package-level declarations)
