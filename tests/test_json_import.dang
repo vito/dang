@@ -1,16 +1,15 @@
 import Test
 
-# The imported schema defines `scalar JSON`. The format-codec merge grafts
-# encode/decode onto the imported scalar, so `Test.JSON.encode` works too, and
-# unqualified `JSON` stays the builtin (an unqualified import never shadows a
-# builtin). This is the real Dagger scenario.
+# The imported schema defines `scalar JSON`, as Dagger does. It is a separate
+# type, reached as `Test.JSON`; unqualified `JSON` stays the builtin (an
+# unqualified import never shadows a builtin), so the codec namespace is
+# unaffected.
 
 let encoded = JSON.encode([1, 2, 3])
 assert { encoded == "[1,2,3]" }
 
 let decoded = JSON.decode("[4, 5, 6]") :: [Int!]!
 assert { decoded == [4, 5, 6] }
-assert { Test.JSON.encode([7]) == "[7]" }
 
 # Unqualified, `JSON` is Dang's untyped JSON value even with the schema's JSON
 # imported: decoding into it takes any value, and encoding embeds it.
@@ -32,4 +31,4 @@ assert { toString(schemaJSON["o"]!) == "{\"k\":1}" }
 let fromServer: Test.JSON! = "{\"ok\":true}"
 assert { JSON.encode(fromServer) == "\"{\\\"ok\\\":true}\"" }
 
-print("JSON scalar import + codec merge tests passed!")
+print("JSON scalar import tests passed!")

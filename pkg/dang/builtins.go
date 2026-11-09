@@ -674,107 +674,13 @@ func StaticModules() []*Type {
 	return append([]*Type(nil), builtins.staticModules...)
 }
 
-// Dang can staple its own APIs onto a scalar by name. A builtin scalar is a
-// ScalarKind module Dang ships members for (JSON, YAML, TOML); it is installed
-// in the Prelude so its name resolves with no import. A scalar of the same
-// name that a schema imports or a user declares is grafted the identical
-// members, so the two merge rather than colliding: Dang's members ride along
-// on the other scalar. A user's declaration shadows the builtin (and, for
-// JSON, shares its value semantics); a schema's scalar doesn't, since imports
-// never shadow builtins, so the unqualified name stays the builtin and the
-// schema's scalar keeps its own values (see isJSONScalar). This is general —
-// any future builtin scalar behaves the same way.
-
-// BuiltinScalarModule returns the builtin scalar module of the given name, if
-// Dang ships one. These are the ScalarKind entries among the static modules.
-func BuiltinScalarModule(name string) (*Type, bool) {
-	for _, mod := range builtins.staticModules {
-		if mod.Kind == ScalarKind && mod.Named == name {
-			return mod, true
-		}
-	}
-	return nil, false
-}
-
-// attachBuiltinSchemes staples the type schemes of every member Dang registers
-// for a scalar of this name onto scalarType's meta-type, the type of its name,
-// so `Name.member` type-checks whether Name resolves to the builtin scalar or
-// to a same-named scalar a schema or user declared. Values of the scalar don't
-// get them: they're plain strings. No-op for non-scalars and names Dang ships
-// no API for; idempotent (skips members the namespace already declares).
-func attachBuiltinSchemes(scalarType *Type) {
-	if scalarType == nil || scalarType.Kind != ScalarKind {
-		return
-	}
-	host, ok := BuiltinScalarModule(scalarType.Named)
-	if !ok {
-		return
-	}
-	meta := scalarType.MetaType()
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		if _, exists := meta.LocalSchemeOf(def.Name); exists {
-			return
-		}
-		meta.Add(def.Name, hm.NewScheme(nil, createFunctionTypeFromDef(def)))
-		meta.SetVisibility(def.Name, PublicVisibility)
-		if def.Doc != "" {
-			meta.SetDocString(def.Name, def.Doc)
-		}
-	})
-	// Graft the builtin scalar's directives (e.g. @JSON.field / @JSON.ignore)
-	// too, so they resolve whether the scope name refers to the builtin module
-	// or to a same-named scalar a schema or user declared.
-	for name, decl := range host.directives {
-		if _, exists := scalarType.directives[name]; exists {
-			continue
-		}
-		scalarType.AddDirective(name, decl)
-	}
-}
-
-// isBuiltinScalarMember reports whether name is one of the members Dang
-// staples onto a scalar of t's name (attachBuiltinSchemes). Those are read off
-// the namespace value at runtime (attachBuiltinMethods), not from statics.
-func isBuiltinScalarMember(t *Type, name string) bool {
-	if t.Kind != ScalarKind {
-		return false
-	}
-	host, ok := BuiltinScalarModule(t.Named)
-	if !ok {
-		return false
-	}
-	found := false
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		if def.Name == name {
-			found = true
-		}
-	})
-	return found
-}
-
-// attachBuiltinMethods binds the implementations of every member Dang registers
-// for a scalar of this name onto its runtime object, so `Name.member` resolves
-// at eval. No-op for non-scalars and names Dang ships no API for.
-func attachBuiltinMethods(obj *Object, scalarType TypeScope) {
-	mod, ok := scalarType.(*Type)
-	if !ok || mod.Kind != ScalarKind {
-		return
-	}
-	host, found := BuiltinScalarModule(mod.Named)
-	if !found {
-		return
-	}
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		obj.Bind(def.Name, BuiltinFunction{
-			Name:         def.Name,
-			FnType:       createFunctionTypeFromDef(def),
-			AllDefaulted: allParamsDefaulted(def),
-			Deprecated:   def.Deprecated,
-			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-				return def.Impl(ctx, nil, Args{Values: applyDefaults(args, def)})
-			},
-		}, PublicVisibility)
-	})
+// isBuiltinStaticHost reports whether t is a module Dang registers static
+// methods on (Random, UUID, JSON, ...). Those methods are bound on the
+// module's namespace value at runtime (see the static-method loop in
+// eval.go), not on a self { } block's statics, so static-first member
+// resolution must leave them to normal receiver inference.
+func isBuiltinStaticHost(t *Type) bool {
+	return builtins.staticModuleSeen[t]
 }
 
 // DefineEnum creates an enum type with the given values and registers it

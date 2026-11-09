@@ -432,15 +432,15 @@ func init() {
 	// Register standard library builtins
 	registerStdlib()
 
-	// Install the builtin scalars (JSON/YAML/TOML) in both namespaces, like the
+	// Install the codec scalars (JSON/YAML/TOML) in both namespaces, like the
 	// modules above. They are the ScalarKind static modules registerStdlib just
-	// registered. Each is AddObject'd so `:: JSON` resolves in type position even
-	// without a schema scalar, and its name is bound to its meta-type, holding
-	// `encode`/`decode` (registerBuiltinTypes), so they resolve on the name but
-	// a JSON value is never mistaken for the namespace. A user- or
-	// schema-declared scalar of the same name shadows these and is grafted the
-	// identical members (merge, not collide), so all behave uniformly. See
-	// builtins.go: BuiltinScalarModule.
+	// registered. Each is AddObject'd so `:: JSON` resolves in type position,
+	// and its name is bound to its meta-type, holding `encode`/`decode`
+	// (registerBuiltinTypes), so they resolve on the name but a JSON value is
+	// never mistaken for the namespace. A schema's same-named scalar (e.g.
+	// Dagger's `scalar JSON`) is a separate type, reached qualified
+	// (`Dagger.JSON`); a user's `scalar JSON` shadows these in its module like
+	// any other declaration.
 	for _, mod := range StaticModules() {
 		if mod.Kind != ScalarKind {
 			continue
@@ -586,8 +586,7 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 				continue
 			}
 			// Add the scalar type as a scheme. Its name is its namespace (the
-			// meta-type), not a value of the scalar; a builtin scalar's name
-			// (e.g. an imported JSON scalar) also carries Dang's members.
+			// meta-type), not a value of the scalar.
 			var scalarScheme *hm.Scheme
 			if subMod, ok := sub.(*Type); ok {
 				scalarScheme = hm.NewScheme(nil, typeNameValueType(subMod))
@@ -596,10 +595,6 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			}
 			env.Add(t.Name, scalarScheme)
 			env.SetVisibility(t.Name, PublicVisibility)
-			// Staple Dang's members onto the scalar's namespace.
-			if scalarMod, ok := sub.(*Type); ok {
-				attachBuiltinSchemes(scalarMod)
-			}
 		}
 	}
 

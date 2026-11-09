@@ -15,13 +15,11 @@ import (
 
 // JSON, YAML, and TOML are string-shaped data-interchange formats that double as
 // their own encode/decode namespace. Each is a builtin scalar — a ScalarKind
-// module Dang ships members for. As such they are installed in the Prelude (so
-// `:: JSON` and `JSON.encode` resolve with no import), and a schema- or
-// user-declared scalar of the same name (e.g. Dagger's `scalar JSON`) merges
-// with them through the general scalar-attach mechanism in builtins.go
-// (BuiltinScalarModule / attachBuiltinSchemes / attachBuiltinMethods). As a
-// type, JSON is also Dang's untyped JSON value (see isJSONScalar), which the
-// codecs decode into and encode from. See issue #105.
+// module Dang ships static methods for — installed in the Prelude, so
+// `:: JSON` and `JSON.encode` resolve with no import. A schema's or user's
+// scalar of the same name is a separate type. As a type, JSON is also Dang's
+// untyped JSON value (see isJSONScalar), which the codecs decode into and
+// encode from. See issue #105.
 var (
 	JSONModule = NewType("JSON", ScalarKind)
 	YAMLModule = NewType("YAML", ScalarKind)
@@ -30,8 +28,7 @@ var (
 
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
 // with the builtin DSL like the Random/UUID modules. Being ScalarKind static
-// modules, they are installed in the Prelude and merge with a same-named schema
-// or user scalar automatically (see builtins.go: BuiltinScalarModule).
+// modules, they are installed in the Prelude (see env.go).
 func registerCodecs() {
 	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
 	// encode takes an arbitrary value, so it cannot live on the String type

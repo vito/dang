@@ -490,11 +490,11 @@ func isDegradableScalar(mod *Type) bool {
 }
 
 // isJSONScalar reports whether mod is Dang's JSON value type: the builtin JSON
-// scalar, or a same-named scalar a user declared, which merges with it (see
-// BuiltinScalarModule). A JSON value is untyped JSON data held as its JSON
-// text: decoding into it accepts any value, and encoding embeds it as that
-// value rather than as a string. A declared JSON with a new() hook defines its
-// own values instead, and a schema's `scalar JSON` keeps the behavior of any
+// scalar, or a same-named scalar a user declares, which takes on its value
+// semantics. A JSON value is untyped JSON data held as its JSON text:
+// decoding into it accepts any value, and encoding embeds it as that value
+// rather than as a string. A declared JSON with a new() hook defines its own
+// values instead, and a schema's `scalar JSON` keeps the behavior of any
 // schema scalar: servers disagree on its wire form (Dagger sends JSON text in
 // a string, graphql-type-json style servers send the value itself), so Dang
 // leaves its values exactly as the server sends them.
