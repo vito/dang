@@ -352,6 +352,47 @@ A scalar's `self { }` block declares statics exactly like a `type`'s (see
 Upper.of("mixed Case")
 ```
 
+### Captured environments, equality and construction
+
+A local scalar's methods and constructor keep the environment where its
+declaration was evaluated. Reads of enclosing locals are live: surrounding
+code can reassign those locals, and subsequent method calls see the new values.
+The runtime record's ownership is fixed; it does not snapshot those bindings.
+Type code still cannot write outward or call a closure that does.
+
+Equality compares the scalar's nominal type and underlying payload, **not its
+captured environment**. Equal values can therefore return different method
+results. Encoding writes the payload only; it does not serialize a closure or
+preserve its environment:
+
+```dang
+let labels = ["a", "b"].map { prefix =>
+  scalar Label {
+    new(raw: String!) { raw }
+    label: String! { prefix + toString(self) }
+  }
+  Label("!")
+}
+let firstLabel = labels[0]!
+let secondLabel = labels[1]!
+assert { firstLabel == secondLabel }
+assert { firstLabel.label == "a!" and secondLabel.label == "b!" }
+assert { JSON.encode(labels) == "[\"!\",\"!\"]" }
+```
+
+An existing scalar value can escape its declaring scope and still use its
+methods. That does not grant implicit construction there: materializing a local
+scalar with a body from a literal, `::` cast or `JSON.decode` still requires its
+declaring scope. Literal equality and `case` patterns that would materialize a
+new value have the same requirement; comparing two existing values does not.
+Plain scalar labels without bodies need no captured environment.
+
+This is construction-scope privacy, not a security or unforgeability guarantee.
+An explicitly passed constructor or factory provides construction outside that
+scope using the environment it captured. Encoding and decoding are not a way
+to transport that environment or obtain a new construction API. Objects retain
+the same scoped constructor-lookup rule for decoding.
+
 ## Built-in scalars
 
 - `Int!`, `Float!`, `String!`, `Boolean!`, `ID!` (see [#nullability])

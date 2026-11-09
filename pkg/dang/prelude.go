@@ -31,6 +31,7 @@ var (
 	// preludeConstructors are the constructors of the prelude's types, bound
 	// into every fresh value scope alongside preludeBindings.
 	preludeConstructors map[*Type]Callable
+	preludeTypeRuntimes map[*Type]*TypeRuntime
 )
 
 // PreludeModule returns the module holding the Dang-source prelude's
@@ -156,6 +157,7 @@ func loadPrelude() {
 			preludeBindings = append(preludeBindings, Keyed[Value]{Key: name, Value: val})
 		}
 		preludeConstructors = maps.Clone(scope.constructors)
+		preludeTypeRuntimes = maps.Clone(scope.typeRuntimes)
 
 		preludeModule = mod
 		preludeChain = chain

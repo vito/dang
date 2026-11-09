@@ -45,6 +45,19 @@ when the declaration order shifts.
 `InterfaceDecl.Hoist` and `ClassDecl.Hoist` follow this exact split. New
 type-like decls should too.
 
+### Declaration-only type bodies
+
+`validateObjectBodyForms` and `validateStaticForms` (`fields.go`) reject
+immediate non-declarations in object and `self { }` bodies. They reuse
+`classifyForms`, so nested types, imports and directives remain declarations.
+They do not walk into field initializers, methods or `new()` — those still
+permit actions under their existing checks. Structural validation runs in
+hoist pass 1, including the local `Infer` fallback; rejected bodies are not
+inferred again just to duplicate the error. Scalar `Infer` also takes that
+fallback, so local scalars have the same method-only instance body and static
+body validation as module scalars. No runtime traversal or initialization of
+unused local types is added.
+
 ### The "hoist vs infer timing" gotcha
 
 If forward references break, you're probably accessing a type during pass 0
@@ -471,9 +484,35 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   inside an object method would rebind to that object. Methods, by
   contrast, are forced `IsDynamic=true` in `ScalarDecl.Eval` so bare
   sibling calls redirect.
+- **Runtime state belongs to the declaring evaluation.** `TypeRuntime` records
+  live in `ValueScope`, keyed by canonical type identity like object constructors.
+  Evaluating a local declaration again creates a fresh record; it never updates
+  shared inferred `*Type` metadata. Statics resolve through that scope, falling
+  back to the owning imported module only when absent (scope-first avoids waiting
+  on module initialization during a callback).
 - **Hook runs at materialization** (`materializeStringValue` /
-  `materializeDecoded`), stored on the `*Type` (`SetScalarHook`) — written
-  once at `ScalarDecl.Eval`, frozen after.
+  `materializeDecoded`). `ScalarConstructor` retains its record rather than
+  looking it up in the caller; `ScalarValue` retains the methods for dispatch
+  after escaping its declaring scope. Records are immutable after publication,
+  but their captured scopes are not snapshots: enclosing bindings remain live
+  under the existing effect and narrowing rules.
+- **Equality is nominal type plus payload, not behavior.** The runtime record
+  is ignored by equality and encoding. Equal same-type scalar values with the
+  same payload can return different method results through different captured
+  environments; encoding retains only the payload, never that environment.
+- **Construction scope is not a security boundary.** Coercion/decode into a
+  local scalar with a body needs its declaring scope, like object decode;
+  escaping an existing value does not grant implicit construction. Literal
+  equality/case conversions need the scope too, unlike comparisons of existing
+  values. Explicitly passed constructors/factories grant construction using
+  their captured environment. Plain label scalars need no runtime environment.
+  Go-native builtin hooks/statics remain registered once on their builtin types.
+- **Module forward values don't run declarations early.** A methods-only scalar
+  materialized before its declaration retains a deferred runtime record pointing
+  to that evaluation's scope. Dispatch reads the record published there by normal
+  declaration evaluation, never the caller's scope; before publication it errors
+  without waiting. This does not defer `new()` (normalization must happen when a
+  value is created), or guess a missing local declaration's environment.
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

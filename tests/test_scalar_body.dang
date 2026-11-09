@@ -94,4 +94,33 @@ assert { (fine :: String!) == "FINE" }
 let bad = Upper("nope") rescue null
 assert { bad == null }
 
+# Local scalar statics keep nested imports usable in factory signatures.
+localFactory: String! {
+  scalar Local {
+    self {
+      import Lib
+      make: Lib.Greeter! { Lib.Greeter(name: "local") }
+    }
+  }
+  Local.make.greeting
+}
+
+assert { localFactory == "Hello, local!" }
+
+# Equality compares scalar type and payload, not the captured environment.
+# Equal values can behave differently; encoding retains only their payloads.
+let labels = ["a", "b"].map { prefix =>
+  scalar Label {
+    new(raw: String!) { raw }
+
+    label: String! { prefix + toString(self) }
+  }
+  Label("!")
+}
+let firstLabel = labels[0]!
+let secondLabel = labels[1]!
+assert { firstLabel == secondLabel }
+assert { firstLabel.label == "a!" and secondLabel.label == "b!" }
+assert { JSON.encode(labels) == "[\"!\",\"!\"]" }
+
 print("All scalar body tests passed!")

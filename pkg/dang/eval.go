@@ -92,6 +92,10 @@ type ValueScope interface {
 	BindConstructor(t *Type, c Callable)
 	// LookupConstructor resolves t's constructor through the scope chain.
 	LookupConstructor(t *Type) (Callable, bool)
+	// Runtime type state belongs to the evaluation declaring the type, not
+	// the shared inferred type. Records are immutable after publication.
+	BindTypeRuntime(t *Type, runtime *TypeRuntime)
+	LookupTypeRuntime(t *Type) (*TypeRuntime, bool)
 	// Dynamic scope support for 'self'.
 	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -138,6 +142,7 @@ func (c InputObjectConstructor) Call(ctx context.Context, scope ValueScope, args
 // mirroring how a type's name doubles as its constructor.
 type ScalarConstructor struct {
 	ScalarType *Type
+	Runtime    *TypeRuntime
 	FnType     *hm.FunctionType
 	ArgName    string
 }
@@ -155,14 +160,14 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 	if !ok {
 		return nil, fmt.Errorf("%s: argument %q must be String!, got %T", c.ScalarType.Named, c.ArgName, args[c.ArgName])
 	}
-	// The hook lives on the type (set before this constructor was built), so
-	// this handles both Dang new() and Go-native hooks uniformly.
-	v, hooked, err := applyScalarHook(ctx, scope, c.ScalarType, raw.Val)
+	// A first-class constructor always keeps its declaring environment, even
+	// when called from another module or another invocation of its function.
+	v, hooked, err := applyScalarRuntime(ctx, scope, c.ScalarType, c.Runtime, raw.Val)
 	if err != nil {
 		return nil, err
 	}
 	if !hooked {
-		return ScalarValue{Val: raw.Val, ScalarType: c.ScalarType}, nil
+		return ScalarValue{Val: raw.Val, ScalarType: c.ScalarType, Runtime: c.Runtime}, nil
 	}
 	return v, nil
 }
@@ -172,6 +177,14 @@ func (c ScalarConstructor) Call(ctx context.Context, scope ValueScope, args map[
 // ScalarValue. ok is false when the scalar has no hook and the caller should
 // wrap raw unchanged.
 func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, raw string) (v Value, ok bool, err error) {
+	runtime, err := scalarRuntimeForMaterialization(ctx, scope, scalarType)
+	if err != nil {
+		return nil, true, err
+	}
+	return applyScalarRuntime(ctx, scope, scalarType, runtime, raw)
+}
+
+func applyScalarRuntime(ctx context.Context, scope ValueScope, scalarType *Type, runtime *TypeRuntime, raw string) (v Value, ok bool, err error) {
 	if hook := scalarType.GoScalarHook(); hook != nil {
 		canonical, err := hook(raw)
 		if err != nil {
@@ -179,9 +192,14 @@ func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, ra
 		}
 		return ScalarValue{Val: canonical, ScalarType: scalarType}, true, nil
 	}
-	if hook, argName, ok := scalarType.ScalarHook(); ok {
-		v, err := runScalarHook(ctx, scope, scalarType, hook, argName, raw)
-		return v, true, err
+	if runtime != nil {
+		if runtime.hasScalarHook {
+			v, err := runScalarHook(ctx, scope, scalarType, runtime, raw)
+			return v, true, err
+		}
+		// A methods-only scalar still needs its declaring environment carried
+		// by the value, even though there is no normalization to perform.
+		return ScalarValue{Val: raw, ScalarType: scalarType, Runtime: runtime}, true, nil
 	}
 	return nil, false, nil
 }
@@ -189,8 +207,8 @@ func applyScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, ra
 // runScalarHook runs a scalar's new() hook on raw and wraps the resulting
 // canonical string into a ScalarValue. Shared by the derived constructor and
 // materialization (literals, casts, decode).
-func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, hook FunctionValue, argName, raw string) (Value, error) {
-	result, err := hook.Call(ctx, scope, map[string]Value{argName: StringValue{Val: raw}})
+func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, runtime *TypeRuntime, raw string) (Value, error) {
+	result, err := runtime.scalarHook.Call(ctx, scope, map[string]Value{runtime.scalarHookArg: StringValue{Val: raw}})
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +216,7 @@ func runScalarHook(ctx context.Context, scope ValueScope, scalarType *Type, hook
 	if !ok {
 		return nil, fmt.Errorf("%s new() must produce String!, got %T", scalarType.Named, result)
 	}
-	return ScalarValue{Val: str.Val, ScalarType: scalarType}, nil
+	return ScalarValue{Val: str.Val, ScalarType: scalarType, Runtime: runtime}, nil
 }
 
 // GraphQLFunction represents a GraphQL API function that makes actual calls
@@ -505,6 +523,9 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	}
 	for t, c := range preludeConstructors {
 		builtinsFrame.BindConstructor(t, c)
+	}
+	for t, runtime := range preludeTypeRuntimes {
+		builtinsFrame.BindTypeRuntime(t, runtime)
 	}
 
 	return builtinsFrame.Derive(false)
@@ -1617,6 +1638,9 @@ type ScalarValue struct {
 	// produces it, and a String must validate to become one.
 	Val        string
 	ScalarType hm.Type
+	// Runtime retains methods from the evaluation that materialized this
+	// value. It is not part of nominal identity, equality or wire encoding.
+	Runtime *TypeRuntime
 	// Encoded marks a scalar whose GraphQL value is not a string (a number,
 	// object, list or boolean): Val holds its JSON, which is sent back to
 	// the server as that same value and reads as the JSON text in String
@@ -2409,6 +2433,7 @@ type Object struct {
 	// Imported types are not bound here: constructorFor finds them in their
 	// home module's scope. See BindConstructor.
 	constructors map[*Type]Callable
+	typeRuntimes map[*Type]*TypeRuntime
 
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
 	// Its effective parent is not Parent but the current value of its `self`
@@ -2729,6 +2754,31 @@ func (m *Object) LookupConstructor(t *Type) (Callable, bool) {
 	return nil, false
 }
 
+func (m *Object) BindTypeRuntime(t *Type, runtime *TypeRuntime) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.typeRuntimes == nil {
+		m.typeRuntimes = make(map[*Type]*TypeRuntime)
+	}
+	m.typeRuntimes[canonicalModule(t)] = runtime
+}
+
+func (m *Object) LookupTypeRuntime(t *Type) (*TypeRuntime, bool) {
+	t = canonicalModule(t)
+	cell := m.dynamicScope
+	for o := m; o != nil; {
+		o.mu.Lock()
+		runtime, ok := o.typeRuntimes[t]
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		if ok {
+			return runtime, true
+		}
+		o = parent
+	}
+	return nil, false
+}
+
 func (m *Object) visibilityFrom(name string, cell *DynamicScope) Visibility {
 	for o := m; o != nil; {
 		o.mu.Lock()
@@ -2856,6 +2906,12 @@ func (m *Object) snapshotReceiver() *Object {
 				snap.constructors = make(map[*Type]Callable)
 			}
 			snap.constructors[t] = c
+		}
+		for t, runtime := range f.typeRuntimes {
+			if snap.typeRuntimes == nil {
+				snap.typeRuntimes = make(map[*Type]*TypeRuntime)
+			}
+			snap.typeRuntimes[t] = runtime
 		}
 		f.mu.Unlock()
 	}
@@ -3007,6 +3063,7 @@ func (m *Object) cowCopy() *Object {
 		IsForked:     m.IsForked,
 		dynamicScope: m.dynamicScope,
 		constructors: maps.Clone(m.constructors),
+		typeRuntimes: maps.Clone(m.typeRuntimes),
 	}
 	m.mu.Unlock()
 	if next.Values == nil {

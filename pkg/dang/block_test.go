@@ -1,11 +1,14 @@
 package dang
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // Evaluation classifies an object body after inference has wrapped each typed
@@ -49,4 +52,118 @@ type Counter {
 	require.Equal(t, []string{"next", "doubled"}, names(classified.Functions))
 	require.Equal(t, []string{"total"}, names(classified.Variables))
 	require.Equal(t, []string{"start", "step"}, names(classified.Constants))
+}
+
+func TestDeclarationOnlyTypeBodies(t *testing.T) {
+	for _, body := range []string{
+		`print("action")`, `assert { true }`, `42`,
+		`if (true) { 1 }`, `loop { break }`, `n = 2`, `n += 1`,
+	} {
+		for _, owner := range []string{"type", "scalar"} {
+			for _, static := range []bool{false, true} {
+				for _, local := range []bool{false, true} {
+					name := fmt.Sprintf("%s/static=%t/local=%t/%s", owner, static, local, body)
+					t.Run(name, func(t *testing.T) {
+						members := "n: Int! = 0; " + body
+						want := "type bodies may only contain declarations"
+						if owner == "scalar" {
+							members = body
+							want = "scalar bodies may only declare methods"
+						}
+						if static {
+							members = "self { n: Int! = 0; " + body + " }"
+							want = "self { } bodies may only contain declarations"
+						}
+						src := owner + " T { " + members + " }"
+						if local {
+							src = "unused: Int! { " + src + "; 0 }"
+						}
+						require.Contains(t, inferWithEffects(t, src), want)
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestLocalScalarBodyValidation(t *testing.T) {
+	runEffectCases(t, []effectCase{
+		{"stored field", `unused: Int! { scalar S { n: Int! = 1 }; 0 }`, "must be a method"},
+		{"nested instance type", `unused: Int! { scalar S { type T {} }; 0 }`, "scalar bodies may only declare methods"},
+		{"nested self", `unused: Int! { scalar S { self { self {} } }; 0 }`, "self { } cannot be nested"},
+		{"static new", `unused: Int! { scalar S { self { new { self } } }; 0 }`, "new() cannot appear inside a self { } block"},
+		{"static forward factory", `run: Int! {
+			scalar S {
+				self {
+					make: Nested! { Nested() }
+					type Nested { n: Int! = 2 }
+				}
+			}
+			S.make.n
+		}`, ""},
+		{"local constructor and statics", `run: String! {
+			scalar S {
+				new(s: String!) { s.toUpper }
+				label: String! { toString(self) }
+				self { type Nested { n: Int! = 2 }; count: Int! = 1 }
+			}
+			S("ok").label
+		}`, ""},
+	})
+}
+
+func TestTypeBodyValidationOnCachedAST(t *testing.T) {
+	for _, src := range []string{
+		`unused: Int! { type T { print("bad") }; 0 }`,
+		`unused: Int! { type T { n: Int! = 0; n = 1 }; 0 }`,
+		`unused: Int! { scalar S { n: Int! = 0 }; 0 }`,
+		`unused: Int! { scalar S { self { print("bad") } }; 0 }`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			parsed, err := ParseWithRecovery("cached_type_body", []byte(src))
+			require.NoError(t, err)
+			file := parsed.(*FileBlock)
+			for i := 0; i < 2; i++ {
+				typeScope, _ := BuildScopesFromImports("", nil)
+				err := InferDirectoryFilesFocused(context.Background(), []*FileBlock{file}, file, typeScope, hm.NewSimpleFresher())
+				require.Error(t, err, "analysis %d must retain the structural diagnostic", i)
+				require.Regexp(t, "may only contain declarations|must be a method", err.Error())
+			}
+		})
+	}
+}
+
+func TestTypeDeclarationActions(t *testing.T) {
+	const src = `
+unused: Int! {
+  type Dormant {
+    self { let initialized: Int! = { print("unused"); 0 } }
+    value: Int! = { print("unused default"); 0 }
+  }
+  0
+}
+type Active {
+  value: Int! = { print("default"); 1 }
+  new() { print("new"); self }
+  self {
+    constant: Int! = 2
+    make: Active! { Active() }
+  }
+}
+print("start")
+Active()
+Active.make
+print(Active.constant)
+`
+	parsed, err := ParseWithRecovery("type_actions", []byte(src))
+	require.NoError(t, err)
+	file := parsed.(*FileBlock)
+	typeScope, valueScope := BuildScopesFromImports("", nil)
+	_, err = InferTopLevel(context.Background(), file.Forms, typeScope, hm.NewSimpleFresher())
+	require.NoError(t, err)
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	_, err = EvaluateFormsWithPhases(ctx, file.Forms, valueScope)
+	require.NoError(t, err)
+	require.Equal(t, "start\ndefault\nnew\ndefault\nnew\n2\n", out.String())
 }

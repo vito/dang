@@ -575,6 +575,10 @@ type ObjectDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
+	bodyInvalid       bool // structural error already reported by Hoist
+
+	// Scope hoisting to an inference run, not the lifetime of a cached AST.
+	bodyHoistedIn *effectSolver
 
 	ctorFn *FunctionBase
 }
@@ -833,9 +837,18 @@ func staticForms(block *Block) []Node {
 	return forms
 }
 
-// validateStaticForms rejects forms that may not appear inside a self { } block:
-// a nested self { } (one meta level only) and new() (construction is not a
-// static). Called once, during hoisting, so the error is reported a single time.
+// validateObjectBodyForms checks only the body's immediate forms. A declaration
+// initializer may contain actions; declaration-only does not mean effect-free.
+func validateObjectBodyForms(block *Block) error {
+	for _, form := range classifyForms(formsWithoutNew(block)).NonDeclarations {
+		return NewInferError(fmt.Errorf("type bodies may only contain declarations; move constructor actions into new() { ...; self }"), form)
+	}
+	return validateStaticForms(block)
+}
+
+// validateStaticForms rejects statements, nested self { }, and new() inside
+// static bodies. Declarations' initializers and method bodies are not restricted
+// by this structural check.
 func validateStaticForms(block *Block) error {
 	for _, sb := range selfBlocksIn(block) {
 		if sb.BodyBlock == nil {
@@ -848,6 +861,9 @@ func validateStaticForms(block *Block) error {
 			case *NewConstructorDecl:
 				return NewInferError(fmt.Errorf("new() cannot appear inside a self { } block"), form)
 			}
+		}
+		for _, form := range classifyForms(sb.BodyBlock.Forms).NonDeclarations {
+			return NewInferError(fmt.Errorf("self { } bodies may only contain declarations; move actions into a static method or a field initializer"), form)
 		}
 	}
 	return nil
@@ -870,6 +886,23 @@ func hoistStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 	// self inside a static resolves to the type-object (the statics namespace).
 	meta.SetDynamicScopeType(hm.NonNullType{Type: meta})
 	metaScope := &OverlayTypeScope{primary: meta, lexical: env.(TypeScope)}
+	// Static factories may return imported or later-declared nested types.
+	// Resolve imports and register names before any member signature resolves
+	// annotations, just as the full phased body inference does.
+	classified := classifyForms(forms)
+	ctx = withLocalDecls(ctx, forms)
+	for _, form := range classified.Imports {
+		if _, err := form.Infer(ctx, metaScope, fresh); err != nil {
+			return err
+		}
+	}
+	for _, form := range classified.Types {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, metaScope, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
 	for _, form := range forms {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, metaScope, fresh, 0); err != nil {
@@ -910,8 +943,8 @@ func inferStatics(ctx context.Context, instanceType *Type, block *Block, env hm.
 }
 
 // evalStatics evaluates a type's static members into a fresh statics namespace
-// object (whose module is the meta-type) and records it on the type. Static
-// methods share the block's closure so bare sibling statics resolve, and self
+// object (whose module is the meta-type) in the declaring scope. Static methods
+// share the block's closure so bare sibling statics resolve, and self
 // resolves to the statics namespace. Runs during the enclosing declaration's
 // Eval. A no-op when the type declares no statics.
 func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope ValueScope) error {
@@ -919,14 +952,20 @@ func evalStatics(ctx context.Context, instanceType *Type, block *Block, scope Va
 	if len(forms) == 0 {
 		return nil
 	}
-	meta := instanceType.MetaType()
+	// Do not create or mutate inferred metadata during evaluation.
+	meta := instanceType.meta
 	statics := NewObject(meta)
 	staticsScope := CreateOverlayValueScope(statics, scope)
 	staticsScope.EnterSelf(statics)
 	if _, err := EvaluateFormsWithPhases(ctx, forms, staticsScope); err != nil {
 		return err
 	}
-	instanceType.SetStatics(statics)
+	runtime := TypeRuntime{statics: statics}
+	if previous, ok := scope.LookupTypeRuntime(instanceType); ok {
+		runtime = *previous
+		runtime.statics = statics
+	}
+	scope.BindTypeRuntime(instanceType, &runtime)
 	return nil
 }
 
@@ -995,6 +1034,13 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
 	mod.SetVisibility(c.Name.Name, c.Visibility)
+
+	c.bodyHoistedIn, _ = ctx.Value(effSolverKey{}).(*effectSolver)
+	if err := validateObjectBodyForms(c.Value); err != nil {
+		c.bodyInvalid = true
+		return err
+	}
+	c.bodyInvalid = false
 
 	// Link the implementation after all interface type names have been
 	// registered by pass 0.
@@ -1069,10 +1115,16 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Function bodies infer declarations in source order rather than through
 	// the module's hoisting phases. Initialize local constructor and member
 	// signatures before inferring their bodies as well.
-	if c.ConstructorFnType == nil {
+	solver, _ := ctx.Value(effSolverKey{}).(*effectSolver)
+	if c.ConstructorFnType == nil || (solver != nil && c.bodyHoistedIn != solver) {
 		if err := c.Hoist(ctx, env, fresh, 1); err != nil {
 			return nil, err
 		}
+	}
+	if c.bodyInvalid {
+		// Hoist reported the structural error; do not infer rejected actions
+		// or duplicate that diagnostic in the resilient body phase.
+		return c.ConstructorFnType, nil
 	}
 
 	object, declareErr := declareLocalType(ctx, mod, c.Name.Name, ObjectKind)
@@ -1652,6 +1704,11 @@ type ScalarDecl struct {
 
 	Inferred          *Type
 	ConstructorFnType *hm.FunctionType // set when the body declares new()
+	bodyHoisted       bool
+	bodyInvalid       bool // structural error already reported by Hoist
+
+	// Scope hoisting to an inference run, not the lifetime of a cached AST.
+	bodyHoistedIn *effectSolver
 }
 
 var _ Node = &ScalarDecl{}
@@ -1706,7 +1763,7 @@ func (s *ScalarDecl) validateScalarBodyForms() error {
 					f,
 				)
 			}
-			if _, isFun := f.Value.(*FunDecl); !isFun {
+			if f.funDecl() == nil {
 				return NewInferError(
 					fmt.Errorf("scalar member %q must be a method; scalars carry no fields beyond their underlying string", f.Name.Name),
 					f,
@@ -1832,6 +1889,8 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
+	scalarType.scalarNeedsRuntime = s.Value != nil
+	scalarType.scalarHasHook = findNewConstructorIn(s.Value) != nil
 
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
@@ -1862,9 +1921,17 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return nil
 	}
 
+	s.bodyHoisted = true
+	s.bodyHoistedIn, _ = ctx.Value(effSolverKey{}).(*effectSolver)
 	if err := s.validateScalarBodyForms(); err != nil {
+		s.bodyInvalid = true
 		return err
 	}
+	if err := validateStaticForms(s.Value); err != nil {
+		s.bodyInvalid = true
+		return err
+	}
+	s.bodyInvalid = false
 
 	inferTypeScope := &OverlayTypeScope{
 		primary: scalarType,
@@ -1910,6 +1977,18 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
+	}
+
+	// Local declarations bypass the module's hoisting phases. Run pass 1
+	// here too, including scalar/static body validation and signatures.
+	solver, _ := ctx.Value(effSolverKey{}).(*effectSolver)
+	if s.Value != nil && (!s.bodyHoisted || (solver != nil && s.bodyHoistedIn != solver)) {
+		if err := s.Hoist(ctx, env, fresh, 1); err != nil {
+			return nil, err
+		}
+	}
+	if s.bodyInvalid {
+		return s.Inferred, nil
 	}
 
 	scalarType, declareErr := declareLocalType(ctx, mod, s.Name.Name, ScalarKind)
@@ -1973,11 +2052,12 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		newDecl := findNewConstructorIn(s.Value)
+		runtime := &TypeRuntime{}
 
 		var evalScope ValueScope
 		if s.Value != nil {
-			// Evaluate method members into a methods object hung off the *Type,
-			// where Select.Eval dispatches them for ScalarValue receivers. The
+			// Evaluate method members into this declaration's runtime record,
+			// retained by ScalarValue receivers for Select.Eval dispatch. The
 			// members' shared closure overlays the methods object itself, so
 			// sibling methods see each other by bare name.
 			methods := NewObject(s.Inferred)
@@ -1995,7 +2075,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 					methods.Bind(kv.Key, fnVal, PublicVisibility)
 				}
 			}
-			s.Inferred.SetScalarMethods(methods)
+			runtime.scalarMethods = methods
 		}
 
 		// evalScalarStatics evaluates the self { } members into the scalar's
@@ -2023,10 +2103,14 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 				Closure: evalScope,
 				FnType:  hm.NewFnType(hookArgs, hm.NonNullType{Type: StringType}),
 			}
-			s.Inferred.SetScalarHook(hook, argName)
+			runtime.scalarHook = hook
+			runtime.scalarHookArg = argName
+			runtime.hasScalarHook = true
+			scope.BindTypeRuntime(s.Inferred, runtime)
 
 			ctor := ScalarConstructor{
 				ScalarType: s.Inferred,
+				Runtime:    runtime,
 				FnType:     s.ConstructorFnType,
 				ArgName:    argName,
 			}
@@ -2040,6 +2124,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// No constructor: the scalar's name binds its namespace object. A
 		// scalar whose name matches a builtin scalar (e.g. JSON) doubles as
 		// that scalar's namespace: bind Dang's members onto its runtime object.
+		scope.BindTypeRuntime(s.Inferred, runtime)
 		scalarModule := NewObject(s.Inferred)
 		attachBuiltinMethods(scalarModule, s.Inferred)
 		scope.Bind(s.Name.Name, scalarModule, s.Visibility)
@@ -2050,7 +2135,9 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 		// statics (see Hoist), so as a value it is the statics namespace:
 		// `let ns = Tag; ns.sep` reads it. A builtin scalar's members ride
 		// along.
-		if statics := s.Inferred.Statics(); statics != nil {
+		if statics, err := staticsFor(ctx, scope, s.Inferred); err != nil {
+			return nil, err
+		} else if statics != nil {
 			attachBuiltinMethods(statics, s.Inferred)
 			scope.Bind(s.Name.Name, statics, s.Visibility)
 			return statics, nil

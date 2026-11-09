@@ -116,6 +116,9 @@ func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, er
 	}
 	if isLiteralExpr(value) || containsDegradableScalar(have) {
 		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
+			if err := checkScalarCoercion(env, have.Apply(coerceSubs).(hm.Type), want.Apply(coerceSubs).(hm.Type)); err != nil {
+				return nil, NewInferError(err, value)
+			}
 			if err := checkEnumLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
 				return nil, err
 			}
@@ -238,6 +241,56 @@ func assignableDecoded(have, want hm.Type) bool {
 	return false
 }
 
+// checkScalarCoercion only checks newly materialized values. A scalar already
+// made in its declaring scope carries its runtime and may escape freely.
+func checkScalarCoercion(env hm.Env, have, want hm.Type) error {
+	// Matching collections have the same scalar-scope requirements as their
+	// elements. Descend before asking Assignable about the remaining types:
+	// checking every whole subtree repeats work at each nesting level. This
+	// helper checks scope, not nullability/type compatibility (checked by the
+	// caller); keep the original leaf and union assignability rules below.
+	for {
+		if elem, ok := listElementTarget(want); ok {
+			if source, ok := listElementTarget(have); ok {
+				have, want = source, elem
+				continue
+			}
+		}
+		if elem, ok := mapValueTarget(want); ok {
+			if source, ok := mapValueTarget(have); ok {
+				have, want = source, elem
+				continue
+			}
+		}
+		break
+	}
+	if _, err := hm.Assignable(have, want); err == nil {
+		return nil
+	}
+	have, want = unwrapNonNull(have), unwrapNonNull(want)
+	if union, ok := want.(*hm.UnionType); ok {
+		for _, option := range union.Options {
+			if _, err := hm.AssignableWithCoercion(have, option); err == nil {
+				if err := checkScalarCoercion(env, have, option); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if mod, ok := want.(*Type); ok && mod.Kind == ScalarKind {
+		return checkScalarRuntimeScope(env, canonicalModule(mod))
+	}
+	return nil
+}
+
+func checkScalarRuntimeScope(env hm.Env, mod *Type) error {
+	if mod.scalarNeedsRuntime && mod.localFrame != nil && !envEncloses(env, mod.localFrame) {
+		return fmt.Errorf("cannot materialize scalar %s here: its declaring function, block or type body does not enclose this code; use a value or constructor captured there", mod.Name())
+	}
+	return nil
+}
+
 // checkDecodeTarget rejects decoding into want at a site inferred in env when
 // materializing want would construct an object type the site cannot reach: a
 // type declared in a function, block or type body (Type.localFrame) whose
@@ -301,6 +354,15 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 			return nil
 		}
 		mod := canonicalModule(v)
+		if mod.Kind == ScalarKind {
+			if err := checkScalarRuntimeScope(env, mod); err != nil {
+				if via != "" {
+					return fmt.Errorf("cannot decode %s: %w", via, err)
+				}
+				return err
+			}
+			return nil
+		}
 		if seen[mod] || mod.Kind != ObjectKind {
 			return nil
 		}
@@ -1221,7 +1283,7 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 				return jsonScalarFromRaw(raw, mod, path)
 			}
 			s, ok := raw.(string)
-			if !ok && mod.SourceSchema != nil && !mod.hasScalarHook && mod.goScalarHook == nil {
+			if !ok && mod.SourceSchema != nil && !mod.scalarNeedsRuntime && mod.goScalarHook == nil {
 				// A GraphQL scalar's value may be any JSON (see
 				// graphQLResultToValue), so its encoded form decodes back.
 				encoded, err := json.Marshal(raw)
