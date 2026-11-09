@@ -536,6 +536,12 @@ func (e valueEncoder) encode(val Value) (any, error) {
 	switch v := val.(type) {
 	case NullValue:
 		return nil, nil
+	case DeferredValue:
+		// Decoded data is a neutral tree already: embed it as the data it
+		// is, under its own keys, whichever format decoded it (field
+		// directives belong to types, and this data has none). Its copy has
+		// canonical numbers, and YAML/TOML may rewrite it in place.
+		return canonicalDecoded(v)
 	case *Object:
 		var entries []jsonEntry
 		for _, kv := range e.objectBindings(v) {

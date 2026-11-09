@@ -119,3 +119,8 @@ let badMerge = (YAML.decode("a:\n  <<: 5") :: Map[Map[Int!]!]!) rescue {
   err: Error => err.message
 }
 assert { badMerge == "YAML.decode: invalid YAML: a: <<: merge value must be a mapping or a sequence of mappings" }
+
+# Decoded data that never got a type encodes its numbers as the numbers they
+# are, however YAML spelled them.
+assert { JSON.encode(YAML.decode("h: -.5\nup: +1\nmode: 0755")) == "{\"h\":-0.5,\"mode\":755,\"up\":1}" }
+assert { YAML.encode(YAML.decode("h: -.5")) == "h: -0.5" }
