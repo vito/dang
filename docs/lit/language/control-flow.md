@@ -116,8 +116,9 @@ case (1 + 1) {
 ```
 
 Provably dead clauses are rejected at compile time: nothing may follow an
-`else`, and a *type pattern* (below) that repeats an earlier one — or is
-already covered by an earlier interface pattern — is an error:
+`else`, and a *type pattern* (below) that repeats an earlier one — or that an
+earlier pattern already covers, such as an interface pattern its type
+implements — is an error:
 
 ```dang-failure
 case (1) {

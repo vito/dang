@@ -154,7 +154,9 @@ a `String` arm after a scalar arm, which takes every string, or an object
 arm after `Map[Decoded!]`), and a type reads only the fields it
 declares (an object with extra keys still matches, unless the decode was
 strict). A `x: Decoded` arm takes any data as it is, and so can stand in for
-`else`. Null data matches no other type arm. On a nullable `Decoded` operand
+`else`. An arm of a schema's scalar without a body matches any data too,
+since such a scalar holds data of any shape (see [#enums-scalars]). Null data
+matches no other type arm. On a nullable `Decoded` operand
 null is the operand itself being null, so it goes only to a `null` arm or
 `else`, and a `Decoded` arm stands in for `else` together with a `null` arm;
 on `Decoded!`, null data goes to a `Decoded` arm or `else`.
