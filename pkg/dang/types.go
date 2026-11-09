@@ -30,10 +30,24 @@ func (t *NamedTypeNode) ReferencedSymbols() []string {
 
 type UnresolvedTypeError struct {
 	Name string
+	// Qualifier is the spelling of the namespace a qualified name was looked
+	// up in (`Test` for `Test.Path`), or empty.
+	Qualifier string
 }
 
 func (e UnresolvedTypeError) Error() string {
+	if e.Qualifier != "" {
+		return fmt.Sprintf("type %q not found in %s", e.Name, e.Qualifier)
+	}
 	return fmt.Sprintf("unresolved type: %s", e.Name)
+}
+
+// spelling spells the type name as written, qualifiers included.
+func (t *NamedTypeNode) spelling() string {
+	if t.Base != nil {
+		return t.Base.spelling() + "." + t.Name
+	}
+	return t.Name
 }
 
 func (t *NamedTypeNode) GetSourceLocation() *SourceLocation {
@@ -57,7 +71,10 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		s, found := typeScope.NamedType(t.Name)
 		if !found {
-			return nil, UnresolvedTypeError{t.Name}
+			if t.Base != nil {
+				return nil, UnresolvedTypeError{Name: t.Name, Qualifier: t.Base.spelling()}
+			}
+			return nil, UnresolvedTypeError{Name: t.Name}
 		}
 		return s, nil
 	})
