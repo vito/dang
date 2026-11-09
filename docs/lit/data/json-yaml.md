@@ -126,9 +126,14 @@ format's field names, and strictly if the decode was strict (see
 [#strict-decoding]).
 
 To branch on what decoded data holds, `case` on it with type patterns. An
-arm matches when the data materializes at its type, and the first match
-wins. Lists and maps can be patterns too, for decoded data only. Since any
-data may match none of the arms, `else` is required:
+arm matches when the data has its type's shape: the right kind of value
+(number, string, boolean, list, map or object), and for an object every key
+the type requires, all the way down. Matching runs none of your code; only
+the matching arm's data is then converted, exactly like a cast, so a
+constructor that raises or a scalar's `new()` that rejects the data is an
+error of the `case`, not a reason to try the next arm. The first matching
+arm wins. Lists and maps can be patterns too, for decoded data only. Since
+any data may match none of the arms, `else` is required:
 
 ```dang
 kind(d: Decoded!): String! {
@@ -145,10 +150,9 @@ kind(d: Decoded!): String! {
 
 Order the arms from most to least specific: `1` is an `Int` and a `Float`, and
 a type reads only the fields it declares (an object with extra keys still
-matches, unless the decode was strict). A type whose constructor raises for
-the data doesn't match it. Null data matches no type arm: it goes to `else`,
-a `x: Decoded` arm (which takes any data as it is, and so can stand in for
-`else`), or, on a nullable `Decoded` operand, a `null` arm.
+matches, unless the decode was strict). Null data matches no type arm: it
+goes to `else`, a `x: Decoded` arm (which takes any data as it is, and so
+can stand in for `else`), or, on a nullable `Decoded` operand, a `null` arm.
 
 Decoding works for primitives, lists, maps (`Map[T]`, from an object),
 records, your own types ([#objects]), and enums ([#enums-scalars]). Decoded

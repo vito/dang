@@ -100,4 +100,64 @@ let held = case (holder["a"]!) {
 
 assert { held == "null data" }
 
+# Matching looks only at the data's shape and runs no user code; only the
+# matching arm converts, like a cast, so its errors are the case's errors.
+type Pos {
+  n: Int!
+
+  new(n: Int!) {
+    if (n < 0) {
+      raise "negative"
+    }
+    self.n = n
+    self
+  }
+}
+
+type Label {
+  text: String!
+}
+
+classify(d: Decoded!): String! {
+  case (d) {
+    p: Pos => `pos ${p.n}`
+    l: Label => `label ${l.text}`
+    else => "other"
+  }
+}
+
+assert { classify(JSON.decode("{\"text\": \"hi\"}")) == "label hi" }
+assert { classify(JSON.decode("{\"n\": 3}")) == "pos 3" }
+let raised = classify(JSON.decode("{\"n\": -3, \"text\": \"x\"}")) rescue {
+  e: Error => e.message
+}
+
+assert { raised.contains("negative") }
+
+# A custom scalar arm matches any string; its hook rejecting the string is an
+# error, not a fall-through.
+scalar Upper {
+  new(raw: String!) {
+    if (raw != raw.toUpper) {
+      raise `not upper: ${raw}`
+    }
+    raw
+  }
+}
+
+shout(d: Decoded!): String! {
+  case (d) {
+    u: Upper => `upper ${u}`
+    else => "not a string"
+  }
+}
+
+assert { shout(JSON.decode("\"HI\"")) == "upper HI" }
+assert { shout(JSON.decode("1")) == "not a string" }
+let rejected = shout(JSON.decode("\"hi\"")) rescue {
+  e: Error => e.message
+}
+
+assert { rejected.contains("not upper: hi") }
+
 print("case on Decoded tests passed!")

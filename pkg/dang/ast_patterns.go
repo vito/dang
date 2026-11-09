@@ -611,18 +611,17 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() && clause.decodedPatternType != nil {
-				// Decoded data matches when it materializes at the
-				// pattern's type; the first such clause wins.
+				// Decoded data matches an arm by its shape alone, which runs
+				// no user code; the first matching arm's data is then
+				// materialized like a cast, and its errors (a scalar hook
+				// rejecting the data, a constructor raising) are the case's.
 				data, ok := typedVal.(DeferredValue)
-				if !ok {
+				if !ok || !decodedShapeMatches(ctx, scope, data, clause.decodedPatternType) {
 					continue
 				}
 				matched, err := materializeDeferred(ctx, scope, data, clause.decodedPatternType, "")
 				if err != nil {
-					if ctx.Err() != nil {
-						return nil, ctx.Err()
-					}
-					continue
+					return nil, err
 				}
 				childScope := scope.Derive(false)
 				childScope.Bind(clause.Binding, matched, PrivateVisibility)
