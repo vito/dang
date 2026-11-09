@@ -443,6 +443,13 @@ type MigrateOptions struct {
 type MigrationPlan struct {
 	// Projects lists the projects to migrate.
 	Projects []*ProjectMigration
+	// Undeclared lists the directories of the projects of source under root
+	// whose version nothing declares (that of a dang.toml without a `dang`
+	// key, or root for the source no dang.toml governs), which were read as
+	// MigrateOptions.UndeclaredFrom, or else as CurrentVersion. Without
+	// UndeclaredFrom they have nothing to migrate, even if they are really
+	// written for an older Dang, so callers can point that out.
+	Undeclared []string
 }
 
 // PlanMigrations plans migrating every project under root, a directory, to
@@ -470,6 +477,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 	type project struct {
 		configPath string
 		from       Version
+		undeclared bool
 		files      []string
 	}
 	projects := map[string]*project{}
@@ -480,6 +488,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 	ungoverned := &project{
 		configPath: filepath.Join(root, "dang.toml"),
 		from:       undeclaredFrom,
+		undeclared: true,
 	}
 	result := &MigrationPlan{}
 
@@ -514,10 +523,11 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 				p = projects[configPath]
 				if p == nil {
 					from := config.Dang
-					if from.IsZero() {
+					undeclared := from.IsZero()
+					if undeclared {
 						from = undeclaredFrom
 					}
-					p = &project{configPath: configPath, from: from}
+					p = &project{configPath: configPath, from: from, undeclared: undeclared}
 					projects[configPath] = p
 				}
 			}
@@ -542,6 +552,9 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 
 	for _, configPath := range configPaths {
 		p := projects[configPath]
+		if p.undeclared {
+			result.Undeclared = append(result.Undeclared, filepath.Dir(configPath))
+		}
 		if !p.from.Before(to) {
 			continue
 		}

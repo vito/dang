@@ -59,6 +59,22 @@ func TestMigrateFile(t *testing.T) {
 		assert.Equal(t, "loop { break }\n", out)
 	})
 
+	t.Run("points a project declaring no version at --from", func(t *testing.T) {
+		dir := filepath.Join(root, "unpinned")
+		write("unpinned/dang.toml", "")
+		write("unpinned/main.dang", oldSource)
+		out, err := migrate("--to", "2.1", dir)
+		require.NoError(t, err)
+		assert.Contains(t, out, dir+": declares no Dang version, so it is read as Dang")
+		assert.Contains(t, out, "migrate it with --from")
+		assert.Contains(t, out, "nothing to migrate")
+
+		out, err = migrate("--from", "2.0", "--to", "2.1", dir)
+		require.NoError(t, err)
+		assert.NotContains(t, out, "declares no Dang version")
+		assert.Contains(t, out, "Dang 2.0 -> 2.1")
+	})
+
 	t.Run("-w refuses a file", func(t *testing.T) {
 		write("refused/dang.toml", "dang = \"2.0\"\n")
 		file := write("refused/main.dang", oldSource)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -41,6 +42,8 @@ that predates the key; migrating then records the new version, creating a
 dang.toml if there is none. --from applies to all of it under the given
 directories: the source no dang.toml governs and every dang.toml without a
 ` + "`dang`" + ` key. Projects whose dang.toml declares a version migrate from it.
+Without --from, migrate lists the projects that declare no version, since
+nothing can tell an older Dang's source among them but you.
 
 Migration rewrites syntax. Code that a newer version rejects for other
 reasons (e.g. a stricter type check) is left for you to fix; run the
@@ -128,17 +131,28 @@ func runMigrate(cmd *cobra.Command, dirs []string, to dang.Version, opts dang.Mi
 	// migrate a project twice.
 	var plans []*dang.ProjectMigration
 	seen := map[string]bool{}
+	var undeclared []string
 	for _, dir := range dirs {
 		dirPlan, err := dang.PlanMigrations(dir, to, opts)
 		if err != nil {
 			return err
 		}
+		undeclared = append(undeclared, dirPlan.Undeclared...)
 		for _, plan := range dirPlan.Projects {
 			if seen[plan.ConfigPath] {
 				continue
 			}
 			seen[plan.ConfigPath] = true
 			plans = append(plans, plan)
+		}
+	}
+
+	if opts.UndeclaredFrom.IsZero() {
+		// Such source may be written for an older Dang, from before it
+		// declared its version; only the user can say so.
+		slices.Sort(undeclared)
+		for _, dir := range slices.Compact(undeclared) {
+			_, _ = fmt.Fprintf(out, "%s: declares no Dang version, so it is read as Dang %s; if it is written for an older one, migrate it with --from\n", dir, dang.CurrentVersion)
 		}
 	}
 
@@ -194,6 +208,7 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 		from = config.Dang
 	} else if from.IsZero() {
 		from = dang.CurrentVersion
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: declares no Dang version, so it is read as Dang %s; if it is written for an older one, preview it with --from\n", file, from)
 	}
 	if !from.Before(to) {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: nothing to migrate: it is Dang %s, not older than %s\n", file, from, to)

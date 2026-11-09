@@ -346,11 +346,15 @@ func TestPlanMigrations(t *testing.T) {
 			filepath.Join(mod, "declared", "dang.toml"): Version1_0,
 			filepath.Join(mod, "tools", "dang.toml"):    Version2_0,
 		}, froms)
+		assert.Equal(t, []string{mod, filepath.Join(mod, "tools")}, result.Undeclared)
 
-		// Without --from, only the declared project is older.
-		plans := planProjects(t, mod, Version2_1, MigrateOptions{})
-		require.Len(t, plans, 1)
-		assert.Equal(t, filepath.Join(mod, "declared", "dang.toml"), plans[0].ConfigPath)
+		// Without --from, only the declared project is older, and the
+		// others are listed, as they may be written for an older Dang.
+		result, err = PlanMigrations(mod, Version2_1, MigrateOptions{})
+		require.NoError(t, err)
+		require.Len(t, result.Projects, 1)
+		assert.Equal(t, filepath.Join(mod, "declared", "dang.toml"), result.Projects[0].ConfigPath)
+		assert.Equal(t, []string{mod, filepath.Join(mod, "tools")}, result.Undeclared)
 	})
 }
 
