@@ -71,13 +71,30 @@ assert {
   )[0].hasPrefix("[1]: invalid JSON: ")
 }
 
-# A comparison with a string never raises: a literal is checked when the
-# comparison is, and other text the scalar rejects compares as that text,
-# which no JSON! value holds.
+# A computed string compared with a value of the scalar converts to it, so it
+# is validated then, raising if the scalar rejects it, in a comparison and a
+# case pattern alike. (A literal is checked at compile time.)
 let empty = ""
-assert { j != `${empty}` }
-assert { (j == `${openBrace}`) == false }
 assert { ("[1]" :: JSON!) == `[${1}]` }
+assert {
+  (
+    toString(j == `${empty}`) rescue {
+      e: Error! => e.message
+    }
+  ) == "invalid JSON: EOF"
+}
+assert {
+  (
+    (
+      case (j) {
+        `${empty}` => "empty"
+        else => "other"
+      }
+    ) rescue {
+      e: Error! => e.message
+    }
+  ) == "invalid JSON: EOF"
+}
 
 # encode still returns a String!; decode takes the text, a String! or a value
 # of the scalar (which degrades to it), and returns Decoded data.

@@ -1,0 +1,10 @@
+[1m[31mError:[0m "PASSD" is not a value of Status; expected one of PASSED, FAILED
+  [2m[34m--> errors/enum_template_literal_typo.dang:7:20[0m
+ [2m    |[0m
+ [2m  5 | let status = Status.PASSED[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0massert { status == `PASSD` }
+[2m                          [31m^^^^^^^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

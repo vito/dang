@@ -1,0 +1,11 @@
+[1m[31mError:[0m invalid JSON: unexpected EOF
+  [2m[34m--> errors/json_case_literal_invalid.dang:7:3[0m
+ [2m    |[0m
+ [2m  5 | let kind = case (j) {[0m
+ [2m  6 |   "[1]" => "one"[0m
+ [2m[34m[1m  7 | [0m  "[" => "broken"
+[2m         [31m^^^[0m
+ [2m  8 |   else => "other"[0m
+ [2m  9 | }[0m
+ [2m    |[0m
+

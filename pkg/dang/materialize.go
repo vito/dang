@@ -28,13 +28,6 @@ type Coerce struct {
 	// (scalarCastable): their values become Target's scalars first (see
 	// convertScalars).
 	ConvertScalars bool
-
-	// Compared is set on a string operand compared with a scalar or enum
-	// (checkComparable). A comparison only asks whether the two are equal,
-	// so text the target rejects (`j == ""` for a JSON! j) stays the string
-	// it is and compares as that text, which no value validated as the
-	// target holds, rather than raising.
-	Compared bool
 }
 
 var _ Node = (*Coerce)(nil)
@@ -72,11 +65,7 @@ func (c *Coerce) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				return nil, err
 			}
 		}
-		converted, err := materializeValue(ctx, scope, val, c.Target, c.Path)
-		if err != nil && c.Compared && !isCancelled(err) && evalCancelled(ctx) == nil {
-			return val, nil
-		}
-		return converted, err
+		return materializeValue(ctx, scope, val, c.Target, c.Path)
 	})
 }
 
@@ -469,9 +458,10 @@ func containsDecoded(t hm.Type) bool {
 // new() hook (GoScalarHook: Regexp, JSON, YAML, TOML) rejects it. Its
 // value is known statically, and such a hook is a pure function of the text,
 // so there is no need to wait for materialization to fail at runtime. It
-// follows the literal through lists, maps and a block's tail; anything else
-// (a template, a union slot, a scalar with a Dang-defined new()) is left to
-// runtime validation.
+// follows the literal (a quoted string or a template with no interpolations)
+// through lists, maps and a block's tail; anything else (a computed string, a
+// union slot, a scalar with a Dang-defined new()) is validated when it
+// converts at runtime.
 func checkLiterals(value Node, want hm.Type) error {
 	switch t := want.(type) {
 	case hm.NonNullType:
@@ -497,28 +487,50 @@ func checkLiterals(value Node, want hm.Type) error {
 		if t.Kind != EnumKind && (t.Kind != ScalarKind || hook == nil) {
 			return nil
 		}
-		switch v := value.(type) {
-		case *String:
-			if t.Kind == EnumKind {
-				if !enumHasValue(t, v.Value) {
-					return NewInferError(
-						fmt.Errorf("%q is not a value of %s; expected one of %s",
-							v.Value, t, strings.Join(enumValueNames(t), ", ")),
-						v,
-					)
-				}
-				return nil
+		if b, ok := value.(*Block); ok {
+			if len(b.Forms) > 0 {
+				return checkLiterals(b.Forms[len(b.Forms)-1], want)
 			}
-			if _, err := hook(v.Value); err != nil {
-				return NewInferError(err, v)
+			return nil
+		}
+		text, ok := literalText(value)
+		if !ok {
+			return nil
+		}
+		if t.Kind == EnumKind {
+			if !enumHasValue(t, text) {
+				return NewInferError(
+					fmt.Errorf("%q is not a value of %s; expected one of %s",
+						text, t, strings.Join(enumValueNames(t), ", ")),
+					value,
+				)
 			}
-		case *Block:
-			if len(v.Forms) > 0 {
-				return checkLiterals(v.Forms[len(v.Forms)-1], want)
-			}
+			return nil
+		}
+		if _, err := hook(text); err != nil {
+			return NewInferError(err, value)
 		}
 	}
 	return nil
+}
+
+// literalText returns the text of a string literal: a quoted string, or a
+// template with no interpolations (`` `PASSED` ``).
+func literalText(n Node) (string, bool) {
+	switch v := n.(type) {
+	case *String:
+		return v.Value, true
+	case *Template:
+		if !v.IsLiteralOnly() {
+			return "", false
+		}
+		var text strings.Builder
+		for _, p := range v.Parts {
+			text.WriteString(p.Lit)
+		}
+		return text.String(), true
+	}
+	return "", false
 }
 
 // enumValueNames lists an enum's values in declaration order.

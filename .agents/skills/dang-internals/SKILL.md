@@ -521,12 +521,13 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   (keeping the text, and `Encoded`, when it has none). A hint may be inferred
   more than once (an unannotated field), so it decides the cast from the
   expression under its own `Coerce` every time.
-- **Literals are checked statically, comparisons never raise.**
-  `checkLiterals` (call args, typed slots, `::`, `==`) rejects a string
-  literal an enum doesn't name, or one a builtin scalar's Go-native hook
-  rejects (a pure function of the text; a Dang `new()` is never run at
-  inference). A template compared with a scalar or enum is a `Coerce` marked
-  `Compared`: text the target rejects stays a String and compares as text.
+- **Literals are checked statically; computed strings at runtime.**
+  `checkLiterals` (call args, typed slots, `::`, `==`/`!=`, `case` value
+  patterns) rejects a string literal — quoted, or a template with no
+  interpolations (`literalText`) — that an enum doesn't name or a builtin
+  scalar's Go-native hook rejects (a pure function of the text; a Dang
+  `new()` is never run at inference). A computed string converts at runtime
+  and raises when the target rejects it, in every one of those places alike.
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

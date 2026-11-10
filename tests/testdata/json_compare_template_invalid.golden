@@ -1,0 +1,10 @@
+[1m[31mError:[0m invalid JSON: unexpected EOF
+  [2m[34m--> errors/json_compare_template_invalid.dang:6:15[0m
+ [2m    |[0m
+ [2m  4 | let open = "["[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0massert { j != `${open}` }
+[2m                     [31m^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

@@ -1,0 +1,6 @@
+# A computed string compared with a JSON! value is validated when it converts,
+# raising if it isn't JSON text.
+let j = ("[1]" :: JSON!)
+let open = "["
+
+assert { j != `${open}` }
