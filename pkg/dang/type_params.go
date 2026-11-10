@@ -293,6 +293,9 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 // whatever types its callers pick, within the interface's own bounds, so
 // they are made rigid once, bounded as the interface declares them, and the
 // method must fit every argument, its block and its return type at once.
+// As hm's function assignability does, each part is fitted on its own,
+// their substitutions composed, and every part checked again under the
+// combination, so the outcome doesn't depend on the arguments' order.
 // That rejects an implementation that is less general than the interface:
 // `best(x: String!, ...)` for `best(x: a!, ...)`, one that takes the same
 // type for two of the interface's variables (`(x: a!, y: a!)` for `(x: a!,
@@ -308,56 +311,65 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 	if !ok {
 		return nil
 	}
-	var impl hm.Type = implFn
-	fit := func(have, want hm.Type) error {
-		subs, err := hm.Assignable(have, want)
-		if err != nil {
-			return err
-		}
-		impl = impl.Apply(subs).(hm.Type)
+	implArgs, ok := implFn.Arg().(*RecordType)
+	if !ok {
 		return nil
 	}
-	implArg := func(key string) (hm.Type, bool) {
-		rec, ok := impl.(*hm.FunctionType).Arg().(*RecordType)
-		if !ok {
-			return nil, false
-		}
-		s, ok := rec.SchemeOf(key)
-		if !ok {
-			return nil, false
-		}
-		t, _ := s.Type()
-		return t, true
+
+	// A part of the method: values of type from must fit to, and report
+	// says why not.
+	type part struct {
+		from, to hm.Type
+		report   func(error) error
 	}
+	var parts []part
 	for _, arg := range ifaceArgs.Fields {
-		have, _ := arg.Value.Type()
-		want, ok := implArg(arg.Key)
+		iface, _ := arg.Value.Type()
+		s, ok := implArgs.SchemeOf(arg.Key)
 		if !ok {
 			continue // reported by the variance checks
 		}
-		if err := fit(have, want); err != nil {
+		impl, _ := s.Type()
+		key := arg.Key
+		parts = append(parts, part{iface, impl, func(err error) error {
 			if be, ok := boundError(err); ok {
 				return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass %s for %s",
-					fieldName, arg.Key, be, callersPass(be), have)
+					fieldName, key, be, callersPass(be), iface)
 			}
 			return fmt.Errorf("field %q, argument %q: type %s doesn't fit interface type %s for every type the interface's callers pick",
-				fieldName, arg.Key, want, have)
-		}
+				fieldName, key, impl, iface)
+		}})
 	}
-	if ifaceBlock, implBlock := rigid.Block(), impl.(*hm.FunctionType).Block(); ifaceBlock != nil && implBlock != nil {
-		if err := fit(ifaceBlock, implBlock); err != nil {
+	if ifaceBlock, implBlock := rigid.Block(), implFn.Block(); ifaceBlock != nil && implBlock != nil {
+		parts = append(parts, part{ifaceBlock, implBlock, func(err error) error {
 			if be, ok := boundError(err); ok {
 				return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
 					fieldName, be, FormatType(ifaceFn.Block()))
 			}
 			return fmt.Errorf("field %q, block argument: type %s doesn't fit interface block type %s for every type the interface's callers pick",
 				fieldName, implBlock, ifaceBlock)
+		}})
+	}
+	implRet, ifaceRet := implFn.Ret(false), rigid.Ret(false)
+	parts = append(parts, part{implRet, ifaceRet, func(error) error {
+		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s for every type the interface's callers pick",
+			fieldName, implRet, ifaceRet)
+	}})
+
+	subs := hm.NewSubs()
+	for _, p := range parts {
+		s, err := hm.Assignable(p.from, p.to)
+		if err != nil {
+			return p.report(err)
+		}
+		if subs, err = subs.Compose(s); err != nil {
+			return p.report(err)
 		}
 	}
-	implRet := impl.(*hm.FunctionType).Ret(false)
-	if err := fit(implRet, rigid.Ret(false)); err != nil {
-		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s for every type the interface's callers pick",
-			fieldName, implRet, rigid.Ret(false))
+	for _, p := range parts {
+		if _, err := hm.Assignable(p.from.Apply(subs).(hm.Type), p.to.Apply(subs).(hm.Type)); err != nil {
+			return p.report(err)
+		}
 	}
 	return nil
 }

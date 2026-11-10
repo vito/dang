@@ -179,6 +179,26 @@ useRanker(r: Ranker!): [String!]! {
 assert { useRanker(Highest) == ["b", "ccc", "bb", "a"] }
 assert { useRanker(First) == ["a", "bb", "a", "ccc"] }
 
+# An implementation is checked as a whole, whatever its arguments' order
+interface NullableSecond {
+  pick(x: String!, y: String): String
+}
+
+type EitherSecond implements NullableSecond {
+  pick(x: a, y: a): a { x ?? y }
+}
+
+interface NullableFirst {
+  pick(y: String, x: String!): String
+}
+
+type EitherFirst implements NullableFirst {
+  pick(y: a, x: a): a { x ?? y }
+}
+
+assert { EitherSecond.pick("a", null) == "a" }
+assert { EitherFirst.pick(null, "b") == "b" }
+
 # A nested function sees the enclosing function's bounded parameter
 clamp[a: Ordered](x: a!, lo: a!, hi: a!): a! {
   atLeast(v: a!): a! {
