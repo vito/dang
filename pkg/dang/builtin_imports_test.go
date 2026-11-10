@@ -104,6 +104,65 @@ func TestDeclareDirImportsAreFileLocal(t *testing.T) {
 	}
 	require.Equal(t, IntValue{Val: 42}, call("fromModule"))
 	require.Equal(t, StringValue{Val: "- 1"}, call("fromBuiltin"))
+
+	// A declaration's file scope, where its directive arguments can name the
+	// file's imports, is reachable by name, for declarations that keep no
+	// closure of their own (an interface).
+	scope := DeclarationScope(env, "fromModule")
+	yamlVal, found := requireEvalGet(t, scope, "YAML")
+	require.True(t, found)
+	_, found = requireEvalGet(t, yamlVal.(ValueScope), "x")
+	require.True(t, found, "a.dang's YAML is the module")
+	scope = DeclarationScope(env, "fromBuiltin")
+	yamlVal, found = requireEvalGet(t, scope, "YAML")
+	require.True(t, found)
+	_, found = requireEvalGet(t, yamlVal.(ValueScope), "encode")
+	require.True(t, found, "b.dang's YAML is the builtin")
+	require.Same(t, env, DeclarationScope(env, "missing"))
+}
+
+func TestDeclarationScopeResolvesInterfaceDirectiveImports(t *testing.T) {
+	// An interface keeps no closure, so its methods' directive arguments,
+	// which may name the file's imports, are evaluated in its declaration
+	// scope.
+	root := t.TempDir()
+	for name, source := range map[string]string{
+		".git/HEAD":    "",
+		"dang.toml":    "[imports.Lib]\npath = \"./lib\"\n",
+		"lib/lib.dang": "enum Level { HIGH LOW }\n",
+		"main.dang": `import Lib
+
+directive @meta(level: Lib.Level!) on FIELD_DEFINITION
+
+interface Greeter {
+  pub greet: String! @meta(level: Lib.Level.HIGH)
+}
+`,
+	} {
+		path := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(source), 0o600))
+	}
+	ctx := context.Background()
+
+	env, err := DeclareDir(ctx, root, false)
+	require.NoError(t, err)
+
+	greeterVal, found := requireEvalGet(t, env, "Greeter")
+	require.True(t, found)
+	greeter := greeterVal.(*Object).Mod.(*Type)
+	if greeter.IsMeta() {
+		greeter = greeter.InstanceType()
+	}
+	directives := greeter.GetDirectives("greet")
+	require.Len(t, directives, 1)
+	arg := directives[0].Args[0].Value
+
+	_, err = EvalNode(ctx, env, arg)
+	require.Error(t, err, "the module scope holds no imports")
+	level, err := EvalNode(ctx, DeclarationScope(env, "Greeter"), arg)
+	require.NoError(t, err)
+	require.Equal(t, "HIGH", level.(EnumValue).Val)
 }
 
 func TestUnqualifiedImportKeepsBuiltinImport(t *testing.T) {

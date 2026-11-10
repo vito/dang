@@ -2385,6 +2385,11 @@ type Object struct {
 	// its mark. Guarded by mu.
 	importNamespaces map[string]bool
 
+	// declScopes maps the top-level declarations of a directory module, on
+	// its module frame, to the scope of the file declaring each: the module
+	// scope with that file's imports (see DeclarationScope). Guarded by mu.
+	declScopes map[string]ValueScope
+
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
 	// Its effective parent is not Parent but the current value of its `self`
 	// cell, so bare field reads see the latest copy-on-write generation of
@@ -3862,7 +3867,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 	valueScope := newDirectoryValueScope(typeScope)
 	fileScopes := make([]ValueScope, len(blocks))
 	for i, block := range blocks {
-		imports, _ := partitionImports(block.Forms)
+		imports, rest := partitionImports(block.Forms)
 		importsScope := valueScope.Derive(true)
 		installBuiltinImportValues(importsScope)
 		for _, imp := range imports {
@@ -3871,6 +3876,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 			}
 		}
 		fileScopes[i] = CreateOverlayValueScope(valueScope, importsScope)
+		recordDeclarationScopes(valueScope, rest, fileScopes[i])
 	}
 	for i, block := range blocks {
 		_, rest := partitionImports(block.Forms)
@@ -3966,6 +3972,41 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 	return valueScope, nil
 }
 
+// DeclarationScope returns the scope the top-level declaration name of a
+// directory module was evaluated in, given the module's scope as RunDir,
+// DeclareDir, LoadDir (Module.ValueEnv) or PreparedDirectory.Evaluate
+// returns it: the module's scope with the imports of the file declaring
+// name. A module's imports are file-local, so this is the scope to evaluate
+// a declaration's directive arguments in when they may name an import. For
+// any other name or scope, it returns scope itself.
+func DeclarationScope(scope ValueScope, name string) ValueScope {
+	if module, ok := scope.(*Object); ok {
+		module.mu.Lock()
+		file, found := module.declScopes[name]
+		module.mu.Unlock()
+		if found {
+			return file
+		}
+	}
+	return scope
+}
+
+// recordDeclarationScopes records, on a directory module's frame, the file
+// scope each of the file's forms is declared in (see DeclarationScope).
+func recordDeclarationScopes(module ValueScope, forms []Node, file ValueScope) {
+	frame, ok := module.(*Object)
+	if !ok {
+		return
+	}
+	frame.mu.Lock()
+	defer frame.mu.Unlock()
+	for _, form := range forms {
+		for _, name := range form.DeclaredSymbols() {
+			setIn(&frame.declScopes, name, file)
+		}
+	}
+}
+
 // evaluateDirectoryFiles evaluates each file's forms with file-local imports
 // composed over the shared valueScope, mirroring InferDirectoryFiles' per-file
 // scoping. Phases run in lockstep across files so cross-file references resolve
@@ -4010,6 +4051,7 @@ func evaluateDirectory(ctx context.Context, blocks []*FileBlock, valueScope Valu
 		}
 
 		composite := CreateOverlayValueScope(valueScope, importsScope)
+		recordDeclarationScopes(valueScope, rest, composite)
 		fileScopes = append(fileScopes, fileEvalScope{
 			classified: classifyForms(rest),
 			scope:      composite,
