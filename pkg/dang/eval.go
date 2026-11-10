@@ -4001,6 +4001,11 @@ func recordDeclarationScopes(module ValueScope, forms []Node, file ValueScope) {
 	frame.mu.Lock()
 	defer frame.mu.Unlock()
 	for _, form := range forms {
+		// Directives have a namespace of their own, so a directive mustn't
+		// take the entry of a value or type of the same name.
+		if _, isDirective := form.(*DirectiveDecl); isDirective {
+			continue
+		}
 		for _, name := range form.DeclaredSymbols() {
 			setIn(&frame.declScopes, name, file)
 		}

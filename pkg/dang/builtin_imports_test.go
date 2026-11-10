@@ -78,7 +78,7 @@ func TestDeclareDirImportsAreFileLocal(t *testing.T) {
 		"dang.toml":      "[imports.YAML]\npath = \"./yaml\"\n",
 		"yaml/yaml.dang": "x: Int! = 42\n",
 		"a.dang":         "import YAML\n\npub fromModule: Int! { YAML.x }\n",
-		"b.dang":         "pub fromBuiltin: String! { YAML.encode([1]) }\n",
+		"b.dang":         "pub fromBuiltin: String! { YAML.encode([1]) }\n\ndirective @fromModule on FIELD_DEFINITION\n",
 	} {
 		path := filepath.Join(root, name)
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
@@ -107,7 +107,8 @@ func TestDeclareDirImportsAreFileLocal(t *testing.T) {
 
 	// A declaration's file scope, where its directive arguments can name the
 	// file's imports, is reachable by name, for declarations that keep no
-	// closure of their own (an interface).
+	// closure of their own (an interface). A directive of the same name in
+	// another file has a namespace of its own and doesn't take its place.
 	scope := DeclarationScope(env, "fromModule")
 	yamlVal, found := requireEvalGet(t, scope, "YAML")
 	require.True(t, found)
