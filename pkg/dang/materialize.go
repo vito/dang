@@ -23,6 +23,11 @@ type Coerce struct {
 	Expr   Node
 	Target hm.Type
 	Path   string
+
+	// ConvertScalars is set on an explicit cast between custom scalars
+	// (scalarCastable): their values become Target's scalars first (see
+	// convertScalars).
+	ConvertScalars bool
 }
 
 var _ Node = (*Coerce)(nil)
@@ -53,6 +58,12 @@ func (c *Coerce) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		val, err := EvalNode(ctx, scope, c.Expr)
 		if err != nil {
 			return nil, err
+		}
+		if c.ConvertScalars {
+			val, err = convertScalars(ctx, scope, val, c.Target, c.Path)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return materializeValue(ctx, scope, val, c.Target, c.Path)
 	})
@@ -527,6 +538,84 @@ func containsDegradableScalar(t hm.Type) bool {
 	default:
 		return false
 	}
+}
+
+// scalarCastable reports whether an explicit cast (`x :: T`) may convert a
+// value of type have to want by turning custom scalars into other custom
+// scalars: every custom scalar is text underneath (ScalarValue), so its text
+// can become any other's, through that one's new() hook like a String's
+// (`j :: Dagger.JSON!`, `d :: JSON!`). The two match through non-null, list
+// and map wrappers, and the cast may not drop nullability. This is for
+// explicit casts only: at a value handoff, distinct scalars never mix.
+func scalarCastable(have, want hm.Type) bool {
+	switch w := want.(type) {
+	case hm.NonNullType:
+		h, ok := have.(hm.NonNullType)
+		return ok && scalarCastable(h.Type, w.Type)
+	case ListType:
+		h, ok := unwrapNonNull(have).(ListType)
+		return ok && scalarCastable(h.Type, w.Type)
+	case MapType:
+		h, ok := unwrapNonNull(have).(MapType)
+		return ok && scalarCastable(h.Type, w.Type)
+	case *Type:
+		h, ok := unwrapNonNull(have).(*Type)
+		return ok && isDegradableScalar(h) && isDegradableScalar(w)
+	}
+	return false
+}
+
+// convertScalars converts the custom scalar values in val to the scalars
+// target names, for an explicit cast between them (scalarCastable). A value
+// of another scalar becomes one of target's through target's new() hook, as
+// its text would from a String; without a hook it keeps its text, and how
+// it is held (ScalarValue.Encoded). Lists and maps convert element by
+// element; materializeValue does the rest.
+func convertScalars(ctx context.Context, scope ValueScope, val Value, target hm.Type, path string) (Value, error) {
+	switch v := val.(type) {
+	case ScalarValue:
+		mod, ok := unwrapNonNull(target).(*Type)
+		if !ok || !isDegradableScalar(mod) || v.ScalarType == mod {
+			return val, nil
+		}
+		converted, hooked, err := applyScalarHook(ctx, scope, mod, v.Val)
+		if err != nil {
+			return nil, materializeError(path, "%s", err.Error())
+		}
+		if !hooked {
+			converted = ScalarValue{Val: v.Val, ScalarType: mod, Encoded: v.Encoded}
+		}
+		return converted, nil
+	case ListValue:
+		elemTarget, ok := listElementTarget(target)
+		if !ok {
+			return val, nil
+		}
+		elements := make([]Value, len(v.Elements))
+		for i, elem := range v.Elements {
+			converted, err := convertScalars(ctx, scope, elem, elemTarget, joinIndexPath(path, i))
+			if err != nil {
+				return nil, err
+			}
+			elements[i] = converted
+		}
+		return ListValue{Elements: elements, ElemType: v.ElemType}, nil
+	case MapValue:
+		valTarget, ok := mapValueTarget(target)
+		if !ok {
+			return val, nil
+		}
+		entries := make(map[string]Value, len(v.Entries))
+		for _, k := range v.Keys {
+			converted, err := convertScalars(ctx, scope, v.Entries[k], valTarget, joinKeyPath(path, k))
+			if err != nil {
+				return nil, err
+			}
+			entries[k] = converted
+		}
+		return MapValue{Keys: append([]string{}, v.Keys...), Entries: entries, ValType: v.ValType}, nil
+	}
+	return val, nil
 }
 
 // diagnoseAssignment expands an hm.Assignable failure into a detailed

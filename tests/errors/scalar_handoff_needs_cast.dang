@@ -1,0 +1,9 @@
+# Distinct scalars never mix at a handoff; convert with an explicit cast
+# (`b :: Doc!`).
+scalar Blob
+
+scalar Doc
+
+keep(d: Doc!): Doc! { d }
+
+keep(("[]" :: Blob!))

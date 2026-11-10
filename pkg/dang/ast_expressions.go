@@ -3718,6 +3718,11 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 				return nil, NewInferError(decodeErr, t.Expr)
 			}
 		}
+		convertScalars := false
+		if err != nil && scalarCastable(exprType, hintType) {
+			subs, err = hm.NewSubs(), nil
+			convertScalars = true
+		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 		}
@@ -3725,6 +3730,9 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		result := hintType.Apply(subs).(hm.Type)
 		t.SetInferredType(result)
 		t.Expr = wrapCoerce(t.Expr, result, "")
+		if c, ok := t.Expr.(*Coerce); ok {
+			c.ConvertScalars = convertScalars
+		}
 		return result, nil
 	})
 }
