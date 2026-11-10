@@ -636,8 +636,8 @@ var (
 )
 
 // isBuiltinValueName reports whether NewValueScope binds name in its
-// builtins frame: a builtin function, an alias of one, a static module, or a
-// binding of the Dang-source prelude.
+// builtins frame: a builtin function, an alias of one, or a binding of the
+// Dang-source prelude.
 func isBuiltinValueName(name string) bool {
 	builtinValueNamesOnce.Do(func() {
 		frame := NewObject(Prelude)
@@ -686,12 +686,12 @@ func StaticModules() []*Type {
 }
 
 // shadowedPreludeMemberHint explains a member missing from local, a type
-// declared or imported under a name the Prelude also binds, when what the
-// Prelude binds there has it: the local declaration shadows the builtin.
-// hasType reports whether the Prelude's type of that name has the member,
-// and hasValue whether the module a Prelude value of that name is (a
-// namespace such as JSON) has it. It returns "" otherwise. Only the error
-// path calls it.
+// declared or imported under a name the Prelude or a builtin import also
+// binds, when what it binds there has it: the local declaration
+// shadows the builtin. hasType reports whether the Prelude's type of that
+// name has the member, and hasValue whether the module a Prelude value or
+// builtin import of that name is (a namespace such as JSON) has it. It
+// returns "" otherwise. Only the error path calls it.
 func shadowedPreludeMemberHint(local *Type, hasType, hasValue func(*Type) bool) string {
 	if local == nil || local.Named == "" {
 		return ""
@@ -708,6 +708,9 @@ func shadowedPreludeMemberHint(local *Type, hasType, hasValue func(*Type) bool) 
 				found = true
 			}
 		}
+	}
+	if mod, ok := builtinImport(local.Named); ok && !found && mod != local && hasValue(mod) {
+		found = true
 	}
 	if !found {
 		return ""

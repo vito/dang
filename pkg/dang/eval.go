@@ -507,7 +507,15 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 		builtinsFrame.BindConstructor(t, c)
 	}
 
-	return builtinsFrame.Derive(false)
+	// The builtin imports sit between the builtins and the program, like the
+	// type scope's (see NewPreludeTypeScope). The frame is the builtins' too,
+	// as far as copy-on-write and scope listings go: no generations of the
+	// program's frames live there.
+	importsFrame := builtinsFrame.Derive(false).(*Object)
+	importsFrame.builtins = true
+	installBuiltinImportValues(importsFrame)
+
+	return importsFrame.Derive(false)
 }
 
 // ValueScopeFromSchema creates the value namespace of a schema import: the
@@ -800,53 +808,6 @@ func addBuiltinFunctions(scope ValueScope) {
 			methodKey := GetMethodKey(receiverType, def.Name)
 			scope.Bind(methodKey, builtinFn, PrivateVisibility)
 		})
-	}
-
-	// Register static methods on their host modules
-	for _, hostModule := range StaticModules() {
-		modValue := NewObject(hostModule)
-		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
-			fnType := createFunctionTypeFromDef(def)
-			builtinFn := BuiltinFunction{
-				Name:         def.Name,
-				FnType:       fnType,
-				AllDefaulted: allParamsDefaulted(def),
-				Deprecated:   def.Deprecated,
-				CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-					argsWithDefaults := applyDefaults(args, def)
-					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
-				},
-			}
-			modValue.Bind(def.Name, builtinFn, PublicVisibility)
-		})
-
-		// Populate nested enum types with their values
-		for name, subScope := range hostModule.NamedTypes() {
-			subType, ok := subScope.(*Type)
-			if !ok || subType.Kind != EnumKind {
-				continue
-			}
-			enumModValue := NewObject(subType)
-			var enumValues []Value
-			for varName, scheme := range subType.Bindings(PublicVisibility) {
-				// Only include actual enum members (whose type is the
-				// enum itself), not accessors like values().
-				t, _ := scheme.Type()
-				if nn, ok := t.(hm.NonNullType); !ok || nn.Type != hm.Type(subType) {
-					continue
-				}
-				ev := EnumValue{Val: varName, EnumType: subType}
-				enumModValue.Bind(varName, ev, PublicVisibility)
-				enumValues = append(enumValues, ev)
-			}
-			enumModValue.Bind("values", ListValue{
-				Elements: enumValues,
-				ElemType: NonNull(subType),
-			}, PublicVisibility)
-			modValue.Bind(name, enumModValue, PublicVisibility)
-		}
-
-		scope.Bind(hostModule.Named, modValue, PublicVisibility)
 	}
 
 	// The Regexp(...) constructor: a builtin scalar with a Go-native hook,
@@ -2406,6 +2367,11 @@ type Object struct {
 	// home module's scope. See BindConstructor.
 	constructors map[*Type]Callable
 
+	// importNamespaces marks the bindings of this frame that are imports'
+	// namespaces (see markImportNamespace); a later Bind of the name clears
+	// its mark. Guarded by mu.
+	importNamespaces map[string]bool
+
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
 	// Its effective parent is not Parent but the current value of its `self`
 	// cell, so bare field reads see the latest copy-on-write generation of
@@ -2694,6 +2660,7 @@ func (m *Object) Bind(name string, value Value, visibility Visibility) {
 	defer m.mu.Unlock()
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
+	delete(m.importNamespaces, name)
 }
 
 func (m *Object) Visibility(name string) Visibility {

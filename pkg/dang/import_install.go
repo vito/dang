@@ -8,6 +8,14 @@ const importedBindingVisibility = PrivateVisibility
 // Its unqualified names skip those shadowed reports as locally declared
 // (nil: none; see import_shadowing.go).
 func installImportedTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope, shadowed func(string) bool) {
+	installQualifiedImportTypeScope(parentTypeScope, importName, schemaModule)
+	installUnqualifiedImportSymbols(parentTypeScope, schemaModule, importName, shadowed)
+}
+
+// installQualifiedImportTypeScope installs only import importName's
+// namespace into parentTypeScope, for an import whose names are reached
+// qualified only (see builtin_imports.go).
+func installQualifiedImportTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
 	parentTypeScope.AddObject(importName, schemaModule)
@@ -15,8 +23,6 @@ func installImportedTypeScope(parentTypeScope TypeScope, importName string, sche
 	parentTypeScope.Add(importName, hm.NewScheme(nil, NonNull(schemaModule)))
 	parentTypeScope.SetVisibility(importName, importedBindingVisibility)
 	parentTypeScope.SetValueOrigin(importName, qualifiedOrigin)
-
-	installUnqualifiedImportSymbols(parentTypeScope, schemaModule, importName, shadowed)
 }
 
 func installUnqualifiedImportSymbols(parentTypeScope TypeScope, schemaModule TypeScope, importName string, shadowed func(string) bool) {
@@ -46,10 +52,11 @@ func installUnqualifiedImportValuesForInference(parentTypeScope TypeScope, schem
 			continue
 		}
 
-		// An unqualified import never shadows a builtin, or a declaration
-		// beside it; it is still reachable qualified (see
-		// installUnqualifiedImportValues).
-		if isBuiltinValueName(name) || isShadowed(shadowed, name) {
+		// An unqualified import never shadows a builtin, a declaration
+		// beside it, or another import's namespace (such as a builtin
+		// import's, see builtin_imports.go); it is still reachable qualified
+		// (see installUnqualifiedImportValues).
+		if isBuiltinValueName(name) || isShadowed(shadowed, name) || resolvesToImportNamespace(parentTypeScope, name) {
 			continue
 		}
 
@@ -129,12 +136,18 @@ func installUnqualifiedImportDirectivesFromModule(parentTypeScope TypeScope, mod
 }
 
 func installImportedValueScope(parentScope ValueScope, importName string, importValueScope ValueScope, shadowed func(string) bool) {
+	installQualifiedImportValueScope(parentScope, importName, importValueScope)
+	installUnqualifiedImportValues(parentScope, importValueScope, importName, shadowed)
+}
+
+// installQualifiedImportValueScope binds only import importName's namespace
+// in parentScope (see installQualifiedImportTypeScope).
+func installQualifiedImportValueScope(parentScope ValueScope, importName string, importValueScope ValueScope) {
 	// Binding origins live on the type environment and are established during
 	// inference. Evaluation only populates runtime values; mutating origins here
 	// can clobber local declarations and races with shared/static type modules.
 	parentScope.Bind(importName, importValueScope, importedBindingVisibility)
-
-	installUnqualifiedImportValues(parentScope, importValueScope, importName, shadowed)
+	markImportNamespace(parentScope, importName)
 }
 
 func installUnqualifiedImportValues(parentScope ValueScope, importValueScope ValueScope, importName string, shadowed func(string) bool) {
@@ -145,9 +158,10 @@ func installUnqualifiedImportValues(parentScope ValueScope, importValueScope Val
 			continue
 		}
 
-		// An unqualified import never shadows a builtin, or a declaration
-		// beside it; it is still reachable qualified.
-		if _, exists := parentScope.LookupLocal(name); exists || isBuiltinValueName(name) || isShadowed(shadowed, name) {
+		// An unqualified import never shadows a builtin, a declaration
+		// beside it, or another import's namespace; it is still reachable
+		// qualified.
+		if _, exists := parentScope.LookupLocal(name); exists || isBuiltinValueName(name) || isShadowed(shadowed, name) || bindsImportNamespace(parentScope, name) {
 			continue
 		}
 
@@ -172,6 +186,79 @@ func installUnqualifiedImportEnumValues(parentScope ValueScope, enumModuleVal *O
 
 		parentScope.Bind(enumValName, enumVal, importedBindingVisibility)
 	}
+}
+
+// resolvesToImportNamespace reports whether name, looked up in env, is an
+// import's namespace: a qualified import in env's own frame or in a frame env
+// resolves through, such as a builtin import below a module's scope.
+func resolvesToImportNamespace(env TypeScope, name string) bool {
+	switch e := env.(type) {
+	case *OverlayTypeScope:
+		if _, found := e.primary.SchemeOf(name); found {
+			return resolvesToImportNamespace(e.primary, name)
+		}
+		return resolvesToImportNamespace(e.lexical, name)
+	case *Type:
+		if _, found := e.LocalSchemeOf(name); !found && e.Parent != nil {
+			return resolvesToImportNamespace(e.Parent, name)
+		}
+	}
+	origin, found := env.LocalValueOrigin(name)
+	return found && origin.Kind == BindingOriginImport && origin.Qualified
+}
+
+// markImportNamespace records that scope's own frame binds name to an
+// import's namespace, for bindsImportNamespace: runtime frames carry no
+// binding origins (see installQualifiedImportValueScope).
+func markImportNamespace(scope ValueScope, name string) {
+	switch s := scope.(type) {
+	case *Object:
+		s.mu.Lock()
+		setIn(&s.importNamespaces, name, true)
+		s.mu.Unlock()
+	case OverlayValueScope:
+		markImportNamespace(s.primary, name)
+	case *ConstructorScope:
+		markImportNamespace(s.locals, name)
+	}
+}
+
+// bindsImportNamespace is resolvesToImportNamespace at runtime: whether name,
+// looked up in scope (without forcing anything), is an import's namespace.
+func bindsImportNamespace(scope ValueScope, name string) bool {
+	switch s := scope.(type) {
+	case *Object:
+		cell := s.dynamicScope
+		for o := s; o != nil; {
+			o.mu.Lock()
+			_, pending := o.Pending[name]
+			_, hasVal := o.Values[name]
+			namespace := o.importNamespaces[name]
+			parent, _ := o.nextFrame(cell)
+			o.mu.Unlock()
+			if pending || hasVal {
+				return namespace
+			}
+			o = parent
+		}
+	case OverlayValueScope:
+		if s.primary.Has(name) {
+			return bindsImportNamespace(s.primary, name)
+		}
+		return bindsImportNamespace(s.lexical, name)
+	case *ConstructorScope:
+		if s.locals.Has(name) {
+			return bindsImportNamespace(s.locals, name)
+		}
+		if s.args.Has(name) {
+			return false
+		}
+		if inst, ok := s.instance(); ok && inst.Has(name) {
+			return false
+		}
+		return bindsImportNamespace(s.closure, name)
+	}
+	return false
 }
 
 func localTypeBindingIsUnqualifiedImport(env TypeScope, name string) bool {

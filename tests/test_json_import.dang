@@ -1,9 +1,9 @@
 import Test
 
 # The imported schema defines `scalar JSON`, as Dagger does. It is a separate
-# type, reached as `Test.JSON`; unqualified `JSON` stays the builtin (an
-# unqualified import never shadows a builtin), so the codec namespace is
-# unaffected.
+# type, reached as `Test.JSON`; unqualified `JSON` stays the builtin import (an
+# unqualified import never overrides an import's namespace), so the codec
+# namespace is unaffected.
 
 let encoded = JSON.encode([1, 2, 3])
 assert { encoded == "[1,2,3]" }

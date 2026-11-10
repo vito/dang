@@ -17,9 +17,10 @@ import (
 
 // JSON, YAML, and TOML are data-interchange formats, each a plain namespace
 // module (like Random) holding its encode/decode and field directives,
-// installed in the Prelude so `JSON.encode` resolves with no import. Decoding
-// produces Decoded data, which no format owns. A schema's or user's type of
-// the same name is a separate type. See issue #105.
+// provided to every module as a builtin import so `JSON.encode` resolves with
+// no import statement (see builtin_imports.go). Decoding produces Decoded
+// data, which no format owns. A schema's or user's type of the same name is a
+// separate type. See issue #105.
 var (
 	JSONModule = NewType("JSON", ObjectKind)
 	YAMLModule = NewType("YAML", ObjectKind)
@@ -27,8 +28,8 @@ var (
 )
 
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
-// with the builtin DSL like the Random/UUID modules (see env.go for how they
-// are installed in the Prelude).
+// with the builtin DSL like the Random/UUID modules (see builtin_imports.go
+// for how they are installed).
 func registerCodecs() {
 	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
 	// encode takes an arbitrary value, so it cannot live on the String type

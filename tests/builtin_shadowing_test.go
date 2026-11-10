@@ -136,6 +136,77 @@ assert { Lib.toString(1) == 7 }
 		require.ErrorContains(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false), "String!")
 	})
 
+	t.Run("declarations shadow the builtin imports", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeFiles(root, map[string]string{
+			"main.dang": `
+type JSON {
+  x: Int! = 1
+}
+let Random = 2
+assert { JSON().x == 1 }
+assert { Random == 2 }
+assert { YAML.encode(1) == "1" }
+`,
+		})
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+	})
+
+	t.Run("the builtin imports are qualified only", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeFiles(root, map[string]string{
+			"main.dang": "encode([1])\n",
+		})
+		_, err := dang.RunDir(ctx, root, false)
+		require.ErrorContains(t, err, `"encode" not found`)
+	})
+
+	t.Run("an unqualified import does not override a builtin import", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+		writeFiles(root, map[string]string{
+			"dang.toml": "[imports.Lib]\npath = \"./lib\"\n\n[imports.Other]\npath = \"./other\"\n",
+			"lib/lib.dang": `
+JSON: Int! = 7
+type YAML {
+  x: Int! = 1
+}
+`,
+			"other/other.dang": "Lib: Int! = 3\n",
+			// The import's JSON and YAML are reachable qualified only; the
+			// unqualified names stay the builtin imports, in type checking
+			// and evaluation alike, at the top level and in a block. The
+			// same goes for any import's namespace: Other's Lib doesn't
+			// override the Lib imported around it.
+			"main.dang": `
+import Lib
+assert { JSON.encode([1]) == "[1]" }
+assert { YAML.encode(1) == "1" }
+assert { Lib.JSON == 7 }
+assert { Lib.YAML().x == 1 }
+let inBlock = if (true) {
+  import Lib
+  JSON.encode([2])
+} else {
+  ""
+}
+assert { inBlock == "[2]" }
+let otherInBlock = if (true) {
+  import Other
+  Lib.JSON + Other.Lib
+} else {
+  0
+}
+assert { otherInBlock == 10 }
+`,
+		})
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+	})
+
 	t.Run("declared functions shadow builtins", func(ctx context.Context, t *testctx.T) {
 		root := t.TempDir()
 		writeFiles(root, map[string]string{
