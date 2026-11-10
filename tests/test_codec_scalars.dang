@@ -5,6 +5,10 @@ let j = ("{\"a\": [1, 2]}" :: JSON!)
 let y = ("a: [1, 2]" :: YAML!)
 let t = ("a = [1, 2]" :: TOML!)
 
+# YAML text may hold several documents.
+let stream = ("a: 1\n---\nb: 2\n" :: YAML!)
+assert { (stream :: String!).hasPrefix("a: 1\n---") }
+
 # A value is its text, and degrades to String! like any scalar's.
 let text: String! = j
 assert { text == "{\"a\": [1, 2]}" }

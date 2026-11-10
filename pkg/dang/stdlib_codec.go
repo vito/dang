@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -36,6 +37,10 @@ var (
 func registerCodecs() {
 	JSONModule.SetTypeDocString("JSON text; as a value, the functions for encoding and decoding JSON")
 	JSONModule.SetGoScalarHook(func(raw string) (string, error) {
+		if json.Valid([]byte(raw)) {
+			return raw, nil
+		}
+		// Decode only for the reason it is invalid.
 		if _, err := decodeJSON(raw, false); err != nil {
 			return "", err
 		}
@@ -127,7 +132,7 @@ func registerCodecs() {
 
 	YAMLModule.SetTypeDocString("YAML text; as a value, the functions for encoding and decoding YAML")
 	YAMLModule.SetGoScalarHook(func(raw string) (string, error) {
-		if _, err := decodeYAMLRaw(raw, false); err != nil {
+		if err := validateYAML(raw); err != nil {
 			return "", err
 		}
 		return raw, nil
@@ -427,6 +432,22 @@ func decodeYAMLRaw(data string, strict bool) (any, error) {
 		return nil, fmt.Errorf("invalid YAML: %w", err)
 	}
 	return raw, nil
+}
+
+// validateYAML reports whether data is YAML: a stream of any number of
+// documents, each of which parses. (decode reads a single document.)
+func validateYAML(data string) error {
+	decoder := yaml.NewDecoder(strings.NewReader(data))
+	for {
+		var doc yaml.Node
+		err := decoder.Decode(&doc)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("invalid YAML: %w", err)
+		}
+	}
 }
 
 // --- TOML ---
