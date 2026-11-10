@@ -114,6 +114,18 @@ func TestMembersOfAList(t *testing.T) {
 
 	dropFirst := member(t, list, "dropFirst")
 	require.Equal(t, "dropFirst(count: Int = 1): [a]!", dropFirst.Signature())
+	require.Empty(t, dropFirst.TypeParams, "unbounded variables need no list")
+
+	sum := member(t, list, "sum")
+	require.Equal(t, "[a: Numeric]", sum.TypeParams)
+	require.Equal(t, "sum[a: Numeric]: a", sum.Signature())
+	require.Equal(t, "[a: Numeric](): a", sum.Detail())
+
+	sort := member(t, list, "sort")
+	require.Equal(t, "sort[a: Ordered](descending: Boolean = false): [a]!", sort.Signature())
+
+	sortBy := member(t, list, "sortBy")
+	require.Equal(t, "sortBy[a, k: Ordered](descending: Boolean = false) { item: a => k! }: [a]!", sortBy.Signature())
 
 	_, err = analysis.Doc(ctx, scope, "List.nope")
 	require.ErrorContains(t, err, `no member "nope"`)
@@ -394,4 +406,32 @@ func TestMembersSerialize(t *testing.T) {
 		"doc": "reduces the list to a single value using an accumulator function",
 		"example": "[1, 2, 3, 4].reduce(0) { acc, x => acc + x }"
 	}`, string(out))
+
+	sum, err := analysis.Doc(ctx, scope, "List.sum")
+	require.NoError(t, err)
+	out, err = json.Marshal(sum)
+	require.NoError(t, err)
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(out, &fields))
+	require.Equal(t, "[a: Numeric]", fields["typeParams"])
+	require.Equal(t, "a", fields["type"])
+}
+
+func TestMembersShowDeclaredBounds(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope(t, membersSource+`
+pub larger[k: Ordered](x: k!, y: k!): k! {
+  if (x < y) { y } else { x }
+}
+`)
+
+	larger, err := analysis.Doc(ctx, scope, "larger")
+	require.NoError(t, err)
+	require.Equal(t, "[k: Ordered]", larger.TypeParams)
+	require.Equal(t, "larger[k: Ordered](x: k!, y: k!): k!", larger.Signature())
+
+	// An expression's type shows the bounds it leaves open.
+	list, err := analysis.Members(ctx, scope, "[].sum")
+	require.NoError(t, err)
+	require.Contains(t, list.Type, "Numeric")
 }

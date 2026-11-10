@@ -100,12 +100,17 @@ func docItem(m analysis.Member) DocItem {
 	item := DocItem{
 		Name:         m.Name,
 		Kind:         itemKind(m),
-		TypeStr:      m.Type,
+		TypeStr:      m.TypeString(),
 		Doc:          m.Doc,
 		RetTypeScope: m.Scope,
 	}
 	if m.Kind == analysis.KindFunction {
+		// A bounded type parameter list precedes the arrow:
+		// "[a: Numeric] -> a".
 		item.TypeStr = "-> " + m.Type
+		if m.TypeParams != "" {
+			item.TypeStr = m.TypeParams + " " + item.TypeStr
+		}
 	}
 	for _, arg := range m.Args {
 		item.Args = append(item.Args, DocArg{Name: arg.Name, TypeStr: arg.Type, Doc: arg.Doc})

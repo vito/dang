@@ -206,7 +206,7 @@ func MembersOf(t hm.Type, partial string) []Completion {
 
 		completions = append(completions, Completion{
 			Label:         name,
-			Detail:        FormatFunctionType(memberType),
+			Detail:        FormatType(memberType),
 			Documentation: doc,
 			IsFunction:    isFn,
 		})
@@ -262,7 +262,7 @@ func completeLexical(typeScope TypeScope, prefix string) []Completion {
 
 		completions = append(completions, Completion{
 			Label:         name,
-			Detail:        FormatFunctionType(memberType),
+			Detail:        FormatType(memberType),
 			Documentation: doc,
 			IsFunction:    isFn,
 		})

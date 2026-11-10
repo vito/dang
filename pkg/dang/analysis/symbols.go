@@ -229,7 +229,7 @@ func (a *Analysis) refSymbol(path string, r *ref) *Symbol {
 	if r.decl != nil {
 		sym := a.declSymbol(r.decl, r.rng, r.sym)
 		if t := r.sym.GetInferredType(); t != nil {
-			sym.Type = t.String()
+			sym.Type = dang.FormatType(t)
 			if sym.Kind == KindValue {
 				if _, ok := t.(*hm.FunctionType); ok {
 					sym.Kind = KindFunction
@@ -240,7 +240,7 @@ func (a *Analysis) refSymbol(path string, r *ref) *Symbol {
 	}
 	sym := &Symbol{Name: r.sym.Name, Kind: KindValue, Range: r.rng, Node: r.sym}
 	if t := r.sym.GetInferredType(); t != nil {
-		sym.Type = t.String()
+		sym.Type = dang.FormatType(t)
 		if _, ok := t.(*hm.FunctionType); ok {
 			sym.Kind = KindFunction
 		}
@@ -267,40 +267,29 @@ func (a *Analysis) declSymbol(d *decl, rng Range, node dang.Node) *Symbol {
 	}
 	if d.node != nil {
 		if t := d.node.GetInferredType(); t != nil {
-			sym.Type = t.String()
+			sym.Type = dang.FormatType(t)
 		}
 	}
 	return sym
 }
 
 func (a *Analysis) selectSymbol(s *selectRef) *Symbol {
-	recv := s.sel.Receiver.GetInferredType()
-	if recv == nil {
-		return nil
-	}
-	mod := methodScope(recv)
-	if mod == nil {
-		return nil
-	}
-	name := s.sel.Field.Name
-	m, ok := Lookup(mod, name)
+	m, ok := SelectedMember(s.sel)
 	if !ok {
 		return nil
 	}
-	if typ, ok := mod.(*dang.Type); ok && !typ.IsMeta() {
-		m.Receiver = receiverName(mod)
-	}
+	name := s.sel.Field.Name
 	sym := &Symbol{
 		Name:   name,
 		Kind:   m.Kind,
 		Range:  s.rng,
-		Type:   m.Type,
+		Type:   m.TypeString(),
 		Doc:    m.Doc,
 		Member: &m,
 		Node:   s.sel,
 	}
 	if t := s.sel.GetInferredType(); t != nil {
-		sym.Type = t.String()
+		sym.Type = dang.FormatType(t)
 	}
 	// A member of a type declared in the Source: point at its declaration.
 	if d := s.decl; d != nil {

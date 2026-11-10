@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/tuist"
 )
@@ -204,7 +205,7 @@ func (r *replComponent) envCommand(e *replEntry, args []string) {
 		}
 		t, _ := scheme.Type()
 		if t != nil {
-			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, dang.FormatType(t))))
 		} else {
 			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 		}
@@ -236,12 +237,22 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 		return
 	}
 	e.writeLogLine(fmt.Sprintf("Expression: %s", expr))
-	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", inferredType)))
+	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", dang.FormatScheme(inferredType))))
+	// A selected method's own signature shows the bounds the selection
+	// instantiated away ([1].sort is [Int!]!; sort is [a: Ordered]).
+	if n, ok := node.(dang.Node); ok {
+		if block, ok := n.(*dang.FileBlock); ok && len(block.Forms) > 0 {
+			n = block.Forms[len(block.Forms)-1]
+		}
+		if m, ok := analysis.SelectedMember(n); ok && m.TypeParams != "" {
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("Method: %s", m.QualifiedSignature())))
+		}
+	}
 	trimmed := strings.TrimSpace(expr)
 	if !strings.Contains(trimmed, " ") {
 		if scheme, found := r.typeScope.SchemeOf(trimmed); found {
 			if t, _ := scheme.Type(); t != nil {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", scheme)))
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", dang.FormatScheme(scheme))))
 			}
 		}
 	}
@@ -259,7 +270,7 @@ func (r *replComponent) findCommand(e *replEntry, args []string) {
 		if strings.Contains(strings.ToLower(name), pattern) {
 			t, _ := scheme.Type()
 			if t != nil {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, dang.FormatType(t))))
 			} else {
 				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 			}

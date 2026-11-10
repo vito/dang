@@ -82,7 +82,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 				docString := docOf(env, selectNode.Field.Name)
 				if scheme, found := env.LocalSchemeOf(selectNode.Field.Name); found {
 					fieldType, _ := scheme.Type()
-					codeBlock := fmt.Sprintf("%s: %s", symbolName, dang.FormatFunctionType(fieldType))
+					codeBlock := fmt.Sprintf("%s: %s", symbolName, dang.FormatType(fieldType))
 					if extra := typeDetailSuffix(fieldType); extra != "" {
 						codeBlock += extra
 					}
@@ -94,7 +94,13 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 
 	// Try the node's inferred type
 	if inferredType := node.GetInferredType(); inferredType != nil {
-		codeBlock := fmt.Sprintf("%s: %s", symbolName, dang.FormatFunctionType(inferredType))
+		codeBlock := fmt.Sprintf("%s: %s", symbolName, dang.FormatType(inferredType))
+
+		// A generic builtin's own signature shows the bounds its call
+		// instantiated away, e.g. List.sum[a: Numeric]: a.
+		if sig := boundedBuiltinSignature(f, params.Position, symbolName); sig != "" {
+			codeBlock += "\n\n// " + sig
+		}
 
 		// Enrich hover for union and enum types with member details
 		if extra := typeDetailSuffix(inferredType); extra != "" {
@@ -148,6 +154,21 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 // hoverResult builds a hover response, looking up doc strings from the environment.
 func (h *langHandler) hoverResult(f *File, pos Position, symbolName string, codeBlock string) (any, error) {
 	return h.hoverResultWithDoc(docStringForHoverSymbol(f, pos, symbolName), codeBlock)
+}
+
+// boundedBuiltinSignature returns the signature of the builtin method named
+// at pos when its type variables are bounded, qualified by its receiver
+// (List.sum[a: Numeric]: a), or "" otherwise.
+func boundedBuiltinSignature(f *File, pos Position, symbolName string) string {
+	sym := inspect(f, pos)
+	if sym == nil || sym.Name != symbolName || sym.Member == nil {
+		return ""
+	}
+	m := sym.Member
+	if !m.Builtin || m.TypeParams == "" {
+		return ""
+	}
+	return m.QualifiedSignature()
 }
 
 // docOf returns the documentation of what name names in env (see

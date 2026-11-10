@@ -59,43 +59,84 @@ func namedTypeString(t *NamedTypeNode) string {
 	return t.Name
 }
 
-// FormatFunctionType renders a function type for display, with the type
-// parameter list its bounds need (`[a, k: Ordered](xs: [a!]!, ...)`): a
-// function's type variables are generic implicitly, so the list is only
-// written when a bound would otherwise go unseen.
-func FormatFunctionType(t hm.Type) string {
-	ft, ok := t.(*hm.FunctionType)
-	if !ok {
+// FormatType renders a type for display, with the type parameter list its
+// bounds need, as a user writes one: `[a, k: Ordered](xs: [a!]!, ...)` for
+// a function, `[a: Numeric] a` for anything else. Type variables are generic
+// implicitly, so the list is only written when a bound would otherwise go
+// unseen.
+func FormatType(t hm.Type) string {
+	if t == nil {
+		return ""
+	}
+	params := TypeParamsOf(t)
+	if params == "" {
 		return t.String()
 	}
-	var vars []hm.TypeVariable
+	if _, ok := t.(*hm.FunctionType); ok {
+		return params + t.String()
+	}
+	return params + " " + t.String()
+}
+
+// FormatScheme renders a scheme's type as FormatType does, in place of
+// hm's `forall a. ...` form.
+func FormatScheme(s *hm.Scheme) string {
+	if s == nil {
+		return ""
+	}
+	t, _ := s.Type()
+	return FormatType(t)
+}
+
+// TypeParamsOf returns the type parameter list, `[a, k: Ordered]`, of the
+// free type variables of types, or "" when none of them is bounded. Rigid
+// variables are left out (they belong to an enclosing declaration), and so
+// are a binding's weak ones (`_a`, not generic), but not an expression's own
+// open unknown (an empty literal's element type), which reads as a plain
+// variable: `[].sum` is `[a: Numeric] a!`.
+func TypeParamsOf(types ...hm.Type) string {
+	bounds := map[string][]hm.Constraint{}
 	bounded := false
-	for tv := range ft.FreeTypeVar() {
-		if tv.IsRigid() || tv.IsWeak() {
+	for _, t := range types {
+		if t == nil {
 			continue
 		}
-		vars = append(vars, tv)
-		bounded = bounded || len(tv.Bounds()) > 0
+		for tv := range t.FreeTypeVar() {
+			if tv.IsRigid() || (tv.IsWeak() && !tv.IsOpenWeak()) {
+				continue
+			}
+			// Not Unbounded's name: an open weak variable is known by its
+			// bounds too, and without them would read as a binding's (`_a`).
+			name := tv.String()
+			cs := bounds[name]
+			for _, c := range tv.Bounds() {
+				if !slices.Contains(cs, c) {
+					cs = append(cs, c)
+				}
+			}
+			bounds[name] = cs
+			bounded = bounded || len(cs) > 0
+		}
 	}
 	if !bounded {
-		return ft.String()
+		return ""
 	}
-	slices.SortFunc(vars, func(a, b hm.TypeVariable) int {
-		return strings.Compare(a.Unbounded().String(), b.Unbounded().String())
-	})
-	params := make([]*TypeParam, 0, len(vars))
-	for _, tv := range vars {
-		name := tv.Unbounded().String()
-		if len(params) > 0 && params[len(params)-1].Name == name {
-			continue
-		}
+	names := make([]string, 0, len(bounds))
+	for name := range bounds {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	params := make([]*TypeParam, len(names))
+	for i, name := range names {
+		cs := bounds[name]
+		slices.Sort(cs)
 		p := &TypeParam{Name: name}
-		for _, hc := range tv.Bounds() {
-			p.Bounds = append(p.Bounds, &NamedTypeNode{Name: hc.Name()})
+		for _, c := range cs {
+			p.Bounds = append(p.Bounds, &NamedTypeNode{Name: c.Name()})
 		}
-		params = append(params, p)
+		params[i] = p
 	}
-	return formatTypeParams(params) + ft.String()
+	return formatTypeParams(params)
 }
 
 type typeParamsKey struct{}

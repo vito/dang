@@ -113,15 +113,10 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 				kind = FunctionCompletion
 			}
 
-			detail := m.Type
-			if m.HMType != nil {
-				detail = dang.FormatFunctionType(m.HMType)
-			}
-
 			items = append(items, CompletionItem{
 				Label:         m.Name,
 				Kind:          kind,
-				Detail:        detail,
+				Detail:        m.Detail(),
 				Documentation: m.Doc,
 			})
 		}
