@@ -30,6 +30,13 @@ func Assignable(have, want Type) (Subs, error) {
 	return subs, nil
 }
 
+// AssignableUncommitted is Assignable without committing the weak variables
+// its substitution binds, for checks that compose several substitutions
+// first: the caller commits the one it keeps (CommitWeak).
+func AssignableUncommitted(have, want Type) (Subs, error) {
+	return assignable(have, want, false)
+}
+
 // AssignableWithCoercion is like Assignable, but additionally accepts explicit
 // Coercible relationships such as String -> ID/custom scalar/enum. Use this
 // only when the expression is wrapped in a runtime Coerce node.

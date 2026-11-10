@@ -1,0 +1,8 @@
+interface Getter {
+  get(x: a!): a!
+}
+
+# Callers through Getter leave y out, so it is null, and so would be get's result.
+type Sneaky implements Getter {
+  get(x: a!, y: b = null): b { y }
+}

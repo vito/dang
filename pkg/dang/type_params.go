@@ -323,6 +323,17 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 	if !ok {
 		return nil
 	}
+	// Callers through the interface leave the implementation's extra
+	// (optional) arguments out, so those are null: a variable typing one
+	// is nullable, as at any call that omits it.
+	provided := map[string]bool{}
+	for _, arg := range ifaceArgs.Fields {
+		provided[arg.Key] = true
+	}
+	if omitted := omittedParamSubs(implArgs, provided); omitted != nil {
+		implFn = implFn.Apply(omitted).(*hm.FunctionType)
+		implArgs = implFn.Arg().(*RecordType)
+	}
 	// Why a type doesn't fit: the interface's callers pick its variables.
 	forEvery := ""
 	if len(skolem) > 0 {
@@ -375,24 +386,6 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 		}})
 	}
 
-	subs := hm.NewSubs()
-	fit := func(p part, from, to hm.Type) error {
-		s, err := hm.Assignable(from, to)
-		if err != nil {
-			return p.report(err, subs)
-		}
-		merged, err := subs.Compose(s)
-		if err != nil {
-			return p.report(err, subs)
-		}
-		subs = merged
-		return nil
-	}
-	for _, p := range parts {
-		if err := fit(p, p.from, p.to); err != nil {
-			return err
-		}
-	}
 	implRet, ifaceRet := implFn.Ret(false), rigid.Ret(false)
 	ret := part{implRet, ifaceRet, func(err error, subs hm.Subs) error {
 		if be, ok := boundError(err); ok {
@@ -402,13 +395,58 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s%s",
 			fieldName, here(implRet, subs), ifaceRet, forEvery)
 	}}
-	if err := fit(ret, implRet.Apply(subs).(hm.Type), ifaceRet); err != nil {
-		return err
-	}
-	for _, p := range append(parts, ret) {
-		if _, err := hm.Assignable(p.from.Apply(subs).(hm.Type), p.to.Apply(subs).(hm.Type)); err != nil {
-			return p.report(err, subs)
+
+	// attempt fits first's parts against the originals and composes what
+	// they say, then fits each of then's under that, and checks every part
+	// again under the combination. Nothing is committed (a weak variable
+	// of a function-valued field's type is bound only by the attempt that
+	// succeeds), so no part's order pins another's.
+	attempt := func(first, then []part) (hm.Subs, error) {
+		subs := hm.NewSubs()
+		fit := func(p part, from, to hm.Type) error {
+			s, err := hm.AssignableUncommitted(from, to)
+			if err != nil {
+				return p.report(err, subs)
+			}
+			merged, err := subs.Compose(s)
+			if err != nil {
+				return p.report(err, subs)
+			}
+			subs = merged
+			return nil
 		}
+		for _, p := range first {
+			if err := fit(p, p.from, p.to); err != nil {
+				return nil, err
+			}
+		}
+		for _, p := range then {
+			if err := fit(p, p.from.Apply(subs).(hm.Type), p.to.Apply(subs).(hm.Type)); err != nil {
+				return nil, err
+			}
+		}
+		for _, p := range append(append([]part{}, first...), then...) {
+			if _, err := hm.AssignableUncommitted(p.from.Apply(subs).(hm.Type), p.to.Apply(subs).(hm.Type)); err != nil {
+				return nil, p.report(err, subs)
+			}
+		}
+		return subs, nil
+	}
+
+	// The arguments and block decide the method's variables, and the
+	// return is fitted under them (a `b!` return is the interface's `a`
+	// once an argument says b is a). Failing that, the return may decide
+	// them: `f(x: a!, y: a!): a!` for `f(x: Dog!, y: Cat!): Pet!` takes a
+	// as Pet, where the arguments alone would join Dog and Cat elsewhere.
+	subs, err := attempt(parts, []part{ret})
+	if err != nil {
+		var retErr error
+		if subs, retErr = attempt([]part{ret}, parts); retErr != nil {
+			return err
+		}
+	}
+	if err := hm.CommitWeak(subs); err != nil {
+		return fmt.Errorf("field %q: %w", fieldName, err)
 	}
 	return nil
 }

@@ -1684,8 +1684,8 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 
 	// The interface's own type variables stand for any type its callers
 	// pick, which the object's method must then take. (A member without
-	// arguments can't have any: see checkFieldsConcrete.)
-	if isZeroArgFn && ifaceFn.Block() == nil {
+	// arguments can't have any: see checkFieldsConcrete, which reports it.)
+	if isZeroArgFn && ifaceFn.Block() == nil && len(ifaceFn.FreeTypeVar()) > 0 {
 		return nil
 	}
 	return checkGenericImplementation(fieldName, ifaceFn, objectFn)
