@@ -130,7 +130,7 @@ func importTypeQualifiers(file *FileBlock, imports map[string]ImportedTypes, dec
 		for _, t := range imports[name].Types {
 			// An import of that name replaces the builtin import, in every
 			// version, and so does a declaration of it.
-			if !bare[t] || inEffect[t] || (declared != nil && declared(t)) {
+			if _, ok := bare[t]; !ok || inEffect[t] || (declared != nil && declared(t)) {
 				continue
 			}
 			providers[t] = append(providers[t], name)
@@ -151,7 +151,7 @@ func importTypeQualifiers(file *FileBlock, imports map[string]ImportedTypes, dec
 // qualifiers by the import it maps to, and reports whether it changed any.
 func qualifyImportTypes(file *FileBlock, qualifiers map[string]string) bool {
 	changed := false
-	walkBareTypes(file, func(name string) *NamedTypeNode {
+	walkBareTypes(file, func(name string, _ *SourceLocation) *NamedTypeNode {
 		imp, ok := qualifiers[name]
 		if !ok {
 			return nil
@@ -164,24 +164,27 @@ func qualifyImportTypes(file *FileBlock, qualifiers map[string]string) bool {
 
 // bareBuiltinImportTypes returns the names file spells a type by bare that
 // are named like a builtin import, which migrating it past
-// importTypesOverBuiltinImports may need to qualify.
-func bareBuiltinImportTypes(file *FileBlock) map[string]bool {
-	names := map[string]bool{}
-	walkBareTypes(file, func(name string) *NamedTypeNode {
+// importTypesOverBuiltinImports may need to qualify, each with where it is
+// first spelled so.
+func bareBuiltinImportTypes(file *FileBlock) map[string]*SourceLocation {
+	names := map[string]*SourceLocation{}
+	walkBareTypes(file, func(name string, loc *SourceLocation) *NamedTypeNode {
 		if _, ok := builtinImport(name); ok {
-			names[name] = true
+			if _, seen := names[name]; !seen {
+				names[name] = loc
+			}
 		}
 		return nil
 	})
 	return names
 }
 
-// walkBareTypes calls qualify with the name of each type file spells bare,
-// in type positions and type patterns, and qualifies it by what qualify
-// returns, if anything. A qualified type's qualifier (the `JSON` of
+// walkBareTypes calls qualify with the name and location of each type file
+// spells bare, in type positions and type patterns, and qualifies it by what
+// qualify returns, if anything. A qualified type's qualifier (the `JSON` of
 // `JSON.Foo`) is not a bare type, and neither is a directive's scope (the
 // `JSON` of `@JSON.field`), which names a namespace.
-func walkBareTypes(file *FileBlock, qualify func(name string) *NamedTypeNode) {
+func walkBareTypes(file *FileBlock, qualify func(name string, loc *SourceLocation) *NamedTypeNode) {
 	seen := map[uintptr]bool{}
 	var walk func(v reflect.Value)
 	walk = func(v reflect.Value) {
@@ -198,7 +201,7 @@ func walkBareTypes(file *FileBlock, qualify func(name string) *NamedTypeNode) {
 			switch n := v.Interface().(type) {
 			case *NamedTypeNode:
 				if n.Base == nil {
-					if base := qualify(n.Name); base != nil {
+					if base := qualify(n.Name, n.Loc); base != nil {
 						base.Loc = n.Loc
 						n.Base = base
 					}
@@ -206,7 +209,7 @@ func walkBareTypes(file *FileBlock, qualify func(name string) *NamedTypeNode) {
 				return
 			case *CaseClause:
 				if n.TypePattern != nil && n.PatternBase == nil {
-					if base := qualify(n.TypePattern.Name); base != nil {
+					if base := qualify(n.TypePattern.Name, n.TypePattern.Loc); base != nil {
 						base.Loc = n.TypePattern.Loc
 						n.PatternBase = base
 					}

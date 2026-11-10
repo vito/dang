@@ -188,7 +188,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 
 ### Scalars named `JSON`
 - A `scalar JSON` you declare is an ordinary scalar that shadows the builtin in its module — codec namespace included, so `JSON.encode`/`JSON.decode` and the `@JSON.field`/`@JSON.ignore` directives are then not found there (the error says the declaration shadows the builtin).
-- A schema's `scalar JSON` (e.g. `Dagger.JSON`) is a plain schema scalar: servers disagree on its wire form, so its values stay as the server sends them (a string is held bare). Unqualified, `JSON` always names the builtin import, since an import's unqualified names never override an import's namespace; hand data to the schema's JSON as text: `JSON.encode(d) :: Dagger.JSON!`.
+- A schema's `scalar JSON` (e.g. `Dagger.JSON`) is a plain schema scalar: servers disagree on its wire form, so its values stay as the server sends them (a string is held bare). Unqualified, `JSON` always names the builtin import, since an import's unqualified names never override an import's namespace; hand data to the schema's JSON as text: `JSON.encode(d) :: Dagger.JSON!`. (Source written for Dang before 2.4 differs in type position only: there a bare `JSON` type is the schema's, e.g. `fnArgs: JSON!` in an older Dagger entrypoint, while `JSON.encode` is still the builtin. `dang migrate` spells such types `Dagger.JSON`.)
 
 ### Serialization
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)`. `JSON.encode` and `YAML.encode` keep keys in **declaration order** (below); `TOML.encode` emits them in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.

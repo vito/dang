@@ -231,7 +231,7 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 	}
 	if opts.ImportedTypes != nil {
 		imports = func() (map[string]dang.ImportedTypes, error) {
-			imported, err := opts.ImportedTypes(configPath)
+			imported, err := opts.ImportedTypes(configPath, filepath.Dir(file))
 			if err != nil {
 				return nil, fmt.Errorf("resolving the imports of %s: %w", configPath, err)
 			}
@@ -248,18 +248,17 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 }
 
 // importedTypesResolver returns a MigrateOptions.ImportedTypes that resolves
-// a project's imports as the LSP does: its dang.toml's, if it has one, and
-// Dagger's, declared there or detected from a Dagger module (whose Dang
-// source the engine runs with Dagger imported). It also returns a func
-// stopping the import services it started.
-func importedTypesResolver(ctx context.Context) (func(string) (map[string]dang.ImportedTypes, error), func()) {
+// a directory's imports as the LSP does: those of the dang.toml governing it,
+// if there is one, and Dagger's, declared there or detected from the Dagger
+// module the directory is in (whose Dang source the engine runs with Dagger
+// imported). It also returns a func stopping the import services it started.
+func importedTypesResolver(ctx context.Context) (func(string, string) (map[string]dang.ImportedTypes, error), func()) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	services := &dang.ServiceRegistry{}
 	ctx = dang.ContextWithServices(ctx, services)
-	resolve := func(configPath string) (map[string]dang.ImportedTypes, error) {
-		dir := filepath.Dir(configPath)
+	resolve := func(configPath, dir string) (map[string]dang.ImportedTypes, error) {
 		var resolved []dang.ImportConfig
 		if _, err := os.Stat(configPath); err == nil {
 			config, err := dang.LoadProjectConfig(configPath)
@@ -267,7 +266,7 @@ func importedTypesResolver(ctx context.Context) (func(string) (map[string]dang.I
 				return nil, err
 			}
 			ctx := dang.ContextWithProjectConfig(ctx, configPath, config)
-			resolved, err = dang.ResolveImportConfigs(ctx, config, dir)
+			resolved, err = dang.ResolveImportConfigs(ctx, config, filepath.Dir(configPath))
 			if err != nil {
 				return nil, err
 			}

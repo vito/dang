@@ -11,7 +11,7 @@ import (
 
 // projectImportedTypes resolves a project's dang.toml imports as `dang
 // migrate` does, for MigrateOptions.ImportedTypes.
-func projectImportedTypes(configPath string) (map[string]ImportedTypes, error) {
+func projectImportedTypes(configPath, _ string) (map[string]ImportedTypes, error) {
 	if _, err := os.Stat(configPath); err != nil {
 		return nil, nil
 	}
@@ -90,7 +90,7 @@ func TestMigrateQualifiesAutoImportTypes(t *testing.T) {
 	})
 	imports := map[string]ImportedTypes{"Dagger": {Auto: true, Types: []string{"JSON"}}}
 	_, migrated := planOne(t, root, MigrateOptions{
-		ImportedTypes: func(string) (map[string]ImportedTypes, error) { return imports, nil },
+		ImportedTypes: func(string, string) (map[string]ImportedTypes, error) { return imports, nil },
 	})
 	require.Contains(t, migrated["main.dang"], "fnArgs: Dagger.JSON!")
 	require.Contains(t, migrated["main.dang"], "(request :: Dagger.JSON!)")
@@ -109,7 +109,7 @@ func TestMigrateLeavesOwnAndExplicitTypes(t *testing.T) {
 		"YAML":   {},
 	}
 	opts := MigrateOptions{
-		ImportedTypes: func(string) (map[string]ImportedTypes, error) { return imports, nil },
+		ImportedTypes: func(string, string) (map[string]ImportedTypes, error) { return imports, nil },
 	}
 	root := writeDangProject(t, map[string]string{
 		"dang.toml": "dang = \"2.1\"\n",
@@ -140,7 +140,7 @@ func TestMigrateRefusesAmbiguousImportTypes(t *testing.T) {
 		"main.dang": entrypointCall,
 	})
 	_, err := PlanMigrations(root, Version2_4, MigrateOptions{
-		ImportedTypes: func(string) (map[string]ImportedTypes, error) { return imports, nil },
+		ImportedTypes: func(string, string) (map[string]ImportedTypes, error) { return imports, nil },
 	})
 	require.ErrorContains(t, err, "type JSON is brought in by more than one import (Dagger, Other)")
 
@@ -166,6 +166,37 @@ func TestMigrateRefusesAmbiguousImportTypes(t *testing.T) {
 // daggerJSONTypes is what Dagger's import brings in, for migrating.
 func daggerJSONTypes() (map[string]ImportedTypes, error) {
 	return map[string]ImportedTypes{"Dagger": {Auto: true, Types: []string{"JSON"}}}, nil
+}
+
+func TestMigrateRefusesBareTypesLeftInNofmt(t *testing.T) {
+	// A #nofmt region is echoed as written, so its bare type would come to
+	// name the builtin import.
+	source := "pub g(x: String!): JSON! { (x :: JSON!) }\n\n#nofmt\npub f(x: JSON!): JSON! { x }\n"
+	_, err := MigrateSourceWithImports("main.dang", []byte(source), Version2_1, Version2_4, daggerJSONTypes)
+	require.ErrorContains(t, err, "would change the meaning of line 4: its bare type JSON would name the builtin import rather than Dagger.JSON (is it in a #nofmt region?)")
+}
+
+func TestMigrateResolvesImportsPerDirectory(t *testing.T) {
+	// Each directory's imports are resolved, once, and only where a file
+	// spells a type bare: a Dagger module may be a subdirectory of the
+	// project, getting Dagger from its dagger.json.
+	root := writeDangProject(t, map[string]string{
+		"dang.toml":     "dang = \"2.1\"\n",
+		"main.dang":     "pub plain: String! = JSON.encode([1])\n",
+		"ci/main.dang":  entrypointCall,
+		"ci/other.dang": "pub same(x: JSON!): JSON! { x }\n",
+	})
+	var dirs []string
+	_, migrated := planOne(t, root, MigrateOptions{
+		ImportedTypes: func(_, dir string) (map[string]ImportedTypes, error) {
+			dirs = append(dirs, dir)
+			return daggerJSONTypes()
+		},
+	})
+	require.Equal(t, []string{filepath.Join(root, "ci")}, dirs)
+	require.Contains(t, migrated[filepath.Join("ci", "main.dang")], "fnArgs: Dagger.JSON!")
+	require.Contains(t, migrated[filepath.Join("ci", "other.dang")], "same(x: Dagger.JSON!): Dagger.JSON! { x }")
+	require.Equal(t, "pub plain: String! = JSON.encode([1])\n", migrated["main.dang"])
 }
 
 func TestMigrateQualifiesImportTypePatterns(t *testing.T) {

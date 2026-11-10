@@ -68,16 +68,21 @@ func sourceImportTypeQualifiers(filename string, source []byte, from, to Version
 		return nil, nil
 	}
 	file := parsed.(*FileBlock)
-	if len(bareBuiltinImportTypes(file)) == 0 {
+	own := declaresAtTop(file)
+	declared := func(name string) bool {
+		return slices.Contains(own, name) || (moduleDeclared != nil && moduleDeclared(name))
+	}
+	// Only a bare type the module doesn't declare can name an import's.
+	undeclared := false
+	for name := range bareBuiltinImportTypes(file) {
+		undeclared = undeclared || !declared(name)
+	}
+	if !undeclared {
 		return nil, nil
 	}
 	imports, err := importsOf()
 	if err != nil {
 		return nil, err
-	}
-	own := declaresAtTop(file)
-	declared := func(name string) bool {
-		return slices.Contains(own, name) || (moduleDeclared != nil && moduleDeclared(name))
 	}
 	qualifiers, err := importTypeQualifiers(file, imports, declared)
 	if err != nil {
@@ -113,6 +118,17 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 	got, err := Parse(filename, []byte(migrated), WithVersion(to))
 	if err != nil {
 		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, EnhanceParseError(err, filename, []byte(migrated)))
+	}
+	// A bare type left that needed qualifying, as in a #nofmt region, which
+	// is echoed as written, comes to name the builtin import.
+	for name, loc := range bareBuiltinImportTypes(got.(*FileBlock)) {
+		if _, needed := qualifiers[name]; needed {
+			line := 0
+			if loc != nil {
+				line = loc.Line
+			}
+			return "", fmt.Errorf("migrating to Dang %s would change the meaning of line %d: its bare type %s would name the builtin import rather than %s.%s (is it in a #nofmt region?); migrate it by hand", to, line, name, qualifiers[name], name)
+		}
 	}
 	if migrating {
 		// Compare against the source formatted in its own version, so that
@@ -502,15 +518,16 @@ type MigrateOptions struct {
 	// then on; a dang.toml without the key gains it.
 	UndeclaredFrom Version
 
-	// ImportedTypes, if set, returns what the imports of the project whose
-	// dang.toml is configPath bring in (see BuiltinImportTypes), for the
-	// source a dang.toml governs, or root's when none does (configPath is
-	// then where the migration would create one). Migrating past Dang 2.4
-	// needs it to qualify the bare types an import brings in that are named
-	// like a builtin import (see importTypesOverBuiltinImports), e.g. `JSON`
-	// as `Dagger.JSON`; without it, they are left bare, and come to name the
-	// builtin import. It is only called for projects that have such types.
-	ImportedTypes func(configPath string) (map[string]ImportedTypes, error)
+	// ImportedTypes, if set, returns what the imports of the source in dir
+	// bring in (see BuiltinImportTypes), where configPath is the dang.toml
+	// governing it, or, when none does, the one the migration would create.
+	// Migrating past Dang 2.4 needs it to qualify the bare types an import
+	// brings in that are named like a builtin import (see
+	// importTypesOverBuiltinImports), e.g. `JSON` as `Dagger.JSON`; without
+	// it, they are left bare, and come to name the builtin import. It is
+	// only called for directories with a file that spells such a type bare,
+	// once each.
+	ImportedTypes func(configPath, dir string) (map[string]ImportedTypes, error)
 }
 
 // A MigrationPlan is the result of PlanMigrations.
@@ -663,23 +680,30 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 				loopDecls[filepath.Dir(path)]++
 			}
 		}
-		// What the project's imports bring in, resolved once a file spells
-		// a type bare that may need qualifying, and what each file
-		// declares, for its module's other files.
-		var imports map[string]ImportedTypes
-		var importsErr error
-		importsResolved := false
-		importsOf := func() (map[string]ImportedTypes, error) {
-			if !importsResolved {
-				importsResolved = true
-				if opts.ImportedTypes != nil {
-					imports, importsErr = opts.ImportedTypes(configPath)
-					if importsErr != nil {
-						importsErr = fmt.Errorf("resolving the imports of %s: %w", configPath, importsErr)
+		// What the project's imports bring in for each directory's files,
+		// resolved once a file there spells a type bare that may need
+		// qualifying, and what each file declares, for its module's other
+		// files.
+		type dirImports struct {
+			imports map[string]ImportedTypes
+			err     error
+		}
+		importsByDir := map[string]*dirImports{}
+		importsOf := func(dir string) func() (map[string]ImportedTypes, error) {
+			return func() (map[string]ImportedTypes, error) {
+				resolved, ok := importsByDir[dir]
+				if !ok {
+					resolved = &dirImports{}
+					importsByDir[dir] = resolved
+					if opts.ImportedTypes != nil {
+						resolved.imports, resolved.err = opts.ImportedTypes(configPath, dir)
+						if resolved.err != nil {
+							resolved.err = fmt.Errorf("resolving the imports of %s: %w", dir, resolved.err)
+						}
 					}
 				}
+				return resolved.imports, resolved.err
 			}
-			return imports, importsErr
 		}
 		topDecls := make([][]string, len(p.files))
 		if p.from.importTypesOverBuiltinImports() && !to.importTypesOverBuiltinImports() {
@@ -703,7 +727,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 				}
 				return false
 			}
-			qualifiers, err := sourceImportTypeQualifiers(path, source, p.from, to, importsOf, moduleDeclared)
+			qualifiers, err := sourceImportTypeQualifiers(path, source, p.from, to, importsOf(filepath.Dir(path)), moduleDeclared)
 			if err != nil {
 				return nil, fmt.Errorf("migrating %s: %w", path, err)
 			}
