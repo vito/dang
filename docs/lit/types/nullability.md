@@ -578,8 +578,8 @@ let plan = "PRO" :: Plan!
 plan == Plan.PRO
 ```
 
-Only `String` values convert this way. Anything else is rejected before the
-script runs:
+Only `String` values, and values of another custom scalar, convert this way.
+Anything else is rejected before the script runs:
 
 ```dang-failure
 42 :: URL!

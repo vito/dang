@@ -282,8 +282,8 @@ YAML.decode("") :: Options!
 
 `JSON!`, `YAML!` and `TOML!` hold text in their format, checked wherever a
 string becomes one: a cast, a string literal where one is expected, decoding
-a string into one. Text that doesn't parse is an error (YAML must be YAML,
-TOML a document):
+a string into one. Text that doesn't parse is an error (YAML may hold several
+documents, though `YAML.decode` reads one; TOML must be a document):
 
 ```dang
 let config = ("""{"name": "nightly", "count": 42}""" :: JSON!)
