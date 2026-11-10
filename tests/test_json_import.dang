@@ -29,6 +29,14 @@ assert {
   ).hasPrefix("invalid JSON: ")
 }
 
+# A schema scalar's value the server sent as data converts as its JSON text,
+# into Dang's scalars as text.
+scalar Blob
+
+let served = (opaqueObject :: JSON!)
+assert { (JSON.decode(served) :: {{name: String!}}!).name == "dang" }
+assert { (opaqueObject :: Blob!) == ((opaqueObject :: String!) :: Blob!) }
+
 # Untyped data is Decoded, whichever format decoded it.
 let any = YAML.decode("n: 1\ns: x\no: {k: [true]}\n") :: Map[Decoded!]!
 assert { toString(any["s"]!) == "\"x\"" }

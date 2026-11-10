@@ -568,9 +568,9 @@ func scalarCastable(have, want hm.Type) bool {
 // convertScalars converts the custom scalar values in val to the scalars
 // target names, for an explicit cast between them (scalarCastable). A value
 // of another scalar becomes one of target's through target's new() hook, as
-// its text would from a String; without a hook it keeps its text, and how
-// it is held (ScalarValue.Encoded). Lists and maps convert element by
-// element; materializeValue does the rest.
+// its text would from a String; without a hook it keeps its text, and, for
+// a schema's scalar, how it is held (ScalarValue.Encoded). Lists and maps
+// convert element by element; materializeValue does the rest.
 func convertScalars(ctx context.Context, scope ValueScope, val Value, target hm.Type, path string) (Value, error) {
 	switch v := val.(type) {
 	case ScalarValue:
@@ -583,7 +583,9 @@ func convertScalars(ctx context.Context, scope ValueScope, val Value, target hm.
 			return nil, materializeError(path, "%s", err.Error())
 		}
 		if !hooked {
-			converted = ScalarValue{Val: v.Val, ScalarType: mod, Encoded: v.Encoded}
+			// Only a schema's scalar holds a value the server sent as data
+			// (Encoded); a Dang-owned one holds its text.
+			converted = ScalarValue{Val: v.Val, ScalarType: mod, Encoded: v.Encoded && mod.SourceSchema != nil}
 		}
 		return converted, nil
 	case ListValue:
