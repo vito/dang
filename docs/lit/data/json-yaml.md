@@ -461,13 +461,14 @@ All of these are recoverable with `rescue` ([#errors]):
 A type with no constructor, such as a namespace (`JSON`, `Random`, an
 import's) or a schema's object type, can't be decoded into. That is a
 type error, caught before anything runs, wherever a decoded value must become
-one — in a required field as well as at the top:
+one — a non-null target, its non-null elements, or a required field:
 
 ```dang-failure
 JSON.decode("{}") :: Random!
 ```
 
-A nullable field of such a type is fine: it decodes as `null` when the data
-leaves it out. Write `Decoded!` for data of any shape (see [#decoded-values]).
+A nullable position, such as a nullable field, type-checks: it decodes as
+`null` when the data leaves it out, and fails if the data has a value there.
+Write `Decoded!` for data of any shape (see [#decoded-values]).
 
 > Meta: A side-by-side "JSON in / Dang value out" table would be a nice teaching tool.
