@@ -286,7 +286,8 @@ before the exit may be rescued.
 
 ### Type narrowing via `case`
 
-A `binding: Type =>` clause binds the operand narrowed to that type. This is
+A `binding: Type! =>` clause binds the operand narrowed to that type, which is
+non-null: `null` matches no type pattern. This is
 how you take apart a union, such as the one an `if`/`else` with unrelated
 branches produces:
 
@@ -297,8 +298,8 @@ type Dog { name: String!; tricks: [String!]! = [] }
 let pet = if (sum > 5) Dog(name: "Rex", tricks: ["sit"]) else Cat(name: "Tom")
 
 case (pet) {
-  c: Cat => `${c.name} ignores you`
-  d: Dog => `${d.name} can ${d.tricks.join(" and ")}`
+  c: Cat! => `${c.name} ignores you`
+  d: Dog! => `${d.name} can ${d.tricks.join(" and ")}`
 }
 ```
 

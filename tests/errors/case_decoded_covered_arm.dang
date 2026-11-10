@@ -7,7 +7,7 @@ type Point {
 let d = JSON.decode("{\"x\": 1, \"y\": 2}")
 
 case (d) {
-  m: Map[Decoded!] => "map"
-  p: Point => "point"
+  m: Map[Decoded!]! => "map"
+  p: Point! => "point"
   else => "other"
 }

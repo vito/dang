@@ -1,5 +1,5 @@
-# Decoded data never materializes as an interface or union: match its
-# member types instead.
+# Decoded data never materializes as an interface: match the types
+# implementing it instead.
 interface HasName {
   name: String!
 }
@@ -7,6 +7,6 @@ interface HasName {
 let d = JSON.decode("{\"name\": \"x\"}")
 
 case (d) {
-  n: HasName => n.name
+  n: HasName! => n.name
   else => "?"
 }

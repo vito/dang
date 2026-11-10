@@ -31,7 +31,7 @@ Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
 NonNullAssert := Term '!'
 RescueExpr   := (RescueExpr | Term) 'rescue' (RescueClauses | Fallback)   # left-associative chaining; Fallback is any Term
 RescueClauses := '{' RescueClause+ '}'    # a bare '{' after 'rescue' always starts clauses; a record fallback is '{{ ... }}'
-RescueClause := (Symbol ':' TypeName | 'else') '=>' Form
+RescueClause := (Symbol ':' Type '!' | 'else') '=>' Form   # a type pattern, as in a case clause: any type, written non-null
 ```
 
 ## Separators

@@ -8,35 +8,35 @@ let count = 3
 let items = [1, 2]
 
 print(assert { report.contains("x") } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { count != 3 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { count > 5 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { items[0]! <= count - 3 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { !report.contains("hello") } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { report.contains("x") and count == 2 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { report.contains("hello") and count == 2 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 print(assert { report.contains("x") or count == 2 or (count > 1 and items.length == 3) } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 # Block-local lets can't be re-evaluated from the closure scope; a falsy `or`
@@ -45,7 +45,7 @@ print(assert {
   let n = count
   n == 4 or report.contains("x")
 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 # ...whereas after an unavailable `and` operand there's no telling what ran.
@@ -53,7 +53,7 @@ print(assert {
   let r = report
   r.contains("x") and count == 3
 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 # A block-local let shadowing an outer name must not report the outer value.
@@ -61,7 +61,7 @@ print(assert {
   let count = 2
   count == 2 and report.contains("x")
 } rescue {
-  e: AssertionError => e.message
+  e: AssertionError! => e.message
 })
 
 assert("report should mention x") { report.contains("x") and count == 3 }

@@ -32,7 +32,7 @@ produces a real error value:
 
 ```dang
 { raise "out of coffee" } rescue {
-  err: Error => "plan B: " + err.message
+  err: Error! => "plan B: " + err.message
 }
 ```
 
@@ -134,7 +134,7 @@ type NotFoundError implements Error {
 }
 
 { raise NotFoundError(message: "user gone", resource: "User") } rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 ```
 
@@ -145,7 +145,7 @@ pattern, anywhere a type goes:
 describe(err: Error!): String! { `error: ${err.message}` }
 
 { raise "no more tea" } rescue {
-  err: Error => describe(err)
+  err: Error! => describe(err)
 }
 ```
 
@@ -153,7 +153,7 @@ describe(err: Error!): String! { `error: ${err.message}` }
 
 To look at the error instead of discarding it, give `rescue` a clause
 block: `expr rescue { clauses }`. Clauses are the same **type patterns**
-as `case` (see [#control-flow]) — `binding: Type => expr`, with the
+as `case` (see [#control-flow]) — `binding: Type! => expr`, with the
 binding narrowed to the matched type — plus `else` for a catch-all that
 discards the error. `lookup` here raises a different error type for each
 way it can fail:
@@ -184,9 +184,9 @@ extra fields included:
 ```dang
 fetch(id: Int!): String! {
   lookup(id) rescue {
-    v: ValidationError => `bad input: ${v.field}`
-    n: NotFoundError => `no such ${n.resource}`
-    err: Error => err.message
+    v: ValidationError! => `bad input: ${v.field}`
+    n: NotFoundError! => `no such ${n.resource}`
+    err: Error! => err.message
   }
 }
 
@@ -200,7 +200,7 @@ always there:
 
 ```dang
 toString(100 / 0) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 ```
 
@@ -211,14 +211,14 @@ matches everything, so the `ValidationError` clause below it is rejected:
 
 ```dang-failure
 lookup(0) rescue {
-  e: Error => `something failed: ${e.message}`
-  v: ValidationError => "never reached"
+  e: Error! => `something failed: ${e.message}`
+  v: ValidationError! => "never reached"
 }
 ```
 
 The same check rejects a duplicate type pattern, any clause after an
 `else`, and — since a rescue's error is always an `Error!` — an `else`
-following an `e: Error` catch-all.
+following an `e: Error!` catch-all.
 
 To handle an error without inspecting it, `else =>` discards it:
 
@@ -235,11 +235,12 @@ type or declines to bind it, so a bare `err =>` is rejected:
 lookup(0) rescue { err => err.message }
 ```
 
-Pattern types must implement `Error` — validated like a `case` over an
+Pattern types must be errors — a type implementing `Error`, or a union of
+such types — validated like a `case` over an
 interface operand (see [#control-flow]):
 
 ```dang-failure
-lookup(7) rescue { s: String => s }
+lookup(7) rescue { s: String! => s }
 ```
 
 Value patterns have no place in a rescue — there is no operand to compare,
@@ -267,9 +268,9 @@ the next link of a chain:
 
 ```dang
 lookup(404) rescue {
-  v: ValidationError => "bad input"
+  v: ValidationError! => "bad input"
 } rescue {
-  n: NotFoundError => `escalated: no ${n.resource}`
+  n: NotFoundError! => `escalated: no ${n.resource}`
 }
 ```
 
@@ -283,12 +284,12 @@ String!` — which `case` type patterns can take back apart:
 
 ```dang
 let outcome = halve(7) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 
 case (outcome) {
-  n: Int => "halved fine"
-  s: String => `halving failed: ${s}`
+  n: Int! => "halved fine"
+  s: String! => `halving failed: ${s}`
 }
 ```
 
@@ -298,7 +299,7 @@ from:
 
 ```dang-failure
 let result = halve(7) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 
 result + 1
@@ -317,7 +318,7 @@ quarter(n: Int!): String! {
     let result = halve(half)
     `${n} quarters to ${result}`
   } rescue {
-    err: Error => `no luck: ${err.message}`
+    err: Error! => `no luck: ${err.message}`
   }
 }
 
@@ -343,8 +344,8 @@ All of them are ordinary `Error` implementers, usable as type patterns:
 
 ```dang
 assert { 1 == 2 } rescue {
-  e: AssertionError => "the assertion failed"
-  e: RuntimeError => "the interpreter faulted"
+  e: AssertionError! => "the assertion failed"
+  e: RuntimeError! => "the interpreter faulted"
 }
 ```
 
@@ -354,7 +355,7 @@ inspectable without parsing text:
 
 ```dang-static
 user(id: "User:1").alwaysFails rescue {
-  e: GraphQLError => `${e.message} (at ${toString(e.path)})`
+  e: GraphQLError! => `${e.message} (at ${toString(e.path)})`
 }
 ```
 
@@ -375,10 +376,10 @@ enclosing `rescue`:
 ```dang
 {
   lookup(-5) rescue {
-    err: Error => raise `lookup failed: ${err.message}`
+    err: Error! => raise `lookup failed: ${err.message}`
   }
 } rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 ```
 
@@ -395,10 +396,10 @@ raise site, the cause chain, and any sibling failures from a concurrent
 
 ```
 Error: uncaught DeployError: deploy failed
-  --> ./ci/main.dang:12:17
+  --> ./ci/main.dang:12:18
      |
-  12 |     e: Error => raise DeployError(message: "deploy failed", stage: "push")
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  12 |     e: Error! => raise DeployError(message: "deploy failed", stage: "push")
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
      |
   stage: "push"
 caused by: error: connection refused
@@ -419,7 +420,7 @@ bail(n: Int!): String! {
     if (n < 0) { raise "negative" }
     return "returned, not caught"
   } rescue {
-    err: Error => "caught?!"
+    err: Error! => "caught?!"
   }
 }
 
@@ -429,7 +430,7 @@ bail(1)
 Nor can a cancelled evaluation be rescued. A host running Dang can give
 an evaluation a deadline or cancel it. When that happens the evaluation
 ends with `evaluation cancelled: …`, and no `rescue` catches it: not the
-fallback form, not `err: Error =>`, not `else =>`. Once the evaluation
+fallback form, not `err: Error! =>`, not `else =>`. Once the evaluation
 is cancelled a `rescue` catches nothing else either, so a retry loop
 can't keep a runaway program alive:
 
@@ -541,7 +542,7 @@ try { halve(7) } catch { err => 0 }
 ```
 
 Run `dang fmt -w` to migrate: it rewrites `try`/`catch` to the equivalent
-postfix `rescue`, turning bare `err =>` catch-alls into `err: Error =>`
+postfix `rescue`, turning bare `err =>` catch-alls into `err: Error! =>`
 along the way. With the block syntax gone, `try` and `catch` are ordinary
 identifiers again; `rescue` is the reserved word (see [#syntax]).
 

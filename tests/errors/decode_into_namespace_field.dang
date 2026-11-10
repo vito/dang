@@ -1,0 +1,7 @@
+# Decoding a type also builds its fields, so a field typed as a namespace,
+# which has no constructor, can't be decoded either.
+type Holder {
+  inner: Random!
+}
+
+let h: Holder! = JSON.decode("{\"inner\": {}}")

@@ -46,7 +46,7 @@ mymod/
 a `.git` boundary).
 
 ```toml
-dang = "2.1"
+dang = "2.4"
 
 [imports.Dagger]
 dagger = "v0.19.0"
@@ -127,6 +127,22 @@ name (see [#enums-scalars]):
 
 - imported directives are usable unqualified: `@customDirective(...)` (see [#directives])
 - the import's namespace holds only what the schema defines, plus GraphQL's built-in scalars (`Demo.String`, `Demo.Int`, …); Dang's own builtins and types aren't in it, so `Demo.print` or `Demo.Path` is an error unless the schema defines that name
+
+## Builtin imports
+
+Every module also gets Dang's builtin namespaces — `JSON`, `YAML`, `TOML`,
+`Random` and `UUID` — as imports it doesn't write (see [#json-yaml] and
+[#stdlib]). They are reached qualified only:
+
+```dang
+{{encoded: JSON.encode([1, 2]), uuidLength: UUID.v4.length}}
+```
+
+- there is no bare `encode`, `decode` or `int`: always `JSON.decode(…)`, `Random.int(…)`
+- a declaration of the same name in the module shadows one: a `type JSON { … }` or `scalar JSON` both as a type and as a value, a `let Random = …` as a value only (`Random!` as a type, and `@JSON.field` directives, still reach the builtin)
+- an import of the same name replaces one: with `[imports.YAML]` in `dang.toml`, a file that writes `import YAML` (or gets it as an auto-import) sees that import as `YAML`, and other files still see the builtin
+- an unqualified name from an explicit import never overrides one: a schema's `scalar JSON` (Dagger has one) is reached as `Dagger.JSON`, and `JSON` stays the codec namespace
+- like every import of a module, they aren't part of what it exports: `Demo.YAML`, or `Helpers.YAML` from a native module, is an error unless that schema or module defines a `YAML`
 
 ## Shadowing
 

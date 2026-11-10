@@ -8,6 +8,6 @@
  [2m[34m[1m 10 | [0mquarter(n: Int!): Int! {
 [2m                              [31m^[0m
  [2m 11 |   half(half(n)) rescue {[0m
- [2m 12 |     e: Error => "not divisible"[0m
+ [2m 12 |     e: Error! => "not divisible"[0m
  [2m    |[0m
 

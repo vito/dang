@@ -177,7 +177,7 @@ func TestClauseBindingsShadow(t *testing.T) {
 	src := `let err = "outer"
 
 pub msg = (raise "boom") rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 
 pub other = err

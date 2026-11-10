@@ -216,24 +216,25 @@ variables, declared or not.
 ```dang
 describe(n: Named!): String! {
   case (n) {
-    p: Person => `${p.name}, age ${p.age}`
-    c: Company => `${c.name}, ${c.size} people`
-    fallback: Named => fallback.name
+    p: Person! => `${p.name}, age ${p.age}`
+    c: Company! => `${c.name}, ${c.size} people`
+    fallback: Named! => fallback.name
   }
 }
 
 [describe(Person("Ada", 36)), describe(Company("Acme", 12)), describe(Robot(7))]
 ```
 
-- `binding: Type` narrows; the binding is typed as the matched concrete/interface type inside the arm
-- an interface pattern (`n: Named`) matches *any* implementer — useful as a catch-all after specific types
+- `binding: Type!` narrows; the binding is typed as the matched concrete/interface type inside the arm
+- an interface pattern (`n: Named!`) matches *any* implementer — useful as a catch-all after specific types
 - see [#control-flow] for full `case` semantics; flow typing of the binding is covered in [#flow-typing]
 
-The operand must be a union or an interface. A plain object type is already
-known, so there's nothing to match:
+A pattern must name a type some value of the operand may have. A plain object
+matches its own type, the interfaces it implements and the unions it belongs
+to; another object type is an error:
 
 ```dang-failure
-case (Person("Ada", 36)) { p: Person => p.name }
+case (Person("Ada", 36)) { c: Company! => c.name }
 ```
 
 On a **GraphQL** interface or union value, type patterns match the object's
@@ -245,15 +246,15 @@ nullable or not. With the bundled `Demo` schema (see [#interop]), whose
 import Demo
 
 case (favoriteNode) {
-  u: User => u.name
-  p: Post => p.title + " by " + p.author.name
+  u: User! => u.name
+  p: Post! => p.title + " by " + p.author.name
   else => "something else"
 }
 ```
 
 - a GraphQL value that only knows its declared type (like `favoriteNode` above) costs one small query: `case` asks the server for the object's `id` and `__typename`, and the arm binds a handle of the concrete type, loaded by that ID, just like a checked nullable field ([#nullable-object-fields]). `p.title` then selects through the loader
-- no query is sent when there's nothing to learn: without type patterns, for a value whose concrete type is already known (a checked nullable field, a `... on Post` narrowing), or when the first type pattern is satisfied by the declared type itself (`n: Node =>` first)
-- the exception is a value reached through a **mutation**: asking would re-send the mutation, so it keeps its declared type. Only a pattern that type already satisfies (`n: Node`) can match it; the first type pattern that isn't raises `cannot match type pattern Post against a Node reached through mutation …`, instead of falling through to a later arm or `else`. To discriminate a mutation result, select the fields of every type it may be on the mutation call, which sends it once: `Mutation.touchNode(id: "Post:1").{{ ... on Post {{ title }}, ... on User {{ name }} }}`, then `case` on that (a selection without a fragment for the value's actual type fails)
+- no query is sent when there's nothing to learn: without type patterns, for a value whose concrete type is already known (a checked nullable field, a `... on Post` narrowing), or when the first type pattern is satisfied by the declared type itself (`n: Node! =>` first)
+- the exception is a value reached through a **mutation**: asking would re-send the mutation, so it keeps its declared type. Only a pattern that type already satisfies (`n: Node!`) can match it; the first type pattern that isn't raises `cannot match type pattern Post against a Node reached through mutation …`, instead of falling through to a later arm or `else`. To discriminate a mutation result, select the fields of every type it may be on the mutation call, which sends it once: `Mutation.touchNode(id: "Post:1").{{ ... on Post {{ title }}, ... on User {{ name }} }}`, then `case` on that (a selection without a fragment for the value's actual type fails)
 - value patterns still compare against the original handle, so `case (f) { f => … }` matches as `f == f` does ([#interop])
 - for when to reach for inline fragments instead, see [#discriminating]
 
@@ -286,8 +287,8 @@ let pets: [Pet!]! = [Cat("Tom"), Dog("Rex", ["sit", "stay"])]
 
 pets.map { pet =>
   case (pet) {
-    c: Cat => `${c.name} has ${c.lives} lives`
-    d: Dog => `${d.name} knows ${d.tricks.join(" and ")}`
+    c: Cat! => `${c.name} has ${c.lives} lives`
+    d: Dog! => `${d.name} knows ${d.tricks.join(" and ")}`
   }
 }
 ```
@@ -300,14 +301,14 @@ rest and keep it non-null:
 
 ```dang-failure
 petName(p: Pet!): String! {
-  case (p) { c: Cat => c.name }
+  case (p) { c: Cat! => c.name }
 }
 ```
 
-Only members can be matched:
+A type that no member is can't be matched:
 
 ```dang-failure
-case (pets[0]!) { p: Person => p.name }
+case (pets[0]!) { p: Person! => p.name }
 ```
 
 - GraphQL union values match their concrete type, the same way as interface values (see above), at the cost of the same one small query

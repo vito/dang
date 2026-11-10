@@ -820,7 +820,7 @@ func registerStdlib() {
 			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultElemType := fn.resultType()
+			resultElemType := recordedOr(fn.resultType())
 
 			var result []Value
 			for i, item := range list.Elements {
@@ -1186,7 +1186,11 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MapValue)
 			value, _ := args.Get("value")
-			return m.With(args.GetString("key"), value), nil
+			result := m.With(args.GetString("key"), value)
+			// The map may now hold a value of another type than it
+			// recorded, so record what both fit (see joinRecordedTypes).
+			result.ValType = joinRecordedTypes(m.ValType, len(m.Keys) == 0, recordedValueType(value), false)
+			return result, nil
 		})
 
 	// Map.without method: without(key: String!) -> Map[a]!
@@ -1217,6 +1221,7 @@ func registerStdlib() {
 			for _, k := range other.Keys {
 				result = result.With(k, other.Entries[k])
 			}
+			result.ValType = joinRecordedTypes(m.ValType, len(m.Keys) == 0, other.ValType, len(other.Keys) == 0)
 			return result, nil
 		})
 
@@ -1361,7 +1366,7 @@ func registerStdlib() {
 			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultValType := fn.resultType()
+			resultValType := recordedOr(fn.resultType())
 
 			entries := make(map[string]Value, len(m.Keys))
 			for _, k := range m.Keys {

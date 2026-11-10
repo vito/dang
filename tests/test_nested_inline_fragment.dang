@@ -11,8 +11,8 @@ let results = searchConnection(query: "Hello").edges.{{
 
 let first = results[0]
 let line = case (first.node) {
-  p: Post => p.title + " by " + p.author.name
-  u: User => u.name
+  p: Post! => p.title + " by " + p.author.name
+  u: User! => u.name
   else => "other"
 }
 

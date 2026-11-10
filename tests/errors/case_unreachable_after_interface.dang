@@ -10,8 +10,8 @@ type Square implements Shape {
 
 describe(s: Shape!): String! {
   case (s) {
-    any: Shape => "some shape"
-    sq: Square => "square"
+    any: Shape! => "some shape"
+    sq: Square! => "square"
   }
 }
 

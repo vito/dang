@@ -3,6 +3,6 @@
 let d = JSON.decode("[1]")
 
 case (d) {
-  items: [a!] => items.length
+  items: [a!]! => items.length
   else => 0
 }

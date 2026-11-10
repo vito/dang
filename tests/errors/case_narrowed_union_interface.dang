@@ -1,0 +1,24 @@
+# A selection narrowed by inline fragments holds only the selected fields,
+# so its arms must name the fragments' types, not a type that has others.
+interface Named {
+  name: String!
+}
+
+type Cat implements Named {
+  name: String!
+  lives: Int! = 9
+}
+
+type Dog implements Named {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+let pets: [Pet!]! = [Cat(name: "Tom")]
+let selected = pets.{{... on Cat {{ lives }}, ... on Dog {{ name }}}}
+
+case (selected[0]!) {
+  n: Named! => n.name
+  else => "?"
+}

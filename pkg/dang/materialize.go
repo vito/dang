@@ -237,25 +237,41 @@ func assignableDecoded(have, want hm.Type) bool {
 }
 
 // checkDecodeTarget rejects decoding into want at a site inferred in env when
-// materializing want would construct an object type the site cannot reach: a
-// type declared in a function, block or type body (Type.localFrame) whose
-// declaring scope does not enclose the site. Such a type has a constructor per
-// call or per instance of its declaring scope, found by identity in the
-// decoding scope (constructorFor), so from outside that scope there is none
-// to call, nor one right one to pick. Its value can still get out (an `if`
-// expression, a method's result), so the type can appear here by inference.
+// materializing want would construct a type that has no constructor or shape
+// to decode into (see hasDecodableShape), or an object type the site cannot
+// reach: a type declared in a function, block or type body (Type.localFrame)
+// whose declaring scope does not enclose the site. Such a type has a
+// constructor per call or per instance of its declaring scope, found by
+// identity in the decoding scope (constructorFor), so from outside that scope
+// there is none to call, nor one right one to pick. Its value can still get
+// out (an `if` expression, a method's result), so the type can appear here by
+// inference.
 //
 // The walk mirrors materializeDecoded: through non-null, unions, lists and
 // maps, an anonymous record's fields, and a named object's constructor
 // parameters, except those every codec ignores (they are never decoded). A
 // parameter with a default is walked: decoding builds it whenever the data has
-// its key.
+// its key. A type with no constructor is only rejected where every value
+// decoded there must become one: reached through non-null types, list and map
+// elements, and required fields, but not a nullable type, a defaulted
+// parameter or a union's option, which data can satisfy without it.
 func checkDecodeTarget(env hm.Env, want hm.Type) error {
-	seen := map[*Type]bool{}
+	type visit struct {
+		mod      *Type
+		required bool
+	}
+	seen := map[visit]bool{}
 	// via is the field path from want down to t ("Holder.inner"), for the
-	// error, or "" while still at want itself.
-	var walk func(t hm.Type, via string) error
-	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) error {
+	// error, or "" while still at want itself. required is whether every
+	// value decoded at t must be a t (see above).
+	var walk func(t hm.Type, via string, required bool) error
+	noConstructor := func(t hm.Type, via string) error {
+		if via != "" {
+			return fmt.Errorf("cannot decode %s: its type %s has no constructor to decode into", via, t)
+		}
+		return fmt.Errorf("cannot decode into %s: it has no constructor", t)
+	}
+	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string, required bool) error {
 		for _, field := range fields {
 			if ignoredByAllCodecs(mod, field.Key) {
 				continue
@@ -270,41 +286,57 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 			} else if mod.Named != "" {
 				next = mod.Named + "." + field.Key
 			}
-			if err := walk(ft, next); err != nil {
+			if err := walk(ft, next, required); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	walk = func(t hm.Type, via string) error {
-		if nn, ok := t.(hm.NonNullType); ok {
-			return walk(nn.Type, via)
+	walk = func(t hm.Type, via string, required bool) error {
+		nn, nonNull := t.(hm.NonNullType)
+		if nonNull {
+			t = nn.Type
 		}
+		required = required && nonNull
 		if union, ok := t.(*hm.UnionType); ok {
 			for _, option := range union.Options {
-				if err := walk(option, via); err != nil {
+				if err := walk(option, via, false); err != nil {
 					return err
 				}
 			}
 			return nil
 		}
 		if elem, ok := listElementTarget(t); ok {
-			return walk(elem, via)
+			return walk(elem, via, required)
 		}
 		if val, ok := mapValueTarget(t); ok {
-			return walk(val, via)
+			return walk(val, via, required)
 		}
 		v, ok := t.(*Type)
 		if !ok {
+			// A scope standing for a type is a namespace, such as a native
+			// module's (see dangModule.exportsType): nothing to construct.
+			if _, isScope := t.(*OverlayTypeScope); isScope && required {
+				return noConstructor(t, via)
+			}
 			return nil
 		}
 		mod := canonicalModule(v)
-		if seen[mod] || mod.Kind != ObjectKind {
+		if seen[visit{mod, required}] {
 			return nil
 		}
-		seen[mod] = true
+		if !hasDecodableShape(mod) {
+			if required {
+				return noConstructor(mod, via)
+			}
+			return nil
+		}
+		if mod.Kind != ObjectKind {
+			return nil
+		}
+		seen[visit{mod, required}] = true
 		if mod.Named == "" {
-			return walkFields(mod, mod.AsRecord().Fields, via)
+			return walkFields(mod, mod.AsRecord().Fields, via, required)
 		}
 		if mod.localFrame != nil && !envEncloses(env, mod.localFrame) {
 			const why = "is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here"
@@ -315,12 +347,29 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 		}
 		if mod.constructorType != nil {
 			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
-				return walkFields(mod, args.Fields, via)
+				return walkFields(mod, args.Fields, via, required)
 			}
 		}
 		return nil
 	}
-	return walk(want, "")
+	return walk(want, "", true)
+}
+
+// hasDecodableShape reports whether decoded data can materialize as mod:
+// mod has a constructor to build its values from the data (an object type
+// declared in Dang, or a schema input object), or a shape of its own (an
+// anonymous record, an enum, a scalar). A namespace has neither: an import's,
+// a builtin one such as JSON or Random, or a schema's object type, which
+// only its server builds. Interfaces and unions are left to the type
+// patterns that match decoded data (see abstractDecodeTarget).
+func hasDecodableShape(mod *Type) bool {
+	switch mod.Kind {
+	case ObjectKind:
+		return mod.Named == "" || mod.declaredInSource || mod.constructorType != nil
+	case InputKind:
+		return mod.constructorType != nil
+	}
+	return true
 }
 
 // ignoredByAllCodecs reports whether every registered field naming ignores
@@ -765,13 +814,15 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			}
 			elements[i] = materialized
 		}
-		// A generic target (`[a!]!`) is what this call has a stand for,
-		// when it knows (a return type in a generic body); where it doesn't
-		// (a generic parameter), the list's own element type says more, so
-		// a [Float!]! passed through a type variable still holds Floats.
+		// The list now has the target's type and records it (see
+		// recordedElemType): what this call has a generic target (`[a!]!`)
+		// stand for, when it knows (a return type in a generic body). Where
+		// it doesn't (a generic parameter), the list's own element type says
+		// more, so a [Float!]! passed through a type variable still holds
+		// Floats.
 		elemType := runtimeType(ctx, elemTarget)
-		if len(elemType.FreeTypeVar()) > 0 && v.ElemType != nil && len(v.ElemType.FreeTypeVar()) == 0 {
-			elemType = v.ElemType
+		if holdsTypeVars(elemType) {
+			elemType = recordedOr(v.ElemType)
 		}
 		return ListValue{Elements: elements, ElemType: elemType}, nil
 	case MapValue:
@@ -788,8 +839,8 @@ func materializeValue(ctx context.Context, scope ValueScope, val Value, target h
 			entries[k] = materialized
 		}
 		valType := runtimeType(ctx, valTarget)
-		if len(valType.FreeTypeVar()) > 0 && v.ValType != nil && len(v.ValType.FreeTypeVar()) == 0 {
-			valType = v.ValType
+		if holdsTypeVars(valType) {
+			valType = recordedOr(v.ValType)
 		}
 		return MapValue{Keys: append([]string{}, v.Keys...), Entries: entries, ValType: valType}, nil
 	default:

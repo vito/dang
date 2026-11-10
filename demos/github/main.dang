@@ -50,7 +50,7 @@ print("Top GraphQL clients for Go:")
 
 results.each { result =>
   case (result.node) {
-    r: Repository => print("  " + r.owner.login + "/" + r.name + " (" + toString(r.stargazerCount) + " stars)")
+    r: Repository! => print("  " + r.owner.login + "/" + r.name + " (" + toString(r.stargazerCount) + " stars)")
     else => print("  (other)")
   }
 }

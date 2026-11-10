@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use String as String!
+  [2m[34m--> errors/case_nullable_operand_not_exhaustive.dang:15:21[0m
+ [2m    |[0m
+ [2m 13 | let p: Pet = Cat(name: "Whiskers")[0m
+ [2m 14 | [0m
+ [2m[34m[1m 15 | [0mlet name: String! = case (p) {
+[2m                           [31m^^^^^^^^^^[0m
+ [2m 16 |   c: Cat! => c.name[0m
+ [2m 17 |   d: Dog! => d.name[0m
+ [2m    |[0m
+

@@ -1,0 +1,5 @@
+# A schema's object type has no constructor: only its server builds its values,
+# so decoded data can't be materialized as it.
+import Test
+
+let info = JSON.decode("{\"version\": \"1\"}") :: Test.ServerInfo!

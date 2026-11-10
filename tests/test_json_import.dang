@@ -1,9 +1,9 @@
 import Test
 
 # The imported schema defines `scalar JSON`, as Dagger does. It is a separate
-# type, reached as `Test.JSON`; unqualified `JSON` stays the builtin (an
-# unqualified import never shadows a builtin), so the codec namespace is
-# unaffected.
+# type, reached as `Test.JSON`; unqualified `JSON` stays the builtin import (an
+# unqualified import never overrides an import's namespace), so the codec
+# namespace is unaffected.
 
 let encoded = JSON.encode([1, 2, 3])
 assert { encoded == "[1,2,3]" }
@@ -27,5 +27,16 @@ assert { toString(schemaJSON["s"]!) == "x" }
 assert { toString(schemaJSON["o"]!) == "{\"k\":1}" }
 let fromServer: Test.JSON! = "{\"ok\":true}"
 assert { JSON.encode(fromServer) == "\"{\\\"ok\\\":true}\"" }
+
+# A schema's object type has no constructor, so it is no decode target, but a
+# type holding one in an optional field still decodes data without that key.
+type WithInfo {
+  name: String!
+  info: Test.ServerInfo
+}
+
+let withInfo: WithInfo! = JSON.decode("{\"name\": \"x\"}")
+assert { withInfo.name == "x" }
+assert { withInfo.info == null }
 
 print("JSON scalar import tests passed!")

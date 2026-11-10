@@ -180,36 +180,40 @@ mismatch`).
 
 ### Type patterns
 
-A type pattern has the form `binding: Type => expr`; the binding is the
-operand narrowed to that type inside the clause. The type can be qualified
-(`g: Lib.Greeter =>`), naming an imported type even where a type of your own
-shadows the bare name. The operand is a union or
-an interface, or decoded data, where an arm matches when the data has its
-type's shape and `else` is required (see [#decoded-values]).
+A type pattern has the form `binding: Type! => expr`: the clause takes the
+operand's values of that type, and binds them as that type. A pattern is
+written as the non-null type its arm binds, since `null` never matches one.
+The type can be any type: a named type, which may be qualified
+(`g: Lib.Greeter! =>`, naming an imported type even where a type of your own
+shadows the bare name), a list or map type, or a record type. It must be a
+type some value of the operand may have, as the types relate: the operand's
+type itself, a type that implements it or belongs to it, one it implements
+or belongs to, or a union with a member that is one of these. Two interfaces
+related by neither don't qualify, even if some type implements both.
 Here it takes apart the `Cat! | Dog!` union `pet` picked up under
 `if`/`else` above:
 
 ```dang
 case (pet) {
-  c: Cat => `a cat with ${c.lives} lives`
-  d: Dog => `a dog named ${d.name}`
+  c: Cat! => `a cat with ${c.lives} lives`
+  d: Dog! => `a dog named ${d.name}`
 }
 ```
 
-Type patterns covering every member of a non-null union are *exhaustive*:
-nothing can fall through, so no `else` is needed and the result stays
-non-null — the case above is a `String!`. Leave a member out and the usual
-nullable fallthrough applies — `pet` is a `Cat`, so this is `null`:
+Type patterns covering every possibility of a non-null operand are
+*exhaustive*: nothing can fall through, so no `else` is needed and the result
+stays non-null — the case above is a `String!`. Leave a member out and the
+usual nullable fallthrough applies — `pet` is a `Cat`, so this is `null`:
 
 ```dang
-case (pet) { d: Dog => d.name }
+case (pet) { d: Dog! => d.name }
 ```
 
 Value patterns are exhaustive the same way when they name every value the
 operand can have: each member of an enum (as `Color.RED`, an imported bare
 `RED`, or a string literal `"RED"`), or both `true` and `false` for a
 `Boolean!`. A nullable operand (enum, Boolean or union) can also be `null`,
-so it takes a `null` pattern too:
+which no type pattern matches, so it takes a `null` pattern too:
 
 ```dang
 enum Light { RED GREEN }
@@ -225,18 +229,18 @@ signal(light: Light): String! {
 [signal(Light.RED), signal(null)]
 ```
 
-The operand must be a union, an interface (see [#interfaces-unions]), or
-decoded data — a
-plain object type is already fully known, so there is nothing to narrow:
+A named type matches a value of that type, of a type implementing it (for an
+interface), or of one of its members (for a union). A pattern that takes
+every value of the operand is exhaustive on its own:
 
-```dang-failure
-case (Cat(name: "Solo")) { c: Cat => c.name }
+```dang
+case (Cat(name: "Solo")) { c: Cat! => c.name }
 ```
 
-And the named type must be one of the operand's actual possibilities:
+But a pattern no value of the operand can match is an error:
 
 ```dang-failure
-case (pet) { s: String => s }
+case (pet) { s: String! => s }
 ```
 
 An interface-typed operand works the same way, with patterns checked against
@@ -253,13 +257,37 @@ type Horn implements Sound { noise: String! = "honk" }
 
 play(s: Sound!): String! {
   case (s) {
-    b: Bell => `a bell goes ${b.noise}`
-    other: Sound => `something goes ${other.noise}`
+    b: Bell! => `a bell goes ${b.noise}`
+    other: Sound! => `something goes ${other.noise}`
   }
 }
 
 [play(Bell), play(Horn)]
 ```
+
+Lists and maps match by their element types, and records by their fields and
+the fields' types, so arms can tell apart an operand that may be either of two
+list types:
+
+```dang
+let picked = if (grade(95) == "A") { [1, 2] } else { ["a", "b"] }
+
+case (picked) {
+  ns: [Int!]! => `numbers adding up to ${ns.reduce(0) { a, n => a + n }}`
+  ss: [String!]! => `words: ${ss.join(", ")}`
+}
+```
+
+A list matches by the element type it was built with — its static type where
+it was written, or where it last passed a typed boundary such as an
+annotation or a parameter of a concrete list type — not by what it happens to hold. `[1, x]` with a
+nullable `x` is an `[Int]!`, so it doesn't match `[Int!]!` even while `x`
+isn't null, and a list typed `[Animal!]!` doesn't match `[Cat!]!` even when
+every animal in it is a cat. Only where that type isn't known (a list built
+in a generic function, from a type variable) do the elements decide.
+
+Decoded data matches by its shape instead, and there `else` is required (see
+[#decoded-values]).
 
 `rescue` clauses use these same type patterns, over `Error` implementers —
 see [#errors].
@@ -397,7 +425,7 @@ sneaky(n: Int!): String! {
     if (n == 0) { raise "zero" }
     return "returned"
   } rescue {
-    err: Error => `caught: ${err.message}`
+    err: Error! => `caught: ${err.message}`
   }
 }
 

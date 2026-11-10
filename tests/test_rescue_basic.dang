@@ -4,21 +4,21 @@
 let caught = {
   raise "oops"
 } rescue {
-  err: Error => "caught: " + err.message
+  err: Error! => "caught: " + err.message
 }
 
 assert { caught == "caught: oops" }
 
 # success path passes through
 let ok = "hello" rescue {
-  err: Error => "unreachable"
+  err: Error! => "unreachable"
 }
 
 assert { ok == "hello" }
 
 # rescue with no error returns the operand value
 let number = 42 rescue {
-  err: Error => 0
+  err: Error! => 0
 }
 
 assert { number == 42 }

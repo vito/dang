@@ -9,6 +9,6 @@ let results = search(query: "John").{{
 
 let first = results[0]
 let desc = case (first) {
-  u: User => u.age
-  p: Post => p.title
+  u: User! => u.age
+  p: Post! => p.title
 }

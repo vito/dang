@@ -613,6 +613,10 @@ type Reassignment struct {
 	Modifier string // "=" or "+=" etc.
 	Value    Node   // Right-hand side expression
 	Loc      *SourceLocation
+
+	// targetType is set during inference to the static type of the target,
+	// which a list built by `+=` records its element type from.
+	targetType hm.Type
 }
 
 var _ Node = (*Reassignment)(nil)
@@ -731,6 +735,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			if _, err := hm.Assignable(sumType, targetType); err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", sumType, targetType, err)
 			}
+			r.targetType = targetType
 			return targetType, nil
 		default:
 			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
@@ -1235,19 +1240,8 @@ func (r *Reassignment) performAddition(left, right Value, varName string) (Value
 		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to string variable %q", right, varName)
 
 	case ListValue:
-		if r, ok := right.(ListValue); ok {
-			// Concatenate the lists
-			combined := make([]Value, len(l.Elements)+len(r.Elements))
-			copy(combined, l.Elements)
-			copy(combined[len(l.Elements):], r.Elements)
-
-			// Use the element type from the left operand, or right if left is empty
-			elemType := l.ElemType
-			if len(l.Elements) == 0 && len(r.Elements) > 0 {
-				elemType = r.ElemType
-			}
-
-			return ListValue{Elements: combined, ElemType: elemType}, nil
+		if rl, ok := right.(ListValue); ok {
+			return concatLists(l, rl, r.targetType), nil
 		}
 		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to list variable %q", right, varName)
 

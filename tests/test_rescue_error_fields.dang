@@ -4,7 +4,7 @@
 let result = {
   raise "not found"
 } rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 
 assert { result == "not found" }
@@ -14,7 +14,7 @@ let divResult = {
   let x = 1 / 0
   "ok"
 } rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 
 assert { divResult == "division by zero" }

@@ -160,14 +160,14 @@ assert { plain["a"].toUpper == "TAGGED" }
 
 # decode errors name the offending key
 let wrongValue = (JSON.decode("""{"a": "x"}""") :: Map[Int!]!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { wrongValue == """["a"]: expected int, got string""" }
 let notObject = (JSON.decode("[1]") :: Map[Int!]!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { notObject == "expected object, got array" }
 let nestedNull = (JSON.decode("""{"a": {"b c": null}}""") :: Map[Map[Int!]!]!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { nestedNull == """["a"]["b c"]: null is not allowed for Int!""" }

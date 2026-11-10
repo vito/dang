@@ -1,9 +1,0 @@
-type Cat {
-  name: String!
-}
-
-let x = Cat(name: "Whiskers")
-
-let result = case (x) {
-  c: Cat => c.name
-}

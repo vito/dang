@@ -1,0 +1,72 @@
+# Before Dang 2.4, a type pattern may leave out its `!`. Dang 2.4 requires
+# it: every type pattern is the non-null type its arm binds, which is what
+# the bare spelling meant all along.
+
+interface Animal {
+  name: String!
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+type Dog implements Animal {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+describe(p: Pet!): String! {
+  case (p) {
+    c: Cat! => "cat " + c.name # a cat
+    d: Dog! => "dog " + d.name
+  }
+}
+
+assert { describe(Cat(name: "Tom")) == "cat Tom" }
+assert { describe(Dog(name: "Rex")) == "dog Rex" }
+
+greet(a: Animal!): String! {
+  case (a) {
+    c: Cat! => "meow"
+    other: Animal! => "hello " + other.name
+  }
+}
+
+assert { greet(Dog(name: "Rex")) == "hello Rex" }
+
+# Patterns already written with the `!` keep it.
+let maybe: Pet = Cat(name: "Tom")
+let name = case (maybe) {
+  null => "nobody"
+  c: Cat! => c.name
+  d: Dog! => d.name
+}
+assert { name == "Tom" }
+
+# Decoded data, list and map patterns included.
+kind(d: Decoded!): String! {
+  case (d) {
+    n: Int! => "int"
+    xs: [Decoded!]! => "list"
+    m: Map[Decoded!]! => "map"
+    else => "other"
+  }
+}
+
+assert { kind(JSON.decode("[1]")) == "list" }
+assert { kind(JSON.decode("{}")) == "map" }
+
+# Rescue clauses, and a try/catch, which becomes postfix rescue.
+let rescued = { raise "boom" } rescue {
+  b: BasicError! => "basic: " + b.message
+  e: Error! => e.message
+}
+assert { rescued == "basic: boom" }
+
+let caught = {
+  raise "bang"
+} rescue {
+  e: Error! => e.message
+}
+assert { caught == "bang" }

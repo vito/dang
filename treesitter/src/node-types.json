@@ -1076,16 +1076,12 @@
           }
         ]
       },
-      "pattern_type": {
+      "name": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "applied_type",
-            "named": true
-          },
-          {
-            "type": "list_type",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -1114,12 +1110,12 @@
           }
         ]
       },
-      "type_name": {
+      "t": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "symbol",
+            "type": "type",
             "named": true
           }
         ]
@@ -3452,6 +3448,16 @@
     "type": "rescue_clause",
     "named": true,
     "fields": {
+      "bang": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bang_token",
+            "named": true
+          }
+        ]
+      },
       "binding": {
         "multiple": false,
         "required": false,
@@ -3468,6 +3474,16 @@
         "types": [
           {
             "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3496,12 +3512,12 @@
           }
         ]
       },
-      "type_name": {
+      "t": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "symbol",
+            "type": "type",
             "named": true
           }
         ]

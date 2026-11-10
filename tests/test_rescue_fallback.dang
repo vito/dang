@@ -30,16 +30,16 @@ type CodeError implements Error {
 raiseCode: String! { raise CodeError(message: "c", code: 7) }
 
 let d = raiseCode rescue {
-  e: CodeError => `code ${toString(e.code)}`
+  e: CodeError! => `code ${toString(e.code)}`
   else => "other"
 }
 assert { d == "code 7" }
 
 # chaining is left-associative; a miss re-raises to the next rescue
 let e = raiseCode rescue {
-  b: BasicError => "basic"
+  b: BasicError! => "basic"
 } rescue {
-  c: CodeError => "chained"
+  c: CodeError! => "chained"
 }
 assert { e == "chained" }
 

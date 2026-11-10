@@ -136,6 +136,132 @@ assert { Lib.toString(1) == 7 }
 		require.ErrorContains(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false), "String!")
 	})
 
+	t.Run("declarations shadow the builtin imports", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeFiles(root, map[string]string{
+			"main.dang": `
+type JSON {
+  x: Int! = 1
+}
+let Random = 2
+assert { JSON().x == 1 }
+assert { Random == 2 }
+assert { YAML.encode(1) == "1" }
+`,
+		})
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+	})
+
+	t.Run("the builtin imports are qualified only", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		writeFiles(root, map[string]string{
+			"main.dang": "encode([1])\n",
+		})
+		_, err := dang.RunDir(ctx, root, false)
+		require.ErrorContains(t, err, `"encode" not found`)
+	})
+
+	t.Run("an unqualified import does not override a builtin import", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+		writeFiles(root, map[string]string{
+			"dang.toml": "[imports.Lib]\npath = \"./lib\"\n\n[imports.Other]\npath = \"./other\"\n",
+			"lib/lib.dang": `
+JSON: Int! = 7
+type YAML {
+  x: Int! = 1
+}
+`,
+			"other/other.dang": "Lib: Int! = 3\nJSON: Int! = 8\nenum Format { TOML UUID }\n",
+			// The imports' JSON and YAML are reachable qualified only; the
+			// unqualified names stay the builtin imports, in type checking
+			// and evaluation alike, at the top level and in a block (a
+			// record field's included), and two imports both exporting one
+			// aren't ambiguous; nor do an import's enum values override
+			// them. The same goes for any import's namespace: Other's Lib
+			// doesn't override the Lib imported around it.
+			"main.dang": `
+import Lib
+import Other
+assert { JSON.encode([1]) == "[1]" }
+assert { YAML.encode(1) == "1" }
+assert { TOML.encode({{a: 1}}) == "a = 1" }
+assert { UUID.v4.length == 36 }
+assert { Other.Format.TOML != Other.Format.UUID }
+assert { Lib.JSON == 7 }
+assert { Other.JSON == 8 }
+assert { Lib.YAML().x == 1 }
+let inBlock = if (true) {
+  import Lib
+  JSON.encode([2])
+} else {
+  ""
+}
+assert { inBlock == "[2]" }
+let inRecord = {{x: if (true) {
+  import Lib
+  JSON.encode([3])
+} else {
+  ""
+}}}
+assert { inRecord.x == "[3]" }
+let otherInBlock = if (true) {
+  import Other
+  Lib.JSON + Other.Lib
+} else {
+  0
+}
+assert { otherInBlock == 10 }
+`,
+		})
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+	})
+
+	t.Run("an explicit import replaces a builtin import", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+		writeFiles(root, map[string]string{
+			"dang.toml":      "[imports.YAML]\npath = \"./yaml\"\n",
+			"yaml/yaml.dang": "x: Int! = 42\n",
+			// The file importing YAML gets the module; a file of the same
+			// module that doesn't still gets the builtin import.
+			"main.dang":  "import YAML\nassert { YAML.x == 42 }\n",
+			"other.dang": "assert { YAML.encode(1) == \"1\" }\n",
+		})
+
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+		_, err = dang.DeclareDir(ctx, root, false)
+		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "other.dang"), false))
+
+		m, err := dang.LoadDir(ctx, root, dang.LoadOptions{})
+		require.NoError(t, err)
+		defer m.Close()
+		// Like a file's imports, the builtin imports aren't the module's
+		// own: its type and value environments agree on leaving them out.
+		_, inTypes := m.TypeEnv.SchemeOf("YAML")
+		require.False(t, inTypes)
+		require.False(t, m.ValueEnv.Has("YAML"))
+		session, err := m.NewSession(ctx)
+		require.NoError(t, err)
+		snippet, err := session.Check(ctx, "", "YAML.encode(1)")
+		require.NoError(t, err)
+		val, err := snippet.Eval(ctx)
+		require.NoError(t, err)
+		require.Equal(t, dang.StringValue{Val: "1"}, val)
+		snippet, err = session.Check(ctx, "", "import YAML\nYAML.x")
+		require.NoError(t, err)
+		val, err = snippet.Eval(ctx)
+		require.NoError(t, err)
+		require.Equal(t, dang.IntValue{Val: 42}, val)
+	})
+
 	t.Run("declared functions shadow builtins", func(ctx context.Context, t *testctx.T) {
 		root := t.TempDir()
 		writeFiles(root, map[string]string{

@@ -16,8 +16,8 @@ assert { results.length > 0 }
 # Discriminate the first result
 let first = results[0]
 let desc = case (first.node) {
-  u: User => "user: " + u.name
-  p: Post => "post: " + p.title
+  u: User! => "user: " + u.name
+  p: Post! => "post: " + p.title
   else => "unknown"
 }
 assert { desc == "user: John Doe" }
@@ -30,7 +30,7 @@ let flat = search(query: "John").{{
 }}
 assert { JSON.encode(flat) == """[{"age":30,"name":"John Doe"}]""" }
 let flatDesc = case (flat[0]) {
-  u: User => "user: " + u.name
+  u: User! => "user: " + u.name
   else => "unknown"
 }
 assert { flatDesc == "user: John Doe" }

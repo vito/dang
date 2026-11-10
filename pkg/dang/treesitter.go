@@ -76,7 +76,8 @@ var tsPredicates = map[string]bool{
 	"RescueKeyword":        tsVersion.postfixRescue(),
 }
 
-// tsInlinedRules are PEG rules that only exist to switch syntax by version.
+// tsInlinedRules are PEG rules that only exist to switch syntax by version,
+// or to give the parser a value to act on (TypePattern locates a pattern).
 // Their bodies are inlined at each reference instead of becoming named nodes,
 // so the tree-sitter grammar keeps the shape it has for tsVersion alone.
 var tsInlinedRules = map[string]bool{
@@ -87,6 +88,7 @@ var tsInlinedRules = map[string]bool{
 	"DotBlockArg":    true,
 	"ForLoop":        true,
 	"ForToken":       true,
+	"TypePattern":    true,
 }
 
 func tsGrammarRule(name string) *rule {

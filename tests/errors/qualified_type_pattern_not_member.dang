@@ -5,6 +5,6 @@ import Lib
 let pet: Lib.Pet = Lib.Dog
 
 case (pet) {
-  d: Lib.Dog => d.sound
-  g: Lib.Greeter => g.greeting
+  d: Lib.Dog! => d.sound
+  g: Lib.Greeter! => g.greeting
 }

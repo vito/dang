@@ -1,0 +1,18 @@
+# Null matches no type pattern, so arms covering every non-null value of a
+# nullable operand still leave the case nullable without a `null` arm.
+type Cat {
+  name: String!
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+let p: Pet = Cat(name: "Whiskers")
+
+let name: String! = case (p) {
+  c: Cat! => c.name
+  d: Dog! => d.name
+}

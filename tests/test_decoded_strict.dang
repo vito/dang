@@ -9,7 +9,7 @@ assert { (lax["x"]! :: Inner!).goes == 1 }
 
 let strictly = JSON.decode("{\"x\": {\"goes\": 1, \"more\": 2}}", strict: true) :: Map[Decoded!]!
 let innerError = toString(strictly["x"]! :: Inner!) rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 assert { innerError.contains("field more not found") }
 

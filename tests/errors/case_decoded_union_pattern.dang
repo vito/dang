@@ -1,0 +1,18 @@
+# Decoded data never materializes as a union: match its member types
+# instead.
+type Cat {
+  name: String!
+}
+
+type Dog {
+  bark: String!
+}
+
+union Pet = Cat | Dog
+
+let d = JSON.decode("{\"name\": \"x\"}")
+
+case (d) {
+  p: Pet! => "pet"
+  else => "?"
+}

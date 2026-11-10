@@ -1,7 +1,0 @@
-# List and map type patterns match only decoded data.
-let xs = [1, 2]
-
-case (xs) {
-  items: [Int!] => items.length
-  else => 0
-}

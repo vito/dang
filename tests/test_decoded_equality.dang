@@ -17,7 +17,7 @@ assert { held["a"]! == null }
 assert { held["b"]! != null }
 assert { (held["a"]! :: Int) == null }
 let nullFailure = toString(held["a"]! :: Int!) rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 assert { nullFailure.contains("null is not allowed") }
 

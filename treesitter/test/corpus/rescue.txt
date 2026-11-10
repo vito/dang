@@ -34,7 +34,7 @@ Rescue with clause block
 ===
 
 let x = risky rescue {
-  e: BasicError => e.message
+  e: BasicError! => e.message
   else => "other"
 }
 
@@ -67,6 +67,7 @@ let x = risky rescue {
                   (symbol
                     (id
                       (word_token)))
+                  (bang_token)
                   (arrow_token)
                   (select_or_call
                     (symbol_or_call
@@ -89,7 +90,7 @@ Rescue clause with a qualified type
 ===
 
 let x = risky rescue {
-  e: Lib.BasicError => e.message
+  e: Lib.BasicError! => e.message
 }
 
 ---
@@ -124,6 +125,7 @@ let x = risky rescue {
                   (symbol
                     (id
                       (word_token)))
+                  (bang_token)
                   (arrow_token)
                   (select_or_call
                     (symbol_or_call

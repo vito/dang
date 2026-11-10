@@ -1,0 +1,7 @@
+# A list of strings is never a list of Ints.
+let xs = [1, 2]
+
+case (xs) {
+  items: [String!]! => items.length
+  else => 0
+}

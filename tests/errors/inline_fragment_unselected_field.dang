@@ -22,6 +22,6 @@ let results = pets.{{
 
 let first = results[0]
 let desc = case (first) {
-  c: Cat => c.lives
-  d: Dog => d.name
+  c: Cat! => c.lives
+  d: Dog! => d.name
 }

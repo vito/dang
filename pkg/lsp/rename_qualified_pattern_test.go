@@ -7,7 +7,7 @@ import (
 	"github.com/vito/dang/v2/pkg/dang"
 )
 
-// A qualified type pattern (`d: Lib.Dog =>`) names Lib's type, not a local
+// A qualified type pattern (`d: Lib.Dog! =>`) names Lib's type, not a local
 // one of the same name, so renaming the local type must leave it alone.
 func TestRenameSkipsQualifiedTypePatterns(t *testing.T) {
 	src := `type Dog {
@@ -15,12 +15,12 @@ func TestRenameSkipsQualifiedTypePatterns(t *testing.T) {
 }
 
 let a = case (pet) {
-  d: Lib.Dog => 1
-  o: Dog => 2
+  d: Lib.Dog! => 1
+  o: Dog! => 2
 }
 
 let b = risky rescue {
-  e: Lib.Dog => 1
+  e: Lib.Dog! => 1
 }
 `
 	parsed, err := dang.Parse("test.dang", []byte(src))

@@ -1,4 +1,4 @@
-dang = "2.1"
+dang = "2.4"
 
 # Calc's OWN manifest, resolved when Calc is compiled as a module (relative to
 # this directory, not the importer's). This is how a native Dang module declares

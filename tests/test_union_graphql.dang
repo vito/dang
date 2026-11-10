@@ -13,15 +13,15 @@ assert { results != null }
 # Discriminate first result with case
 let first = results[0]
 let desc = case (first) {
-  u: User => "user: " + u.name
-  p: Post => "post: " + p.title
+  u: User! => "user: " + u.name
+  p: Post! => "post: " + p.title
   else => "unknown"
 }
 assert { desc == "user: John Doe" }
 
 # Check that User fields are accessible after discrimination
 let userResult = case (first) {
-  u: User => u.age
+  u: User! => u.age
   else => null
 }
 assert { userResult == 30 }

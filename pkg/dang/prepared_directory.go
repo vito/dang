@@ -107,7 +107,7 @@ func (p *PreparedDirectory) Evaluate(ctx context.Context) (ValueScope, error) {
 	ctx = withModuleScope(ctx, p.module)
 	evalCtx := NewEvalContext(p.dir, "")
 	ctx = WithEvalContext(ctx, evalCtx)
-	values := NewValueScope(p.types)
+	values := newDirectoryValueScope(p.types)
 	if err := evaluateDirectoryFiles(ctx, p.blocks, values); err != nil {
 		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
 			return nil, translated

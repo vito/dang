@@ -276,7 +276,8 @@ func sameMeaning(filename string, source []byte, from, to Version) bool {
 }
 
 // firstASTDifference compares two parsed trees field by field, ignoring
-// source locations and inference results, and reports whether they differ,
+// source locations, inference results and fields that only record spelling
+// (tagged `dang:"spelling"`), and reports whether they differ,
 // with the location of the innermost node enclosing the first difference.
 func firstASTDifference(a, b Node) (*SourceLocation, bool) {
 	return compareAST(reflect.ValueOf(a), reflect.ValueOf(b), a.GetSourceLocation())
@@ -320,7 +321,8 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 	case reflect.Struct:
 		for i := 0; i < a.NumField(); i++ {
 			field := a.Type().Field(i)
-			if field.Type == sourceLocationPtrType || field.Name == "InferredTypeHolder" {
+			if field.Type == sourceLocationPtrType || field.Name == "InferredTypeHolder" ||
+				field.Tag.Get("dang") == "spelling" {
 				continue
 			}
 			if at, differs := compareAST(a.Field(i), b.Field(i), loc); differs {

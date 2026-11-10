@@ -19,8 +19,8 @@ type Company implements Named {
 # interface catch-all
 describe(named: Named!): String {
   case (named) {
-    p: Person => p.name + " (age " + toString(p.age) + ")"
-    c: Company => c.name + " (" + toString(c.employees) + " employees)"
+    p: Person! => p.name + " (age " + toString(p.age) + ")"
+    c: Company! => c.name + " (" + toString(c.employees) + " employees)"
   }
 }
 
@@ -33,7 +33,7 @@ assert { describe(company) == "Acme (50 employees)" }
 # interface as a type pattern — matches any implementer
 getName(named: Named!): String! {
   case (named) {
-    n: Named => n.name
+    n: Named! => n.name
   }
 }
 
@@ -43,8 +43,8 @@ assert { getName(company) == "Acme" }
 # interface as a fallback after specific types
 describeWithFallback(named: Named!): String! {
   case (named) {
-    p: Person => "person: " + p.name
-    n: Named => "other: " + n.name
+    p: Person! => "person: " + p.name
+    n: Named! => "other: " + n.name
   }
 }
 

@@ -126,7 +126,7 @@ func TestStackOverflowIsRescuable(t *testing.T) {
 	out, err := evalWithContext(t, ContextWithMaxCallDepth(context.Background(), 100), `
 let forever(n: Int!): Int! { forever(n + 1) }
 let result = forever(0) rescue {
-  e: RuntimeError => 0 - 1
+  e: RuntimeError! => 0 - 1
 }
 print(result)
 `)

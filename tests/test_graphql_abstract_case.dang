@@ -5,8 +5,8 @@ import Test
 
 let describe(n: Node): String! {
   case (n) {
-    u: User => "user " + u.name
-    p: Post => "post " + p.title
+    u: User! => "user " + u.name
+    p: Post! => "post " + p.title
     else => "unknown"
   }
 }
@@ -16,22 +16,22 @@ assert { describe(favoriteNode) == "post Second Post" }
 
 # The binding is the concrete handle, so it selects Post fields and chains on
 let favoriteAuthor = case (favoriteNode) {
-  p: Post => p.title + " by " + p.author.name
+  p: Post! => p.title + " by " + p.author.name
   else => "not a post"
 }
 assert { favoriteAuthor == "Second Post by Jane Smith" }
 
 # A non-null union field: featured is user "User:2"
 let featuredLabel = case (featured) {
-  u: User => "user " + u.name
-  p: Post => "post " + p.title
+  u: User! => "user " + u.name
+  p: Post! => "post " + p.title
 }
 assert { featuredLabel == "user Jane Smith" }
 
 # ...and the bound handle can be passed along, as an ID argument too
 let featuredUser = case (featured) {
-  u: User => u
-  p: Post => p.author
+  u: User! => u
+  p: Post! => p.author
 }
 assert { userName(user: featuredUser) == "Jane Smith" }
 assert { featuredUser.posts(first: 1).posts.{{title}}[0].title == "Second Post" }
@@ -46,26 +46,26 @@ assert { describe(node(id: "nope")) == "unknown" }
 
 let nullable = case (node(id: "nope")) {
   null => "nothing"
-  p: Post => "post " + p.title
+  p: Post! => "post " + p.title
   else => "other"
 }
 assert { nullable == "nothing" }
 
 # Interface patterns still match, first or after concrete patterns
 let asNode = case (favoriteNode) {
-  n: Node => "node " + toString(n.id)
+  n: Node! => "node " + toString(n.id)
 }
 assert { asNode == "node Post:2" }
 
 let viaInterface = case (favoriteNode) {
-  u: User => "user " + u.name
-  n: Node => "node " + toString(n.id)
+  u: User! => "user " + u.name
+  n: Node! => "node " + toString(n.id)
 }
 assert { viaInterface == "node Post:2" }
 
 # No pattern matches: else
 let unmatched = case (favoriteNode) {
-  u: User => "user " + u.name
+  u: User! => "user " + u.name
   else => "not a user"
 }
 assert { unmatched == "not a user" }
@@ -75,7 +75,7 @@ assert { unmatched == "not a user" }
 # matches...
 let touched = Mutation.touchNode(id: "Post:1")
 let touchedNode = case (touched) {
-  n: Node => "node " + toString(n.id)
+  n: Node! => "node " + toString(n.id)
 }
 assert { touchedNode == "node Post:1" }
 
@@ -83,11 +83,11 @@ assert { touchedNode == "node Post:1" }
 # falling through to a later arm or else: the value may well be a Post.
 let touchedPost = {
   case (touched) {
-    p: Post => p.title
+    p: Post! => p.title
     else => "unresolved"
   }
 } rescue {
-  e: RuntimeError => e.message
+  e: RuntimeError! => e.message
 }
 assert { touchedPost.contains("cannot match type pattern Post against a Node reached through mutation touchNode") }
 
@@ -95,11 +95,11 @@ assert { touchedPost.contains("cannot match type pattern Post against a Node rea
 # exhaustive, and raise the same way instead of matching nothing.
 let touchedKind = {
   case (Mutation.touchResult(id: "Post:1")) {
-    u: User => "user " + u.name
-    p: Post => "post " + p.title
+    u: User! => "user " + u.name
+    p: Post! => "post " + p.title
   }
 } rescue {
-  e: RuntimeError => e.message
+  e: RuntimeError! => e.message
 }
 assert { touchedKind.contains("cannot match type pattern User against a SearchResult reached through mutation touchResult") }
 # The hint names a fragment for every type pattern.
@@ -108,9 +108,37 @@ assert { touchedKind.contains(".{{ ... on User {{ ... }}, ... on Post {{ ... }} 
 # An inline fragment selection on the mutation call discriminates it in the
 # one request.
 let selected = case (Mutation.touchResult(id: "Post:1").{{... on User {{ name }}, ... on Post {{ title }}}}) {
-  u: User => "user " + u.name
-  p: Post => "post " + p.title
+  u: User! => "user " + u.name
+  p: Post! => "post " + p.title
 }
 assert { selected == "post First Post" }
+
+# An ID is a string at runtime, and still matches an ID pattern.
+let idKind = case (favoriteNode.id) {
+  i: ID! => "id " + toString(i)
+}
+assert { idKind == "id Post:2" }
+
+# ...also inside a list built in a generic body, where the elements decide.
+wrapIt(x: a): [a]! { [x] }
+
+let idsKind = case (wrapIt(favoriteNode.id)) {
+  is: [ID!]! => "ids"
+}
+assert { idsKind == "ids" }
+
+# A non-mutation union handle is resolved for a pattern its members all
+# implement, so the arm can select the interface's fields.
+let featuredNode = case (featured) {
+  n: Node! => "node " + toString(n.id)
+}
+assert { featuredNode == "node User:2" }
+
+# A list selected off an object list records its records' type.
+let named = users.{{name}}
+let namedKind = case (named) {
+  rs: [{{name: String!}}!]! => `${rs.length} names`
+}
+assert { namedKind == "2 names" }
 
 print("GraphQL abstract case tests passed!")

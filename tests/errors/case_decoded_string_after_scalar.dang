@@ -5,7 +5,7 @@ scalar Upper
 let d = JSON.decode("\"hi\"")
 
 case (d) {
-  u: Upper => "upper"
-  s: String => "string"
+  u: Upper! => "upper"
+  s: String! => "string"
   else => "other"
 }

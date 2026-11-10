@@ -17,7 +17,7 @@ let searchResults = search(query: "John").{{
 }}
 
 let searchAge = case (searchResults[0]) {
-  u: User => u.age
+  u: User! => u.age
   else => null
 }
 assert { searchAge == 30 }
@@ -28,7 +28,7 @@ let nodeResult = node(id: "User:1").{{
 }}
 
 let nodeAge = case (nodeResult) {
-  u: User => u.age
+  u: User! => u.age
   else => null
 }
 assert { nodeAge == 30 }

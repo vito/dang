@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  2 | # operand, decoded data included.[0m
  [2m  3 | case (JSON.decode("{}")) {[0m
- [2m[34m[1m  4 | [0m  g: Nope.Greeter => 1
+ [2m[34m[1m  4 | [0m  g: Nope.Greeter! => 1
 [2m                 [31m^^^^^^^[0m
  [2m  5 |   else => 2[0m
  [2m  6 | }[0m

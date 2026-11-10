@@ -1,0 +1,11 @@
+[1m[31mError:[0m pattern [String!]! can't match a value of type [Int!]!
+  [2m[34m--> errors/case_list_pattern_disjoint.dang:5:10[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 | case (xs) {[0m
+ [2m[34m[1m  5 | [0m  items: [String!]! => items.length
+[2m                [31m^^^^^^^^^^[0m
+ [2m  6 |   else => 0[0m
+ [2m  7 | }[0m
+ [2m    |[0m
+

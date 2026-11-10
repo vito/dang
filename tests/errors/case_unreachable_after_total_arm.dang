@@ -1,0 +1,15 @@
+# An arm after one that takes every value of the operand never runs.
+interface Animal {
+  name: String!
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+let c = Cat(name: "Tom")
+
+case (c) {
+  x: Cat! => "cat"
+  a: Animal! => "animal"
+}

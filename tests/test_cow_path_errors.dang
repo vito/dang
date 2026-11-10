@@ -23,7 +23,7 @@ let throughNull = {
   a.maybe!.x = 4
   "unreachable"
 } rescue {
-  e: Error => e.message
+  e: Error! => e.message
 }
 assert { throughNull == "non-null assertion failed: value is null" }
 

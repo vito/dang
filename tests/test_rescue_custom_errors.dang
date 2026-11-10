@@ -14,7 +14,7 @@ type ValidationError implements Error {
 let result = {
   raise NotFoundError(message: "user not found", resource: "User")
 } rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 
 assert { result == "user not found" }
@@ -23,8 +23,8 @@ assert { result == "user not found" }
 let matched = {
   raise ValidationError(message: "too short", field: "name")
 } rescue {
-  v: ValidationError => "invalid " + v.field + ": " + v.message
-  n: NotFoundError => "missing " + n.resource
+  v: ValidationError! => "invalid " + v.field + ": " + v.message
+  n: NotFoundError! => "missing " + n.resource
 }
 
 assert { matched == "invalid name: too short" }
@@ -33,8 +33,8 @@ assert { matched == "invalid name: too short" }
 let matched2 = {
   raise NotFoundError(message: "gone", resource: "Post")
 } rescue {
-  v: ValidationError => "invalid " + v.field
-  n: NotFoundError => "missing " + n.resource
+  v: ValidationError! => "invalid " + v.field
+  n: NotFoundError! => "missing " + n.resource
 }
 
 assert { matched2 == "missing Post" }
@@ -43,8 +43,8 @@ assert { matched2 == "missing Post" }
 let withFallback = {
   raise "plain error"
 } rescue {
-  v: ValidationError => "validation"
-  err: Error => "other: " + err.message
+  v: ValidationError! => "validation"
+  err: Error! => "other: " + err.message
 }
 
 assert { withFallback == "other: plain error" }
@@ -59,14 +59,14 @@ validate(name: String!): String! {
 }
 
 let validated = validate("") rescue {
-  v: ValidationError => v.field + " " + v.message
+  v: ValidationError! => v.field + " " + v.message
 }
 
 assert { validated == "name must not be empty" }
 
 # non-error path works normally
 let ok = validate("Alice") rescue {
-  err: Error => "unreachable"
+  err: Error! => "unreachable"
 }
 
 assert { ok == "Alice" }

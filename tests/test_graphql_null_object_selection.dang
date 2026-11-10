@@ -58,7 +58,7 @@ let hits = search(query: "Jane").{{
   ... on Post {{ title }}
 }}
 let hitManager = case (hits[0]) {
-  u: User => u.manager.name
+  u: User! => u.manager.name
   else => "not a user"
 }
 assert { hitManager == "John Doe" }
@@ -68,7 +68,7 @@ let johnHits = search(query: "John").{{
   ... on Post {{ title }}
 }}
 let johnHasManager = case (johnHits[0]) {
-  u: User => u.manager != null
+  u: User! => u.manager != null
   else => true
 }
 assert { johnHasManager == false }

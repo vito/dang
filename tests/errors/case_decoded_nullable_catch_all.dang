@@ -3,6 +3,6 @@
 let d = JSON.decode("1")
 
 case (d) {
-  n: Int => "int"
-  rest: Decoded => "rest"
+  n: Int! => "int"
+  rest: Decoded! => "rest"
 }

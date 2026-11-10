@@ -54,7 +54,7 @@ let syncedNodes = nodes.{{
   ... on Post {{ title }}
 }}
 let syncedNode = case (syncedNodes[0]) {
-  u: User => u.sync.name
+  u: User! => u.sync.name
   else => "other"
 }
 assert { syncedNode == "John Doe" }

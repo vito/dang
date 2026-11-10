@@ -1,0 +1,222 @@
+# case is a type switch: an arm `x: T! =>` takes the values of type T!, and
+# binds them as T!.
+
+interface Animal {
+  name: String!
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+type Dog implements Animal {
+  name: String!
+}
+
+type Fish implements Animal {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+let whiskers = Cat(name: "Whiskers")
+let rex = Dog(name: "Rex")
+let nemo = Fish(name: "Nemo")
+
+# A pattern may name any type a value of the operand's type may have: the
+# operand's own type, a supertype (which takes every value), or a union or
+# interface sharing values with it.
+let ownType: String! = case (whiskers) {
+  c: Cat! => c.name
+}
+assert { ownType == "Whiskers" }
+
+let supertype: String! = case (whiskers) {
+  a: Animal! => "animal " + a.name
+}
+assert { supertype == "animal Whiskers" }
+
+describeAnimal(a: Animal!): String! {
+  case (a) {
+    p: Pet! => "pet"
+    else => "other"
+  }
+}
+
+assert { describeAnimal(rex) == "pet" }
+assert { describeAnimal(nemo) == "other" }
+
+# Null matches no type pattern: a nullable operand needs a `null` arm (or an
+# else) for the case to be exhaustive.
+let maybePet: Pet = whiskers
+let petName: String! = case (maybePet) {
+  null => "nobody"
+  c: Cat! => c.name
+  d: Dog! => d.name
+}
+assert { petName == "Whiskers" }
+
+# Lists and maps match by their element types, and the arms can cover an
+# operand holding either of two list types.
+describeList(ints: Boolean!): String! {
+  let xs = if (ints) { [1, 2] } else { ["a"] }
+  case (xs) {
+    is: [Int!]! => `ints ${is.length}`
+    ss: [String!]! => `strings ${ss.join(",")}`
+  }
+}
+
+assert { describeList(true) == "ints 2" }
+assert { describeList(false) == "strings a" }
+
+mapKind(ints: Boolean!): String! {
+  let m = if (ints) { ["a": 1] } else { ["a": "b"] }
+  case (m) {
+    ss: Map[String!]! => "strings"
+    is: Map[Int!]! => "ints"
+  }
+}
+
+assert { mapKind(true) == "ints" }
+assert { mapKind(false) == "strings" }
+
+# A list matches by the element type it was built with: its static type,
+# not what it happens to hold. `[1, x]` holds Int, nullable, even while x
+# isn't null.
+let x: Int = 3
+let withNullable = [1, x]
+let nullability = case (withNullable) {
+  a: [Int!]! => "non-null"
+  b: [Int]! => "nullable"
+}
+assert { nullability == "nullable" }
+
+# `[whiskers, nemo]` is a list of Animals, not of Cats.
+let mixed = [whiskers, nemo]
+let mixedKind = case (mixed) {
+  cs: [Cat!]! => "cats"
+  as: [Animal!]! => "animals"
+}
+assert { mixedKind == "animals" }
+
+# A list built as a list of Cats is one, wherever it goes as a list of
+# Animals. One that became a list of Animals, at a typed boundary such as an
+# annotation or a parameter, is a list of Animals, even holding only Cats.
+let cats = [whiskers]
+let animals: [Animal!]! = [whiskers]
+
+kind(useCats: Boolean!): String! {
+  let xs = if (useCats) { cats } else { animals }
+  case (xs) {
+    cs: [Cat!]! => "cats"
+    as: [Animal!]! => "animals"
+  }
+}
+
+assert { kind(true) == "cats" }
+assert { kind(false) == "animals" }
+
+# Where the element type is a type variable (a list built in a generic
+# body), the elements decide.
+wrap(x: a!): [a!]! { [x] }
+
+let wrapped = case (wrap(whiskers)) {
+  cs: [Cat!]! => "cats"
+  else => "other"
+}
+assert { wrapped == "cats" }
+
+# A generic parameter says less than what a list recorded, so passing
+# through one keeps it.
+same(xs: [a]!): [a]! { xs }
+
+let viaGeneric = case (same(animals)) {
+  cs: [Cat!]! => "cats"
+  else => "animals"
+}
+assert { viaGeneric == "animals" }
+
+# Concatenating records the concatenation's static type, like a literal.
+let joined = [x] + [1]
+let joinedKind = case (joined) {
+  a: [Int!]! => "non-null"
+  b: [Int]! => "nullable"
+}
+assert { joinedKind == "nullable" }
+
+grownKind: String! {
+  let grown: [Animal!]! = []
+  grown += [whiskers]
+  case (grown) {
+    cs: [Cat!]! => "cats"
+    as: [Animal!]! => "animals"
+  }
+}
+
+assert { grownKind == "animals" }
+
+let catsAgain = cats + [Cat(name: "Tom")]
+let catsKind = case (catsAgain) {
+  cs: [Cat!]! => "cats"
+  else => "animals"
+}
+assert { catsKind == "cats" }
+
+# Records match by their fields and the fields' types.
+describeRecord(named: Boolean!): String! {
+  let r = if (named) { {{name: "a"}} } else { {{id: 1}} }
+  case (r) {
+    n: {{name: String!}}! => "named " + n.name
+    i: {{id: Int!}}! => `id ${i.id}`
+  }
+}
+
+assert { describeRecord(true) == "named a" }
+assert { describeRecord(false) == "id 1" }
+
+# A selection over a list builds a list of its records.
+let selected = [whiskers, Cat(name: "Tom")].{{name}}
+let selectedKind = case (selected) {
+  rs: [{{name: String!}}!]! => `records ${rs.length}`
+}
+assert { selectedKind == "records 2" }
+
+# A map that gains values of another type records what both fit.
+let maps = [["a": whiskers], ["b": nemo]]
+let widened = maps[0]!.with("b", nemo)
+let widenedKind = case (widened) {
+  cs: Map[Cat!]! => "cats"
+  as: Map[Animal!]! => "animals"
+}
+assert { widenedKind == "animals" }
+
+let merged = maps[0]!.merge(maps[1]!)
+let mergedKind = case (merged) {
+  cs: Map[Cat!]! => "cats"
+  as: Map[Animal!]! => "animals"
+}
+assert { mergedKind == "animals" }
+
+# A pattern may name a type spelled in lowercase, as a GraphQL schema may.
+type lowercase {
+  n: Int! = 1
+}
+
+let lc = lowercase
+let lcKind = case (lc) {
+  l: lowercase! => `lowercase ${l.n}`
+}
+assert { lcKind == "lowercase 1" }
+
+# An ID and a String are told apart by type, even though a GraphQL ID is a
+# plain string at runtime.
+idOrString(plain: Boolean!): String! {
+  let v = if (plain) { "s" } else { "x" :: ID! }
+  case (v) {
+    i: ID! => "id"
+    s: String! => "string"
+  }
+}
+
+assert { idOrString(true) == "string" }
+assert { idOrString(false) == "id" }

@@ -115,11 +115,11 @@ loop { if (x == null) { break }; x = x.next }   # x is T! after the guard
 ### Type narrowing via `case`
 ```dang
 case (animal) {
-  c: Cat => c.purr     # c is Cat!
-  d: Dog => d.bark     # d is Dog!
+  c: Cat! => c.purr     # c is Cat!
+  d: Dog! => d.bark     # d is Dog!
 }
 ```
-- `binding: TypeName => …` binds the operand narrowed to the pattern type.
+- `binding: TypeName! => …` binds the operand narrowed to the pattern type (the `!` is required; null matches no type pattern). The pattern may be any type that overlaps the operand's: lists, maps and records too (see control-flow.md).
 - `rescue` typed clauses narrow the bound error the same way.
 - Recovers a concrete value from a widened conditional: an `if`/`else` over divergent branches infers as a **union**, which `case` then narrows.
 - An `if`/`else` where one branch is `null` infers **nullable**; divergent concrete branches widen to a common interface/supertype, or to a union when unrelated. Only *using* the result forces the union/narrowing.

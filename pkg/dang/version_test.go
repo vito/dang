@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // parseSingleForm parses src as the given Dang version and returns its only
@@ -415,8 +416,105 @@ func TestVersionRescue(t *testing.T) {
 	})
 }
 
+// TestVersionTypePatterns checks that a type pattern may leave out its `!`
+// before 2.4 only, where it means the same, and that migrating adds it.
+func TestVersionTypePatterns(t *testing.T) {
+	bare := "let x = case (p) {\n  c: Cat => 1\n  g: Lib.Dog => 2\n  xs: [Int!] => 3\n  m: Map[Int!] => 4\n}\n"
+	banged := "let x = case (p) {\n  c: Cat! => 1\n  g: Lib.Dog! => 2\n  xs: [Int!]! => 3\n  m: Map[Int!]! => 4\n}\n"
+	mixed := "let x = case (p) {\n  c: Cat => 1\n  g: Lib.Dog! => 2\n  xs: [Decoded!]! => 3\n  m: Map[Int!] => 4\n}\n"
+
+	clauses := func(t *testing.T, src string, v Version) []*CaseClause {
+		t.Helper()
+		node := parseSingleForm(t, src, v)
+		decl, ok := node.(*FieldDecl)
+		require.True(t, ok, "expected *FieldDecl, got %T", node)
+		c, ok := decl.Value.(*Case)
+		require.True(t, ok, "expected *Case, got %T", decl.Value)
+		return c.Clauses
+	}
+
+	for _, v := range []Version{Version2_1} {
+		t.Run("Dang "+v.String()+" type patterns may leave out the !", func(t *testing.T) {
+			cs := clauses(t, bare, v)
+			require.Len(t, cs, 4)
+			assert.Equal(t, "Cat", cs[0].TypePattern.Name)
+			assert.Equal(t, "Lib.Dog", cs[1].PatternName())
+			assert.Equal(t, "[Int!]", cs[2].PatternName())
+			assert.Equal(t, "Map[Int!]", cs[3].PatternName())
+			for _, c := range cs {
+				assert.False(t, c.BarePattern)
+			}
+
+			// Both spellings parse into the same AST.
+			withBang, err := Parse("version_test.dang", []byte(banged), WithVersion(v))
+			require.NoError(t, err)
+			without, err := Parse("version_test.dang", []byte(bare), WithVersion(v))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(without.(Node), withBang.(Node))
+			assert.False(t, differs)
+
+			// Formatting keeps each pattern as written, `!` or not.
+			for _, src := range []string{bare, banged, mixed} {
+				formatted, err := FormatFileWithVersion([]byte(src), v)
+				require.NoError(t, err)
+				assert.Equal(t, src, formatted)
+			}
+		})
+	}
+
+	t.Run("Dang 2.4 marks type patterns without the !", func(t *testing.T) {
+		for _, c := range clauses(t, bare, Version2_4) {
+			assert.True(t, c.BarePattern, c.PatternName())
+		}
+		for _, c := range clauses(t, banged, Version2_4) {
+			assert.False(t, c.BarePattern, c.PatternName())
+		}
+		formatted, err := FormatFileWithVersion([]byte(banged), Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, banged, formatted)
+	})
+
+	t.Run("Dang 2.4 rejects a type pattern without the !", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{"union U = A | B\ntype A { a: Int! = 1 }\ntype B { b: Int! = 2 }\nlet u: U! = A()\nlet x = case (u) {\n  a: A => 1\n  else => 2\n}\n", "write `a: A! =>`"},
+			{"let x = [1]\nlet y = case (x) {\n  xs: [Int!] => 1\n}\n", "write `xs: [Int!]! =>`"},
+			{"let x = 1 rescue {\n  e: Error => 2\n}\n", "write `e: Error! =>`"},
+		} {
+			parsed, err := Parse("version_test.dang", []byte(tc.src), WithVersion(Version2_4))
+			require.NoError(t, err)
+			typeScope, _ := BuildScopesFromImports("", nil)
+			_, err = InferFormsWithPhases(context.Background(), parsed.(*FileBlock).Forms, typeScope, hm.NewSimpleFresher())
+			require.ErrorContains(t, err, tc.want, tc.src)
+		}
+	})
+
+	t.Run("migrating to 2.4 adds the !", func(t *testing.T) {
+		migrated, err := MigrateSource("version_test.dang", []byte(bare), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, banged, migrated)
+
+		migrated, err = MigrateSource("version_test.dang", []byte(mixed), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = case (p) {\n  c: Cat! => 1\n  g: Lib.Dog! => 2\n  xs: [Decoded!]! => 3\n  m: Map[Int!]! => 4\n}\n", migrated)
+
+		// Source already spelled the 2.4 way is left as it is.
+		migrated, err = MigrateSource("version_test.dang", []byte(banged), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, banged, migrated)
+
+		migrated, err = MigrateSource("version_test.dang", []byte("let x = boom rescue {\n  e: Error => 1\n  else => 2\n}\n"), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = boom rescue {\n  e: Error! => 1\n  else => 2\n}\n", migrated)
+
+		// A try/catch, deprecated since 2.1, becomes postfix rescue.
+		migrated, err = MigrateSource("version_test.dang", []byte("let x = try {\n  boom\n} catch {\n  e: Error => e.message\n}\n"), Version2_1, Version2_4)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = boom rescue {\n  e: Error! => e.message\n}\n", migrated)
+	})
+}
+
 // versions lists every Dang version.
-var versions = []Version{Version1_0, Version2_0, Version2_1}
+var versions = []Version{Version1_0, Version2_0, Version2_1, Version2_4}
 
 // TestReservedWords checks every reserved word in every version: it is an
 // identifier exactly where it isn't reserved, `$word` is the identifier in
@@ -488,7 +586,8 @@ func TestKeywordNamesRoundTrip(t *testing.T) {
 		for _, word := range words {
 			src := "pub $" + word + "($" + word + ": Int!): Int! {\n  $" + word + "\n}\n" +
 				"let y = $" + word + "(1)\nlet z = [1].map { $" + word + " => $" + word + " }\n" +
-				"let w = $" + word + " - 1\nlet c = case (1) {\n  $" + word + " => 2\n}\n"
+				"let w = $" + word + " - 1\nlet c = case (1) {\n  $" + word + " => 2\n}\n" +
+				"let d = case (1) {\n  $" + word + ": Int! => 2\n}\n"
 			want, err := Parse("version_test.dang", []byte(src), WithVersion(v))
 			require.NoError(t, err, "%s in %s", word, v)
 			formatted, err := FormatFileWithVersion([]byte(src), v)

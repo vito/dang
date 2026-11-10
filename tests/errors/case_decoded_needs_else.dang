@@ -2,5 +2,5 @@
 let d = JSON.decode("1")
 
 case (d) {
-  n: Int => n
+  n: Int! => n
 }

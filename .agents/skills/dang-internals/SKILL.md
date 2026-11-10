@@ -136,19 +136,49 @@ Use `self.` when a parameter shadows a field name (`new(x: Int!) { self.x = x }`
 
 ### Builtins live in a parent frame
 
-`NewValueScope` binds builtin functions, static modules and the prelude's
-bindings in a `builtins` frame and returns a derive of it, so a module's own
-declarations go in a frame *of their own* and shadow builtins (`let loop =
-1`, `pub toString(...)`), in every file of the module. Never bind builtins
-into the module frame itself: `FieldDecl.Eval` skips names its frame already
-binds, so a same-named declaration would be silently dropped at eval while
-inference still used it. Copy-on-write treats the builtins frame as a root.
+`NewValueScope` binds builtin functions and the prelude's bindings in a
+`builtins` frame, the builtin imports in a frame derived from it (also marked
+`builtins`), and returns a derive of that, so a module's own declarations go
+in a frame *of their own* and shadow builtins (`let loop = 1`,
+`pub toString(...)`) and builtin imports (`type JSON {...}`), in every file of
+the module. Never bind builtins into the module frame itself: `FieldDecl.Eval`
+skips names its frame already binds, so a same-named declaration would be
+silently dropped at eval while inference still used it. Copy-on-write treats
+the builtins frames as roots.
 
-Two rules ride on this:
+The **builtin imports** (`builtin_imports.go`) are the static modules
+(`StaticModules`: `JSON`, `YAML`, `TOML`, `Random`, `UUID`), installed by the
+import installer as qualified-only imports
+(`installQualifiedImportTypeScope`/`installQualifiedImportValueScope`) before
+a module's explicit imports, wherever those go. A builtin import's name always
+resolves to the module's declaration of it if any, else the explicit (or
+auto-) import of that name, else the builtin import:
+
+- Single file and REPL (imports go in the module frame):
+  `NewPreludeTypeScope` returns `module → builtin imports → prelude`, and
+  `NewValueScope` mirrors it.
+- Directory modules and `LoadDir` sessions (imports go in a per-file frame
+  looked up after the module's declarations): each file's import frame gets
+  the builtin imports first (`newFileImportsScope`,
+  `installBuiltinImportValues` in `evaluateDirectory` and `NewSession`), and
+  the module's own chain has none (`withoutBuiltinImports` in
+  `prepareFileScopes`, `newDirectoryValueScope`).
+
+They carry a qualified import origin, are not in `Prelude`, and an import's
+namespace (schema or native module) never holds them.
+
+Rules that ride on this:
 
 - **Unqualified imports never shadow builtins** (`isBuiltinValueName` in
   `import_install.go`, for inference *and* eval — they must agree); the
   qualified name still reaches the import.
+- **Unqualified imports never override an import's namespace**, in the
+  import's frame or one it resolves through (a builtin import, or an import
+  around a nested block's): `resolvesToImportNamespace` at inference, from
+  value origins, and `bindsImportNamespace` at eval, from the
+  `Object.importNamespaces` marks `installQualifiedImportValueScope` sets.
+  Types get it from `installUnqualifiedImportTypesFromModule`'s `NamedType`
+  check. No name is special-cased.
 - **Code the parser synthesizes never names a builtin directly**, since a
   user binding may shadow it: it uses a `$`-alias from `builtinAliases`
   (see the `language-versions` skill, gate checklist step 3).

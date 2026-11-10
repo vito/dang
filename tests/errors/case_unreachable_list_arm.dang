@@ -1,0 +1,15 @@
+# Every list of Cats is a list of Animals, so a later [Cat!]! arm never runs.
+interface Animal {
+  name: String!
+}
+
+type Cat implements Animal {
+  name: String!
+}
+
+let animals: [Animal!]! = [Cat(name: "Whiskers")]
+
+case (animals) {
+  as: [Animal!]! => as.length
+  cs: [Cat!]! => cs.length
+}

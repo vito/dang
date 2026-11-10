@@ -3,7 +3,7 @@
 let d = JSON.decode("1")
 
 case (d) {
-  f: Float => "float"
-  n: Int => "int"
+  f: Float! => "float"
+  n: Int! => "int"
   else => "other"
 }

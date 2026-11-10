@@ -13,8 +13,8 @@ union Pet = Dog | Cat
 
 describe(p: Pet!): String! {
   case (p) {
-    d: Dog => d.name
-    c: Cat => c.name
+    d: Dog! => d.name
+    c: Cat! => c.name
   }
 }
 

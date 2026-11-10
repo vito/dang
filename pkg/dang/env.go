@@ -279,6 +279,17 @@ type Type struct {
 	// when its schema is loaded. checkDecodeTarget reads its parameters (the
 	// fields decoding constructs), and decoding builds input objects from it.
 	constructorType *hm.FunctionType
+
+	// declaredInSource marks a type declared in Dang source (see
+	// declareLocalType), as opposed to a builtin or schema type. A declared
+	// object type always has a constructor, so the decode-target check never
+	// faults one whose constructor signature failed to check (see
+	// hasDecodableShape).
+	declaredInSource bool
+
+	// builtinImports marks the frame of builtin imports below a module's
+	// own frame (see builtinImportsTypeScope).
+	builtinImports bool
 }
 
 func NewType(name string, kind Kind) *Type {
@@ -389,12 +400,6 @@ func init() {
 	Prelude.AddObject("Boolean", BooleanType)
 	Prelude.AddObject("List", ListTypeModule)
 
-	// Install built-in modules (as both objects and values)
-	Prelude.AddObject("Random", RandomModule)
-	Prelude.AddObject("UUID", UUIDModule)
-	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
-	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
-
 	// Install regex types so user code can refer to them by name, and the
 	// Regexp(...) constructor value so a pattern can be built explicitly
 	// (the runtime ScalarConstructor is bound in addBuiltinFunctions).
@@ -435,26 +440,17 @@ func init() {
 	// Register standard library builtins
 	registerStdlib()
 
-	// Install the codec namespaces (JSON/YAML/TOML) in both namespaces, like
-	// Random: plain ObjectKind modules holding encode/decode, which as types
-	// are the scopes of their field directives (directive scopes resolve in
-	// the type namespace). A schema's same-named scalar (e.g. Dagger's
-	// `scalar JSON`) is a separate type, reached qualified (`Dagger.JSON`); a
-	// user's `scalar JSON` shadows these in its module like any other
-	// declaration.
-	for _, mod := range []*Type{JSONModule, YAMLModule, TOMLModule} {
-		Prelude.AddObject(mod.Named, mod)
-		Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
-	}
-
 	// Register builtin function types from the registry
 	registerBuiltinTypes()
 }
 
+// NewPreludeTypeScope creates the type scope of a module: an empty frame for
+// its declarations and imports, over the builtin imports (see
+// builtin_imports.go), over the prelude.
 func NewPreludeTypeScope(name string) *OverlayTypeScope {
 	loadPrelude()
 	mod := NewType(name, ObjectKind)
-	return &OverlayTypeScope{mod, preludeChain}
+	return &OverlayTypeScope{mod, builtinImportsTypeScope()}
 }
 
 // graphQLBuiltinScalars holds GraphQL's built-in scalars, the only types every

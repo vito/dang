@@ -4,6 +4,6 @@
 let parsed = JSON.decode("5") rescue 0
 
 case (parsed) {
-  n: Int => "int"
+  n: Int! => "int"
   else => "other"
 }

@@ -12,12 +12,12 @@ let count = 0
 let last = ""
 [Cat("a"), Dog("b"), Cat("c")].each { p =>
   case (p) {
-    c: Cat => {
+    c: Cat! => {
       count += 1
       last = c.name
     }
 
-    d: Dog => { last = d.name }
+    d: Dog! => { last = d.name }
   }
 }
 assert { count == 2 }
@@ -26,6 +26,6 @@ assert { last == "c" }
 # The binding itself stays local to its clause.
 let c = "outer"
 case (Cat("inner") :: Pet!) {
-  c: Cat => c.name
+  c: Cat! => c.name
 }
 assert { c == "outer" }

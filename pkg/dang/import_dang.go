@@ -211,7 +211,7 @@ func (m *dangModule) valueScope(ctx context.Context) (ValueScope, error) {
 		m.mu.Unlock()
 	}()
 
-	vs := NewValueScope(m.typeScope)
+	vs := newDirectoryValueScope(m.typeScope)
 	// Give the module its own eval context so runtime errors point at the
 	// module's files rather than the importer's.
 	mctx := WithEvalContext(withEvaluatingModule(ctx, m), NewEvalContext(m.dir, ""))

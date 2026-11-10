@@ -15,8 +15,8 @@ union Pet = Cat | Dog
 # Function that takes a Pet and returns a description
 describe(pet: Pet!): String! {
   case (pet) {
-    c: Cat => c.name + " has " + toString(c.lives) + " lives"
-    d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+    c: Cat! => c.name + " has " + toString(c.lives) + " lives"
+    d: Dog! => d.name + " knows " + toString(d.tricks) + " tricks"
   }
 }
 
@@ -29,7 +29,7 @@ assert { describe(dog) == "Rex knows 5 tricks" }
 # Case with else branch
 describeOrUnknown(pet: Pet!): String! {
   case (pet) {
-    c: Cat => "cat: " + c.name
+    c: Cat! => "cat: " + c.name
     else => "something else"
   }
 }

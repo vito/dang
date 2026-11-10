@@ -1,0 +1,5 @@
+# A native module's namespace has no constructor either, so decoded data can't
+# be materialized as it.
+import Lib
+
+let lib = JSON.decode("{}") :: Lib!

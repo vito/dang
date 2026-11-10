@@ -9,7 +9,7 @@ half(n: Int!): Int! {
 
 quarter(n: Int!): Int! {
   half(half(n)) rescue {
-    e: Error => "not divisible"
+    e: Error! => "not divisible"
   }
 }
 

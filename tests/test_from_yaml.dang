@@ -129,7 +129,7 @@ assert { YAML.encode(["k\xff": "v\xff"]) == "k�: v�" }
 assert { YAML.encode(["k": "\tx\ny"]) == "k: |-\n    \tx\n    y" }
 
 let badMerge = (YAML.decode("a:\n  <<: 5") :: Map[Map[Int!]!]!) rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 assert { badMerge == "YAML.decode: invalid YAML: a: <<: merge value must be a mapping or a sequence of mappings" }
 

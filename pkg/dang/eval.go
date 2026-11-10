@@ -491,6 +491,28 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 // the frame it is published to is not published again (see FieldDecl.Eval),
 // so a builtin bound there would win over a module's own `let loop = ...`.
 func NewValueScope(typeScope TypeScope) ValueScope {
+	builtinsFrame := newBuiltinsFrame(typeScope)
+
+	// The builtin imports sit between the builtins and the program, like the
+	// type scope's (see NewPreludeTypeScope). The frame is the builtins' too,
+	// as far as copy-on-write and scope listings go: no generations of the
+	// program's frames live there.
+	importsFrame := builtinsFrame.Derive(false).(*Object)
+	importsFrame.builtins = true
+	installBuiltinImportValues(importsFrame)
+
+	return importsFrame.Derive(false)
+}
+
+// newDirectoryValueScope is NewValueScope for a directory module, without the
+// builtin imports, which each file imports along with its explicit imports
+// (see evaluateDirectory and builtin_imports.go).
+func newDirectoryValueScope(typeScope TypeScope) ValueScope {
+	return newBuiltinsFrame(typeScope).Derive(false)
+}
+
+// newBuiltinsFrame returns the frame of builtins below a program's scope.
+func newBuiltinsFrame(typeScope TypeScope) *Object {
 	// Create an Object from the type environment
 	builtinsFrame := NewObject(typeScope)
 	builtinsFrame.builtins = true
@@ -506,8 +528,7 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	for t, c := range preludeConstructors {
 		builtinsFrame.BindConstructor(t, c)
 	}
-
-	return builtinsFrame.Derive(false)
+	return builtinsFrame
 }
 
 // ValueScopeFromSchema creates the value namespace of a schema import: the
@@ -800,53 +821,6 @@ func addBuiltinFunctions(scope ValueScope) {
 			methodKey := GetMethodKey(receiverType, def.Name)
 			scope.Bind(methodKey, builtinFn, PrivateVisibility)
 		})
-	}
-
-	// Register static methods on their host modules
-	for _, hostModule := range StaticModules() {
-		modValue := NewObject(hostModule)
-		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
-			fnType := createFunctionTypeFromDef(def)
-			builtinFn := BuiltinFunction{
-				Name:         def.Name,
-				FnType:       fnType,
-				AllDefaulted: allParamsDefaulted(def),
-				Deprecated:   def.Deprecated,
-				CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-					argsWithDefaults := applyDefaults(args, def)
-					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
-				},
-			}
-			modValue.Bind(def.Name, builtinFn, PublicVisibility)
-		})
-
-		// Populate nested enum types with their values
-		for name, subScope := range hostModule.NamedTypes() {
-			subType, ok := subScope.(*Type)
-			if !ok || subType.Kind != EnumKind {
-				continue
-			}
-			enumModValue := NewObject(subType)
-			var enumValues []Value
-			for varName, scheme := range subType.Bindings(PublicVisibility) {
-				// Only include actual enum members (whose type is the
-				// enum itself), not accessors like values().
-				t, _ := scheme.Type()
-				if nn, ok := t.(hm.NonNullType); !ok || nn.Type != hm.Type(subType) {
-					continue
-				}
-				ev := EnumValue{Val: varName, EnumType: subType}
-				enumModValue.Bind(varName, ev, PublicVisibility)
-				enumValues = append(enumValues, ev)
-			}
-			enumModValue.Bind("values", ListValue{
-				Elements: enumValues,
-				ElemType: NonNull(subType),
-			}, PublicVisibility)
-			modValue.Bind(name, enumModValue, PublicVisibility)
-		}
-
-		scope.Bind(hostModule.Named, modValue, PublicVisibility)
 	}
 
 	// The Regexp(...) constructor: a builtin scalar with a Go-native hook,
@@ -2406,6 +2380,16 @@ type Object struct {
 	// home module's scope. See BindConstructor.
 	constructors map[*Type]Callable
 
+	// importNamespaces marks the bindings of this frame that are imports'
+	// namespaces (see markImportNamespace); a later Bind of the name clears
+	// its mark. Guarded by mu.
+	importNamespaces map[string]bool
+
+	// declScopes maps the top-level declarations of a directory module, on
+	// its module frame, to the scope of the file declaring each: the module
+	// scope with that file's imports (see DeclarationScope). Guarded by mu.
+	declScopes map[string]ValueScope
+
 	// selfParent marks a method call's outermost frame (see BoundMethod.Call).
 	// Its effective parent is not Parent but the current value of its `self`
 	// cell, so bare field reads see the latest copy-on-write generation of
@@ -2694,6 +2678,7 @@ func (m *Object) Bind(name string, value Value, visibility Visibility) {
 	defer m.mu.Unlock()
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
+	delete(m.importNamespaces, name)
 }
 
 func (m *Object) Visibility(name string) Visibility {
@@ -3858,7 +3843,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		return nil, err
 	}
 	if len(blocks) == 0 {
-		return NewValueScope(NewPreludeTypeScope("")), nil
+		return newDirectoryValueScope(NewPreludeTypeScope("")), nil
 	}
 
 	if isDebug {
@@ -3876,9 +3861,26 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		return nil, ConvertInferError(err)
 	}
 
-	valueScope := NewValueScope(typeScope)
-	for _, block := range blocks {
-		if _, err := EvaluateDeclaredFormsWithPhases(ctx, block.Forms, valueScope); err != nil {
+	// Like evaluateDirectory: each file's imports go in a frame of its own,
+	// after the builtin imports, composed under the shared module scope, and
+	// the file's declarations are evaluated (closing over) that composite.
+	valueScope := newDirectoryValueScope(typeScope)
+	fileScopes := make([]ValueScope, len(blocks))
+	for i, block := range blocks {
+		imports, rest := partitionImports(block.Forms)
+		importsScope := valueScope.Derive(true)
+		installBuiltinImportValues(importsScope)
+		for _, imp := range imports {
+			if _, err := EvalNode(ctx, importsScope, imp); err != nil {
+				return nil, err
+			}
+		}
+		fileScopes[i] = CreateOverlayValueScope(valueScope, importsScope)
+		recordDeclarationScopes(valueScope, rest, fileScopes[i])
+	}
+	for i, block := range blocks {
+		_, rest := partitionImports(block.Forms)
+		if _, err := EvaluateDeclaredFormsWithPhases(ctx, rest, fileScopes[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -3946,7 +3948,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 
 	slog.Debug("directory type inference completed", "dir", dirPath)
 
-	valueScope := NewValueScope(typeScope)
+	valueScope := newDirectoryValueScope(typeScope)
 
 	if isDebug {
 		fmt.Println("Running phased evaluation...")
@@ -3970,6 +3972,46 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 	return valueScope, nil
 }
 
+// DeclarationScope returns the scope the top-level declaration name of a
+// directory module was evaluated in, given the module's scope as RunDir,
+// DeclareDir, LoadDir (Module.ValueEnv) or PreparedDirectory.Evaluate
+// returns it: the module's scope with the imports of the file declaring
+// name. A module's imports are file-local, so this is the scope to evaluate
+// a declaration's directive arguments in when they may name an import. For
+// any other name or scope, it returns scope itself.
+func DeclarationScope(scope ValueScope, name string) ValueScope {
+	if module, ok := scope.(*Object); ok {
+		module.mu.Lock()
+		file, found := module.declScopes[name]
+		module.mu.Unlock()
+		if found {
+			return file
+		}
+	}
+	return scope
+}
+
+// recordDeclarationScopes records, on a directory module's frame, the file
+// scope each of the file's forms is declared in (see DeclarationScope).
+func recordDeclarationScopes(module ValueScope, forms []Node, file ValueScope) {
+	frame, ok := module.(*Object)
+	if !ok {
+		return
+	}
+	frame.mu.Lock()
+	defer frame.mu.Unlock()
+	for _, form := range forms {
+		// Directives have a namespace of their own, so a directive mustn't
+		// take the entry of a value or type of the same name.
+		if _, isDirective := form.(*DirectiveDecl); isDirective {
+			continue
+		}
+		for _, name := range form.DeclaredSymbols() {
+			setIn(&frame.declScopes, name, file)
+		}
+	}
+}
+
 // evaluateDirectoryFiles evaluates each file's forms with file-local imports
 // composed over the shared valueScope, mirroring InferDirectoryFiles' per-file
 // scoping. Phases run in lockstep across files so cross-file references resolve
@@ -3978,9 +4020,12 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 // Imports are file-scoped regardless of file count: even a single-file directory
 // installs its imports into a per-file env rather than the returned valueScope,
 // so `import` consistently means "this file imports X" and imported symbols never
-// leak into the module scope. Each declaration still captures its file's composite
-// scope (e.g. via ConstructorFunction.Closure), so directive arguments and method
-// bodies that reference imported symbols continue to resolve.
+// leak into the module scope. A declaration with a closure captures its file's
+// composite scope (e.g. ConstructorFunction.Closure), so its directive
+// arguments and method bodies that reference imported symbols continue to
+// resolve. One without (an interface) has its directive arguments evaluated in
+// DeclarationScope(valueScope, name), which each file's declarations are
+// recorded for.
 func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope ValueScope) error {
 	return evaluateDirectory(ctx, blocks, valueScope, true)
 }
@@ -4001,8 +4046,12 @@ func evaluateDirectory(ctx context.Context, blocks []*FileBlock, valueScope Valu
 
 		// Install imports into a fresh per-file env. Using Derive (rather than
 		// a sibling Object) keeps the prelude reachable for any lookups
-		// the imports phase performs during installation.
+		// the imports phase performs during installation. The builtin
+		// imports come first, so an explicit import replaces one of the same
+		// name (see builtin_imports.go); valueScope, from
+		// newDirectoryValueScope, has none of its own.
 		importsScope := valueScope.Derive(true)
+		installBuiltinImportValues(importsScope)
 		for _, imp := range imports {
 			if _, err := EvalNode(ctx, importsScope, imp); err != nil {
 				return err
@@ -4010,6 +4059,7 @@ func evaluateDirectory(ctx context.Context, blocks []*FileBlock, valueScope Valu
 		}
 
 		composite := CreateOverlayValueScope(valueScope, importsScope)
+		recordDeclarationScopes(valueScope, rest, composite)
 		fileScopes = append(fileScopes, fileEvalScope{
 			classified: classifyForms(rest),
 			scope:      composite,

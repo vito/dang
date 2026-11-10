@@ -1,4 +1,4 @@
-# Named type patterns can be qualified (`g: Lib.Greeter =>`), in case and
+# Named type patterns can be qualified (`g: Lib.Greeter! =>`), in case and
 # rescue, on union, interface and decoded operands: a qualified pattern names
 # its type like the same qualified type written anywhere else, so it works
 # where the bare name is shadowed.
@@ -12,8 +12,8 @@ type Dog {
 let pet: Lib.Pet = Lib.Dog
 
 let sound = case (pet) {
-  d: Lib.Dog => d.sound
-  c: Lib.Cat => c.sound
+  d: Lib.Dog! => d.sound
+  c: Lib.Cat! => c.sound
 }
 
 assert { sound == "woof" }
@@ -22,7 +22,7 @@ assert { sound == "woof" }
 let shape: Lib.Shape = Lib.Square
 
 let area = case (shape) {
-  sq: Lib.Square => sq.area
+  sq: Lib.Square! => sq.area
   else => 0
 }
 
@@ -32,15 +32,15 @@ assert { area == 4 }
 let either = if (true) { Lib.Square } else { Lib.Greeter("x") }
 
 let which = case (either) {
-  g: Lib.Greeter => g.greeting
-  s: Lib.Square => `square ${s.area}`
+  g: Lib.Greeter! => g.greeting
+  s: Lib.Square! => `square ${s.area}`
 }
 
 assert { which == "square 4" }
 
 # Decoded operand.
 let greeting = case (JSON.decode("{\"name\": \"Dang\"}")) {
-  g: Lib.Greeter => g.greeting
+  g: Lib.Greeter! => g.greeting
   else => "?"
 }
 
@@ -48,7 +48,7 @@ assert { greeting == "Hello, Dang!" }
 
 # Rescue.
 let code = Lib.fail(7) rescue {
-  e: Lib.LibError => e.code
+  e: Lib.LibError! => e.code
   else => 0
 }
 

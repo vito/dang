@@ -36,7 +36,7 @@ returnThroughTry: String! {
   {
     return "done"
   } rescue {
-    err: Error => "caught: " + err.message
+    err: Error! => "caught: " + err.message
   }
 }
 

@@ -2137,7 +2137,7 @@ func (FormatSuite) TestLegacyTryCatchMigration(ctx context.Context, t *testctx.T
   e: BasicError => e.message
 }`,
 			expected: `let x = risky rescue {
-  e: BasicError => e.message
+  e: BasicError! => e.message
 }
 `,
 		},
@@ -2149,7 +2149,7 @@ func (FormatSuite) TestLegacyTryCatchMigration(ctx context.Context, t *testctx.T
   err => err.message
 }`,
 			expected: `let x = risky rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 `,
 		},
@@ -2181,7 +2181,7 @@ func (FormatSuite) TestLegacyTryCatchMigration(ctx context.Context, t *testctx.T
   err => { a; b }
 }`,
 			expected: `let x = risky rescue {
-  err: Error => { a; b }
+  err: Error! => { a; b }
 }
 `,
 		},
@@ -2209,7 +2209,7 @@ func (FormatSuite) TestLegacyTryCatchMigration(ctx context.Context, t *testctx.T
 			expected: `let x = {
   risky ?? "missing"
 } rescue {
-  err: Error => err.message
+  err: Error! => err.message
 }
 `,
 		},
@@ -2242,8 +2242,8 @@ func (FormatSuite) TestLegacyTryCatchMigration(ctx context.Context, t *testctx.T
   err => ""
 }`,
 			expected: `let x = risky rescue {
-  v: ValidationError => v.field
-  err: Error => ""
+  v: ValidationError! => v.field
+  err: Error! => ""
 }
 `,
 		},

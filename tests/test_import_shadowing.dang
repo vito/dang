@@ -71,8 +71,8 @@ localSearchResult: SearchResult! = Cat("Whiskers")
 assert { SearchResult != null }
 
 let localSearchName = case (localSearchResult) {
-  c: Cat => c.name
-  d: Dog => d.name
+  c: Cat! => c.name
+  d: Dog! => d.name
 }
 assert { localSearchName == "Whiskers" }
 

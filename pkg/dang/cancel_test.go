@@ -76,7 +76,7 @@ loop { spin() rescue null }
 `,
 		"Error clause": `
 let spin(): Int! { loop { null } }
-loop { spin() rescue { e: Error => 0 } }
+loop { spin() rescue { e: Error! => 0 } }
 `,
 		"else clause": `
 let spin(): Int! { loop { null } }
@@ -84,7 +84,7 @@ loop { spin() rescue { else => 0 } }
 `,
 		"RuntimeError clause": `
 let spin(): Int! { loop { null } }
-loop { spin() rescue { e: RuntimeError => 0 } }
+loop { spin() rescue { e: RuntimeError! => 0 } }
 `,
 		"rescue around the loop": `print(loop { null } rescue 1)`,
 	} {

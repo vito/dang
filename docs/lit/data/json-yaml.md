@@ -7,7 +7,8 @@
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
 `encode` / `decode` static methods. They are plain modules owned by Dang, like
-`Random`, so they work with no schema import. Data of unknown shape, whichever
+`Random`, which every module gets as builtin imports, so they work with no
+`import` statement (see [#modules]). Data of unknown shape, whichever
 format it came from, is `Decoded` (see [#decoded-values]). A schema's scalar
 of the same name (e.g. Dagger's `JSON`) is a separate type, reached qualified
 (`Dagger.JSON`), while unqualified `JSON` stays Dang's own (see
@@ -132,15 +133,15 @@ the type requires, all the way down. Matching runs none of your code; only
 the matching arm's data is then converted, exactly like a cast, so a
 constructor that raises or a scalar's `new()` that rejects the data is an
 error of the `case`, not a reason to try the next arm. The first matching
-arm wins. Lists and maps can be patterns too, for decoded data only. Since
-any data may match none of the arms, `else` is required:
+arm wins. Lists and maps are patterns too, matched by the shape of their
+elements. Since any data may match none of the arms, `else` is required:
 
 ```dang
 kind(d: Decoded!): String! {
   case (d) {
-    n: Int => `the number ${n}`
-    items: [Decoded!] => `${items.length} items`
-    fields: Map[Decoded!] => `fields ${fields.keys.join(", ")}`
+    n: Int! => `the number ${n}`
+    items: [Decoded!]! => `${items.length} items`
+    fields: Map[Decoded!]! => `fields ${fields.keys.join(", ")}`
     else => "something else"
   }
 }
@@ -149,17 +150,17 @@ kind(d: Decoded!): String! {
 ```
 
 Order the arms from most to least specific: `1` is an `Int` and a `Float`
-(so an `Int` arm after a `Float` arm is an unreachable-clause error, as is
-a `String` arm after a scalar arm, which takes every string, or an object
-arm after `Map[Decoded!]`), and a type reads only the fields it
+(so an `Int!` arm after a `Float!` arm is an unreachable-clause error, as is
+a `String!` arm after a scalar arm, which takes every string, or an object
+arm after `Map[Decoded!]!`), and a type reads only the fields it
 declares (an object with extra keys still matches, unless the decode was
-strict). A `x: Decoded` arm takes any data as it is, and so can stand in for
+strict). A `x: Decoded!` arm takes any data as it is, and so can stand in for
 `else`. An arm of a schema's scalar without a body matches any data too,
 since such a scalar holds data of any shape (see [#enums-scalars]). Null data
 matches no other type arm. On a nullable `Decoded` operand
 null is the operand itself being null, so it goes only to a `null` arm or
-`else`, and a `Decoded` arm stands in for `else` together with a `null` arm;
-on `Decoded!`, null data goes to a `Decoded` arm or `else`.
+`else`, and a `Decoded!` arm stands in for `else` together with a `null` arm;
+on `Decoded!`, null data goes to a `Decoded!` arm or `else`.
 
 A `case` can't take a union that holds decoded data, such as the
 `Decoded | Int!` from `JSON.decode(text) rescue 0`: its arms would match the
@@ -454,7 +455,20 @@ JSON.decode("""{"outcome": "BROKEN"}""") :: Build!
 All of these are recoverable with `rescue` ([#errors]):
 
 ```dang
-(JSON.decode("{") :: Summary!) rescue { e: Error => e.message }
+(JSON.decode("{") :: Summary!) rescue { e: Error! => e.message }
 ```
+
+A type with no constructor, such as a namespace (`JSON`, `Random`, an
+import's) or a schema's object type, can't be decoded into. That is a
+type error, caught before anything runs, wherever a decoded value must become
+one — a non-null target, its non-null elements, or a required field:
+
+```dang-failure
+JSON.decode("{}") :: Random!
+```
+
+A nullable position, such as a nullable field, type-checks: it decodes as
+`null` when the data leaves it out, and fails if the data has a value there.
+Write `Decoded!` for data of any shape (see [#decoded-values]).
 
 > Meta: A side-by-side "JSON in / Dang value out" table would be a nice teaching tool.

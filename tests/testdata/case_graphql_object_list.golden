@@ -1,0 +1,11 @@
+[1m[31mError:[0m pattern [Test.User!]! can't match a GraphQL object list (GraphQL[Test.User!]!); select fields on its elements first, e.g. value.{{id}}
+  [2m[34m--> errors/case_graphql_object_list.dang:5:7[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 | case (users) {[0m
+ [2m[34m[1m  5 | [0m  us: [User!]! => us
+[2m             [31m^^^^^^^^[0m
+ [2m  6 |   else => null[0m
+ [2m  7 | }[0m
+ [2m    |[0m
+
