@@ -1,0 +1,3 @@
+# Decoded data is not Numeric until it is given a type.
+let xs = JSON.decode("[2, 1]") :: [Decoded!]!
+xs.sum
