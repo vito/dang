@@ -1,0 +1,1 @@
+add[a: Numeric](x: a, y: a!): a! { x + y }

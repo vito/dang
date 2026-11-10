@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "best": return type b! (here a!) doesn't fit interface return type b! for every type the interface's callers pick
+  [2m[34m--> errors/generic_interface_impl_renamed_vars.dang:6:22[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # The implementation's b stands for the interface's a: it returns x.[0m
+ [2m[34m[1m  6 | [0mtype Swap implements Pair {
+[2m                            [31m^^^^[0m
+ [2m  7 |   best(x: b!, y: a!): b! { x }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

@@ -1,0 +1,89 @@
+interface Getter {
+  get(x: a!): a
+}
+
+# A return more specific than the interface's is fine.
+type Echo implements Getter {
+  get(x: a!): a! { x }
+}
+
+# The method's variables are its own, whatever their letters.
+interface Counter {
+  count(xs: [a]!): Int!
+}
+
+type ByLength implements Counter {
+  count(xs: a!): Int! { 1 }
+}
+
+let g: Getter! = Echo
+assert { g.get(1) == 1 }
+let c: Counter! = ByLength
+assert { c.count([1, 2]) == 1 }
+
+# A field holding a generic function is pinned to the interface's types,
+# whatever its arguments' order.
+either(x: a, y: a): a { x ?? y }
+
+interface IntsFirstNonNull {
+  f(x: Int!, y: Int): Int
+}
+
+type EitherInts implements IntsFirstNonNull {
+  pub f = &either
+}
+
+assert { EitherInts.f(1, null) == 1 }
+
+# The return can decide a variable the arguments would join elsewhere.
+interface Named {
+  name: String!
+}
+
+type Dog implements Named {
+  name: String!
+}
+
+type Cat implements Named {
+  name: String!
+}
+
+union Pet = Dog | Cat
+
+interface Chooser {
+  choose(x: Dog!, y: Cat!): Pet!
+}
+
+type Second implements Chooser {
+  choose(x: a!, y: a!): a! { y }
+}
+
+let chosen: Chooser! = Second
+let pet: Pet! = chosen.choose(Dog("d"), Cat("c"))
+assert { pet != null }
+
+# ...and so can any argument, whatever its place.
+interface Aged {
+  age: Int!
+}
+
+type Puppy implements Named & Aged {
+  name: String!
+  age: Int!
+}
+
+type Kitten implements Named & Aged {
+  name: String!
+  age: Int!
+}
+
+interface Elder {
+  older(x: Puppy!, y: Kitten!, z: Aged!): Int!
+}
+
+type ByAge implements Elder {
+  older(x: a!, y: a!, z: a!): Int! { 1 }
+}
+
+let elder: Elder! = ByAge
+assert { elder.older(Puppy("p", 1), Kitten("k", 2), Puppy("q", 3)) == 1 }

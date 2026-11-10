@@ -1,0 +1,8 @@
+interface Pair {
+  best(x: a!, y: b!): b!
+}
+
+# The implementation's b stands for the interface's a: it returns x.
+type Swap implements Pair {
+  best(x: b!, y: a!): b! { x }
+}

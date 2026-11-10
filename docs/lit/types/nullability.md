@@ -423,7 +423,127 @@ it, or compare it with `==` and `!=`, but nothing else:
 doubled(x: a): a { x * 2 }
 ```
 
-Use a concrete type (here `Int!`) if the body needs to operate on the value.
+Use a concrete type (here `Int!`) if the body needs to operate on the value,
+or bound the type variable: by `Ordered` to compare values, by `Numeric` to
+do arithmetic on them.
+
+### Type parameters, `Ordered` and `Numeric` {#type-params}
+
+A function or method may list its type parameters after its name. Without
+the list they are implicit, as above; with it, the list must declare every
+type variable the signature uses, each once, and use every one it declares:
+
+```dang
+second[a, b](x: a!, y: b!): b! { y }
+
+second(1, "two")
+```
+
+A parameter may be bounded by `Ordered`, the types whose values have an
+order: `Int!`, `Float!`, `String!`, `Boolean!`, enums (in declaration order),
+custom scalars, and lists and `{{ }}` records of those, compared element by
+element. These are exactly what `<`, `>`, `<=` and `>=` compare and what
+`.sort` and `.sortBy` order (see [#collections]). In the body, values of a
+bounded `a!` compare, and the function can pass them on to another
+`Ordered`-bounded one:
+
+```dang
+insert[a: Ordered](xs: [a!]!, x: a!): [a!]! {
+  xs.takeWhile { y => y <= x } + [x] + xs.dropWhile { y => y <= x }
+}
+
+insertionSort[a: Ordered](xs: [a!]!): [a!]! {
+  xs.reduce([]) { acc, x => insert(acc, x) }
+}
+
+{{ints: insertionSort([3, 1, 2]), lists: insertionSort([[2], [1, 9]])}}
+```
+
+The bound is on the type, not its nullability: `a: Ordered` stands for `T`
+or `T!` for any Ordered `T!`, so write `a!` for the values you compare. A
+bare `a` may be null, and `<` refuses it.
+
+Each call checks the bound where the type is supplied, so a key with no
+order is an error at the block returning it:
+
+```dang
+mySortBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+  xs.sortBy { x => key(x) }
+}
+
+type Point {
+  x: Int!
+}
+```
+
+```dang
+mySortBy([Point(2), Point(1)]) { p => p.x }.map { p => p.x }
+```
+
+```dang-failure
+mySortBy([Point(2), Point(1)]) { p => p }
+```
+
+A call that leaves the type unknown (`insertionSort([])`) keeps the bound on
+it until something learns the type, and checks it there. Inside a generic
+body, an unbounded type variable has no order, and comparing its values is an
+error that says to declare the bound:
+
+```dang-failure
+smaller[a](x: a!, y: a!): a! {
+  if (x < y) { x } else { y }
+}
+```
+
+`Ordered` is a constraint, not a type: `x: Ordered!` is an error.
+
+The other bound is `Numeric`: the number types, `Int!` and `Float!`. Values
+of a `Numeric`-bounded `a!` take `+`, `-`, `*`, `/`, `%` and unary `-`, so
+you can write your own folds:
+
+```dang
+mySum[a: Numeric](xs: [a!]!, zero: a!): a! {
+  xs.reduce(zero) { acc, x => acc + x }
+}
+
+{{ints: mySum([1, 2, 3], 0), floats: mySum([0.5, 0.25], 0.0)}}
+```
+
+The result follows the numbers, as it does without a type variable: `a!`
+with `a!` or with an `Int!` is `a!` (Int with Int stays Int, so `/` divides
+Ints), and anything with a `Float!` is `Float!`:
+
+```dang
+mean[a: Numeric](xs: [a!]!): Float! {
+  xs.reduce(0.0) { acc, x => acc + x } / xs.length
+}
+
+mean([1, 2])
+```
+
+Only the numeric `+` applies — a `Numeric` value doesn't concatenate with a
+string — and two different `Numeric` parameters don't mix, since one might
+be an Int and the other a Float. An unbounded variable's arithmetic is an
+error that says to declare the bound:
+
+```dang-failure
+plus[a](x: a!, y: a!): a! { x + y }
+```
+
+Bounds combine with `&`: `[a: Ordered & Numeric]` both compares and adds,
+and compares with number literals the way it adds with them:
+
+```dang
+abs[a: Ordered & Numeric](x: a!): a! {
+  if (x < 0) { -x } else { x }
+}
+
+{{int: abs(-3), float: abs(-2.5)}}
+```
+
+`.sum` on lists is bounded by `Numeric` (see [#collections]). An interface
+method declares type parameters and bounds the same way (see
+[#interfaces-unions]).
 
 ## Type hints / casts: `::`
 

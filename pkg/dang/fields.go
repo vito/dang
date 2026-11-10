@@ -20,6 +20,11 @@ type FieldDecl struct {
 	IsBlockParam bool // True if this is a block parameter (prefixed with &)
 	Loc          *SourceLocation
 
+	// TypeParams is an interface member header's explicit type parameter
+	// list, `sortBy[a, k: Ordered](...): [a]!`. A field with a function
+	// value keeps its list on the FunDecl instead.
+	TypeParams []*TypeParam
+
 	// A type inferred from context, i.e. a lambda passed as a function argument.
 	ContextInferredType hm.Type
 
@@ -97,6 +102,25 @@ func (s *FieldDecl) funDecl() *FunDecl {
 	}
 	fd, _ := value.(*FunDecl)
 	return fd
+}
+
+// withTypeParams brings the declared type parameters of the function s
+// declares, if any, into scope for its annotation, which is the function's
+// signature: the FunDecl's, or a member header's own.
+func (s *FieldDecl) withTypeParams(ctx context.Context) context.Context {
+	if fd := s.funDecl(); fd != nil {
+		return withTypeParams(ctx, fd.TypeParams)
+	}
+	return withTypeParams(ctx, s.TypeParams)
+}
+
+// checkHeaderTypeParams checks a member header's type parameter list
+// against its signature t, as checkTypeParams does a function's.
+func (s *FieldDecl) checkHeaderTypeParams(t hm.Type) error {
+	if s.funDecl() != nil || len(s.TypeParams) == 0 {
+		return nil
+	}
+	return checkTypeParams(s.Name.Name, s.TypeParams, t)
 }
 
 func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
@@ -196,6 +220,43 @@ func (s *FieldDecl) weaken(ctx context.Context, t hm.Type) hm.Type {
 // The weak variables may hold the enclosing generic functions' own
 // variables, but no other function's.
 func weakenVars(ctx context.Context, t hm.Type, vars hm.Subs, cells *[]*hm.WeakCell) hm.Type {
+	scope := weakScope(ctx)
+	var opened hm.Subs
+	for tv := range t.FreeTypeVar() {
+		if tv.IsRigid() || (tv.IsWeak() && !tv.IsOpenWeak()) {
+			continue
+		}
+		if _, ok := vars[tv]; ok {
+			continue
+		}
+		w, cell := hm.NewWeakVar(tv, scope)
+		vars[tv] = w
+		*cells = append(*cells, cell)
+		if tv.IsWeak() {
+			// An expression's open variable (an empty literal's element
+			// type) is now this binding's, in its scope: the expression
+			// takes on whatever the binding's variable is bound to.
+			if opened == nil {
+				opened = hm.NewSubs()
+			}
+			opened.Add(tv, w)
+		}
+	}
+	if len(opened) > 0 {
+		// Each w is unbound and mentions no rigid variable, so this can't
+		// fail; if it somehow did, the expression just stays unrefined.
+		_ = hm.CommitWeak(opened)
+	}
+	if len(vars) == 0 {
+		return t
+	}
+	return t.Apply(vars).(hm.Type)
+}
+
+// weakScope returns the rigid variables a weak variable made here may be
+// bound to mention: the enclosing generic functions' own (see
+// hm.NewWeakVar).
+func weakScope(ctx context.Context) hm.TypeVarSet {
 	var scope hm.TypeVarSet
 	for _, r := range scopedTypeVars(ctx) {
 		if rv, ok := r.(hm.TypeVariable); ok {
@@ -205,21 +266,7 @@ func weakenVars(ctx context.Context, t hm.Type, vars hm.Subs, cells *[]*hm.WeakC
 			scope.Add(rv)
 		}
 	}
-	for tv := range t.FreeTypeVar() {
-		if tv.IsRigid() || tv.IsWeak() {
-			continue
-		}
-		if _, ok := vars[tv]; ok {
-			continue
-		}
-		w, cell := hm.NewWeakVar(tv, scope)
-		vars[tv] = w
-		*cells = append(*cells, cell)
-	}
-	if len(vars) == 0 {
-		return t
-	}
-	return t.Apply(vars).(hm.Type)
+	return scope
 }
 
 type paramDeclKey struct{}
@@ -283,7 +330,7 @@ func (frame *Type) keepWeakCells(s *FieldDecl) {
 
 func (s *FieldDecl) unweakenedSignatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	if s.Type_ != nil {
-		fieldType, err := s.Type_.Infer(ctx, env, fresh)
+		fieldType, err := s.Type_.Infer(s.withTypeParams(ctx), env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -393,8 +440,11 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	var definedType hm.Type
 	if s.Type_ != nil {
-		definedType, err = s.Type_.Infer(ctx, env, fresh)
+		definedType, err = s.Type_.Infer(s.withTypeParams(ctx), env, fresh)
 		if err != nil {
+			return nil, err
+		}
+		if err := s.checkHeaderTypeParams(definedType); err != nil {
 			return nil, err
 		}
 		if !isParam {

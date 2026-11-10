@@ -1,0 +1,1 @@
+smaller(x: Ordered!, y: Ordered!): Boolean! { x < y }

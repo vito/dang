@@ -68,6 +68,27 @@ func TestCompleteNamespaceMembers(t *testing.T) {
 	require.NotContains(t, labels(got.Items), "Path", "the prelude an import sees isn't its members")
 }
 
+func TestCompleteShowsBounds(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope(t, membersSource+`
+pub larger[k: Ordered](x: k!, y: k!): k! {
+  if (x < y) { y } else { x }
+}
+`)
+
+	got := analysis.Complete(ctx, scope, "larg", analysis.Pos{Line: 1, Column: len("larg") + 1})
+	if len(got.Items) == 0 {
+		t.Skip("no completions without cgo")
+	}
+	for _, item := range got.Items {
+		if item.Label == "larger" {
+			require.Contains(t, item.Detail, "[k: Ordered]")
+			return
+		}
+	}
+	t.Fatalf("no larger in %v", labels(got.Items))
+}
+
 func labels(items []dang.Completion) []string {
 	var ls []string
 	for _, item := range items {

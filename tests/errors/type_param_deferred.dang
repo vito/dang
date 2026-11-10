@@ -1,0 +1,9 @@
+type Person {
+  name: String!
+}
+
+mySort[a: Ordered](xs: [a!]!): [a!]! { xs.sort }
+
+# The element type isn't known yet: the bound waits for it.
+let sorted = mySort([])
+sorted += [Person("a")]

@@ -1,0 +1,8 @@
+type Person {
+  name: String!
+}
+
+let sorted = [].sort
+
+# The sorted list's elements must be Ordered, so the branches can't merge.
+let either = if (true) { sorted } else { [Person("a")] }

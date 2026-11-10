@@ -1,0 +1,10 @@
+[1m[31mError:[0m operator less_than is not defined for type a: it is of the generic type a, which may be null; write a! for its non-null values
+  [2m[34m--> errors/type_param_nullable_compare.dang:2:7[0m
+ [2m    |[0m
+ [2m  1 | smaller[a: Ordered](x: a, y: a): a {[0m
+ [2m[34m[1m  2 | [0m  if (x < y) { x } else { y }
+[2m             [31m^^^^^[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

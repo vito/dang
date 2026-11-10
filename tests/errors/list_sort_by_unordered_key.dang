@@ -1,0 +1,6 @@
+type Point {
+  x: Int!
+}
+
+let points = [Point(2), Point(1)]
+points.sortBy { p => p }

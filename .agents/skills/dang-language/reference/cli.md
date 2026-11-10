@@ -49,7 +49,7 @@ Commands (prefix `:`):
 - `:exit` / `:quit` — leave (also Ctrl+D)
 - `:doc` — interactive API/schema browser
 - `:env` — show environment bindings
-- `:type <expr>` — show the inferred type of an expression
+- `:type <expr>` — show the inferred type of an expression; bounded type variables show their bounds (`[].sum` → `[a: Numeric] a!`), and selecting a method with bounded type variables adds its signature (`[1].sort` → `Method: List.sort[a: Ordered](descending: Boolean = false): [a]!`)
 - `:find` / `:search <pattern>` — find functions/types by pattern
 - `:reset` — rebuild the environment from imports
 - `:clear` — clear the screen
@@ -64,5 +64,5 @@ Input keys: Tab completion, Up/Down history, Alt+Enter (or Shift+Enter under a K
 - `1` — any error (runtime, assertion failure, type/parse error, or CLI usage error); no distinct code per failure kind
 
 ## Editor integration
-- Dang ships a language server: run `dang --lsp` and point your editor's LSP client at the `dang` binary with that flag (autocomplete, type-on-hover, diagnostics). Hover on a closure also shows what it writes outside itself and which block params it calls (`// Effects: writes n; calls block`), which decide where it may be stored (objects.md "Compile-time rules").
+- Dang ships a language server: run `dang --lsp` and point your editor's LSP client at the `dang` binary with that flag (autocomplete, type-on-hover, diagnostics). Types show the bounds of their type variables (`largest: [a: Ordered](x: a!, y: a!): a!`), and hover on a bounded builtin method adds its signature (`// List.sum[a: Numeric]: a`). Hover on a closure also shows what it writes outside itself and which block params it calls (`// Effects: writes n; calls block`), which decide where it may be stored (objects.md "Compile-time rules").
 - Ready-made editor configs ship for Neovim, VS Code, and Zed (see `editors/` in the Dang repo).

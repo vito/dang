@@ -1,0 +1,5 @@
+mySum[a: Numeric](xs: [a!]!, zero: a!): a! {
+  xs.reduce(zero) { acc, x => acc + x }
+}
+
+let joined = mySum(["a", "b"], "")

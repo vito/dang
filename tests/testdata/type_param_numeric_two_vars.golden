@@ -1,0 +1,8 @@
+[1m[31mError:[0m operator addition is not defined between types a! and b!: they may be different Numeric types (one Int, the other Float); use one type parameter for both
+  [2m[34m--> errors/type_param_numeric_two_vars.dang:1:49[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mmix[a: Numeric, b: Numeric](x: a!, y: b!): a! { x + y }
+[2m                                                       [31m^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

@@ -38,6 +38,7 @@ add(a: Int!, b: Int!): Int! { a + b }
 - Name, params, return type, body. The **last expression is the result** — no `return` needed for the normal result.
 - `return expr` is for *early* exit; unwinds through enclosing blocks/loops; valid in `new(...)` too. `return` outside any function → `return outside of function`.
 - Separate forms with newlines or `;`.
+- Generic: type variables in the signature (`first(xs: [a!]!): a`) are inferred per call. An optional type parameter list after the name declares them, with bounds: `largest[a: Ordered](xs: [a!]!): a`, `total[a: Numeric](xs: [a!]!): a! { xs.sum }` (methods too). See types.md "Type variables".
 
 ### Zero-arity & auto-calling
 ```dang
@@ -264,6 +265,7 @@ type Book implements Named & Serializable { ... }   # implements A & B for multi
 - **Return types** covariant (may be more specific): interface `getData: String` (nullable) can be implemented as `getData: String!`. Weakening is rejected: `return type String is not compatible with interface return type String! (covariance required)`.
 - **Argument types** contravariant (may be more general): accept nullable where the interface wants non-null. Extra *optional* args allowed.
 - **Block arguments** too: the impl's block parameter must accept any block the interface's callers pass, with the same parameter names.
+- **Bounds** (type parameters, see types.md): an interface method header may declare them (`best[a: Ordered](x: a!, y: a!): a!`), and callers through the interface are checked against them like any generic call. The impl declares the same bounds or fewer (an unbounded `best(x: a!, y: a!): a!` takes the Ordered values callers pass); one the interface doesn't declare is an error: `the implementation bounds a by Numeric, but the interface's callers may pass any Ordered type for a!`. An impl must also take every type the interface's callers may pick for its type variables (declared or implicit), checked across all arguments, the block and the return type together: a concrete `best(x: String!, ...)` for `best(x: a!, ...)` (`type String! doesn't fit interface type a! for every type the interface's callers pick`), one `a` for the interface's `a` and `b` (`type a! doesn't fit interface type b! ...`), or a concrete return for an `a!` return (`return type String! doesn't fit interface return type a! ...`) is an error. The same whole-signature check applies to an interface method with no type variables: one impl variable for an `Int!` and a `String!` argument is `type c! (here Int!) doesn't fit interface type String!`. A return more specific than the interface's (`a!` for `a`) is fine, and the impl's letters don't need to match the interface's. A field holding a function (`pub apply = &ident`) holds one instantiation of it, so it can't implement a generic member. A member without arguments, read like a field, can't have type variables, declared or not.
 - **List elements** covariant in nullability and type: `[String!]` satisfies `[String]`; `[Dog!]` satisfies `[Animal!]`.
 - **Scalar fields** invariant: `id: String!` does not satisfy `id: ID!`.
 

@@ -1,0 +1,12 @@
+interface Picker {
+  pick[a: Ordered](x: a!, y: a!): a!
+}
+
+type Obj {
+  name: String!
+}
+
+# A call through the interface checks the interface's bounds.
+usePicker(p: Picker!): Obj! {
+  p.pick(Obj(name: "a"), Obj(name: "b"))
+}

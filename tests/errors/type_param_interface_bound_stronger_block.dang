@@ -1,0 +1,8 @@
+interface Ranker {
+  rankBy[k: Ordered](xs: [Int!]!, &key(item: Int!): k!): [Int!]!
+}
+
+# Callers of Ranker.rankBy may pass a block returning any Ordered key.
+type ByTotal implements Ranker {
+  rankBy[k: Numeric](xs: [Int!]!, &key(item: Int!): k!): [Int!]! { xs }
+}

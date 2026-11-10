@@ -43,6 +43,30 @@ multiply(x: Int!, y: Int!): Int! {
 
 multiply # test: K => hover: Multiplies two numbers together
 
+# a bounded type parameter shows in the signature
+largest[a: Ordered](x: a!, y: a!): a! {
+  if (x < y) { y } else { x }
+}
+
+largest # test: K => hover: largest: [a: Ordered](x: a!, y: a!): a!
+
+# a builtin's bounds show beside the type its call takes
+let nums = [3, 1, 2]
+
+nums.sum # test: ^wwK => hover: List.sum[a: Numeric]: a
+nums.sort # test: ^wwK => hover: List.sort[a: Ordered](descending: Boolean = false): [a]!
+nums.sortBy { _ } # test: ^wwK => hover: List.sortBy[a, k: Ordered]
+
+# an interface member header's bounds show too
+interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+}
+
+useRanker(r: Ranker!): Int! {
+  r.best # test: ^wwK => hover: best: [a: Ordered](x: a!, y: a!): a!
+  r.best(1, 2)
+}
+
 # unqualified imported value hover (file-local: composite reads lexical)
 serverInfo # test: K => hover: ServerInfo!
 

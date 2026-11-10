@@ -49,14 +49,69 @@ type List struct {
 	InferredTypeHolder
 	Elements []Node
 	Loc      *SourceLocation
+
+	// elemCell keeps alive the cell of an empty literal's element type
+	// (see emptyElemType).
+	elemCell *hm.WeakCell
 }
 
 var _ Node = (*List)(nil)
 var _ Evaluator = (*List)(nil)
 
+// emptyElemType returns the element type variable of an empty literal ([]
+// or [:]): an open weak variable, which the first unification that pins it
+// binds for good, wherever it happens (`xs ?? []`, an if branch, a reduce
+// accumulator, an argument). Eval reads what it was bound to, so the empty
+// value carries the type the program settled on. A parameter's default is
+// left a flexible variable: it is checked against the function's own rigid
+// variables instead (checkGenericDefault).
+func emptyElemType(ctx context.Context, f hm.Fresher) (hm.Type, *hm.WeakCell) {
+	tv := f.Fresh()
+	if inParamDecl(ctx) {
+		return tv, nil
+	}
+	w, cell := hm.NewOpenWeakVar(tv)
+	return w, cell
+}
+
+// emptyRuntimeType returns the type an empty literal inferred as t holds
+// elements of at runtime: elem as inference left it, its weak variables
+// resolved and the generic function's type variables replaced by the types
+// this call has them stand for (see runtimeType), or a placeholder variable
+// while it isn't known.
+func emptyRuntimeType(ctx context.Context, elem func(hm.Type) (hm.Type, bool), t hm.Type) hm.Type {
+	if t != nil {
+		if et, ok := elem(hm.ResolveWeak(t)); ok {
+			if rt := runtimeType(ctx, et); len(rt.FreeTypeVar()) == 0 {
+				return rt
+			}
+		}
+	}
+	return hm.TypeVariable('a')
+}
+
+func listElem(t hm.Type) (hm.Type, bool) {
+	inner, _ := stripNonNull(t)
+	lt, ok := inner.(ListType)
+	if !ok {
+		return nil, false
+	}
+	return lt.Type, true
+}
+
+func mapValue(t hm.Type) (hm.Type, bool) {
+	inner, _ := stripNonNull(t)
+	mt, ok := inner.(MapType)
+	if !ok {
+		return nil, false
+	}
+	return mt.Type, true
+}
+
 func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
-		tv := f.Fresh()
+		tv, cell := emptyElemType(ctx, f)
+		l.elemCell = cell
 		t := hm.NonNullType{Type: ListType{tv}}
 		l.SetInferredType(t)
 		return t, nil
@@ -104,7 +159,7 @@ func (l *List) GetSourceLocation() *SourceLocation { return l.Loc }
 
 func (l *List) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	if len(l.Elements) == 0 {
-		return ListValue{Elements: []Value{}, ElemType: hm.TypeVariable('a')}, nil
+		return ListValue{Elements: []Value{}, ElemType: emptyRuntimeType(ctx, listElem, l.GetInferredType())}, nil
 	}
 
 	values := make([]Value, len(l.Elements))
@@ -145,6 +200,10 @@ type MapLiteral struct {
 	InferredTypeHolder
 	Entries []MapEntry
 	Loc     *SourceLocation
+
+	// valCell keeps alive the cell of an empty literal's value type (see
+	// emptyElemType).
+	valCell *hm.WeakCell
 }
 
 var _ Node = (*MapLiteral)(nil)
@@ -152,7 +211,8 @@ var _ Evaluator = (*MapLiteral)(nil)
 
 func (m *MapLiteral) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(m.Entries) == 0 {
-		tv := f.Fresh()
+		tv, cell := emptyElemType(ctx, f)
+		m.valCell = cell
 		t := hm.NonNullType{Type: MapType{tv}}
 		m.SetInferredType(t)
 		return t, nil
@@ -232,7 +292,7 @@ func (m *MapLiteral) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 	}
 
 	if valType == nil {
-		valType = hm.TypeVariable('a')
+		valType = emptyRuntimeType(ctx, mapValue, m.GetInferredType())
 	}
 	return MapValue{Keys: keys, Entries: entries, ValType: valType}, nil
 }

@@ -1,0 +1,10 @@
+type Person {
+  name: String!
+}
+
+mySortBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+  xs.sortBy { x => key(x) }
+}
+
+let people = [Person("b"), Person("a")]
+mySortBy(people) { p => p }

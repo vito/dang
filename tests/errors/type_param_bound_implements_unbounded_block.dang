@@ -1,0 +1,12 @@
+interface Best {
+  best(&mk: a!): a!
+}
+
+# Callers of Best.best may pass a block returning values with no order.
+type Smallest implements Best {
+  best[a: Ordered](&mk: a!): a! {
+    let x = mk
+    let y = mk
+    if (y < x) { y } else { x }
+  }
+}

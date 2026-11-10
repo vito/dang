@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "best", argument "y": type a! doesn't fit interface type b! for every type the interface's callers pick
+  [2m[34m--> errors/type_param_interface_impl_merges_vars.dang:6:22[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Pair.best may pass two different types, like 1 and "z".[0m
+ [2m[34m[1m  6 | [0mtype Same implements Pair {
+[2m                            [31m^^^^[0m
+ [2m  7 |   best[a: Ordered](x: a!, y: a!): a! {[0m
+ [2m  8 |     if (x < y) { y } else { x }[0m
+ [2m    |[0m
+

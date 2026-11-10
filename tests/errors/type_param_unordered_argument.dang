@@ -1,0 +1,11 @@
+type Person {
+  name: String!
+}
+
+insertionSort[a: Ordered](xs: [a!]!): [a!]! {
+  xs.reduce([]) { acc, x =>
+    acc.takeWhile { y => y <= x } + [x] + acc.dropWhile { y => y <= x }
+  }
+}
+
+insertionSort([Person("b"), Person("a")])

@@ -1,0 +1,9 @@
+[1m[31mError:[0m operator addition is not defined for the generic type a: a type variable supports no operations
+  [2m[34m--> errors/type_param_unbounded_concat.dang:2:28[0m
+ [2m    |[0m
+ [2m  1 | # Numeric can't make + concatenate, so it isn't suggested.[0m
+ [2m[34m[1m  2 | [0mlabel[a](x: a!): String! { "n=" + x }
+[2m                                  [31m^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

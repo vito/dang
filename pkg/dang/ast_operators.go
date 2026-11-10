@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -30,6 +31,10 @@ const (
 	numericOperand operandClass = 1 << iota // Int and Float (which may mix)
 	stringOperand                           // String, e.g. concatenation with +
 	listOperand                             // [a], e.g. concatenation with +
+	// constrainedOperand: the domain is the built-in constraint that
+	// enables the operator (BuiltinConstraint.Operators), e.g. Ordered for
+	// < > <= >=.
+	constrainedOperand
 )
 
 func (c operandClass) has(x operandClass) bool { return c&x != 0 }
@@ -100,11 +105,19 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 		case ArithmeticOp:
 			return b.resolveOperands(env, lt, rt)
 		case ComparisonOp:
-			// Ordering comparisons (< > <= >=) carry a domain just like
-			// arithmetic and must reject non-orderable operands (e.g.
-			// `"a" < "b"`). Inequality (!=) carries no domain, but like
-			// == its operands must be able to be equal (checkComparable).
-			if b.Operands != 0 {
+			// Ordering comparisons (< > <= >=) carry a domain, the Ordered
+			// types, and must reject operands outside it (e.g. two
+			// objects). Inequality (!=) carries no domain, but like == its
+			// operands must be able to be equal (checkComparable).
+			if b.Operands.has(constrainedOperand) {
+				c, ok := constraintEnabling(b.OpName)
+				if !ok {
+					return nil, fmt.Errorf("operator %s: internal error: no constraint enables it", b.OpName)
+				}
+				if err := b.checkConstrainedOperands(env, c, lt, rt); err != nil {
+					return nil, err
+				}
+			} else if b.Operands != 0 {
 				if _, err := b.resolveOperands(env, lt, rt); err != nil {
 					return nil, err
 				}
@@ -152,16 +165,23 @@ func checkDecodedComparison(left Node, lt hm.Type, right Node, rt hm.Type) error
 // allows Int and Float to mix, widening to Float when either side is Float —
 // something the old "assign right to left" check rejected.
 func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, error) {
+	// A type variable bounded by Numeric supports the numeric operators.
+	if b.Operands.has(numericOperand) {
+		if t, ok, err := b.resolveNumericVars(env, lt, rt); ok {
+			return t, err
+		}
+	}
+
 	// An operator is not defined for an unconstrained generic type variable: a
 	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work
 	// for every possible type, so we cannot assume it is numeric/string/etc.
 	// Reject at definition time rather than failing at the call site — without
 	// typeclasses, a generic value can only be passed around, not operated on.
 	if tv, ok := unconstrainedVar(lt); ok {
-		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+		return nil, b.unboundedOperandError(tv, rt)
 	}
 	if tv, ok := unconstrainedVar(rt); ok {
-		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+		return nil, b.unboundedOperandError(tv, lt)
 	}
 
 	// A null operand raises at runtime (operators don't propagate null the way
@@ -227,6 +247,104 @@ func (b *BinaryOperator) resolveOperands(env hm.Env, lt, rt hm.Type) (hm.Type, e
 	}
 	return nil, withUnionProvenance(
 		fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt), lt)
+}
+
+// checkConstrainedOperands validates the operands of an operator whose
+// domain is the constraint c that enables it (Ordered, for < > <= >=): two
+// values of one type satisfying c (see BuiltinConstraint.Why), Int and Float
+// mixing as in arithmetic. A generic type variable qualifies only if its
+// declaration bounds it by c (`[a: Ordered]`), and only its non-null values
+// (`a!`). An operand whose type is still unknown is bounded by c, which a
+// weak variable keeps for good.
+func (b *BinaryOperator) checkConstrainedOperands(env hm.Env, c *BuiltinConstraint, lt, rt hm.Type) error {
+	sides := []struct {
+		node Node
+		t    hm.Type
+	}{{b.Left, lt}, {b.Right, rt}}
+	for _, side := range sides {
+		if tv, ok := unconstrainedVar(side.t); ok {
+			if v := varOfType(tv); !v.Has(c.Constraint) {
+				return NewInferError(b.unboundedVarError(tv), side.node)
+			}
+		}
+	}
+	for _, side := range sides {
+		if knownNullable(side.t) {
+			return b.nullableOperandError(env, side.node, side.t)
+		}
+	}
+	lb, _ := stripNonNull(lt)
+	rb, _ := stripNonNull(rt)
+	if !numbersMix(lb, rb) {
+		subs, err := hm.Assignable(rt, lt)
+		if err != nil {
+			subs, err = hm.Assignable(lt, rt)
+		}
+		if err != nil {
+			return withUnionProvenance(
+				fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt), lt, rt)
+		}
+		lt = lt.Apply(subs).(hm.Type)
+		rt = rt.Apply(subs).(hm.Type)
+	}
+	// Both sides: one may be wider than the other (a union the other is
+	// a member of), and each must satisfy c.
+	for _, t := range []hm.Type{lt, rt} {
+		subs, err := hm.Require(c.Constraint, t)
+		if err == nil {
+			err = hm.CommitWeak(subs)
+		}
+		if err != nil {
+			var ce hm.ConstraintError
+			if errors.As(err, &ce) {
+				return withUnionProvenance(
+					fmt.Errorf("operator %s is not defined for type %s: %s", b.OpName, t, ce.Why), t)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// unboundedOperandError is unboundedVarError for an arithmetic operand of
+// type t beside one of type other. Numeric only gives + its numeric meaning,
+// so beside a string or list (`"n=" + x`) declaring it wouldn't help, and
+// isn't suggested.
+func (b *BinaryOperator) unboundedOperandError(t, other hm.Type) error {
+	if ob, _ := stripNonNull(other); ob == StringType || isList(ob) {
+		return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, t)
+	}
+	return b.unboundedVarError(t)
+}
+
+// unboundedVarError reports the operator used on a value of a type variable
+// that isn't bounded to support it, saying which bound would, if any does.
+func (b *BinaryOperator) unboundedVarError(t hm.Type) error {
+	if c, ok := constraintEnabling(b.OpName); ok {
+		tv := varOfType(t)
+		name := tv.Unbounded()
+		why := "a type variable supports no operations"
+		// Keep the bounds it has: `[a: Numeric & Ordered]`.
+		bounds := c.Name
+		if have := tv.Bounds(); len(have) > 0 {
+			var names []string
+			for _, h := range have {
+				names = append(names, h.Name())
+			}
+			why = fmt.Sprintf("%s doesn't support it", strings.Join(names, " & "))
+			bounds = strings.Join(names, " & ") + " & " + c.Name
+		}
+		return fmt.Errorf("operator %s is not defined for the generic type %s: %s; declare it `[%s: %s]` to use it", b.OpName, t, why, name, bounds)
+	}
+	return fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, t)
+}
+
+// varOfType returns the variable t is, nullable or not.
+func varOfType(t hm.Type) hm.TypeVariable {
+	if ntv, ok := t.(hm.NullableTypeVariable); ok {
+		return ntv.TypeVariable
+	}
+	return t.(hm.TypeVariable)
 }
 
 // stripNonNull unwraps a NonNullType, reporting whether the wrapper was present.
@@ -636,7 +754,7 @@ func lessThanEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val < rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c < 0 })
 }
 
 func greaterThanEval(leftVal, rightVal Value) (Value, error) {
@@ -660,7 +778,7 @@ func greaterThanEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val > rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("greater than comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c > 0 })
 }
 
 func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
@@ -684,7 +802,7 @@ func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val <= rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c <= 0 })
 }
 
 func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
@@ -708,7 +826,18 @@ func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
 			return BoolValue{Val: lv.Val >= rv.Val}, nil
 		}
 	}
-	return nil, fmt.Errorf("greater than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+	return orderedEval(leftVal, rightVal, func(c int) bool { return c >= 0 })
+}
+
+// orderedEval compares values the fast paths of the ordering operators
+// don't cover (enums, lists, records, booleans, scalars) as sort orders
+// them, and reports whether the comparison's result c satisfies holds.
+func orderedEval(leftVal, rightVal Value, holds func(c int) bool) (Value, error) {
+	c, err := (&orderer{}).compare(leftVal, rightVal)
+	if err != nil {
+		return nil, err
+	}
+	return BoolValue{Val: holds(c)}, nil
 }
 
 type Default struct {
@@ -1062,7 +1191,7 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than",
-			Operands: numericOperand | stringOperand,
+			Operands: constrainedOperand,
 			EvalFunc: lessThanEval,
 		},
 	}
@@ -1091,7 +1220,7 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than",
-			Operands: numericOperand | stringOperand,
+			Operands: constrainedOperand,
 			EvalFunc: greaterThanEval,
 		},
 	}
@@ -1120,7 +1249,7 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than_equal",
-			Operands: numericOperand | stringOperand,
+			Operands: constrainedOperand,
 			EvalFunc: lessThanEqualEval,
 		},
 	}
@@ -1149,7 +1278,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than_equal",
-			Operands: numericOperand | stringOperand,
+			Operands: constrainedOperand,
 			EvalFunc: greaterThanEqualEval,
 		},
 	}
@@ -1248,7 +1377,22 @@ func (u *UnaryMinus) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 		nonNull, ok := exprType.(hm.NonNullType)
 		if !ok {
+			if tv, ok := numericVar(exprType); ok {
+				// A bare a from [a: Numeric]: maybe null.
+				return nil, fmt.Errorf("unary minus is not defined for the generic type %s, which may be null; write %s! for its non-null values", exprType, tv.Unbounded())
+			}
 			return nil, fmt.Errorf("unary minus requires Int or Float, got %s", exprType)
+		}
+		if tv, ok := nonNull.Type.(hm.TypeVariable); ok && tv.IsRigid() && tv.Has(numericConstraint.Constraint) {
+			// a! from [a: Numeric]: a number, negated.
+			return exprType, nil
+		}
+		if tv, ok := nonNull.Type.(hm.TypeVariable); ok && tv.IsRigid() {
+			bounds := "Numeric"
+			for _, have := range tv.Bounds() {
+				bounds = have.Name() + " & " + bounds
+			}
+			return nil, fmt.Errorf("unary minus is not defined for the generic type %s: declare it `[%s: %s]` to negate it", exprType, tv.Unbounded(), bounds)
 		}
 		if nonNull.Type != IntType && nonNull.Type != FloatType {
 			return nil, fmt.Errorf("unary minus requires Int or Float, got %s", exprType)

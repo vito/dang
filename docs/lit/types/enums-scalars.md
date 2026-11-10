@@ -243,12 +243,15 @@ decoded data of any shape is `Decoded` (see [#decoded-values]).
 ### Treating scalars as opaque
 
 Scalars support equality and list membership, and can go in records and
-lists. They have no string methods and no ordering:
+lists. They are Ordered (see [#type-params]): `<` and `.sort` compare them by
+their string form, numerically for a scalar whose value is a number. They
+have no string methods:
 
 ```dang
 let ada: Email! = "ada@example.com"
+let bob: Email! = "bob@example.com"
 
-[ada == ada, [ada].contains(ada)]
+[ada == ada, [ada].contains(ada), ada < bob]
 ```
 
 ```dang-failure

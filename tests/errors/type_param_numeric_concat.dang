@@ -1,0 +1,2 @@
+# Numeric enables only the numeric meaning of +.
+label[a: Numeric](x: a!): String! { x + "s" }

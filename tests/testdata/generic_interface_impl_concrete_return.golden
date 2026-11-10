@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "get": return type String! doesn't fit interface return type a! for every type the interface's callers pick
+  [2m[34m--> errors/generic_interface_impl_concrete_return.dang:6:22[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Getter.get expect back the type they passed.[0m
+ [2m[34m[1m  6 | [0mtype Liar implements Getter {
+[2m                            [31m^^^^^^[0m
+ [2m  7 |   get(x: a!): String! { "no" }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

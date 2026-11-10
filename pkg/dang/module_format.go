@@ -104,14 +104,18 @@ func formatPublicShapeField(name string, scheme *hm.Scheme) string {
 	}
 
 	fieldType, _ := scheme.Type()
+	params := TypeParamsOf(fieldType)
 	if fnType, ok := fieldType.(*hm.FunctionType); ok {
 		args := formatPublicShapeFunctionArgs(fnType)
 		if args == "" {
-			return fmt.Sprintf("%s: %s", name, formatPublicShapeType(fnType.Ret(false)))
+			return fmt.Sprintf("%s%s: %s", name, params, formatPublicShapeType(fnType.Ret(false)))
 		}
-		return fmt.Sprintf("%s(%s): %s", name, args, formatPublicShapeType(fnType.Ret(false)))
+		return fmt.Sprintf("%s%s(%s): %s", name, params, args, formatPublicShapeType(fnType.Ret(false)))
 	}
 
+	if params != "" {
+		return fmt.Sprintf("%s: %s %s", name, params, formatPublicShapeType(fieldType))
+	}
 	return fmt.Sprintf("%s: %s", name, formatPublicShapeType(fieldType))
 }
 

@@ -1,0 +1,8 @@
+[1m[31mError:[0m type variable b is not declared: add it to pick's type parameters, `pick[a, b]`
+  [2m[34m--> errors/type_param_undeclared.dang:1:6[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mpick[a](x: a!, y: b!): a! { x }
+[2m            [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

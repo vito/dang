@@ -1563,6 +1563,11 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
 	objectFn, objectIsFn := objectFieldType.(*hm.FunctionType)
+	if objectIsFn {
+		// The method's type variables are its own, whatever their letters:
+		// `count(xs: a!)` implements `count(xs: [a]!)`.
+		objectFn = freshenTypeVars(objectFn).(*hm.FunctionType)
+	}
 
 	// If interface field is not a function, object field must match exactly
 	if !ifaceIsFn {
@@ -1677,7 +1682,13 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 			fieldName, objectBlock, ifaceBlock)
 	}
 
-	return nil
+	// The interface's own type variables stand for any type its callers
+	// pick, which the object's method must then take. (A member without
+	// arguments can't have any: see checkFieldsConcrete, which reports it.)
+	if isZeroArgFn && ifaceFn.Block() == nil && len(ifaceFn.FreeTypeVar()) > 0 {
+		return nil
+	}
+	return checkGenericImplementation(fieldName, ifaceFn, objectFn)
 }
 
 // sameParamNames reports whether two function types name their parameters

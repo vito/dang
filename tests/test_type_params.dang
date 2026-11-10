@@ -1,0 +1,224 @@
+# Test explicit type parameters and the Ordered bound
+
+# insert x into xs, which is in order, after the elements equal to it
+insert[a: Ordered](xs: [a!]!, x: a!): [a!]! {
+  xs.takeWhile { y => y <= x } + [x] + xs.dropWhile { y => y <= x }
+}
+
+insertionSort[a: Ordered](xs: [a!]!): [a!]! {
+  xs.reduce([]) { acc, x => insert(acc, x) }
+}
+
+merge[a: Ordered](xs: [a!]!, ys: [a!]!): [a!]! {
+  if (xs.isEmpty) {
+    ys
+  } else if (ys.isEmpty) {
+    xs
+  } else if (ys[0]! < xs[0]!) {
+    [ys[0]!] + merge(xs, ys.dropFirst)
+  } else {
+    [xs[0]!] + merge(xs.dropFirst, ys)
+  }
+}
+
+mergeSort[a: Ordered](xs: [a!]!): [a!]! {
+  if (xs.length <= 1) {
+    xs
+  } else {
+    let half = xs.length / 2
+    merge(mergeSort(xs.takeFirst(half)), mergeSort(xs.dropFirst(half)))
+  }
+}
+
+# A key to sort by, computed by the block; the elements themselves need no
+# order. Stable: elements with equal keys keep their order.
+mySortBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+  xs.reduce([]) { acc, x =>
+    acc.takeWhile { y => key(y) <= key(x) } + [x] + acc.dropWhile { y => key(y) <= key(x) }
+  }
+}
+
+enum Role { OWNER ADMIN MEMBER }
+
+type Member {
+  name: String!
+  role: Role!
+  joined: Int!
+}
+
+members: [Member!]! = [
+  Member("zed", Role.MEMBER, 2),
+  Member("amy", Role.OWNER, 3),
+  Member("max", Role.MEMBER, 1),
+  Member("bob", Role.OWNER, 2),
+]
+
+names(ms: [Member!]!): [String!]! {
+  ms.map { m => m.name }
+}
+
+# Ints, strings, booleans, enums (in declaration order), lists and records
+assert { insertionSort([3, 1, 2]) == [1, 2, 3] }
+assert { mergeSort([5, 3, 9, 1, 1, 0]) == [0, 1, 1, 3, 5, 9] }
+assert { insertionSort(["b", "B", "a"]) == ["B", "a", "b"] }
+assert { mergeSort([true, false, true]) == [false, true, true] }
+assert { mergeSort([Role.MEMBER, Role.OWNER, Role.ADMIN]) == [Role.OWNER, Role.ADMIN, Role.MEMBER] }
+assert { insertionSort([[1, 2], [1], [0, 9]]) == [[0, 9], [1], [1, 2]] }
+assert {
+  mergeSort([{{n: 2, s: "a"}}, {{n: 1, s: "b"}}, {{n: 1, s: "a"}}]) == [{{n: 1, s: "a"}}, {{n: 1, s: "b"}}, {{n: 2, s: "a"}}]
+}
+
+# They agree with the builtin sort
+let numbers = [8, 3, 5, 3, 0, -2]
+assert { insertionSort(numbers) == numbers.sort }
+assert { mergeSort(numbers) == numbers.sort }
+
+# sortBy on ints, strings, enums and records
+assert { mySortBy([1, 2, 3]) { x => -x } == [3, 2, 1] }
+assert { mySortBy(["ccc", "a", "bb"]) { s => s.length } == ["a", "bb", "ccc"] }
+assert { names(mySortBy(members) { m => m.name }) == ["amy", "bob", "max", "zed"] }
+assert { names(mySortBy(members) { m => m.joined }) == ["max", "zed", "bob", "amy"] }
+assert { names(mySortBy(members) { m => m.role }) == ["amy", "bob", "zed", "max"] }
+assert { names(mySortBy(members) { m => {{role: m.role, joined: m.joined}} }) == ["bob", "amy", "max", "zed"] }
+assert {
+  names(mySortBy(members) { m => [m.joined, m.name.length] }) == names(
+    members.sortBy { m => [m.joined, m.name.length] },
+  )
+}
+
+# A bounded parameter satisfies another function's bound, and the builtins'
+sortedTwice[a: Ordered](xs: [a!]!): [a!]! {
+  mergeSort(insertionSort(xs))
+}
+
+largest[a: Ordered](xs: [a!]!): a {
+  xs.sort(descending: true)[0]
+}
+
+byKey[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+  xs.sortBy { x => key(x) }
+}
+
+assert { sortedTwice(["b", "c", "a"]) == ["a", "b", "c"] }
+assert { largest([2, 9, 4]) == 9 }
+assert { largest([]) == null }
+assert { names(byKey(members) { m => m.joined }) == ["max", "zed", "bob", "amy"] }
+
+# The ordering operators take every Ordered type
+assert { Role.OWNER < Role.MEMBER }
+assert { false < true }
+assert { [1, 2] < [1, 3] }
+assert { [1] < [1, 0] }
+assert { {{a: 1, b: "z"}} < {{a: 2, b: "a"}} }
+assert { "a" >= "a" }
+assert { 1 < 1.5 }
+
+# A type whose order isn't known yet keeps the bound until it is
+let later = insertionSort([])
+later += [3, 1]
+assert { insertionSort(later) == [1, 3] }
+
+# Methods take type parameters too
+type Ranking {
+  minOf[a: Ordered](x: a!, y: a!): a! {
+    if (y < x) { y } else { x }
+  }
+
+  let none[a]: [a!]! { [] }
+
+  emptyCount: Int! { none.length }
+}
+
+assert { Ranking.minOf(3, 2) == 2 }
+assert { Ranking.minOf("b", "a") == "a" }
+assert { Ranking.emptyCount == 0 }
+
+# A bounded method implements an interface method of an Ordered type
+interface IntPicker {
+  pick(x: Int!, y: Int!): Int!
+}
+
+type Smaller implements IntPicker {
+  pick[a: Ordered](x: a!, y: a!): a! {
+    if (y < x) { y } else { x }
+  }
+}
+
+usePicker(p: IntPicker!): Int! { p.pick(3, 2) }
+
+assert { usePicker(Smaller) == 2 }
+
+# An interface member header declares type parameters and bounds too
+interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+  rankBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]!
+}
+
+# An implementation declares the same bounds...
+type Highest implements Ranker {
+  best[a: Ordered](x: a!, y: a!): a! {
+    if (x < y) { y } else { x }
+  }
+
+  rankBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+    xs.sortBy(descending: true) { x => key(x) }
+  }
+}
+
+# ...or fewer: it then takes more than the interface's callers pass
+type First implements Ranker {
+  best(x: a!, y: a!): a! { x }
+
+  rankBy(xs: [a!]!, &key(item: a!): k!): [a!]! { xs }
+}
+
+useRanker(r: Ranker!): [String!]! {
+  [r.best("a", "b")] + r.rankBy(["bb", "a", "ccc"]) { s => s.length }
+}
+
+assert { useRanker(Highest) == ["b", "ccc", "bb", "a"] }
+assert { useRanker(First) == ["a", "bb", "a", "ccc"] }
+
+# An implementation is checked as a whole, whatever its arguments' order
+interface NullableSecond {
+  pick(x: a!, y: a): a
+}
+
+type EitherSecond implements NullableSecond {
+  pick(x: b, y: b): b { x ?? y }
+}
+
+interface NullableFirst {
+  pick(y: a, x: a!): a
+}
+
+type EitherFirst implements NullableFirst {
+  pick(y: b, x: b): b { x ?? y }
+}
+
+assert { EitherSecond.pick("a", null) == "a" }
+assert { EitherFirst.pick(null, "b") == "b" }
+
+# A nested function sees the enclosing function's bounded parameter
+clamp[a: Ordered](x: a!, lo: a!, hi: a!): a! {
+  atLeast(v: a!): a! {
+    if (v < lo) { lo } else { v }
+  }
+  let v = atLeast(x)
+  if (hi < v) { hi } else { v }
+}
+
+assert { clamp(5, 1, 3) == 3 }
+assert { clamp(0, 1, 3) == 1 }
+
+# Without a list, type variables are generic implicitly, as always
+identity(x: a): a { x }
+
+assert { identity(1) == 1 }
+
+# Unbounded parameters in a list
+second[a, b](x: a!, y: b!): b! { y }
+
+assert { second(1, "x") == "x" }
+
+print("Type parameter tests passed!")

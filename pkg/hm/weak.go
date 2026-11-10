@@ -34,6 +34,10 @@ type WeakCell struct {
 	// scope is the rigid variables in scope where the variable's binding
 	// was declared: the only ones it may be bound to mention.
 	scope TypeVarSet
+	// open cells may be bound to any rigid variable: their variable stands
+	// for an expression's own type (see NewOpenWeakVar), not a binding's,
+	// so whatever rigid variable it meets is in scope where it is.
+	open bool
 	// children are the cells of weak variables made for flexible variables
 	// in this cell's binding; they live as long as it does.
 	mu       sync.Mutex
@@ -61,6 +65,18 @@ func NewWeakVar(tv TypeVariable, scope TypeVarSet) (TypeVariable, *WeakCell) {
 	return w, cell
 }
 
+// NewOpenWeakVar is NewWeakVar for the unknown part of one expression's
+// type, like the element type of an empty list literal `[]`, rather than of
+// a binding's: there is no declaration for a rigid variable to escape from,
+// since any rigid variable the expression's type meets is in scope where the
+// expression is. Binding it records the type the program settles on, so the
+// expression's value can be given that type when it is evaluated.
+func NewOpenWeakVar(tv TypeVariable) (TypeVariable, *WeakCell) {
+	w, cell := NewWeakVar(tv, nil)
+	cell.open = true
+	return w, cell
+}
+
 // EscapeError reports a rigid variable bound into a weak variable declared
 // outside the generic function the rigid one belongs to.
 type EscapeError struct {
@@ -75,6 +91,20 @@ func (e EscapeError) Error() string {
 // IsWeak reports whether tv is a weak type variable.
 func (tv TypeVariable) IsWeak() bool {
 	return tv&weakBit != 0
+}
+
+// IsOpenWeak reports whether tv is an unbound weak variable made by
+// NewOpenWeakVar (or for part of one's binding), which any rigid variable
+// may be bound into. A binding whose type holds one weakens it into its own
+// scope (see NewWeakVar) by binding it to one of its own.
+func (tv TypeVariable) IsOpenWeak() bool {
+	cell := tv.cell()
+	if cell == nil || cell.bound.Load() != nil {
+		return false
+	}
+	cell.mu.Lock()
+	defer cell.mu.Unlock()
+	return cell.open
 }
 
 // WeakCells returns the cells of the weak variables in t, for whoever keeps
@@ -199,18 +229,23 @@ func CommitWeak(subs Subs) error {
 			continue
 		}
 		cell.mu.Lock()
-		scope := cell.scope
+		scope, open := cell.scope, cell.open
 		cell.mu.Unlock()
 		for fv := range t.FreeTypeVar() {
-			if fv.IsRigid() && !scope.Contains(fv) {
+			if fv.IsRigid() && !open && !scope.Contains(fv) {
 				return EscapeError{Rigid: fv, Type: t}
 			}
 		}
 		bindings = append(bindings, binding{cell, t})
 	}
+	// weakened maps each flexible variable a binding mentions to the weak
+	// variable it becomes, shared by every binding mentioning it, and is
+	// added to subs: whoever applies subs then has the flexible variable
+	// stand for that weak one, so a later unification pinning it binds the
+	// binding's part too.
+	weakened := NewSubs()
 	for _, b := range bindings {
 		cell, t := b.cell, b.t
-		weakened := NewSubs()
 		for fv := range t.FreeTypeVar() {
 			switch {
 			case fv.IsRigid():
@@ -218,27 +253,71 @@ func CommitWeak(subs Subs) error {
 				// It is now part of this binding too, so it may mention
 				// only what both may, and lives as long as this one.
 				if other := fv.cell(); other != nil && other != cell {
+					cell.mu.Lock()
+					cellScope, cellOpen := cell.scope, cell.open
+					cell.mu.Unlock()
 					other.mu.Lock()
-					other.scope = intersect(other.scope, cell.scope)
+					other.scope, other.open = intersectScopes(other.scope, other.open, cellScope, cellOpen)
 					other.mu.Unlock()
 					cell.mu.Lock()
 					cell.children = append(cell.children, other)
 					cell.mu.Unlock()
 				}
 			default:
+				if w, done := weakened[fv]; done {
+					// Made for another binding: part of this one too.
+					if other := varOf(w).cell(); other != nil && other != cell {
+						cell.mu.Lock()
+						cellScope, cellOpen := cell.scope, cell.open
+						cell.children = append(cell.children, other)
+						cell.mu.Unlock()
+						other.mu.Lock()
+						other.scope, other.open = intersectScopes(other.scope, other.open, cellScope, cellOpen)
+						other.mu.Unlock()
+					}
+					continue
+				}
 				cell.mu.Lock()
 				w, child := NewWeakVar(fv, cell.scope)
+				child.open = cell.open
 				cell.children = append(cell.children, child)
 				cell.mu.Unlock()
 				weakened.Add(fv, w)
 			}
 		}
+	}
+	for _, b := range bindings {
+		cell, t := b.cell, b.t
 		if len(weakened) > 0 {
 			t = t.Apply(weakened).(Type)
 		}
 		cell.bound.CompareAndSwap(nil, &t)
 	}
+	if len(weakened) > 0 {
+		for tv, t := range subs {
+			subs[tv] = t.Apply(weakened).(Type)
+		}
+		for fv, w := range weakened {
+			if _, bound := subs[fv]; !bound {
+				subs[fv] = w
+			}
+		}
+	}
 	return nil
+}
+
+// intersectScopes is what both of two cells' scopes allow: an open one
+// allows any rigid variable.
+func intersectScopes(a TypeVarSet, aOpen bool, b TypeVarSet, bOpen bool) (TypeVarSet, bool) {
+	switch {
+	case aOpen && bOpen:
+		return nil, true
+	case aOpen:
+		return b, false
+	case bOpen:
+		return a, false
+	}
+	return intersect(a, b), false
 }
 
 func intersect(a, b TypeVarSet) TypeVarSet {

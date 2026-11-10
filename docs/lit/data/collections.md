@@ -40,8 +40,8 @@ let nums = [1, 2, 3, 4]
 [1, 2] + nums
 ```
 
-An empty literal can't infer its element type on its own, so it needs an
-annotation (or a `:: [T]!` hint — see [#nullability]):
+An empty literal takes its element type from context — an annotation, as
+here, or its surroundings and later uses (see [#syntax]):
 
 ```dang
 let none: [Int!]! = []
@@ -121,12 +121,91 @@ a seed (positional, or named `initial:`) through each element:
 nums.reduce(0) { acc, x => acc + x }
 ```
 
+`.sum` is that fold, for a list of numbers (`Int!` or `Float!`):
+
+```dang
+{{ints: nums.sum, floats: [0.5, 0.25].sum}}
+```
+
+Its elements are bounded by `Numeric` (see [#type-params]), so any other list
+— even one whose numbers may be null — is a compile error:
+
+```dang-failure
+[1, null, 3].sum
+```
+
+An empty list sums to the zero of its element type: `0` for `Int!`, `0.0` for
+`Float!`. An empty `[]` takes on the element type inference gives it however
+it gets it, from an annotation or from around it:
+
+```dang
+let maybeFloats: [Float!] = null
+((maybeFloats ?? []).sum + 1) / 2
+```
+
+A list built in a generic function (see [#type-params]) holds what the call's
+arguments or block make its type variables. A variable the arguments don't
+decide (one only the call's expected result fixes, or one whose arguments
+are all null) isn't known while the function runs, so an empty list of it
+sums to `0`, unless it then passes a typed boundary such as an annotated
+`let` or a `[Float!]!` parameter.
+
 `.uniq` drops duplicates, keeping first-occurrence order. It uses Dang
 equality, so it works on nested lists too:
 
 ```dang
 [1, 1, 2, 3, 3, 1].uniq
 ```
+
+### Sorting
+
+`.sort` returns the list in ascending order, and `.sortBy` orders it by a key
+the block computes for each element. Both are stable — elements that compare
+equal keep their original order — and take `descending: true` to flip the
+order (still stable). `.reverse` just reverses the list:
+
+```dang
+[[3, 1, 2].sort, [3, 1, 2].sort(descending: true), [3, 1, 2].reverse]
+```
+
+`"banana"` and `"cherry"` tie on length, so they stay in their original order:
+
+```dang
+fruits.sortBy(descending: true) { _.length }
+```
+
+Numbers sort numerically, strings by their bytes (so `"B"` before `"a"`),
+`false` before `true`, enum values in the order they're declared, and custom
+scalars by their string form (numerically, for a scalar whose value is a
+number). Lists compare element by element, a prefix
+first, and `{{ }}` records field by field in the order they're written (so
+records being compared must write their fields in one order) — so a
+compound key is a list when its parts share a type, and a record when they
+don't:
+
+```dang
+let people = [
+  {{name: "Ann", age: 40}},
+  {{name: "Bob", age: 31}},
+  {{name: "Al", age: 40}},
+]
+people.sortBy { {{age: _.age, name: _.name}} }.map { _.name }
+```
+
+A key without an order — an object, or a value that may be null — is a
+compile error where `.sort` or `.sortBy` is called, rather than a surprise
+at runtime:
+
+```dang-failure
+[{{name: "Cy", age: null :: Int}}].sortBy { _.age }
+```
+
+The orderable types are the `Ordered` ones, which a function of your own can
+require too (`[a: Ordered]`, see [#type-params]); `<` and the other ordering
+operators compare them the same way. A list whose element type isn't settled
+yet (a `reduce` accumulator starting from `[]`), or a `.sortBy` taken as a
+value (`&xs.sortBy`) and called later, is checked wherever its type is
+learned.
 
 ### Iterating
 

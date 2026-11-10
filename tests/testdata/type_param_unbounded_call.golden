@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use a! for `k: Ordered`: it is of the generic type a, which has no known order; declare it `[a: Ordered]`
+  [2m[34m--> errors/type_param_unbounded_call.dang:4:10[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | sortedCopy[a](xs: [a!]!): [a!]! {[0m
+ [2m[34m[1m  4 | [0m  mySort(xs)
+[2m                [31m^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

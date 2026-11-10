@@ -1,0 +1,8 @@
+[1m[31mError:[0m cannot use Int! | Float! for `k: Ordered`: it mixes types; return one type from every branch
+  [2m[34m--> errors/list_sort_by_mixed_key.dang:1:15[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0m[1, 2].sortBy { x => if (x > 1) { 1 } else { 2.5 } }
+[2m                     [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

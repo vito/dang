@@ -3950,7 +3950,7 @@
     "fields": {
       "name": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "id",
@@ -3958,6 +3958,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "raw_word_token",
+          "named": true
+        },
+        {
+          "type": "word_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -4133,6 +4147,16 @@
           }
         ]
       },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param_list",
+            "named": true
+          }
+        ]
+      },
       "prefix_directives": {
         "multiple": true,
         "required": false,
@@ -4219,6 +4243,16 @@
           }
         ]
       },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param_list",
+            "named": true
+          }
+        ]
+      },
       "prefix_directives": {
         "multiple": true,
         "required": false,
@@ -4301,6 +4335,16 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param_list",
             "named": true
           }
         ]
@@ -4448,6 +4492,46 @@
     }
   },
   {
+    "type": "type_bounds",
+    "named": true,
+    "fields": {
+      "b": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ampersand_token",
+            "named": true
+          },
+          {
+            "type": "named_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "type_hint",
     "named": true,
     "fields": {
@@ -4583,6 +4667,16 @@
           }
         ]
       },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param_list",
+            "named": true
+          }
+        ]
+      },
       "prefix_directives": {
         "multiple": true,
         "required": false,
@@ -4630,6 +4724,96 @@
       "types": [
         {
           "type": "colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_param",
+    "named": true,
+    "fields": {
+      "b": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_bounds",
+            "named": true
+          }
+        ]
+      },
+      "bounds": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "colon_token",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "word_token",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "type_param_list",
+    "named": true,
+    "fields": {
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_param",
+            "named": true
+          }
+        ]
+      },
+      "p": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "sep",
+            "named": true
+          },
+          {
+            "type": "type_param",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "immediate_bracket",
+          "named": true
+        },
+        {
+          "type": "sep",
           "named": true
         }
       ]

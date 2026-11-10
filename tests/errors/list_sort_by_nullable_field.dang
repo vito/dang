@@ -1,0 +1,7 @@
+type Player {
+  name: String!
+  rank: Int
+}
+
+let players = [Player("b", 2), Player("a")]
+players.sortBy { p => p.rank }

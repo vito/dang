@@ -1850,6 +1850,14 @@ type FunctionValue struct {
 	IsBlockArg          bool
 	CapturedReturnFrame *ControlFrame
 	CapturedBreakFrame  *ControlFrame
+
+	// TypeArgs are the type arguments of the generic call the function was
+	// created in (see runtime_types.go): a block or nested function in a
+	// generic body sees that call's type variables, whoever calls it.
+	TypeArgs hm.Subs
+	// Generic reports whether the function's signature has type variables
+	// of its own, which each call's arguments give types (callTypeArgs).
+	Generic bool
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -1953,6 +1961,7 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 		frame.returnFrame = f.CapturedReturnFrame
 		frame.breakFrame = f.CapturedBreakFrame
 		frame.continueFrame = invocationFrame
+		frame.typeArgs = f.callTypeArgs(ctx, args)
 		blockCtx := withFrame(ctx, frame)
 
 		if err := f.BindArgs(blockCtx, fnScope, args); err != nil {
@@ -1976,6 +1985,7 @@ func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[stri
 	returnFrame := NewControlFrame(ReturnFrame)
 	frame.enterFunctionControlBoundary()
 	frame.returnFrame = returnFrame
+	frame.typeArgs = f.callTypeArgs(ctx, args)
 	fnCtx := withFrame(ctx, frame)
 
 	if err := f.BindArgs(fnCtx, fnScope, args); err != nil {
@@ -3150,6 +3160,7 @@ func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	frame.returnFrame = returnFrame
+	frame.typeArgs = b.Method.callTypeArgs(ctx, args)
 	methodCtx := withFrame(ctx, frame)
 
 	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {
@@ -3208,6 +3219,7 @@ func (b BoundScalarMethod) Call(ctx context.Context, scope ValueScope, args map[
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	frame.returnFrame = returnFrame
+	frame.typeArgs = b.Method.callTypeArgs(ctx, args)
 	methodCtx := withFrame(ctx, frame)
 
 	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {

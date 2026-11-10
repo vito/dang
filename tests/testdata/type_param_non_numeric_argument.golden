@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use String! for `a: Numeric`: it is not a number; Numeric types are Int! and Float!
+  [2m[34m--> errors/type_param_non_numeric_argument.dang:5:20[0m
+ [2m    |[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet joined = mySum(["a", "b"], "")
+[2m                          [31m^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

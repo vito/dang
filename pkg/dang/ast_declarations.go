@@ -21,6 +21,13 @@ type FunctionBase struct {
 	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
+	// generic is isGenericSignature(Inferred), worked out when Inferred is
+	// set rather than for every function value made from it.
+	generic bool
+	// enclosingVars are the type variables of the generic functions the
+	// function is written in, whose calls' type arguments its values see
+	// (captureTypeArgs).
+	enclosingVars hm.TypeVarSet
 
 	InferredScope TypeScope
 
@@ -34,6 +41,12 @@ type FunctionBase struct {
 	// paramsAreFields marks a constructor, whose parameters have one type
 	// each (a field's, for the implicit one), not a generic function's.
 	paramsAreFields bool
+
+	// typeParams are the declared type parameters of a function with an
+	// explicit list (see FunDecl.TypeParams), checked against its signature.
+	typeParams []*TypeParam
+	// declName names the function in errors about them.
+	declName string
 }
 
 // fnEffects holds a function's effect and the effect variables of its
@@ -203,6 +216,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.generic = isGenericSignature(f.Inferred)
 	f.attachEffects(f.Inferred)
 	f.SetInferredType(f.Inferred)
 	return f.Inferred, nil
@@ -244,6 +258,7 @@ func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.Function
 		BlockParamName: blockParamName,
 		IsDynamic:      hasDynamicScope,
 		Nested:         hasDynamicScope && inMethodBody(scope),
+		Generic:        f.generic && fnType == f.Inferred,
 	}
 }
 
@@ -318,6 +333,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
+	f.enclosingVars = weakScope(ctx)
 	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(outsideRescue(ctx)))
 
 	// Assign early so we can still use partial inference results.
@@ -390,6 +406,9 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	if definedRet != nil {
 		sigTypes = append(sigTypes, definedRet)
+	}
+	if err := checkTypeParams(f.declName, f.typeParams, sigTypes...); err != nil {
+		return nil, err
 	}
 	skolem, unskolem := skolemSubs(sigTypes...)
 	if len(skolem) > 0 {
@@ -465,6 +484,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
+	f.generic = isGenericSignature(f.Inferred)
 	f.Inferred.SetEffect(f.fnEffects().latent)
 	return f.Inferred, nil
 }
@@ -474,15 +494,31 @@ func (f *FunctionBase) Eval(ctx context.Context, scope ValueScope) (Value, error
 	if f.Inferred == nil {
 		return nil, fmt.Errorf("%v.Eval: function type not inferred", f)
 	}
-	return f.createFunctionValue(scope, f.Inferred), nil
+	fv := f.createFunctionValue(scope, f.Inferred)
+	// Written in a generic body, it sees that call's type variables.
+	fv.TypeArgs = captureTypeArgs(ctx, f.enclosingVars)
+	return fv, nil
 }
 
 type FunDecl struct {
 	InferredTypeHolder
 	FunctionBase
-	Named      string
-	Ret        TypeNode
+	Named string
+	Ret   TypeNode
+	// TypeParams is the explicit type parameter list, `name[a, k:
+	// Ordered](...)`, or nil. Without one, the signature's type variables
+	// are generic implicitly; with one, it must declare each exactly, and
+	// may bound them.
+	TypeParams []*TypeParam
 	Visibility Visibility
+}
+
+// withTypeParams brings f's declared type parameters into scope, and has
+// its signature checked against them.
+func (f *FunDecl) withTypeParams(ctx context.Context) context.Context {
+	f.typeParams = f.TypeParams
+	f.declName = f.Named
+	return withTypeParams(ctx, f.TypeParams)
 }
 
 var _ hm.Expression = &FunDecl{}
@@ -507,6 +543,7 @@ var _ Hoister = &FunDecl{}
 
 func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	f.nameEffect(env)
+	ctx = f.withTypeParams(ctx)
 	switch pass {
 	case 0:
 		// Pass 0: Hoist function signature (declare type without inferring body).
@@ -544,6 +581,7 @@ func (f *FunDecl) nameEffect(env hm.Env) {
 
 func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	f.nameEffect(env)
+	ctx = f.withTypeParams(ctx)
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
 		return f.inferFunctionType(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 	})

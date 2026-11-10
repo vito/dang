@@ -69,6 +69,19 @@ TypeVariable := [a-z]                           # single lowercase letter
 > `[a]` is shorthand for `List[a]`. `Map[a]` is a string-keyed map of `a` values
 > (only the built-in `List` and `Map` accept type arguments today).
 
+A function or method declaration may list its type parameters right after
+its name (see [#type-params]):
+
+```
+TypeParamList := '[' TypeParam (Sep TypeParam)* Sep? ']'   # immediately after the name: f[a, k: Ordered](...), and on an interface member header
+TypeParam     := Word (':' Bound ('&' Bound)*)?           # a single lowercase letter
+Bound         := NamedType                                # Ordered or Numeric
+```
+
+> The grammar reads a parameter as a word and a bound as a type name; a
+> parameter must be one lowercase letter, and the bounds are `Ordered` and
+> `Numeric`.
+
 Each form in use:
 
 ```dang
@@ -79,8 +92,9 @@ let tags: Map[[String!]!]! = ["fruit": ["apple"], "veg": []]
 let origin: {{x: Int!, y: Int!}}! = {{x: 0, y: 0}}
 let viewer: Demo.User = null
 pick(first: a, second: a): a { first }
+largest[a: Ordered](xs: [a!]!): a { xs.sort(descending: true)[0] }
 
-[grid.length, tags["fruit"]!.length, origin.x, pick(1, 2)]
+[grid.length, tags["fruit"]!.length, origin.x, pick(1, 2), largest([2, 7, 3])]
 ```
 
 ## Lexical

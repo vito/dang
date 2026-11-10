@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "best", argument "x": type String! doesn't fit interface type a! for every type the interface's callers pick
+  [2m[34m--> errors/type_param_interface_impl_concrete.dang:6:22[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Ranker.best may pass any Ordered values, Ints included.[0m
+ [2m[34m[1m  6 | [0mtype Strs implements Ranker {
+[2m                            [31m^^^^^^[0m
+ [2m  7 |   best(x: String!, y: String!): String! { x + y }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

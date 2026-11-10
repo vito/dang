@@ -80,7 +80,7 @@ REPL commands (prefix `:`):
 - `:exit` / `:quit` — leave the REPL (also Ctrl+D)
 - `:doc` — interactive API/schema browser. See [#interop].
 - `:env` — show environment bindings
-- `:type <expr>` — show the inferred type of an expression
+- `:type <expr>` — show the inferred type of an expression. A bounded type variable shows its bound, as a type parameter list does (`:type [].sum` is `[a: Numeric] a!`), and selecting a method whose type variables are bounded also shows the method's own signature (`:type [1].sort` adds `Method: List.sort[a: Ordered](descending: Boolean = false): [a]!`)
 - `:find` / `:search <pattern>` — find functions/types by pattern
 - `:reset` — rebuild the environment from imports
 - `:clear` — clear the screen
@@ -105,5 +105,5 @@ Input keys: Tab completion, Up/Down history, Alt+Enter (or Shift+Enter under a K
 ## Editor integration
 
 - LSP via `dang --lsp` (handler in `pkg/lsp`) — point your editor's LSP client at the `dang` binary with that flag
-- hover shows a symbol's type; on a closure it also lists the effects that limit where it can go — what it writes outside itself and which block parameters it calls, e.g. `// Effects: writes n; calls block` (see [#impure-closures])
+- hover shows a symbol's type, with the bounds of its type variables (`largest: [a: Ordered](x: a!, y: a!): a!`); on a builtin method with bounds it adds the method's signature (`// List.sum[a: Numeric]: a`); on a closure it also lists the effects that limit where it can go — what it writes outside itself and which block parameters it calls, e.g. `// Effects: writes n; calls block` (see [#impure-closures])
 - editor configs under `editors/` (`nvim`, `vscode`, `zed`)

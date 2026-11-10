@@ -168,8 +168,10 @@ func describeError(node *tree_sitter.Node, source []byte) string {
 
 	// Check for common patterns.
 
-	// Pattern: let/pub + symbol but no "=" → missing assignment
-	if containsAll(childKinds, "visibility", "symbol") && !contains(childKinds, "equal_token") {
+	// Pattern: let/pub + symbol but no "=" → missing assignment. The name
+	// may still be a bare id: a function field with type parameters names
+	// itself with one (see patchTypeParamsName).
+	if contains(childKinds, "visibility") && containsAny(childKinds, "symbol", "id") && !contains(childKinds, "equal_token") {
 		return "expected '=' after variable name"
 	}
 

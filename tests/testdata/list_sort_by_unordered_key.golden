@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Point! for `k: Ordered`: it has no order; Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those
+  [2m[34m--> errors/list_sort_by_unordered_key.dang:6:15[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | let points = [Point(2), Point(1)][0m
+ [2m[34m[1m  6 | [0mpoints.sortBy { p => p }
+[2m                     [31m^^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

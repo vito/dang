@@ -1,0 +1,11 @@
+[1m[31mError:[0m type variable b is not declared: add it to pick's type parameters, `pick[a: Ordered, b]`
+  [2m[34m--> errors/type_param_interface_undeclared.dang:3:8[0m
+ [2m    |[0m
+ [2m  1 | interface Picker {[0m
+ [2m  2 |   # With a list, every type variable of the signature is declared.[0m
+ [2m[34m[1m  3 | [0m  pick[a: Ordered](x: a!, y: b!): a!
+[2m              [31m^^^^^^^^^^[0m
+ [2m  4 | }[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

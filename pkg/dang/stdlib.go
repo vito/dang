@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -475,12 +476,11 @@ func registerStdlib() {
 
 			// The block's declared return type is [b]!; its element type is
 			// the result's.
-			fnType, ok := fn.Type().(*hm.FunctionType)
-			if !ok {
+			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("flatMap expects a function type, got %T", fn.Type())
 			}
 			var resultElemType hm.Type = TypeVar('b')
-			if lt, ok := unwrapNonNull(fnType.ReturnType()).(ListType); ok {
+			if lt, ok := unwrapNonNull(fn.resultType()).(ListType); ok {
 				resultElemType = lt.Type
 			}
 
@@ -527,6 +527,114 @@ func registerStdlib() {
 
 			return ListValue{
 				Elements: result,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.sort method: sort[a: Ordered](descending: Boolean = false) -> [a!]!
+	//
+	// Stable, like sortBy: elements that compare equal keep their order.
+	// The bound on the element variable checks the receiver's elements at
+	// type-check time (see boundedElems).
+	Method(ListTypeModule, "sort").
+		Doc("returns a new list in ascending order (descending: true reverses it), keeping equal elements in their original order. Numbers sort numerically, strings and scalars by their bytes (numeric scalars numerically), false before true, enum values in declaration order, and lists and records element by element").
+		Example(`["b", "c", "a"].sort`).
+		Params("descending", BooleanType, BoolValue{Val: false}).
+		Returns(NonNull(ListOf(OrderedVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			sorted, err := sortStable(list.Elements, list.Elements, args.GetBool("descending"))
+			if err != nil {
+				return nil, fmt.Errorf("sort: %w", err)
+			}
+			return ListValue{
+				Elements: sorted,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.sortBy method: sortBy[k: Ordered](descending: Boolean = false, fn: \(a) -> k!) -> [a]!
+	//
+	// The key block runs once per element, in order. Sorting is stable, so a
+	// compound key can be a list (`[x.major, x.minor]`) or, mixing types, a
+	// record (`{{role: x.role, name: x.name}}`). The key's bound checks it
+	// at type-check time, where the block or the call learns its type.
+	Method(ListTypeModule, "sortBy").
+		Doc("returns a new list ordered by the key the block computes for each element, ascending (descending: true reverses it), keeping elements with equal keys in their original order. Keys order like sort's elements; use a list or record for a compound key").
+		Example(`["ccc", "a", "bb"].sortBy { s => s.length }`).
+		Params("descending", BooleanType, BoolValue{Val: false}).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(OrderedVar('k')),
+		)).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("sortBy requires a block argument")
+			}
+			fn := *args.Block
+
+			keys := make([]Value, len(list.Elements))
+			for i, item := range list.Elements {
+				key, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("sortBy key: %w", err)
+				}
+				keys[i] = key
+			}
+
+			sorted, err := sortStable(list.Elements, keys, args.GetBool("descending"))
+			if err != nil {
+				return nil, fmt.Errorf("sortBy: %w", err)
+			}
+			return ListValue{
+				Elements: sorted,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.sum method: sum[a: Numeric] -> a!
+	//
+	// The bound on the element variable checks the receiver's elements at
+	// type-check time (see boundedElems), like sort's. An empty list's sum
+	// is the zero of its element type, which a list carries at runtime
+	// (see emptyElemType and runtime_types.go).
+	Method(ListTypeModule, "sum").
+		Doc("adds up a list of numbers (Int! or Float!); an empty list sums to the zero of its element type, 0 or 0.0").
+		Example(`[1, 2, 3, 4].sum`).
+		Returns(NumericVar('a')).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			var total Value = IntValue{Val: 0}
+			if et, _ := stripNonNull(list.ElemType); et == FloatType {
+				total = FloatValue{Val: 0}
+			}
+			for _, item := range list.Elements {
+				var err error
+				total, err = additionEval(total, item)
+				if err != nil {
+					return nil, fmt.Errorf("sum: %w", err)
+				}
+			}
+			return total, nil
+		})
+
+	// List.reverse method: reverse -> [a]!
+	Method(ListTypeModule, "reverse").
+		Doc("returns a new list with the elements in reverse order").
+		Example(`[1, 2, 3].reverse`).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			reversed := slices.Clone(list.Elements)
+			slices.Reverse(reversed)
+			return ListValue{
+				Elements: reversed,
 				ElemType: list.ElemType,
 			}, nil
 		})
@@ -709,11 +817,10 @@ func registerStdlib() {
 			fn := *args.Block
 
 			// Get the return type from the function's type
-			fnType, ok := fn.Type().(*hm.FunctionType)
-			if !ok {
+			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultElemType := fnType.ReturnType()
+			resultElemType := fn.resultType()
 
 			var result []Value
 			for i, item := range list.Elements {
@@ -1251,11 +1358,10 @@ func registerStdlib() {
 				return nil, fmt.Errorf("map requires a block argument")
 			}
 			fn := *args.Block
-			fnType, ok := fn.Type().(*hm.FunctionType)
-			if !ok {
+			if _, ok := fn.Type().(*hm.FunctionType); !ok {
 				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
-			resultValType := fnType.ReturnType()
+			resultValType := fn.resultType()
 
 			entries := make(map[string]Value, len(m.Keys))
 			for _, k := range m.Keys {

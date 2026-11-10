@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "get": return type b? doesn't fit interface return type a! for every type the interface's callers pick
+  [2m[34m--> errors/generic_interface_impl_omitted_arg.dang:6:24[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers through Getter leave y out, so it is null, and so would be get's result.[0m
+ [2m[34m[1m  6 | [0mtype Sneaky implements Getter {
+[2m                              [31m^^^^^^[0m
+ [2m  7 |   get(x: a!, y: b = null): b { y }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

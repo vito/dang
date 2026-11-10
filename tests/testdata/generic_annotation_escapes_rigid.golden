@@ -1,4 +1,4 @@
-[1m[31mError:[0m operator addition is not defined for the generic type a: a type variable supports no operations
+[1m[31mError:[0m operator addition is not defined for the generic type a: a type variable supports no operations; declare it `[a: Numeric]` to use it
   [2m[34m--> errors/generic_annotation_escapes_rigid.dang:6:3[0m
  [2m    |[0m
  [2m  4 | bad(v: a): Int! {[0m

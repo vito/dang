@@ -1,0 +1,3 @@
+sorted(xs: [a]!): [a]! {
+  xs.sort
+}

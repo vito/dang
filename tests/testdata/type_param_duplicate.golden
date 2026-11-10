@@ -1,0 +1,8 @@
+[1m[31mError:[0m type parameter a is declared twice
+  [2m[34m--> errors/type_param_duplicate.dang:1:9[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mpick[a, a](x: a!): a! { x }
+[2m               [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

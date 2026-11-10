@@ -1,0 +1,10 @@
+[1m[31mError:[0m operator less_than is not defined for type Point!: it has no order; Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those
+  [2m[34m--> errors/compare_unordered_type.dang:5:1[0m
+ [2m    |[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mPoint(1) < Point(2)
+[2m       [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

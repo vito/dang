@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "pick", argument "x": the implementation bounds a by Numeric, but the interface's callers may pass any Ordered type for a!
+  [2m[34m--> errors/type_param_interface_bound_stronger.dang:6:24[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Picker.pick may pass any Ordered values, strings included.[0m
+ [2m[34m[1m  6 | [0mtype Summer implements Picker {
+[2m                              [31m^^^^^^[0m
+ [2m  7 |   pick[a: Ordered & Numeric](x: a!, y: a!): a! {[0m
+ [2m  8 |     if (x < y) { y + x } else { x }[0m
+ [2m    |[0m
+

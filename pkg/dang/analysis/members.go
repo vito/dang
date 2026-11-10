@@ -64,6 +64,12 @@ type Member struct {
 	// Type is the member's type: a function's return type, or a type's name.
 	Type string `json:"type,omitempty"`
 
+	// TypeParams is the type parameter list of a generic member whose type
+	// variables are bounded, as a declaration writes it: "[a: Numeric]"
+	// for List.sum, "[a, k: Ordered]" for List.sortBy. Empty when no bound
+	// would show, since type variables are generic implicitly.
+	TypeParams string `json:"typeParams,omitempty"`
+
 	// Doc is the member's documentation.
 	Doc string `json:"doc,omitempty"`
 
@@ -118,6 +124,7 @@ func (m Member) Qualified() string {
 // Signature renders how the member is used, e.g.
 //
 //	reduce(initial: b) { acc: b, item: a => b }: b
+//	sum[a: Numeric]: a
 //	name: String!
 //	type Container
 func (m Member) Signature() string {
@@ -125,6 +132,7 @@ func (m Member) Signature() string {
 	case KindFunction:
 		var sig strings.Builder
 		sig.WriteString(m.Name)
+		sig.WriteString(m.TypeParams)
 		if len(m.Args) > 0 {
 			sig.WriteString("(")
 			for i, arg := range m.Args {
@@ -153,10 +161,65 @@ func (m Member) Signature() string {
 		}
 		return sig.String()
 	case KindValue:
-		return m.Name + ": " + m.Type
+		return m.Name + ": " + m.TypeString()
 	default:
 		return string(m.Kind) + " " + m.Name
 	}
+}
+
+// QualifiedSignature is Signature qualified by the member's receiver, e.g.
+// "List.sum[a: Numeric]: a".
+func (m Member) QualifiedSignature() string {
+	if m.Receiver == "" {
+		return m.Signature()
+	}
+	return m.Receiver + "." + m.Signature()
+}
+
+// SelectedMember returns the member a selection (`xs.sum`, or the callee of
+// `xs.sort(descending: true)`) names, by its receiver's inferred type.
+func SelectedMember(node dang.Node) (Member, bool) {
+	if call, ok := node.(*dang.FunCall); ok {
+		node = call.Fun
+	}
+	sel, ok := node.(*dang.Select)
+	if !ok || sel.Field == nil {
+		return Member{}, false
+	}
+	recv := sel.Receiver.GetInferredType()
+	if recv == nil {
+		return Member{}, false
+	}
+	mod := methodScope(recv)
+	if mod == nil {
+		return Member{}, false
+	}
+	m, ok := Lookup(mod, sel.Field.Name)
+	if !ok {
+		return Member{}, false
+	}
+	if typ, ok := mod.(*dang.Type); ok && !typ.IsMeta() {
+		m.Receiver = receiverName(mod)
+	}
+	return m, true
+}
+
+// TypeString renders the member's type (a function's return type) after
+// the type parameters its bounds need, e.g. "[a: Numeric] a".
+func (m Member) TypeString() string {
+	if m.TypeParams == "" {
+		return m.Type
+	}
+	return m.TypeParams + " " + m.Type
+}
+
+// Detail renders the member's type for a completion: a binding's whole
+// type, else what TypeString does, with the bounds of its type variables.
+func (m Member) Detail() string {
+	if m.HMType != nil {
+		return dang.FormatType(m.HMType)
+	}
+	return m.TypeString()
 }
 
 // MemberList is what Members lists.
@@ -196,7 +259,7 @@ func Members(ctx context.Context, scope dang.TypeScope, of string) (*MemberList,
 	}
 	return &MemberList{
 		Of:      of,
-		Type:    t.String(),
+		Type:    dang.FormatType(t),
 		Members: TypeMembers(t),
 	}, nil
 }
@@ -561,10 +624,11 @@ func bindingMember(scope dang.TypeScope, name string, scheme *hm.Scheme) (Member
 		return Member{}, false
 	}
 	m := Member{
-		Name:   name,
-		Type:   t.String(),
-		HMType: t,
-		scheme: scheme,
+		Name:       name,
+		Type:       t.String(),
+		TypeParams: dang.TypeParamsOf(t),
+		HMType:     t,
+		scheme:     scheme,
 	}
 	if doc, ok := scope.GetDocString(name); ok {
 		m.Doc = doc
@@ -620,16 +684,21 @@ func defMember(def dang.BuiltinDef, mod *dang.Type) Member {
 		Receiver: receiverName(mod),
 		Kind:     KindFunction,
 	}
+	var types []hm.Type
 	for _, p := range def.ParamTypes {
 		m.Args = append(m.Args, Arg{Name: p.Name, Type: typeString(p.Type)})
+		types = append(types, p.Type)
 	}
 	if def.ReturnType != nil {
 		m.Type = typeString(def.ReturnType)
 		m.Scope = scopeOf(def.ReturnType)
+		types = append(types, def.ReturnType)
 	}
 	if def.BlockType != nil {
 		m.Block = &Block{Args: fnArgs(def.BlockType), Type: typeString(def.BlockType.Ret(true))}
+		types = append(types, def.BlockType)
 	}
+	m.TypeParams = dang.TypeParamsOf(types...)
 	enrichFromDef(&m, def)
 	return m
 }

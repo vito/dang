@@ -1,0 +1,1 @@
+first[a, b](xs: [a!]!): a { xs[0] }

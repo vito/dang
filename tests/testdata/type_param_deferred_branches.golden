@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Person! for `a: Ordered`: it has no order; Ordered types are Int!, Float!, String!, Boolean!, enums, scalars, and lists and {{ }} records of those
+  [2m[34m--> errors/type_param_deferred_branches.dang:8:40[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | # The sorted list's elements must be Ordered, so the branches can't merge.[0m
+ [2m[34m[1m  8 | [0mlet either = if (true) { sorted } else { [Person("a")] }
+[2m                                              [31m^^^^^^^^^^^^^^^^^[0m
+ [2m  9 | [0m
+ [2m    |[0m
+

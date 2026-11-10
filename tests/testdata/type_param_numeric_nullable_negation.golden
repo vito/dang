@@ -1,0 +1,8 @@
+[1m[31mError:[0m unary minus is not defined for the generic type a, which may be null; write a! for its non-null values
+  [2m[34m--> errors/type_param_numeric_nullable_negation.dang:1:28[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mneg[a: Numeric](x: a): a { -x }
+[2m                                  [31m^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

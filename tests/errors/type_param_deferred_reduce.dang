@@ -1,0 +1,8 @@
+type Person {
+  name: String!
+}
+
+mySort[a: Ordered](xs: [a!]!): [a!]! { xs.sort }
+
+# The accumulator's element type is learned in the block.
+[Person("a")].reduce(mySort([])) { acc, p => acc + [p] }

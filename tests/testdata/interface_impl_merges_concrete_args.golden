@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "f", argument "y": type c! (here Int!) doesn't fit interface type String!
+  [2m[34m--> errors/interface_impl_merges_concrete_args.dang:6:22[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # One variable can't be both an Int and a String: f(1, "s") would return "s".[0m
+ [2m[34m[1m  6 | [0mtype Same implements Pair {
+[2m                            [31m^^^^[0m
+ [2m  7 |   f(x: c!, y: c!): c! { y }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

@@ -361,6 +361,7 @@ func signature(d dang.BuiltinDef, prefix string) string {
 	var b strings.Builder
 	b.WriteString(prefix)
 	b.WriteString(d.Name)
+	b.WriteString(typeParams(d))
 
 	if len(d.ParamTypes) > 0 || d.BlockType != nil {
 		b.WriteString("(")
@@ -391,6 +392,23 @@ func signature(d dang.BuiltinDef, prefix string) string {
 	}
 
 	return b.String()
+}
+
+// typeParams renders the type parameter list a builtin's bounded type
+// variables need, `[a, k: Ordered]`, as a member header declares it, or ""
+// when none is bounded.
+func typeParams(d dang.BuiltinDef) string {
+	var types []hm.Type
+	for _, p := range d.ParamTypes {
+		types = append(types, p.Type)
+	}
+	if d.ReturnType != nil {
+		types = append(types, d.ReturnType)
+	}
+	if d.BlockType != nil {
+		types = append(types, d.BlockType)
+	}
+	return dang.TypeParamsOf(types...)
 }
 
 // renderBlockParam renders a block parameter in declaration form, e.g.

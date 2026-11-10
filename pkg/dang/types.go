@@ -79,6 +79,9 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			if t.Base != nil {
 				return nil, UnresolvedTypeError{Name: t.Name, Qualifier: t.Base.spelling()}
 			}
+			if c, ok := lookupConstraint(t); ok {
+				return nil, constraintAsTypeError(c)
+			}
 			// A builtin type that is not a module (Decoded) resolves here,
 			// below every scope: a declaration of the same name shadows it,
 			// and an unqualified import never installs one (see
@@ -642,6 +645,9 @@ func (t VariableTypeNode) ReferencedSymbols() []string {
 
 func (t VariableTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	tv := hm.TypeVariable(t.Name)
+	if declared, ok := typeParamVars(ctx)[tv]; ok {
+		tv = declared
+	}
 	if scoped, ok := scopedTypeVars(ctx)[tv]; ok {
 		return scoped, nil
 	}

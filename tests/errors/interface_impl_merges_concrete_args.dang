@@ -1,0 +1,8 @@
+interface Pair {
+  f(x: Int!, y: String!): Int!
+}
+
+# One variable can't be both an Int and a String: f(1, "s") would return "s".
+type Same implements Pair {
+  f(x: c!, y: c!): c! { y }
+}

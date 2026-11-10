@@ -160,6 +160,8 @@ var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rul
 	treesitter.Name("ArgType"):              patchArgTypeDocstringSep,
 	treesitter.Name("Conditional"):          patchPrecRight,
 	treesitter.Name("DirectiveApplication"): patchDirectiveScopeAsId,
+	treesitter.Name("TypeAndBlockField"):        patchTypeParamsName,
+	treesitter.Name("TypeAndArgsAndBlockField"): patchTypeParamsName,
 }
 
 // patchDirectiveScopeAsId rewrites a directive's optional qualifier so it lexes
@@ -262,6 +264,55 @@ func patchSepAutomaticNewline(rule treesitter.Rule) treesitter.Rule {
 	return rule
 }
 
+// patchTypeParamsName splits a function field with an optional type
+// parameter list (`name[a](...)`) into the field without one and the field
+// with one, whose name is a bare `id` (aliased as a `symbol`) rather than a
+// `symbol`. A statement starting `name[` may also index a value (`xs[0]`);
+// with both reading the name as a `symbol`, the precedence of `symbol` over
+// `auto_call_symbol` settled the name as a field's before the `[`, so no
+// expression could start by indexing a name. Reading the generic name as an
+// `id` leaves the choice until the list or the index shows which it is.
+func patchTypeParamsName(rule treesitter.Rule) treesitter.Rule {
+	if rule.Type != treesitter.RuleTypeSeq {
+		return rule
+	}
+	plain := treesitter.Rule{Type: treesitter.RuleTypeSeq}
+	generic := treesitter.Rule{Type: treesitter.RuleTypeSeq}
+	found := false
+	for _, member := range rule.Members {
+		if member.Type == treesitter.RuleTypeField && member.Name == "params" && member.Content != nil && member.Content.Type == treesitter.RuleTypeChoice {
+			found = true
+			list := member.Content.Members[0]
+			generic.Members = append(generic.Members, treesitter.Rule{
+				Type:    treesitter.RuleTypeField,
+				Name:    member.Name,
+				Content: &list,
+			})
+			continue
+		}
+		plain.Members = append(plain.Members, member)
+		if member.Type == treesitter.RuleTypeField && member.Name == "name" {
+			// Still a `symbol` node, for queries (outlines) that look for
+			// a field's name as one.
+			id := treesitter.Rule{Type: treesitter.RuleTypeSymbol, Name: "id"}
+			member.Content = &treesitter.Rule{
+				Type:    treesitter.RuleTypeAlias,
+				Value:   "symbol",
+				Named:   true,
+				Content: &id,
+			}
+		}
+		generic.Members = append(generic.Members, member)
+	}
+	if !found {
+		return rule
+	}
+	return treesitter.Rule{
+		Type:    treesitter.RuleTypeChoice,
+		Members: []treesitter.Rule{plain, generic},
+	}
+}
+
 func TreesitterGrammar() treesitter.Grammar {
 	ts := treesitter.NewGrammar("dang")
 
@@ -295,6 +346,11 @@ func TreesitterGrammar() treesitter.Grammar {
 		// appears. GLR explores both; the PEG resolves the same ambiguity
 		// by ordered choice (clauses first).
 		{treesitter.Name("RescueClauses"), treesitter.Name("Block")},
+		// A statement starting `name[` is ambiguous between a function
+		// field with type parameters (`first[a](xs: [a!]!): a { ... }`)
+		// and indexing a value (`xs[i]`); see patchTypeParamsName. GLR
+		// explores both; what follows the `]` disambiguates.
+		{treesitter.Name("AutoCallSymbol"), treesitter.Name("TypeAndBlockField"), treesitter.Name("TypeAndArgsAndBlockField")},
 	}
 	ts.Precedences = [][]treesitter.Rule{
 		{

@@ -1,0 +1,8 @@
+[1m[31mError:[0m type parameter b is not used in first's signature
+  [2m[34m--> errors/type_param_unused.dang:1:10[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mfirst[a, b](xs: [a!]!): a { xs[0] }
+[2m                [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

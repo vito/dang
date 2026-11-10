@@ -67,13 +67,9 @@ func completions(members []Member, prefix string) []dang.Completion {
 		if m.TypeOnly || !strings.HasPrefix(strings.ToLower(m.Name), prefix) {
 			continue
 		}
-		detail := m.Type
-		if m.HMType != nil {
-			detail = m.HMType.String()
-		}
 		items = append(items, dang.Completion{
 			Label:         m.Name,
-			Detail:        detail,
+			Detail:        m.Detail(),
 			Documentation: m.Doc,
 			IsFunction:    m.Kind == KindFunction,
 		})
