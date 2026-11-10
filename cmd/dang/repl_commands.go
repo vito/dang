@@ -92,7 +92,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			name: "reset",
 			desc: "Reset the environment",
 			handler: func(_ tuist.Context, r *replComponent, e *replEntry, _ []string) {
-				r.typeScope, r.valueScope = dang.BuildScopesFromImports("", r.importConfigs)
+				r.typeScope, r.valueScope = dang.BuildScopesFromImportsForVersion("", r.importConfigs, dang.VersionFromContext(r.ctx))
 				r.refreshCompletions()
 				e.writeLogLine(resultStyle.Render("Environment reset."))
 			},

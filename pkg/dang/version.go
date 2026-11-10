@@ -69,7 +69,9 @@ var (
 	Version2_1 = Version{Major: 2, Minor: 1}
 
 	// Version2_4 requires the `!` on type patterns (`c: Cat! =>`), which
-	// spell the non-null type an arm binds.
+	// spell the non-null type an arm binds, and keeps a builtin import's
+	// namespace in type position over a type an import brings in unqualified
+	// (see importTypesOverBuiltinImports).
 	Version2_4 = Version{Major: 2, Minor: 4}
 
 	// CurrentVersion is the language version this build of Dang implements:
@@ -302,6 +304,26 @@ func (v Version) commaFormSep() bool {
 // non-null type its arm binds (`c: Cat! =>`). Both spellings mean the same:
 // an arm never binds null. See typePatternClause.
 func (v Version) barePatterns() bool {
+	return v.Before(Version2_4)
+}
+
+// importTypesOverBuiltinImports reports whether a type an import brings in
+// unqualified takes the place of a builtin import's namespace of the same
+// name in type position, as for source before 2.4. Up to 2.3, the builtin
+// JSON, YAML and TOML were scalars, so such source spells a scalar type
+// bare, e.g. Dagger entrypoints' `fnArgs: JSON!` and `(s :: JSON!)`; 2.4 made
+// them namespaces, which a value can't have as its type. Before 2.4, then,
+// with Dagger's `scalar JSON` imported, a bare `JSON` type is `Dagger.JSON`,
+// while the value `JSON` (as in `JSON.encode`) stays the builtin namespace.
+// From 2.4 on, the namespace wins in both positions, as every import's
+// namespace does over an unqualified name, and the import's type is spelled
+// qualified, which `dang migrate` writes (see qualifyImportTypes).
+//
+// No spelling tells the two apart, since the parser can't know what imports
+// bring in, so the parser records the rule on the FileBlock
+// (FileBlock.ImportTypesOverBuiltinImports) and the import installer reads
+// it from the context (see withImportTypesOverBuiltinImports).
+func (v Version) importTypesOverBuiltinImports() bool {
 	return v.Before(Version2_4)
 }
 

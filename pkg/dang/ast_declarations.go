@@ -1764,7 +1764,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 
 		if typeScope, ok := env.(TypeScope); ok {
-			installImportedTypeScope(typeScope, i.Name.Name, i.inferred, locallyDeclared(ctx))
+			installImportedTypeScope(typeScope, i.Name.Name, i.inferred, locallyDeclared(ctx), importTypesOverBuiltinImportsIn(ctx))
 		}
 
 		return NonNull(i.inferred), nil

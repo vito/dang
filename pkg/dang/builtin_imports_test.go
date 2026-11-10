@@ -174,7 +174,7 @@ func TestUnqualifiedImportKeepsBuiltinImport(t *testing.T) {
 	lib.SetVisibility("JSON", PublicVisibility)
 
 	scope := NewPreludeTypeScope("")
-	installImportedTypeScope(scope, "Lib", lib, nil)
+	installImportedTypeScope(scope, "Lib", lib, nil, false)
 
 	named, found := scope.NamedType("JSON")
 	require.True(t, found)

@@ -216,6 +216,30 @@ func TestImportReplacesBuiltinImport(t *testing.T) {
 	require.Same(t, dang.YAMLModule, sym.Member.Scope, "YAML is the builtin import elsewhere")
 }
 
+func TestImportTypesOverBuiltinImportsBefore2_4(t *testing.T) {
+	// Before 2.4, a bare type named like a builtin import is the type an
+	// import brings in unqualified, as type checking and evaluation have it;
+	// from 2.4 on, it is the builtin import's namespace.
+	schema, err := dang.SchemaFromSDL("type Query {\n  echo(value: JSON!): JSON!\n}\n\nscalar JSON\n", "schema.graphqls")
+	require.NoError(t, err)
+	mainSrc := "pub call(fnArgs: JSON!): JSON! {\n  (JSON.encode({{ fnArgs: fnArgs }}) :: JSON!)\n}\n"
+	src := mapFS(map[string]string{"main.dang": mainSrc})
+	imports := []dang.ImportConfig{{Name: "Dagger", Schema: schema, AutoImport: true}}
+
+	a, err := analysis.Analyze(context.Background(), src, ".", analysis.Options{ImportConfigs: imports, Version: dang.Version2_1})
+	require.NoError(t, err)
+	require.Empty(t, a.Diagnostics())
+	sym, err := a.Inspect("main.dang", at(t, mainSrc, "JSON.encode", 0, 0))
+	require.NoError(t, err)
+	require.NotNil(t, sym.Member)
+	require.Same(t, dang.JSONModule, sym.Member.Scope, "the value is the builtin namespace")
+
+	a, err = analysis.Analyze(context.Background(), src, ".", analysis.Options{ImportConfigs: imports, Version: dang.Version2_4})
+	require.NoError(t, err)
+	require.NotEmpty(t, a.Diagnostics())
+	require.Contains(t, a.Diagnostics()[0].Message, "hint expects JSON!")
+}
+
 func TestDiagnosticsFlagDeprecatedBuiltins(t *testing.T) {
 	src := mapFS(map[string]string{
 		"main.dang": "let s = toJSON([1, 2, 3])\n",

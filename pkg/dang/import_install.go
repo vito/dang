@@ -6,10 +6,12 @@ const importedBindingVisibility = PrivateVisibility
 
 // installImportedTypeScope installs import importName into parentTypeScope.
 // Its unqualified names skip those shadowed reports as locally declared
-// (nil: none; see import_shadowing.go).
-func installImportedTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope, shadowed func(string) bool) {
+// (nil: none; see import_shadowing.go). overBuiltins installs its
+// unqualified types over builtin imports' namespaces of the same name, as
+// for source before Dang 2.4 (see importTypesOverBuiltinImports).
+func installImportedTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope, shadowed func(string) bool, overBuiltins bool) {
 	installQualifiedImportTypeScope(parentTypeScope, importName, schemaModule)
-	installUnqualifiedImportSymbols(parentTypeScope, schemaModule, importName, shadowed)
+	installUnqualifiedImportSymbols(parentTypeScope, schemaModule, importName, shadowed, overBuiltins)
 }
 
 // installQualifiedImportTypeScope installs only import importName's
@@ -25,18 +27,18 @@ func installQualifiedImportTypeScope(parentTypeScope TypeScope, importName strin
 	parentTypeScope.SetValueOrigin(importName, qualifiedOrigin)
 }
 
-func installUnqualifiedImportSymbols(parentTypeScope TypeScope, schemaModule TypeScope, importName string, shadowed func(string) bool) {
+func installUnqualifiedImportSymbols(parentTypeScope TypeScope, schemaModule TypeScope, importName string, shadowed func(string) bool, overBuiltins bool) {
 	installUnqualifiedImportValuesForInference(parentTypeScope, schemaModule, importName, shadowed)
 
 	if mod, ok := schemaModule.(*OverlayTypeScope); ok {
 		if primaryMod, ok := mod.primary.(*Type); ok {
-			installUnqualifiedImportTypesFromModule(parentTypeScope, primaryMod, importName, shadowed)
+			installUnqualifiedImportTypesFromModule(parentTypeScope, primaryMod, importName, shadowed, overBuiltins)
 			installUnqualifiedImportDirectivesFromModule(parentTypeScope, primaryMod, importName)
 		}
 		return
 	}
 	if mod, ok := schemaModule.(*Type); ok {
-		installUnqualifiedImportTypesFromModule(parentTypeScope, mod, importName, shadowed)
+		installUnqualifiedImportTypesFromModule(parentTypeScope, mod, importName, shadowed, overBuiltins)
 		installUnqualifiedImportDirectivesFromModule(parentTypeScope, mod, importName)
 	}
 }
@@ -73,7 +75,7 @@ func installUnqualifiedImportValuesForInference(parentTypeScope TypeScope, schem
 	}
 }
 
-func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Type, importName string, shadowed func(string) bool) {
+func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Type, importName string, shadowed func(string) bool, overBuiltins bool) {
 	origin := ImportedBindingOrigin(importName, false)
 	for name, object := range mod.objects {
 		if name == importName || isShadowed(shadowed, name) {
@@ -85,7 +87,12 @@ func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Typ
 			continue
 		}
 
-		if _, exists := parentTypeScope.NamedType(name); exists {
+		// Nor a builtin import's namespace, except in type position before
+		// Dang 2.4 (see importTypesOverBuiltinImports), where it takes the
+		// namespace's place as a type, here or over the frame below that
+		// holds the builtin imports. The value of that name stays the
+		// namespace (see installUnqualifiedImportValuesForInference).
+		if existing, exists := parentTypeScope.NamedType(name); exists && !(overBuiltins && isBuiltinImportNamespace(existing, name)) {
 			if localTypeBindingIsUnqualifiedImport(parentTypeScope, name) {
 				addTypeImportProvider(parentTypeScope, name, importName)
 			}

@@ -545,7 +545,17 @@ func ValueScopeFromSchema(typeScope TypeScope, client graphql.Client, schema *in
 // BuildScopesFromImports creates type and eval environments from a set of import
 // configurations. Each import's schema types and values are merged into the
 // environments, with the first import taking precedence on name collisions.
+// The imports resolve as in source written in CurrentVersion; see
+// BuildScopesFromImportsForVersion.
 func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, ValueScope) {
+	return BuildScopesFromImportsForVersion(name, configs, CurrentVersion)
+}
+
+// BuildScopesFromImportsForVersion is BuildScopesFromImports for source
+// written in Dang version v, e.g. a REPL's (see VersionFromContext): before
+// 2.4, the imports' unqualified types take the place of builtin imports'
+// namespaces in type position (see importTypesOverBuiltinImports).
+func BuildScopesFromImportsForVersion(name string, configs []ImportConfig, v Version) (TypeScope, ValueScope) {
 	typeScope := NewPreludeTypeScope(name)
 
 	for _, config := range configs {
@@ -553,7 +563,7 @@ func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, Val
 			continue
 		}
 		schemaModule := TypeScopeFromSchema(config.Name, config.Schema)
-		installImportedTypeScope(typeScope, config.Name, schemaModule, nil)
+		installImportedTypeScope(typeScope, config.Name, schemaModule, nil, v.importTypesOverBuiltinImports())
 	}
 
 	valueScope := NewValueScope(typeScope)

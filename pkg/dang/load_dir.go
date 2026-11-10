@@ -329,7 +329,8 @@ func (m *Module) NewSession(ctx context.Context) (*Session, error) {
 
 	imports := InjectAutoImports(ctx, nil)
 	errs := &InferenceErrors{}
-	if _, err := inferImportsPhaseResilient(ctx, imports, s.importTypes, hm.NewSimpleFresher(), errs); err != nil {
+	importCtx := withImportTypesOverBuiltinImports(ctx, m.Version.importTypesOverBuiltinImports())
+	if _, err := inferImportsPhaseResilient(importCtx, imports, s.importTypes, hm.NewSimpleFresher(), errs); err != nil {
 		errs.Add(err)
 	}
 	if errs.HasErrors() {
@@ -412,6 +413,7 @@ func (s *Session) Check(ctx context.Context, filename, source string) (*Snippet,
 	}
 	fresh := hm.NewSimpleFresher()
 	errs := &InferenceErrors{}
+	ctx = withImportTypesOverBuiltinImports(ctx, block.ImportTypesOverBuiltinImports)
 	if _, err := inferImportsPhaseResilient(ctx, imports, snippet.importTypes, fresh, errs); err != nil {
 		errs.Add(err)
 	}

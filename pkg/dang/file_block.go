@@ -18,6 +18,14 @@ type FileBlock struct {
 	Inline bool
 	Loc    *SourceLocation
 
+	// ImportTypesOverBuiltinImports records that the file was parsed as a
+	// Dang version where a type its imports bring in unqualified takes the
+	// place of a builtin import's namespace in type position (see
+	// importTypesOverBuiltinImports). What that changes depends on the
+	// imports, not the spelling, so migrations compare ASTs without it and
+	// qualify such types instead (see qualifyImportTypes).
+	ImportTypesOverBuiltinImports bool `dang:"version"`
+
 	// Filled in during inference phase
 	TypeScope TypeScope
 }
@@ -79,6 +87,7 @@ func (m *FileBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 		// Use phased inference approach for proper dependency handling
 		ctx = withTopLevelFrame(ctx, newEnv)
+		ctx = withImportTypesOverBuiltinImports(ctx, m.ImportTypesOverBuiltinImports)
 		return InferFormsWithPhases(ctx, forms, newEnv, fresh)
 	})
 }

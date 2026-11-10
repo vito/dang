@@ -47,6 +47,10 @@ func InferDirectoryFiles(ctx context.Context, files []*FileBlock, dirScope TypeS
 type fileScope struct {
 	classified ClassifiedForms
 	typeScope  TypeScope
+	// importTypesOverBuiltinImports is the file's
+	// FileBlock.ImportTypesOverBuiltinImports, for imports nested in its
+	// forms.
+	importTypesOverBuiltinImports bool
 }
 
 // prepareFileScopes per-file: prepends auto-imports, splits imports from the
@@ -71,7 +75,8 @@ func prepareFileScopes(ctx context.Context, files []*FileBlock, dirScope TypeSco
 		imports, rest := partitionImports(block.Forms)
 
 		importsScope := newFileImportsScope()
-		if _, err := inferImportsPhaseResilient(ctx, imports, importsScope, fresh, errs); err != nil {
+		fileCtx := withImportTypesOverBuiltinImports(ctx, block.ImportTypesOverBuiltinImports)
+		if _, err := inferImportsPhaseResilient(fileCtx, imports, importsScope, fresh, errs); err != nil {
 			errs.Add(err)
 		}
 
@@ -80,6 +85,8 @@ func prepareFileScopes(ctx context.Context, files []*FileBlock, dirScope TypeSco
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),
 			typeScope:  composite,
+
+			importTypesOverBuiltinImports: block.ImportTypesOverBuiltinImports,
 		})
 	}
 	return scopes
@@ -96,7 +103,8 @@ type directoryPhase struct {
 func runDirectoryPhases(ctx context.Context, scopes []fileScope, fresh hm.Fresher, errs *InferenceErrors, phases []directoryPhase) {
 	for _, phase := range phases {
 		for _, scope := range scopes {
-			if _, err := phase.fn(ctx, scope.classified, scope.typeScope, fresh, errs); err != nil {
+			fileCtx := withImportTypesOverBuiltinImports(ctx, scope.importTypesOverBuiltinImports)
+			if _, err := phase.fn(fileCtx, scope.classified, scope.typeScope, fresh, errs); err != nil {
 				errs.Add(fmt.Errorf("%s phase failed: %w", phase.name, err))
 			}
 		}

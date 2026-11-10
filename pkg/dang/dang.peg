@@ -13,6 +13,7 @@ Dang <- _ eles:(e:Expr FormSep { return e, nil })* last:Expr? _ !. {
   return &FileBlock{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
+    ImportTypesOverBuiltinImports: versionFromStore(c.globalStore).importTypesOverBuiltinImports(),
   }, nil
 }
 

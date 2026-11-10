@@ -30,6 +30,42 @@ import (
 // module's declarations, so each file's import frame gets them first
 // (newFileImportsScope, installBuiltinImportValues), and the module's own
 // chain goes without them (withoutBuiltinImports, newDirectoryValueScope).
+//
+// One exception is kept for source before Dang 2.4: in type position, a type
+// an explicit import brings in unqualified takes the place of a builtin
+// import's namespace of the same name (see importTypesOverBuiltinImports).
+// Values are not affected: `JSON.encode` names the builtin namespace in every
+// version.
+
+type importTypesOverBuiltinImportsKey struct{}
+
+// withImportTypesOverBuiltinImports returns ctx for inferring the imports of
+// source in which a type an import brings in unqualified takes the place of
+// a builtin import's namespace in type position, or not (see
+// importTypesOverBuiltinImports). A FileBlock sets it for its own forms,
+// from the version it was parsed as.
+func withImportTypesOverBuiltinImports(ctx context.Context, on bool) context.Context {
+	return context.WithValue(ctx, importTypesOverBuiltinImportsKey{}, on)
+}
+
+// importTypesOverBuiltinImportsIn reports whether imports inferred with ctx
+// install their unqualified types over builtin imports' namespaces: as set
+// by withImportTypesOverBuiltinImports, or else as the version of source
+// with no path of its own (a REPL entry; see VersionFromContext).
+func importTypesOverBuiltinImportsIn(ctx context.Context) bool {
+	if on, ok := ctx.Value(importTypesOverBuiltinImportsKey{}).(bool); ok {
+		return on
+	}
+	return VersionFromContext(ctx).importTypesOverBuiltinImports()
+}
+
+// isBuiltinImportNamespace reports whether t, the type env resolves name to,
+// is the builtin import of that name, rather than a type of the module's own
+// or an explicit import's namespace replacing it.
+func isBuiltinImportNamespace(t TypeScope, name string) bool {
+	mod, ok := builtinImport(name)
+	return ok && t == TypeScope(mod)
+}
 
 // builtinImportsTypeScope returns a frame holding the builtin imports, over
 // the prelude.
