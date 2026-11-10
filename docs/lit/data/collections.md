@@ -40,8 +40,8 @@ let nums = [1, 2, 3, 4]
 [1, 2] + nums
 ```
 
-An empty literal can't infer its element type on its own, so it needs an
-annotation (or a `:: [T]!` hint — see [#nullability]):
+An empty literal takes its element type from context — an annotation, as
+here, or its surroundings and later uses (see [#syntax]):
 
 ```dang
 let none: [Int!]! = []
