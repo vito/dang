@@ -4020,9 +4020,12 @@ func recordDeclarationScopes(module ValueScope, forms []Node, file ValueScope) {
 // Imports are file-scoped regardless of file count: even a single-file directory
 // installs its imports into a per-file env rather than the returned valueScope,
 // so `import` consistently means "this file imports X" and imported symbols never
-// leak into the module scope. Each declaration still captures its file's composite
-// scope (e.g. via ConstructorFunction.Closure), so directive arguments and method
-// bodies that reference imported symbols continue to resolve.
+// leak into the module scope. A declaration with a closure captures its file's
+// composite scope (e.g. ConstructorFunction.Closure), so its directive
+// arguments and method bodies that reference imported symbols continue to
+// resolve. One without (an interface) has its directive arguments evaluated in
+// DeclarationScope(valueScope, name), which each file's declarations are
+// recorded for.
 func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope ValueScope) error {
 	return evaluateDirectory(ctx, blocks, valueScope, true)
 }
