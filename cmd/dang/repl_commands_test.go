@@ -32,3 +32,17 @@ func TestTypeCommandShowsBounds(t *testing.T) {
 
 	require.NotContains(t, typeOf("[]"), "forall")
 }
+
+func TestTypeCommandShowsWeakBounds(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let xs = []")
+	require.NoError(t, err)
+	_, err = s.enter("let total = xs.sum")
+	require.NoError(t, err)
+
+	r := &replComponent{ctx: context.Background(), typeScope: s.typeScope}
+	e := newReplEntry(":type xs")
+	r.typeCommand(e, []string{"xs"})
+	// xs's elements aren't known yet, but must be Numeric.
+	require.Contains(t, e.logs.String(), "Numeric")
+}

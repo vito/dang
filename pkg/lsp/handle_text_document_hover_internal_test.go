@@ -104,6 +104,24 @@ func TestFormatPublicTypeShape(t *testing.T) {
 	}
 }
 
+func TestFormatPublicTypeShapeShowsBounds(t *testing.T) {
+	box := dang.NewType("Box", dang.ObjectKind)
+	k := hm.NonNullType{Type: dang.OrderedVar('k')}
+	box.Add("larger", hm.NewScheme(nil, hm.NewFnType(
+		dang.NewRecordType("",
+			dang.Keyed[*hm.Scheme]{Key: "x", Value: hm.NewScheme(nil, k)},
+			dang.Keyed[*hm.Scheme]{Key: "y", Value: hm.NewScheme(nil, k)},
+		),
+		k,
+	)))
+	box.SetVisibility("larger", dang.PublicVisibility)
+
+	codeBlock := dang.FormatPublicTypeShape(box)
+	if !strings.Contains(codeBlock, "larger[k: Ordered](x: k!, y: k!): k!") {
+		t.Fatalf("code block does not show the bound:\n%s", codeBlock)
+	}
+}
+
 func TestFormatNamedTypeForHoverUsesTypeScope(t *testing.T) {
 	iface := dang.NewType("Thing", dang.InterfaceKind)
 	iface.SetTypeDocString("Loaded from GraphQL.")

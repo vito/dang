@@ -90,10 +90,11 @@ func FormatScheme(s *hm.Scheme) string {
 
 // TypeParamsOf returns the type parameter list, `[a, k: Ordered]`, of the
 // free type variables of types, or "" when none of them is bounded. Rigid
-// variables are left out (they belong to an enclosing declaration), and so
-// are a binding's weak ones (`_a`, not generic), but not an expression's own
-// open unknown (an empty literal's element type), which reads as a plain
-// variable: `[].sum` is `[a: Numeric] a!`.
+// variables are left out: they belong to an enclosing declaration. A weak
+// variable is listed by the name it prints as, so a binding's unknown shows
+// its bound too (`[_a: Numeric] [_a!]!` for `let xs = []` summed later),
+// and an expression's own open unknown reads as a plain variable (`[].sum`
+// is `[a: Numeric] a!`).
 func TypeParamsOf(types ...hm.Type) string {
 	bounds := map[string][]hm.Constraint{}
 	bounded := false
@@ -102,11 +103,11 @@ func TypeParamsOf(types ...hm.Type) string {
 			continue
 		}
 		for tv := range t.FreeTypeVar() {
-			if tv.IsRigid() || (tv.IsWeak() && !tv.IsOpenWeak()) {
+			if tv.IsRigid() {
 				continue
 			}
-			// Not Unbounded's name: an open weak variable is known by its
-			// bounds too, and without them would read as a binding's (`_a`).
+			// Not Unbounded's name: a weak variable is known by its bounds
+			// too, and an open one would read as a binding's (`_a`).
 			name := tv.String()
 			cs := bounds[name]
 			for _, c := range tv.Bounds() {
