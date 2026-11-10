@@ -1,0 +1,8 @@
+interface Maker {
+  make[a: Ordered](n: Int!): [a!]!
+}
+
+# Callers of Maker.make may pick any Ordered element type, strings included.
+type Numbers implements Maker {
+  make[a: Numeric](n: Int!): [a!]! { [] }
+}

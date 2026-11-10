@@ -306,9 +306,12 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 // Ordered](x: a!)` for `pick(x: a!)`, whose `<` would meet values with no
 // order). An implementation may bound less than the interface does.
 //
-// An interface method with no type variables of its own only has the
-// implementation's bounds checked, argument by argument: a concrete type
-// the interface names (`pick(x: Int!)`) satisfies a bound as usual.
+// An interface method with no type variables of its own is checked the
+// same way: an implementation taking one variable for two of its argument
+// types (`f(x: c!, y: c!)` for `f(x: Int!, y: String!)`) would return a
+// String where callers expect an Int, while a concrete type the interface
+// names (`pick(x: Int!)`) satisfies a bound as usual. Like a stored
+// field's, a function-valued field's type is pinned by conforming.
 func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionType) error {
 	skolem, _ := skolemSubs(ifaceFn)
 	rigid := ifaceFn.Apply(skolem).(*hm.FunctionType)
@@ -320,7 +323,11 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 	if !ok {
 		return nil
 	}
-	generic := len(skolem) > 0
+	// Why a type doesn't fit: the interface's callers pick its variables.
+	forEvery := ""
+	if len(skolem) > 0 {
+		forEvery = " for every type the interface's callers pick"
+	}
 
 	// A part of the method: values of type from must fit to, and report
 	// says why not, given what the parts say of the method's variables.
@@ -353,8 +360,8 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 				return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass %s for %s",
 					fieldName, key, be, callersPass(be), iface)
 			}
-			return fmt.Errorf("field %q, argument %q: type %s doesn't fit interface type %s for every type the interface's callers pick",
-				fieldName, key, here(impl, subs), iface)
+			return fmt.Errorf("field %q, argument %q: type %s doesn't fit interface type %s%s",
+				fieldName, key, here(impl, subs), iface, forEvery)
 		}})
 	}
 	if ifaceBlock, implBlock := rigid.Block(), implFn.Block(); ifaceBlock != nil && implBlock != nil {
@@ -363,21 +370,9 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 				return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
 					fieldName, be, FormatType(ifaceFn.Block()))
 			}
-			return fmt.Errorf("field %q, block argument: type %s doesn't fit interface block type %s for every type the interface's callers pick",
-				fieldName, here(implBlock, subs), ifaceBlock)
+			return fmt.Errorf("field %q, block argument: type %s doesn't fit interface block type %s%s",
+				fieldName, here(implBlock, subs), ifaceBlock, forEvery)
 		}})
-	}
-
-	if !generic {
-		// Only the implementation's bounds, part by part.
-		for _, p := range parts {
-			if _, err := hm.Assignable(p.from, p.to); err != nil {
-				if _, ok := boundError(err); ok {
-					return p.report(err, nil)
-				}
-			}
-		}
-		return nil
 	}
 
 	subs := hm.NewSubs()
@@ -386,9 +381,11 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 		if err != nil {
 			return p.report(err, subs)
 		}
-		if subs, err = subs.Compose(s); err != nil {
+		merged, err := subs.Compose(s)
+		if err != nil {
 			return p.report(err, subs)
 		}
+		subs = merged
 		return nil
 	}
 	for _, p := range parts {
@@ -397,9 +394,13 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 		}
 	}
 	implRet, ifaceRet := implFn.Ret(false), rigid.Ret(false)
-	ret := part{implRet, ifaceRet, func(_ error, subs hm.Subs) error {
-		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s for every type the interface's callers pick",
-			fieldName, here(implRet, subs), ifaceRet)
+	ret := part{implRet, ifaceRet, func(err error, subs hm.Subs) error {
+		if be, ok := boundError(err); ok {
+			return fmt.Errorf("field %q, return type: %w, but the interface's callers may pick %s for %s",
+				fieldName, be, callersPass(be), ifaceRet)
+		}
+		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s%s",
+			fieldName, here(implRet, subs), ifaceRet, forEvery)
 	}}
 	if err := fit(ret, implRet.Apply(subs).(hm.Type), ifaceRet); err != nil {
 		return err

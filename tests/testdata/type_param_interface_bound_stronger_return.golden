@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "make", return type: the implementation bounds a by Numeric, but the interface's callers may pick any Ordered type for [a!]!
+  [2m[34m--> errors/type_param_interface_bound_stronger_return.dang:6:25[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Maker.make may pick any Ordered element type, strings included.[0m
+ [2m[34m[1m  6 | [0mtype Numbers implements Maker {
+[2m                               [31m^^^^^[0m
+ [2m  7 |   make[a: Numeric](n: Int!): [a!]! { [] }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

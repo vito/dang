@@ -181,19 +181,19 @@ assert { useRanker(First) == ["a", "bb", "a", "ccc"] }
 
 # An implementation is checked as a whole, whatever its arguments' order
 interface NullableSecond {
-  pick(x: String!, y: String): String
+  pick(x: a!, y: a): a
 }
 
 type EitherSecond implements NullableSecond {
-  pick(x: a, y: a): a { x ?? y }
+  pick(x: b, y: b): b { x ?? y }
 }
 
 interface NullableFirst {
-  pick(y: String, x: String!): String
+  pick(y: a, x: a!): a
 }
 
 type EitherFirst implements NullableFirst {
-  pick(y: a, x: a): a { x ?? y }
+  pick(y: b, x: b): b { x ?? y }
 }
 
 assert { EitherSecond.pick("a", null) == "a" }
