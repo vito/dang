@@ -225,12 +225,17 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 		_, err = cmd.OutOrStdout().Write(source)
 		return err
 	}
-	var imports map[string]dang.ImportedTypes
-	// Only the move to 2.4 depends on what the imports bring in.
-	if configPath != "" && opts.ImportedTypes != nil && from.Before(dang.Version2_4) && !to.Before(dang.Version2_4) {
-		imports, err = opts.ImportedTypes(configPath)
-		if err != nil {
-			return fmt.Errorf("%s: resolving the imports of %s: %w", file, configPath, err)
+	var imports func() (map[string]dang.ImportedTypes, error)
+	if configPath == "" {
+		configPath = filepath.Join(projectDir(file), "dang.toml")
+	}
+	if opts.ImportedTypes != nil {
+		imports = func() (map[string]dang.ImportedTypes, error) {
+			imported, err := opts.ImportedTypes(configPath)
+			if err != nil {
+				return nil, fmt.Errorf("resolving the imports of %s: %w", configPath, err)
+			}
+			return imported, nil
 		}
 	}
 	migrated, err := dang.MigrateSourceWithImports(file, source, from, to, imports)
@@ -243,10 +248,10 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 }
 
 // importedTypesResolver returns a MigrateOptions.ImportedTypes that resolves
-// a project's dang.toml imports as running it would, Dagger's included, and a
-// func stopping the import services it started. A project no dang.toml
-// governs has no imports it can know of: an embedder (e.g. a Dagger SDK)
-// supplies those.
+// a project's imports as the LSP does: its dang.toml's, if it has one, and
+// Dagger's, declared there or detected from a Dagger module (whose Dang
+// source the engine runs with Dagger imported). It also returns a func
+// stopping the import services it started.
 func importedTypesResolver(ctx context.Context) (func(string) (map[string]dang.ImportedTypes, error), func()) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -254,22 +259,20 @@ func importedTypesResolver(ctx context.Context) (func(string) (map[string]dang.I
 	services := &dang.ServiceRegistry{}
 	ctx = dang.ContextWithServices(ctx, services)
 	resolve := func(configPath string) (map[string]dang.ImportedTypes, error) {
-		if _, err := os.Stat(configPath); err != nil {
-			return nil, nil
-		}
-		config, err := dang.LoadProjectConfig(configPath)
-		if err != nil {
-			return nil, err
-		}
 		dir := filepath.Dir(configPath)
-		ctx := dang.ContextWithProjectConfig(ctx, configPath, config)
-		resolved, err := dang.ResolveImportConfigs(ctx, config, dir)
-		if err != nil {
-			return nil, err
+		var resolved []dang.ImportConfig
+		if _, err := os.Stat(configPath); err == nil {
+			config, err := dang.LoadProjectConfig(configPath)
+			if err != nil {
+				return nil, err
+			}
+			ctx := dang.ContextWithProjectConfig(ctx, configPath, config)
+			resolved, err = dang.ResolveImportConfigs(ctx, config, dir)
+			if err != nil {
+				return nil, err
+			}
 		}
-		if slices.ContainsFunc(resolved, func(ic dang.ImportConfig) bool { return ic.Dagger }) {
-			resolved = dang.ResolveDaggerImport(ctx, resolved, dir)
-		}
+		resolved = dang.ResolveDaggerImport(ctx, resolved, dir)
 		return dang.BuiltinImportTypes(ctx, resolved)
 	}
 	return resolve, services.StopAll

@@ -104,9 +104,11 @@ func unqualifiedBuiltinImportTypes(mod TypeScope, importName string) []string {
 // imports is what the project's imports bring in (see BuiltinImportTypes),
 // and declared reports the names the file's module declares at its top
 // level, which name its own declarations rather than an import's type. A
-// bare type two imports both bring in is ambiguous, and an error.
+// type the file spells bare that two imports both bring in is ambiguous, and
+// an error.
 func importTypeQualifiers(file *FileBlock, imports map[string]ImportedTypes, declared func(string) bool) (map[string]string, error) {
-	if len(imports) == 0 {
+	bare := bareBuiltinImportTypes(file)
+	if len(imports) == 0 || len(bare) == 0 {
 		return nil, nil
 	}
 	// The imports in effect: every auto-import, and those the file names.
@@ -128,7 +130,7 @@ func importTypeQualifiers(file *FileBlock, imports map[string]ImportedTypes, dec
 		for _, t := range imports[name].Types {
 			// An import of that name replaces the builtin import, in every
 			// version, and so does a declaration of it.
-			if inEffect[t] || (declared != nil && declared(t)) {
+			if !bare[t] || inEffect[t] || (declared != nil && declared(t)) {
 				continue
 			}
 			providers[t] = append(providers[t], name)
@@ -146,12 +148,40 @@ func importTypeQualifiers(file *FileBlock, imports map[string]ImportedTypes, dec
 }
 
 // qualifyImportTypes qualifies the bare types in file named like a key of
-// qualifiers by the import it maps to, in type positions and type patterns,
-// and reports whether it changed any. A qualified type's qualifier (the
-// `JSON` of `JSON.Foo`) is left alone: the formatter spells one qualifier
-// only.
+// qualifiers by the import it maps to, and reports whether it changed any.
 func qualifyImportTypes(file *FileBlock, qualifiers map[string]string) bool {
 	changed := false
+	walkBareTypes(file, func(name string) *NamedTypeNode {
+		imp, ok := qualifiers[name]
+		if !ok {
+			return nil
+		}
+		changed = true
+		return &NamedTypeNode{Name: imp}
+	})
+	return changed
+}
+
+// bareBuiltinImportTypes returns the names file spells a type by bare that
+// are named like a builtin import, which migrating it past
+// importTypesOverBuiltinImports may need to qualify.
+func bareBuiltinImportTypes(file *FileBlock) map[string]bool {
+	names := map[string]bool{}
+	walkBareTypes(file, func(name string) *NamedTypeNode {
+		if _, ok := builtinImport(name); ok {
+			names[name] = true
+		}
+		return nil
+	})
+	return names
+}
+
+// walkBareTypes calls qualify with the name of each type file spells bare,
+// in type positions and type patterns, and qualifies it by what qualify
+// returns, if anything. A qualified type's qualifier (the `JSON` of
+// `JSON.Foo`) is not a bare type, and neither is a directive's scope (the
+// `JSON` of `@JSON.field`), which names a namespace.
+func walkBareTypes(file *FileBlock, qualify func(name string) *NamedTypeNode) {
 	seen := map[uintptr]bool{}
 	var walk func(v reflect.Value)
 	walk = func(v reflect.Value) {
@@ -168,19 +198,24 @@ func qualifyImportTypes(file *FileBlock, qualifiers map[string]string) bool {
 			switch n := v.Interface().(type) {
 			case *NamedTypeNode:
 				if n.Base == nil {
-					if imp, ok := qualifiers[n.Name]; ok {
-						n.Base = &NamedTypeNode{Name: imp, Loc: n.Loc}
-						changed = true
+					if base := qualify(n.Name); base != nil {
+						base.Loc = n.Loc
+						n.Base = base
 					}
 				}
 				return
 			case *CaseClause:
 				if n.TypePattern != nil && n.PatternBase == nil {
-					if imp, ok := qualifiers[n.TypePattern.Name]; ok {
-						n.PatternBase = &NamedTypeNode{Name: imp, Loc: n.TypePattern.Loc}
-						changed = true
+					if base := qualify(n.TypePattern.Name); base != nil {
+						base.Loc = n.TypePattern.Loc
+						n.PatternBase = base
 					}
 				}
+			case *DirectiveApplication:
+				for _, arg := range n.Args {
+					walk(reflect.ValueOf(arg))
+				}
+				return
 			}
 			walk(v.Elem())
 		case reflect.Struct:
@@ -198,19 +233,6 @@ func qualifyImportTypes(file *FileBlock, qualifiers map[string]string) bool {
 		}
 	}
 	walk(reflect.ValueOf(file))
-	return changed
-}
-
-// hasBareBuiltinImportTypes reports whether file spells a type bare that is
-// named like a builtin import, which migrating it past
-// importTypesOverBuiltinImports may need to qualify. It qualifies them as it
-// goes, so pass it a throwaway parse.
-func hasBareBuiltinImportTypes(file *FileBlock) bool {
-	probe := map[string]string{}
-	for _, mod := range StaticModules() {
-		probe[mod.Named] = "$probe"
-	}
-	return qualifyImportTypes(file, probe)
 }
 
 // declaresAtTop reports the names file declares at its top level, its

@@ -41,8 +41,10 @@ func MigrateSource(filename string, source []byte, from, to Version) (string, er
 // in what imports reports (see BuiltinImportTypes): migrating it past Dang
 // 2.4 qualifies the bare types that resolve differently there (see
 // importTypesOverBuiltinImports), e.g. `JSON` as `Dagger.JSON`, so they keep
-// their meaning. Its module is taken to declare only what source declares.
-func MigrateSourceWithImports(filename string, source []byte, from, to Version, imports map[string]ImportedTypes) (string, error) {
+// their meaning. imports is only called if the source spells such a type
+// bare, and may be nil. The source's module is taken to declare only what
+// source declares.
+func MigrateSourceWithImports(filename string, source []byte, from, to Version, imports func() (map[string]ImportedTypes, error)) (string, error) {
 	qualifiers, err := sourceImportTypeQualifiers(filename, source, from, to, imports, nil)
 	if err != nil {
 		return "", err
@@ -52,11 +54,12 @@ func MigrateSourceWithImports(filename string, source []byte, from, to Version, 
 
 // sourceImportTypeQualifiers returns the importTypeQualifiers of source,
 // written in version from, for migrating it to version to: none unless the
-// migration crosses importTypesOverBuiltinImports. moduleDeclared reports
-// what the source's module declares at its top level besides the source
-// itself, if anything.
-func sourceImportTypeQualifiers(filename string, source []byte, from, to Version, imports map[string]ImportedTypes, moduleDeclared func(string) bool) (map[string]string, error) {
-	if len(imports) == 0 || !from.importTypesOverBuiltinImports() || to.importTypesOverBuiltinImports() {
+// migration crosses importTypesOverBuiltinImports and source spells a type
+// bare that is named like a builtin import, and only then are the imports
+// resolved. moduleDeclared reports what the source's module declares at
+// its top level besides the source itself, if anything.
+func sourceImportTypeQualifiers(filename string, source []byte, from, to Version, importsOf func() (map[string]ImportedTypes, error), moduleDeclared func(string) bool) (map[string]string, error) {
+	if importsOf == nil || !from.importTypesOverBuiltinImports() || to.importTypesOverBuiltinImports() {
 		return nil, nil
 	}
 	parsed, err := Parse(filename, source, WithVersion(from))
@@ -65,6 +68,13 @@ func sourceImportTypeQualifiers(filename string, source []byte, from, to Version
 		return nil, nil
 	}
 	file := parsed.(*FileBlock)
+	if len(bareBuiltinImportTypes(file)) == 0 {
+		return nil, nil
+	}
+	imports, err := importsOf()
+	if err != nil {
+		return nil, err
+	}
 	own := declaresAtTop(file)
 	declared := func(name string) bool {
 		return slices.Contains(own, name) || (moduleDeclared != nil && moduleDeclared(name))
@@ -653,24 +663,29 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 				loopDecls[filepath.Dir(path)]++
 			}
 		}
-		// What the project's imports bring in, if a bare type may need
-		// qualifying, and what each file declares, for its module's other
-		// files.
+		// What the project's imports bring in, resolved once a file spells
+		// a type bare that may need qualifying, and what each file
+		// declares, for its module's other files.
 		var imports map[string]ImportedTypes
-		topDecls := make([][]string, len(p.files))
-		if opts.ImportedTypes != nil && p.from.importTypesOverBuiltinImports() && !to.importTypesOverBuiltinImports() {
-			bare := false
-			for i, path := range p.files {
-				if parsed, err := Parse(path, sources[i], WithVersion(p.from)); err == nil {
-					file := parsed.(*FileBlock)
-					topDecls[i] = declaresAtTop(file)
-					bare = bare || hasBareBuiltinImportTypes(file)
+		var importsErr error
+		importsResolved := false
+		importsOf := func() (map[string]ImportedTypes, error) {
+			if !importsResolved {
+				importsResolved = true
+				if opts.ImportedTypes != nil {
+					imports, importsErr = opts.ImportedTypes(configPath)
+					if importsErr != nil {
+						importsErr = fmt.Errorf("resolving the imports of %s: %w", configPath, importsErr)
+					}
 				}
 			}
-			if bare {
-				imports, err = opts.ImportedTypes(configPath)
-				if err != nil {
-					return nil, fmt.Errorf("resolving the imports of %s: %w", configPath, err)
+			return imports, importsErr
+		}
+		topDecls := make([][]string, len(p.files))
+		if p.from.importTypesOverBuiltinImports() && !to.importTypesOverBuiltinImports() {
+			for i, path := range p.files {
+				if parsed, err := Parse(path, sources[i], WithVersion(p.from)); err == nil {
+					topDecls[i] = declaresAtTop(parsed.(*FileBlock))
 				}
 			}
 		}
@@ -688,7 +703,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 				}
 				return false
 			}
-			qualifiers, err := sourceImportTypeQualifiers(path, source, p.from, to, imports, moduleDeclared)
+			qualifiers, err := sourceImportTypeQualifiers(path, source, p.from, to, importsOf, moduleDeclared)
 			if err != nil {
 				return nil, fmt.Errorf("migrating %s: %w", path, err)
 			}

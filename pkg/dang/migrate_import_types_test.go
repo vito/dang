@@ -144,18 +144,33 @@ func TestMigrateRefusesAmbiguousImportTypes(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "type JSON is brought in by more than one import (Dagger, Other)")
 
-	got, err := MigrateSourceWithImports("main.dang", []byte(entrypointCall), Version2_1, Version2_4, map[string]ImportedTypes{
-		"Dagger": {Auto: true, Types: []string{"JSON"}},
-	})
+	// Unless the file spells it bare nowhere (a codec directive's scope is
+	// not a type): then nothing needs qualifying, and nothing is resolved.
+	for _, source := range []string{
+		"pub x: Int! = 1\n",
+		"type T {\n  a: Int! @JSON.field(name: \"b\")\n}\n",
+	} {
+		got, err := MigrateSourceWithImports("main.dang", []byte(source), Version2_1, Version2_4, func() (map[string]ImportedTypes, error) {
+			t.Errorf("resolved imports for %q", source)
+			return imports, nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, source, got)
+	}
+
+	got, err := MigrateSourceWithImports("main.dang", []byte(entrypointCall), Version2_1, Version2_4, daggerJSONTypes)
 	require.NoError(t, err)
 	require.Contains(t, got, "fnArgs: Dagger.JSON!")
 }
 
+// daggerJSONTypes is what Dagger's import brings in, for migrating.
+func daggerJSONTypes() (map[string]ImportedTypes, error) {
+	return map[string]ImportedTypes{"Dagger": {Auto: true, Types: []string{"JSON"}}}, nil
+}
+
 func TestMigrateQualifiesImportTypePatterns(t *testing.T) {
 	source := "pub f(x: Decoded!): String! {\n  case (x) {\n    j: JSON => \"json\"\n    else => \"other\"\n  }\n}\n"
-	got, err := MigrateSourceWithImports("main.dang", []byte(source), Version2_1, Version2_4, map[string]ImportedTypes{
-		"Dagger": {Auto: true, Types: []string{"JSON"}},
-	})
+	got, err := MigrateSourceWithImports("main.dang", []byte(source), Version2_1, Version2_4, daggerJSONTypes)
 	require.NoError(t, err)
 	require.Contains(t, got, "j: Dagger.JSON! =>")
 }

@@ -65,7 +65,9 @@ func (DangSuite) TestMigrations(ctx context.Context, t *testctx.T) {
 
 				source, err := os.ReadFile(script)
 				require.NoError(t, err)
-				got, err := dang.MigrateSourceWithImports(script, source, from, to, imports)
+				got, err := dang.MigrateSourceWithImports(script, source, from, to, func() (map[string]dang.ImportedTypes, error) {
+					return imports, nil
+				})
 				require.NoError(t, err)
 				golden.Assert(t, got, filepath.Join("migrations", name, "after", base))
 

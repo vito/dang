@@ -27,6 +27,15 @@ Consequences you get for free, as long as the rule holds:
 - `dang migrate` needs no per-change code: it parses as the old version and
   formats as the new one (`MigrateSource`)
 
+One gate breaks the rule, knowingly: before 2.4, a type an import brings in
+unqualified takes a builtin import's place in type position
+(`importTypesOverBuiltinImports`). What a bare `JSON` means there depends
+on the imports, which the parser can't see, so the parser only records the
+rule (`FileBlock.ImportTypesOverBuiltinImports`) and the import installer
+applies it; and migrating past 2.4 needs per-change code that knows the
+imports (`MigrateOptions.ImportedTypes`, `qualifyImportTypes`), which
+qualifies such types (`Dagger.JSON`). Don't take it as a pattern.
+
 Code lives in `pkg/dang/version.go` (the `Version` type, gates, desugarings),
 `pkg/dang/migrate.go` (`MigrateSource`, `PlanMigrations`, `InitProject`),
 `pkg/dang/dang.peg` (gated rules), `pkg/dang/treesitter.go` (keeps tree-sitter
