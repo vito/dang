@@ -32,6 +32,20 @@ func builtinImportsTypeScope() TypeScope {
 	return &OverlayTypeScope{primary: imports, lexical: preludeChain}
 }
 
+// newFileImportsScope returns the frame a file of the module whose type scope
+// is moduleScope (a NewPreludeTypeScope) installs its imports in, kept apart
+// from the module's declarations. It resolves through what lies below those,
+// the builtin imports and the prelude, so the file's imports see the builtin
+// imports as they would in the module's own frame: no unqualified import name
+// overrides one (see resolvesToImportNamespace).
+func newFileImportsScope(moduleScope TypeScope) *Type {
+	frame := NewType("", ObjectKind)
+	if module, ok := moduleScope.(*OverlayTypeScope); ok {
+		frame.Parent = module.lexical
+	}
+	return frame
+}
+
 // installBuiltinImportValues binds the builtin imports' namespaces in frame.
 func installBuiltinImportValues(frame ValueScope) {
 	for _, mod := range StaticModules() {

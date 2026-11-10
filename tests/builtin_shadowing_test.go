@@ -174,17 +174,20 @@ type YAML {
   x: Int! = 1
 }
 `,
-			"other/other.dang": "Lib: Int! = 3\n",
-			// The import's JSON and YAML are reachable qualified only; the
+			"other/other.dang": "Lib: Int! = 3\nJSON: Int! = 8\n",
+			// The imports' JSON and YAML are reachable qualified only; the
 			// unqualified names stay the builtin imports, in type checking
-			// and evaluation alike, at the top level and in a block. The
-			// same goes for any import's namespace: Other's Lib doesn't
-			// override the Lib imported around it.
+			// and evaluation alike, at the top level and in a block, and
+			// two imports both exporting one aren't ambiguous. The same goes
+			// for any import's namespace: Other's Lib doesn't override the
+			// Lib imported around it.
 			"main.dang": `
 import Lib
+import Other
 assert { JSON.encode([1]) == "[1]" }
 assert { YAML.encode(1) == "1" }
 assert { Lib.JSON == 7 }
+assert { Other.JSON == 8 }
 assert { Lib.YAML().x == 1 }
 let inBlock = if (true) {
   import Lib

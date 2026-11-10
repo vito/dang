@@ -66,7 +66,7 @@ func prepareFileScopes(ctx context.Context, files []*FileBlock, dirScope TypeSco
 		block.Forms = prependAutoImports(ctx, block.Forms)
 		imports, rest := partitionImports(block.Forms)
 
-		importsScope := NewType("", ObjectKind)
+		importsScope := newFileImportsScope(dirScope)
 		if _, err := inferImportsPhaseResilient(ctx, imports, importsScope, fresh, errs); err != nil {
 			errs.Add(err)
 		}

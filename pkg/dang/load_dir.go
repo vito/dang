@@ -317,7 +317,7 @@ func (m *Module) NewSession(ctx context.Context) (*Session, error) {
 		module:       m,
 		types:        m.TypeEnv.Clone().(TypeScope),
 		values:       m.ValueEnv.Derive(true),
-		importTypes:  NewType("", ObjectKind),
+		importTypes:  newFileImportsScope(m.TypeEnv),
 		importValues: m.ValueEnv.Derive(true),
 		sources:      maps.Clone(m.sources),
 	}
