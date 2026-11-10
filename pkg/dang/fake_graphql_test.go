@@ -14,10 +14,13 @@ import (
 
 // fakeSchema is a small Dagger-like schema for fakeClient to serve.
 const fakeSchema = `
+directive @expectedType(name: String!) on ARGUMENT_DEFINITION | FIELD_DEFINITION
+
 type Query {
   container: Container!
   containers: [Container!]!
   engineVersion: String!
+  setSecret(name: String!, plaintext: String!): Secret!
 }
 
 type Mutation {
@@ -27,6 +30,8 @@ type Mutation {
 type Container {
   from(address: String!): Container!
   withEnv(value: String!, name: String!): Container!
+  withSecretVariable(name: String!, secret: ID! @expectedType(name: "Secret")): Container!
+  withExec(args: [String!]!): Container!
   stdout: String!
   plaintext: String!
   prune: Void
@@ -35,7 +40,13 @@ type Container {
   sync: ContainerID!
 }
 
+type Secret {
+  id: SecretID!
+  plaintext: String!
+}
+
 scalar ContainerID
+scalar SecretID
 scalar Void
 `
 
