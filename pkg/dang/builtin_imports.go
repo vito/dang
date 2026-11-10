@@ -67,6 +67,28 @@ func isBuiltinImportNamespace(t TypeScope, name string) bool {
 	return ok && t == TypeScope(mod)
 }
 
+// directiveNamespaceScope resolves the scope of a scoped directive
+// application (`@JSON.field`) that names an import's namespace, a builtin
+// import's included, as the value of that name does. Its type in type
+// position may differ: before Dang 2.4, a type an import brings in
+// unqualified can take a builtin import's name there (see
+// importTypesOverBuiltinImports). Any other scope resolves as a type.
+func directiveNamespaceScope(env TypeScope, scope *NamedTypeNode) (hm.Type, bool) {
+	if scope.Base != nil || !resolvesToImportNamespace(env, scope.Name) {
+		return nil, false
+	}
+	scheme, found := env.SchemeOf(scope.Name)
+	if !found {
+		return nil, false
+	}
+	t, _ := scheme.Type()
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	ns, ok := t.(TypeScope)
+	return ns, ok
+}
+
 // builtinImportsTypeScope returns a frame holding the builtin imports, over
 // the prelude.
 func builtinImportsTypeScope() TypeScope {

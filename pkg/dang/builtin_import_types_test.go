@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -172,6 +173,31 @@ assert { JSON.encode(fromString("{}")) == "\"{}\"" }
 			// A snippet's own bare JSON is the import's type too.
 			_, _, err = m.Eval(ctx, "", `let s: JSON! = ("{}" :: JSON!); same(s)`)
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestBuiltinImportDirectivesWhereImportTypesWin(t *testing.T) {
+	// A directive's scope names a namespace, as the value of its name does,
+	// so @JSON.field is the builtin's though a bare JSON type is Dagger's.
+	source := `type User {
+  displayName: String! @JSON.field(name: "display_name")
+  raw: JSON
+}
+
+assert { JSON.encode(User("Ada", null)) == "{\"display_name\":\"Ada\",\"raw\":null}" }
+`
+	for _, version := range []string{"2.1", "2.4"} {
+		t.Run(version, func(t *testing.T) {
+			src := source
+			if version == "2.4" {
+				src = strings.ReplaceAll(src, "raw: JSON", "raw: Dagger.JSON")
+			}
+			ctx := daggerJSONContext(t)
+			dir := writeEntrypoint(t, version, src)
+			_, err := RunDir(ctx, dir, false)
+			require.NoError(t, err)
+			require.NoError(t, RunFile(ctx, filepath.Join(dir, "main.dang"), false))
 		})
 	}
 }

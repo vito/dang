@@ -319,6 +319,11 @@ func (v Version) barePatterns() bool {
 // namespace does over an unqualified name, and the import's type is spelled
 // qualified, which `dang migrate` writes (see qualifyImportTypes).
 //
+// Source before 2.4 that spells a builtin scalar type bare with no import
+// bringing in a type of that name, e.g. `(s :: JSON!)` in a script, is not
+// kept working: it would need the builtin scalars back, a type of their own
+// for each format, where 2.4 has the Decoded type and namespaces.
+//
 // No spelling tells the two apart, since the parser can't know what imports
 // bring in, so the parser records the rule on the FileBlock
 // (FileBlock.ImportTypesOverBuiltinImports) and the import installer reads

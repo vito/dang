@@ -179,6 +179,18 @@ Rules that ride on this:
   `Object.importNamespaces` marks `installQualifiedImportValueScope` sets.
   Types get it from `installUnqualifiedImportTypesFromModule`'s `NamedType`
   check. No name is special-cased.
+- **Except a type, before Dang 2.4**: in source before 2.4, a type an import
+  brings in unqualified takes a builtin import's place in *type* position
+  (Dagger's `scalar JSON` makes a bare `JSON` type `Dagger.JSON`), because
+  2.1 code spells the old builtin scalars bare (see
+  `importTypesOverBuiltinImports` in `version.go`). The parser records the
+  rule on `FileBlock.ImportTypesOverBuiltinImports`; `FileBlock.Infer`,
+  `prepareFileScopes`/`runDirectoryPhases` and the session put it on the
+  context (`withImportTypesOverBuiltinImports`), and the installer checks
+  `isBuiltinImportNamespace` (the builtin import of that name, by identity,
+  for every builtin import alike). Values never change, and a directive's
+  scope (`@JSON.field`) resolves as the namespace value does
+  (`directiveNamespaceScope`), not through `NamedType`.
 - **Code the parser synthesizes never names a builtin directly**, since a
   user binding may shadow it: it uses a `$`-alias from `builtinAliases`
   (see the `language-versions` skill, gate checklist step 3).

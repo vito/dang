@@ -1434,10 +1434,18 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		env := env.(TypeScope)
 		if d.Scope != nil {
-			// If the directive is scoped, resolve the scope type
-			scopeType, err := d.Scope.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
+			// If the directive is scoped, resolve the scope type: an
+			// import's namespace if the scope names one (as a value, the way
+			// `JSON.encode` resolves), since a type an import brings in
+			// unqualified can take its name in type position before Dang
+			// 2.4 (see importTypesOverBuiltinImports), and else the type.
+			scopeType, ok := directiveNamespaceScope(env, d.Scope)
+			if !ok {
+				var err error
+				scopeType, err = d.Scope.Infer(ctx, env, fresh)
+				if err != nil {
+					return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
+				}
 			}
 			env = scopeType.(TypeScope)
 			d.scopeType, _ = scopeType.(*Type)
