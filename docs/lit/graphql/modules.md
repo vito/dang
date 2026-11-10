@@ -139,7 +139,7 @@ Every module also gets Dang's builtin namespaces — `JSON`, `YAML`, `TOML`,
 ```
 
 - there is no bare `encode`, `decode` or `int`: always `JSON.decode(…)`, `Random.int(…)`
-- a declaration of the same name in the module shadows one (`type JSON { … }`, `let Random = …`); the builtin is then out of reach in that module
+- a declaration of the same name in the module shadows one: a `type JSON { … }` or `scalar JSON` both as a type and as a value, a `let Random = …` as a value only (`Random!` as a type, and `@JSON.field` directives, still reach the builtin)
 - an unqualified name from an explicit import never overrides one: a schema's `scalar JSON` (Dagger has one) is reached as `Dagger.JSON`, and `JSON` stays the codec namespace
 - like every import of a module, they aren't part of what it exports: `Demo.YAML`, or `Helpers.YAML` from a native module, is an error unless that schema or module defines a `YAML`
 
