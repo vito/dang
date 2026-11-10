@@ -28,6 +28,13 @@ type Coerce struct {
 	// (scalarCastable): their values become Target's scalars first (see
 	// convertScalars).
 	ConvertScalars bool
+
+	// Compared is set on a string operand compared with a scalar or enum
+	// (checkComparable). A comparison only asks whether the two are equal,
+	// so text the target rejects (`j == ""` for a JSON! j) stays the string
+	// it is and compares as that text, which no value validated as the
+	// target holds, rather than raising.
+	Compared bool
 }
 
 var _ Node = (*Coerce)(nil)
@@ -65,7 +72,11 @@ func (c *Coerce) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				return nil, err
 			}
 		}
-		return materializeValue(ctx, scope, val, c.Target, c.Path)
+		converted, err := materializeValue(ctx, scope, val, c.Target, c.Path)
+		if err != nil && c.Compared && !isCancelled(err) && evalCancelled(ctx) == nil {
+			return val, nil
+		}
+		return converted, err
 	})
 }
 
@@ -125,7 +136,7 @@ func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, er
 	}
 	if isLiteralExpr(value) || containsDegradableScalar(have) {
 		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
-			if err := checkEnumLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
+			if err := checkLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
 				return nil, err
 			}
 			return coerceSubs, nil
@@ -453,20 +464,22 @@ func containsDecoded(t hm.Type) bool {
 	return false
 }
 
-// checkEnumLiterals rejects a string literal handed to an enum slot that
-// names none of the enum's values. Its
-// value is known statically, so there is no need to wait for
-// materialization to fail at runtime. It follows
-// the literal through lists, maps and a block's tail; anything else (a
-// template, a union slot) is left to runtime validation.
-func checkEnumLiterals(value Node, want hm.Type) error {
+// checkLiterals rejects a string literal handed to an enum slot that
+// names none of the enum's values, or to a builtin scalar slot whose Go-native
+// new() hook (GoScalarHook: Regexp, JSON, YAML, TOML) rejects it. Its
+// value is known statically, and such a hook is a pure function of the text,
+// so there is no need to wait for materialization to fail at runtime. It
+// follows the literal through lists, maps and a block's tail; anything else
+// (a template, a union slot, a scalar with a Dang-defined new()) is left to
+// runtime validation.
+func checkLiterals(value Node, want hm.Type) error {
 	switch t := want.(type) {
 	case hm.NonNullType:
-		return checkEnumLiterals(value, t.Type)
+		return checkLiterals(value, t.Type)
 	case ListType:
 		if l, ok := value.(*List); ok {
 			for _, el := range l.Elements {
-				if err := checkEnumLiterals(el, t.Type); err != nil {
+				if err := checkLiterals(el, t.Type); err != nil {
 					return err
 				}
 			}
@@ -474,27 +487,34 @@ func checkEnumLiterals(value Node, want hm.Type) error {
 	case MapType:
 		if m, ok := value.(*MapLiteral); ok {
 			for _, entry := range m.Entries {
-				if err := checkEnumLiterals(entry.Value, t.Type); err != nil {
+				if err := checkLiterals(entry.Value, t.Type); err != nil {
 					return err
 				}
 			}
 		}
 	case *Type:
-		if t.Kind != EnumKind {
+		hook := t.GoScalarHook()
+		if t.Kind != EnumKind && (t.Kind != ScalarKind || hook == nil) {
 			return nil
 		}
 		switch v := value.(type) {
 		case *String:
-			if !enumHasValue(t, v.Value) {
-				return NewInferError(
-					fmt.Errorf("%q is not a value of %s; expected one of %s",
-						v.Value, t, strings.Join(enumValueNames(t), ", ")),
-					v,
-				)
+			if t.Kind == EnumKind {
+				if !enumHasValue(t, v.Value) {
+					return NewInferError(
+						fmt.Errorf("%q is not a value of %s; expected one of %s",
+							v.Value, t, strings.Join(enumValueNames(t), ", ")),
+						v,
+					)
+				}
+				return nil
+			}
+			if _, err := hook(v.Value); err != nil {
+				return NewInferError(err, v)
 			}
 		case *Block:
 			if len(v.Forms) > 0 {
-				return checkEnumLiterals(v.Forms[len(v.Forms)-1], want)
+				return checkLiterals(v.Forms[len(v.Forms)-1], want)
 			}
 		}
 	}
@@ -849,13 +869,12 @@ func isStructuralKind(k Kind) bool {
 
 // wrapCoerce inserts a Coerce wrapper around node so its value is materialized
 // against target at runtime. If node is already a Coerce, the target is
-// tightened to the new target, unless it converts scalars for a cast: that
-// conversion is to the cast's own type, so it is wrapped instead.
+// tightened to the new target.
 func wrapCoerce(node Node, target hm.Type, path string) Node {
 	if node == nil || target == nil {
 		return node
 	}
-	if c, ok := node.(*Coerce); ok && !c.ConvertScalars {
+	if c, ok := node.(*Coerce); ok {
 		c.Target = target
 		if path != "" {
 			c.Path = path

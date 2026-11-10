@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -321,14 +322,26 @@ func TestBuiltinJSONScalarValues(t *testing.T) {
 }
 
 func TestBuiltinCodecScalarsValidate(t *testing.T) {
-	for src, msg := range map[string]string{
-		`("{" :: JSON!)`:       "invalid JSON",
-		`("[1] [2]" :: JSON!)`: "invalid JSON",
-		`("a: [" :: YAML!)`:    "invalid YAML",
-		`("a = " :: TOML!)`:    "invalid TOML",
-		`("x" :: TOML!)`:       "invalid TOML",
+	for text, cast := range map[string]string{
+		`{`:       "JSON",
+		`[1] [2]`: "JSON",
+		`a: [`:    "YAML",
+		`a = `:    "TOML",
+		`x`:       "TOML",
 	} {
+		msg := "invalid " + cast
+
+		// A string converting at runtime raises.
+		src := "let s = " + strconv.Quote(text) + "\n(s :: " + cast + "!)"
 		_, err := evalWithContext(t, context.Background(), src)
+		require.ErrorContains(t, err, msg, src)
+
+		// A literal is checked statically, as an enum literal is.
+		src = "(" + strconv.Quote(text) + " :: " + cast + "!)"
+		parsed, err := ParseWithRecovery("literal", []byte(src))
+		require.NoError(t, err)
+		typeScope, _ := BuildScopesFromImports("", nil)
+		_, err = InferFormsWithPhases(context.Background(), parsed.(*FileBlock).Forms, typeScope, hm.NewSimpleFresher())
 		require.ErrorContains(t, err, msg, src)
 	}
 }

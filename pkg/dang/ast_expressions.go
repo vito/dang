@@ -3719,7 +3719,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
 			if err == nil {
-				if litErr := checkEnumLiterals(expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
+				if litErr := checkLiterals(expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
 					return nil, litErr
 				}
 			}

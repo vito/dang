@@ -520,8 +520,13 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   `ScalarValue` of another scalar into the target's through the target's hook
   (keeping the text, and `Encoded`, when it has none). A hint may be inferred
   more than once (an unannotated field), so it decides the cast from the
-  expression under its own `Coerce` every time, and `wrapCoerce` wraps a
-  converting `Coerce` rather than retargeting it.
+  expression under its own `Coerce` every time.
+- **Literals are checked statically, comparisons never raise.**
+  `checkLiterals` (call args, typed slots, `::`, `==`) rejects a string
+  literal an enum doesn't name, or one a builtin scalar's Go-native hook
+  rejects (a pure function of the text; a Dang `new()` is never run at
+  inference). A template compared with a scalar or enum is a `Coerce` marked
+  `Compared`: text the target rejects stays a String and compares as text.
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

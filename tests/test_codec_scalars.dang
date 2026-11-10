@@ -13,7 +13,7 @@ assert {
     (YAML.decode(stream) :: String!) rescue {
       e: Error! => e.message
     }
-  ) == "YAML.decode: the text holds more than one document; YAML.decode reads a single document"
+  ) == "YAML.decode: the text holds more than one document, but only a single document decodes"
 }
 
 # A value is its text, and degrades to String! like any scalar's.
@@ -26,42 +26,58 @@ assert { toString(t) == "a = [1, 2]" }
 let emptyObject: JSON! = "{}"
 assert { (emptyObject :: String!) == "{}" }
 
-# Construction validates the text, wherever a string becomes one.
+# Construction validates the text, wherever a string becomes one: a literal
+# when it is checked (see tests/errors/json_scalar_invalid.dang), any other
+# string when it converts.
+let openBrace = "{"
+let twoValues = "[1] [2]"
+let openList = "a: ["
+let noValue = "a ="
+let lines = ["[]", "nope"]
+
 assert {
   (
-    (("{" :: JSON!) :: String!) rescue {
+    ((openBrace :: JSON!) :: String!) rescue {
       e: Error! => e.message
     }
   ) == "invalid JSON: unexpected EOF"
 }
 assert {
   (
-    (("[1] [2]" :: JSON!) :: String!) rescue {
+    ((twoValues :: JSON!) :: String!) rescue {
       e: Error! => e.message
     }
   ) == "invalid JSON: trailing data"
 }
 assert {
   (
-    (("a: [" :: YAML!) :: String!) rescue {
+    ((openList :: YAML!) :: String!) rescue {
       e: Error! => e.message
     }
   ).hasPrefix("invalid YAML: ")
 }
 assert {
   (
-    (("a =" :: TOML!) :: String!) rescue {
+    ((noValue :: TOML!) :: String!) rescue {
       e: Error! => e.message
     }
   ).hasPrefix("invalid TOML: ")
 }
 assert {
   (
-    ((["[]", "nope"] :: [JSON!]!) :: [String!]!) rescue {
+    ((lines :: [JSON!]!) :: [String!]!) rescue {
       e: Error! => [e.message]
     }
   )[0].hasPrefix("[1]: invalid JSON: ")
 }
+
+# A comparison with a string never raises: a literal is checked when the
+# comparison is, and other text the scalar rejects compares as that text,
+# which no JSON! value holds.
+let empty = ""
+assert { j != `${empty}` }
+assert { (j == `${openBrace}`) == false }
+assert { ("[1]" :: JSON!) == `[${1}]` }
 
 # encode still returns a String!; decode takes the text, a String! or a value
 # of the scalar (which degrades to it), and returns Decoded data.

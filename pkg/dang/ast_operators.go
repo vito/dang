@@ -441,29 +441,42 @@ func hasFreeVar(t hm.Type) bool { return len(t.FreeTypeVar()) > 0 }
 //
 // A string literal compared with a scalar or enum value converts to it, as
 // it does at every other boundary (arguments, `case` patterns): the returned
-// operands wrap it in that conversion, and an enum literal must name one of
-// the enum's values.
+// operands wrap it in that conversion, and a literal must name one of an
+// enum's values, or be text a builtin scalar's Go-native hook accepts
+// (checkLiterals). A template the target rejects at runtime compares as the
+// string it is instead of raising (comparedOperand).
 func checkComparable(left, right Node, lt, rt hm.Type) (Node, Node, error) {
 	if typesComparable(lt, rt) {
 		return left, right, nil
 	}
 	if target, ok := literalComparisonTarget(left, rt); ok {
-		if err := checkEnumLiterals(unwrapGrouped(left), target); err != nil {
+		if err := checkLiterals(unwrapGrouped(left), target); err != nil {
 			return nil, nil, err
 		}
-		return wrapCoerce(left, target, ""), right, nil
+		return comparedOperand(left, target), right, nil
 	}
 	if target, ok := literalComparisonTarget(right, lt); ok {
-		if err := checkEnumLiterals(unwrapGrouped(right), target); err != nil {
+		if err := checkLiterals(unwrapGrouped(right), target); err != nil {
 			return nil, nil, err
 		}
-		return left, wrapCoerce(right, target, ""), nil
+		return left, comparedOperand(right, target), nil
 	}
 	err := fmt.Sprintf("cannot compare %s with %s: they are unrelated types", lt, rt)
 	if hint := comparisonHint(left, right, lt, rt); hint != "" {
 		err += "; " + hint
 	}
 	return nil, nil, withUnionProvenance(fmt.Errorf("%s", err), lt, rt)
+}
+
+// comparedOperand converts a string operand compared with a value of target
+// (literalComparisonTarget), keeping the string when target rejects its text
+// (see Coerce.Compared).
+func comparedOperand(operand Node, target hm.Type) Node {
+	wrapped := wrapCoerce(operand, target, "")
+	if c, ok := wrapped.(*Coerce); ok {
+		c.Compared = true
+	}
+	return wrapped
 }
 
 // literalComparisonTarget reports the type a string literal operand converts
