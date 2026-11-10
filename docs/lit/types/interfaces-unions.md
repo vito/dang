@@ -198,6 +198,16 @@ type Total implements Ranker {
 }
 ```
 
+So is an implementation that takes less than every type the callers may
+pick, with or without a type parameter list: a concrete type where the
+interface has a type variable, or one variable where it has two:
+
+```dang-failure
+type Initial implements Ranker {
+  best(x: String!, y: String!): String! { x }
+}
+```
+
 A member without arguments is read like a field, so it can't have type
 variables, declared or not.
 
