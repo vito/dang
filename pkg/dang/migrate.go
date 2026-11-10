@@ -430,18 +430,12 @@ type MigrateOptions struct {
 	// UndeclaredFrom, if set, is the version of the source under root whose
 	// version nothing declares: source no dang.toml governs (such as a
 	// module whose embedder pins its version with ContextWithVersion), and
-	// source governed by the dang.toml of root itself (in root or above it)
-	// if it has no `dang` key, which would otherwise mean DefaultVersion
-	// (e.g. a project from before the key existed, written for an older
-	// Dang). Ungoverned source is migrated as one project, creating a
-	// dang.toml at root that declares the target version, which takes
-	// precedence over an embedder's pin from then on. Without it,
-	// ungoverned source is left alone: by its path, it is CurrentVersion.
-	//
-	// It does not apply to the projects nested below root whose dang.toml
-	// declares no version: nothing says they are written in the same version
-	// as root, so they keep DefaultVersion and are listed in
-	// MigrationPlan.Undeclared, to be migrated by naming them instead.
+	// source governed by a dang.toml without a `dang` key (e.g. one that
+	// only configures imports). Without it, such source follows the running
+	// Dang, CurrentVersion, so there is nothing to migrate. Ungoverned source
+	// is migrated as one project, creating a dang.toml at root that declares
+	// the target version, which takes precedence over an embedder's pin from
+	// then on; a dang.toml without the key gains it.
 	UndeclaredFrom Version
 }
 
@@ -449,9 +443,12 @@ type MigrateOptions struct {
 type MigrationPlan struct {
 	// Projects lists the projects to migrate.
 	Projects []*ProjectMigration
-	// Undeclared lists the dang.toml files nested below root that declare
-	// no version and that MigrateOptions.UndeclaredFrom therefore did not
-	// apply to. Empty without UndeclaredFrom.
+	// Undeclared lists the directories of the projects of source under root
+	// whose version nothing declares (that of a dang.toml without a `dang`
+	// key, or root for the source no dang.toml governs), which were read as
+	// MigrateOptions.UndeclaredFrom, or else as CurrentVersion. Without
+	// UndeclaredFrom they have nothing to migrate, even if they are really
+	// written for an older Dang, so callers can point that out.
 	Undeclared []string
 }
 
@@ -480,13 +477,18 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 	type project struct {
 		configPath string
 		from       Version
+		undeclared bool
 		files      []string
 	}
 	projects := map[string]*project{}
 	configForDir := map[string]*project{}
+	// Source whose version nothing declares is undeclaredFrom: --from, or
+	// else the running Dang's version, which needs no migrating.
+	undeclaredFrom := opts.UndeclaredFrom.orCurrent()
 	ungoverned := &project{
 		configPath: filepath.Join(root, "dang.toml"),
-		from:       opts.UndeclaredFrom,
+		from:       undeclaredFrom,
+		undeclared: true,
 	}
 	result := &MigrationPlan{}
 
@@ -520,15 +522,12 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 			} else {
 				p = projects[configPath]
 				if p == nil {
-					from := config.EffectiveVersion()
-					if config.Dang.IsZero() && !opts.UndeclaredFrom.IsZero() {
-						if configDir := filepath.Dir(configPath); configDir != root && isWithin(root, configDir) {
-							result.Undeclared = append(result.Undeclared, configPath)
-						} else {
-							from = opts.UndeclaredFrom
-						}
+					from := config.Dang
+					undeclared := from.IsZero()
+					if undeclared {
+						from = undeclaredFrom
 					}
-					p = &project{configPath: configPath, from: from}
+					p = &project{configPath: configPath, from: from, undeclared: undeclared}
 					projects[configPath] = p
 				}
 			}
@@ -541,7 +540,7 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 		return nil, err
 	}
 
-	if !opts.UndeclaredFrom.IsZero() && len(ungoverned.files) > 0 {
+	if len(ungoverned.files) > 0 {
 		projects[ungoverned.configPath] = ungoverned
 	}
 
@@ -550,10 +549,12 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 		configPaths = append(configPaths, configPath)
 	}
 	sort.Strings(configPaths)
-	sort.Strings(result.Undeclared)
 
 	for _, configPath := range configPaths {
 		p := projects[configPath]
+		if p.undeclared {
+			result.Undeclared = append(result.Undeclared, filepath.Dir(configPath))
+		}
 		if !p.from.Before(to) {
 			continue
 		}
@@ -668,11 +669,12 @@ type ProjectInit struct {
 //
 // Without a dang.toml governing dir, it creates dir/dang.toml declaring
 // CurrentVersion, which is what dir's source already means (see
-// VersionForDir). A dang.toml in dir that declares no version is stamped with
-// the version it already means, DefaultVersion, so that nothing changes
-// meaning; `dang migrate` moves it forward. A dir governed by a dang.toml
-// further up is an error: a new dang.toml there would cut its source off
-// from that project's version and imports.
+// VersionForDir). A dang.toml in dir that declares no version is stamped
+// with CurrentVersion too, which its source also already means: from then
+// on it keeps that version as Dang moves on, until `dang migrate` moves it
+// forward. A dir governed by a dang.toml further up is an error: a new
+// dang.toml there would cut its source off from that project's version and
+// imports.
 func InitProject(dir string) (*ProjectInit, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
@@ -702,7 +704,7 @@ func InitProject(dir string) (*ProjectInit, error) {
 	if err != nil {
 		return nil, err
 	}
-	version := config.EffectiveVersion()
+	version := CurrentVersion
 	if err := os.WriteFile(configPath, setConfigVersion(source, version), 0644); err != nil {
 		return nil, err
 	}

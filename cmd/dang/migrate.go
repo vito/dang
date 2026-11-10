@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,15 +34,16 @@ nothing. A file can't be migrated with -w: its version is its project's, so
 migrating it alone would leave the rest of the project read in the new
 version without having been rewritten for it.
 
-A dang.toml without a ` + "`dang`" + ` key means ` + dang.DefaultVersion.String() + `, and source no dang.toml
-governs is in this Dang's version, unless something else decides its
-version (e.g. a Dagger engine version). For either, use --from to say which
-version the source is really written for, e.g. a project from an older Dang
+Source whose version nothing declares - a dang.toml without a ` + "`dang`" + ` key,
+or no dang.toml at all - is in this Dang's version, unless something else
+decides its version (e.g. a Dagger engine version). Use --from to say which
+version such source is really written for, e.g. a project from an older Dang
 that predates the key; migrating then records the new version, creating a
-dang.toml if there is none. --from applies to the source no dang.toml
-governs and to the project of the given directory itself, not to the
-projects nested below it, which may be written for another version: those
-without a ` + "`dang`" + ` key are reported, to migrate by naming them.
+dang.toml if there is none. --from applies to all of it under the given
+directories: the source no dang.toml governs and every dang.toml without a
+` + "`dang`" + ` key. Projects whose dang.toml declares a version migrate from it.
+Without --from, migrate lists the projects that declare no version, since
+nothing can tell an older Dang's source among them but you.
 
 Migration rewrites syntax. Code that a newer version rejects for other
 reasons (e.g. a stricter type check) is left for you to fix; run the
@@ -130,40 +130,36 @@ func runMigrate(cmd *cobra.Command, dirs []string, to dang.Version, opts dang.Mi
 	// can't leave another half-migrated, and overlapping directories don't
 	// migrate a project twice.
 	var plans []*dang.ProjectMigration
-	planIndex := map[string]int{}
-	// fromApplied records the projects planned with --from applied, which
-	// win over a plan made by a directory above them, for which they were a
-	// nested project declaring no version.
-	fromApplied := map[string]bool{}
+	seen := map[string]bool{}
 	var undeclared []string
-	for _, dir := range dirs {
+	for i, dir := range dirs {
+		if coveredByAnother(i, dirs) {
+			// Planning the directory above it plans it too; planning it on
+			// its own would also plan its ungoverned source a second time,
+			// as a project of its own.
+			continue
+		}
 		dirPlan, err := dang.PlanMigrations(dir, to, opts)
 		if err != nil {
 			return err
 		}
 		undeclared = append(undeclared, dirPlan.Undeclared...)
 		for _, plan := range dirPlan.Projects {
-			applied := !slices.Contains(dirPlan.Undeclared, plan.ConfigPath)
-			i, seen := planIndex[plan.ConfigPath]
-			switch {
-			case !seen:
-				planIndex[plan.ConfigPath] = len(plans)
-				plans = append(plans, plan)
-			case applied && !fromApplied[plan.ConfigPath]:
-				plans[i] = plan
+			if seen[plan.ConfigPath] {
+				continue
 			}
-			fromApplied[plan.ConfigPath] = fromApplied[plan.ConfigPath] || applied
+			seen[plan.ConfigPath] = true
+			plans = append(plans, plan)
 		}
 	}
 
-	slices.Sort(undeclared)
-	for _, configPath := range slices.Compact(undeclared) {
-		projectDir := filepath.Dir(configPath)
-		if slices.ContainsFunc(dirs, func(dir string) bool { return isWithin(projectDir, dir) }) {
-			// Another directory argument, in the project, applies --from.
-			continue
+	if opts.UndeclaredFrom.IsZero() {
+		// Such source may be written for an older Dang, from before it
+		// declared its version; only the user can say so.
+		slices.Sort(undeclared)
+		for _, dir := range slices.Compact(undeclared) {
+			_, _ = fmt.Fprintf(out, "%s: declares no Dang version, so it is read as Dang %s; if it is written for an older one, migrate it with --from\n", dir, dang.CurrentVersion)
 		}
-		_, _ = fmt.Fprintf(out, "%s: declares no Dang version, so --from doesn't apply to it and it stays %s; to migrate it from another version, run migrate --from on its directory\n", configPath, dang.DefaultVersion)
 	}
 
 	if len(plans) == 0 {
@@ -213,9 +209,12 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 	if err != nil {
 		return err
 	}
-	from := dang.VersionForConfig(context.Background(), config)
-	if (config == nil || config.Dang.IsZero()) && !opts.UndeclaredFrom.IsZero() {
-		from = opts.UndeclaredFrom
+	from := opts.UndeclaredFrom
+	if config != nil && !config.Dang.IsZero() {
+		from = config.Dang
+	} else if from.IsZero() {
+		from = dang.CurrentVersion
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: declares no Dang version, so it is read as Dang %s; if it is written for an older one, preview it with --from\n", file, from)
 	}
 	if !from.Before(to) {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: nothing to migrate: it is Dang %s, not older than %s\n", file, from, to)
@@ -247,6 +246,43 @@ func projectDir(file string) string {
 		}
 	}
 	return dir
+}
+
+// coveredByAnother reports whether migrating another of dirs migrates
+// dirs[i] too: dirs[i] is inside it, and no repository boundary (.git), which
+// PlanMigrations doesn't cross, lies between them. Of the arguments naming
+// the same directory, the first covers the rest.
+func coveredByAnother(i int, dirs []string) bool {
+	abs, err := filepath.Abs(dirs[i])
+	if err != nil {
+		return false
+	}
+	for j, other := range dirs {
+		otherAbs, err := filepath.Abs(other)
+		if err != nil || j == i {
+			continue
+		}
+		if otherAbs == abs {
+			if j < i {
+				return true
+			}
+			continue
+		}
+		if !isWithin(otherAbs, abs) {
+			continue
+		}
+		crossesRepo := false
+		for d := abs; d != otherAbs; d = filepath.Dir(d) {
+			if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+				crossesRepo = true
+				break
+			}
+		}
+		if !crossesRepo {
+			return true
+		}
+	}
+	return false
 }
 
 // isWithin reports whether path is dir or inside it.

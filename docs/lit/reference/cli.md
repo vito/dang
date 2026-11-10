@@ -45,7 +45,7 @@ dang migrate [flags] [path...]
 ## `dang init`
 
 - make a directory (default: `.`) a project whose `dang.toml` declares its Dang version (`dang = "X.Y"`; see [#dang.toml])
-- with no `dang.toml`, creates one declaring the running Dang's version; a `dang.toml` without the key gets the version it already means (`"2.1"`), so nothing changes meaning
+- with no `dang.toml`, creates one declaring the running Dang's version; a `dang.toml` without the key gets that version too, which is the one it already means: nothing changes meaning, and later Dang releases leave it pinned there
 - refuses a directory that is already part of a project further up
 
 ## `dang migrate`
@@ -58,7 +58,7 @@ dang migrate [flags] [path...]
 - flags:
   - `-w, --write` — write the migrated files and `dang.toml`
   - `--to <X.Y>` — version to migrate to (default: the running Dang's version)
-  - `--from <X.Y>` — version of source whose version no `dang.toml` declares: source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version), or a project from an older Dang whose `dang.toml` predates the `dang` key; migrating records the new version, creating a `dang.toml` if there is none. It applies to the given directory's own project, not to projects nested below it: those without a `dang` key are reported, to migrate by naming their directories
+  - `--from <X.Y>` — version of source whose version no `dang.toml` declares: source no `dang.toml` governs (e.g. a Dagger module pinned by its engine version), or a project from an older Dang whose `dang.toml` predates the `dang` key; migrating records the new version, creating a `dang.toml` if there is none. It applies to all such source under the given directories, nested projects without a `dang` key included; projects whose `dang.toml` declares a version migrate from it. Without it, `migrate` lists the projects that declare no version, read as the running Dang's
   - `--skip-unparseable` — leave files that don't parse in their version as they are (otherwise `-w` refuses to write)
 
 ## REPL

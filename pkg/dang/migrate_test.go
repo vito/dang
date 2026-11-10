@@ -302,14 +302,15 @@ func TestPlanMigrations(t *testing.T) {
 
 	t.Run("an old dang.toml without a version", func(t *testing.T) {
 		// A 2.0 project already had a dang.toml, for its imports, but no
-		// `dang` key: by default that means 2.1, so --from says otherwise.
+		// `dang` key: that means the running Dang's version, so --from says
+		// otherwise.
 		mod := filepath.Join(root, "unversioned")
 		write("unversioned/.git/HEAD", "")
 		write("unversioned/dang.toml", "[imports.Dagger]\ndagger = true\n")
 		write("unversioned/main.dang", "for { break }\n")
 
 		assert.Empty(t, planProjects(t, mod, Version2_1, MigrateOptions{}),
-			"an unversioned dang.toml is the default version")
+			"an unversioned dang.toml is the current version")
 
 		plans := planProjects(t, mod, Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
 		require.Len(t, plans, 1)
@@ -319,45 +320,41 @@ func TestPlanMigrations(t *testing.T) {
 		assert.Equal(t, "dang = \"2.1\"\n\n[imports.Dagger]\ndagger = true\n", read("unversioned/dang.toml"))
 	})
 
-	t.Run("--from applies only to root's own project", func(t *testing.T) {
-		// Nothing says a nested project without a `dang` key is written in
-		// the same version as root: it may well be 2.1, where a case
-		// without an else yields null, and migrating it as 2.0 would add
-		// a raising else.
-		const nestedSource = "let x = case (1) { 2 => 3 }\n"
+	t.Run("--from applies to every project declaring no version", func(t *testing.T) {
+		// Source whose version nothing declares is the running Dang's
+		// version, wherever it is, so --from overrides that for all of it:
+		// root's own project, nested projects without a `dang` key, and
+		// ungoverned source alike.
 		mod := filepath.Join(root, "mono")
 		write("mono/.git/HEAD", "")
 		write("mono/dang.toml", "")
 		write("mono/main.dang", "for { break }\n")
 		write("mono/tools/dang.toml", "")
-		write("mono/tools/main.dang", nestedSource)
-		// Ungoverned source below root would get root's new dang.toml, but
-		// a nested project with a declared version keeps it.
-		write("mono/declared/dang.toml", "dang = \"2.0\"\n")
-		write("mono/declared/main.dang", "for { break }\n")
+		write("mono/tools/main.dang", "for { break }\n")
+		// A nested project with a declared version keeps it.
+		write("mono/declared/dang.toml", "dang = \"1.0\"\n")
+		write("mono/declared/main.dang", "let x = user.{name}\n")
 
 		result, err := PlanMigrations(mod, Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
 		require.NoError(t, err)
-		assert.Equal(t, []string{filepath.Join(mod, "tools", "dang.toml")}, result.Undeclared)
-		var configs []string
+		froms := map[string]Version{}
 		for _, plan := range result.Projects {
-			assert.Equal(t, Version2_0, plan.From)
-			configs = append(configs, plan.ConfigPath)
+			froms[plan.ConfigPath] = plan.From
 		}
-		assert.Equal(t, []string{
-			filepath.Join(mod, "dang.toml"),
-			filepath.Join(mod, "declared", "dang.toml"),
-		}, configs)
+		assert.Equal(t, map[string]Version{
+			filepath.Join(mod, "dang.toml"):             Version2_0,
+			filepath.Join(mod, "declared", "dang.toml"): Version1_0,
+			filepath.Join(mod, "tools", "dang.toml"):    Version2_0,
+		}, froms)
+		assert.Equal(t, []string{mod, filepath.Join(mod, "tools")}, result.Undeclared)
 
-		// Named itself, the nested project is migrated from --from.
-		plans := planProjects(t, filepath.Join(mod, "tools"), Version2_1, MigrateOptions{UndeclaredFrom: Version2_0})
-		require.Len(t, plans, 1)
-		assert.Equal(t, Version2_0, plans[0].From)
-
-		// Without --from, nothing is reported.
+		// Without --from, only the declared project is older, and the
+		// others are listed, as they may be written for an older Dang.
 		result, err = PlanMigrations(mod, Version2_1, MigrateOptions{})
 		require.NoError(t, err)
-		assert.Empty(t, result.Undeclared)
+		require.Len(t, result.Projects, 1)
+		assert.Equal(t, filepath.Join(mod, "declared", "dang.toml"), result.Projects[0].ConfigPath)
+		assert.Equal(t, []string{mod, filepath.Join(mod, "tools")}, result.Undeclared)
 	})
 }
 
@@ -400,8 +397,8 @@ func TestInitProject(t *testing.T) {
 		result, err := InitProject(dir)
 		require.NoError(t, err)
 		assert.False(t, result.Created)
-		assert.Equal(t, DefaultVersion, result.Version)
-		assert.Equal(t, "dang = \""+DefaultVersion.String()+"\"\n\n# keep\n[imports.Dagger]\ndagger = true\n", read("legacy/dang.toml"))
+		assert.Equal(t, CurrentVersion, result.Version)
+		assert.Equal(t, "dang = \""+CurrentVersion.String()+"\"\n\n# keep\n[imports.Dagger]\ndagger = true\n", read("legacy/dang.toml"))
 	})
 
 	t.Run("refuses a directory inside another project", func(t *testing.T) {

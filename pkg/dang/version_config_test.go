@@ -90,7 +90,6 @@ func TestProjectConfigVersion(t *testing.T) {
 		config, err := LoadProjectConfig(writeConfig(t, "dang = \"1.0\"\n"))
 		require.NoError(t, err)
 		assert.Equal(t, Version1_0, config.Dang)
-		assert.Equal(t, Version1_0, config.EffectiveVersion())
 	})
 
 	t.Run("declared version with a v and a patch", func(t *testing.T) {
@@ -99,11 +98,12 @@ func TestProjectConfigVersion(t *testing.T) {
 		assert.Equal(t, Version2_0, config.Dang)
 	})
 
-	t.Run("missing version is the default", func(t *testing.T) {
+	t.Run("missing version follows the running Dang", func(t *testing.T) {
 		config, err := LoadProjectConfig(writeConfig(t, "[imports.Dagger]\ndagger = true\n"))
 		require.NoError(t, err)
 		assert.True(t, config.Dang.IsZero())
-		assert.Equal(t, DefaultVersion, config.EffectiveVersion())
+		assert.Equal(t, CurrentVersion, VersionForConfig(context.Background(), config))
+		assert.Equal(t, Version1_0, VersionForConfig(ContextWithVersion(context.Background(), Version1_0), config))
 	})
 
 	t.Run("version newer than this Dang", func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestProjectConfigVersion(t *testing.T) {
 
 	t.Run("nil config", func(t *testing.T) {
 		var config *ProjectConfig
-		assert.Equal(t, DefaultVersion, config.EffectiveVersion())
+		assert.Equal(t, CurrentVersion, VersionForConfig(context.Background(), config))
 	})
 }
 
@@ -167,7 +167,7 @@ func TestVersionForDir(t *testing.T) {
 	}{
 		{"nearest dang.toml, walking up", ctx, nested, Version1_0},
 		{"dang.toml beats the embedder", hostCtx, filepath.Join(root, "one"), Version1_0},
-		{"dang.toml without a version", ctx, implicit, DefaultVersion},
+		{"dang.toml without a version", ctx, implicit, CurrentVersion},
 		{"dang.toml without a version: embedder", hostCtx, implicit, Version1_0},
 		{"boundary reached: current", ctx, ungoverned, CurrentVersion},
 		{"boundary reached: embedder", hostCtx, ungoverned, Version1_0},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -57,6 +58,38 @@ func TestMigrateFile(t *testing.T) {
 		out, err := migrate("--from", "2.0", "--to", "2.1", file)
 		require.NoError(t, err)
 		assert.Equal(t, "loop { break }\n", out)
+	})
+
+	t.Run("points a project declaring no version at --from", func(t *testing.T) {
+		dir := filepath.Join(root, "unpinned")
+		write("unpinned/dang.toml", "")
+		write("unpinned/main.dang", oldSource)
+		out, err := migrate("--to", "2.1", dir)
+		require.NoError(t, err)
+		assert.Contains(t, out, dir+": declares no Dang version, so it is read as Dang")
+		assert.Contains(t, out, "migrate it with --from")
+		assert.Contains(t, out, "nothing to migrate")
+
+		out, err = migrate("--from", "2.0", "--to", "2.1", dir)
+		require.NoError(t, err)
+		assert.NotContains(t, out, "declares no Dang version")
+		assert.Contains(t, out, "Dang 2.0 -> 2.1")
+	})
+
+	t.Run("overlapping directories migrate their source once", func(t *testing.T) {
+		outer := filepath.Join(root, "outer")
+		require.NoError(t, os.MkdirAll(filepath.Join(outer, ".git"), 0755))
+		write("outer/main.dang", oldSource)
+		sub := filepath.Join(outer, "sub")
+		file := write("outer/sub/x.dang", oldSource)
+		out, err := migrate("-w", "--from", "2.0", "--to", "2.1", sub, outer, outer)
+		require.NoError(t, err)
+		assert.Equal(t, 1, strings.Count(out, "Dang 2.0 -> 2.1"), out)
+		src, err := os.ReadFile(file)
+		require.NoError(t, err)
+		assert.Equal(t, "loop { break }\n", string(src))
+		_, err = os.Stat(filepath.Join(sub, "dang.toml"))
+		assert.ErrorIs(t, err, os.ErrNotExist, "only outer gets a dang.toml")
 	})
 
 	t.Run("-w refuses a file", func(t *testing.T) {
