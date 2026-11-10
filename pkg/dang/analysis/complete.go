@@ -69,7 +69,7 @@ func completions(members []Member, prefix string) []dang.Completion {
 		}
 		detail := m.Type
 		if m.HMType != nil {
-			detail = m.HMType.String()
+			detail = dang.FormatFunctionType(m.HMType)
 		}
 		items = append(items, dang.Completion{
 			Label:         m.Name,
