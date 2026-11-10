@@ -158,7 +158,7 @@ ObjectType   := '{{' (ObjectTypeField Sep)* ObjectTypeField? '}}'
 TypeVariable := [a-z]                             # single lowercase letter
 
 TypeParamList := '[' TypeParam (Sep TypeParam)* ']'  # right after a function/method name: f[a, k: Ordered](...)
-TypeParam     := Word (':' NamedType ('&' NamedType)*)?   # one letter for now; Ordered is the only bound
+TypeParam     := Word (':' NamedType ('&' NamedType)*)?   # a single lowercase letter; the bound is Ordered
 ```
 
 Notable productions:

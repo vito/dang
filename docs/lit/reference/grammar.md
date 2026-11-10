@@ -74,14 +74,12 @@ its name (see [#type-params]):
 
 ```
 TypeParamList := '[' TypeParam (Sep TypeParam)* Sep? ']'   # immediately after the name: f[a, k: Ordered](...)
-TypeParam     := Word (':' Bound ('&' Bound)*)?           # a single lowercase letter for now
-Bound         := NamedType                                # only Ordered so far
+TypeParam     := Word (':' Bound ('&' Bound)*)?           # a single lowercase letter
+Bound         := NamedType                                # Ordered
 ```
 
-> The parameter is a word and the bound a type name in the grammar, so longer
-> parameter names and interface bounds can come later without a syntax
-> change; today a parameter must be one letter and `Ordered` is the only
-> bound.
+> The grammar reads a parameter as a word and a bound as a type name; a
+> parameter must be one lowercase letter, and the bound is `Ordered`.
 
 Each form in use:
 
