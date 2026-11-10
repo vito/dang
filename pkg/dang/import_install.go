@@ -104,7 +104,7 @@ func installUnqualifiedImportTypesFromModule(parentTypeScope TypeScope, mod *Typ
 func installUnqualifiedImportEnumValuesForInference(parentTypeScope TypeScope, enumMod *Type, importName string, shadowed func(string) bool) {
 	origin := ImportedBindingOrigin(importName, false)
 	for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
-		if isShadowed(shadowed, enumValName) {
+		if isShadowed(shadowed, enumValName) || resolvesToImportNamespace(parentTypeScope, enumValName) {
 			continue
 		}
 		if _, exists := parentTypeScope.LocalSchemeOf(enumValName); exists {
@@ -180,7 +180,7 @@ func installUnqualifiedImportEnumValues(parentScope ValueScope, enumModuleVal *O
 		enumValName := enumBinding.Key
 		enumVal := enumBinding.Value
 
-		if _, exists := parentScope.LookupLocal(enumValName); exists || isShadowed(shadowed, enumValName) {
+		if _, exists := parentScope.LookupLocal(enumValName); exists || isShadowed(shadowed, enumValName) || bindsImportNamespace(parentScope, enumValName) {
 			continue
 		}
 
@@ -207,58 +207,87 @@ func resolvesToImportNamespace(env TypeScope, name string) bool {
 	return found && origin.Kind == BindingOriginImport && origin.Qualified
 }
 
-// markImportNamespace records that scope's own frame binds name to an
-// import's namespace, for bindsImportNamespace: runtime frames carry no
-// binding origins (see installQualifiedImportValueScope).
+// importNamespaceScope is a value scope that tracks which of its bindings are
+// imports' namespaces, since runtime frames carry no binding origins (see
+// installQualifiedImportValueScope). A scope embedding one (recordFieldScope
+// embeds OverlayValueScope) tracks them as it does.
+type importNamespaceScope interface {
+	// markImportNamespace records that the scope's own frame binds name to
+	// an import's namespace.
+	markImportNamespace(name string)
+	// bindsImportNamespace is resolvesToImportNamespace at runtime: whether
+	// name, looked up in the scope (without forcing anything), is an
+	// import's namespace.
+	bindsImportNamespace(name string) bool
+}
+
+var (
+	_ importNamespaceScope = (*Object)(nil)
+	_ importNamespaceScope = OverlayValueScope{}
+	_ importNamespaceScope = recordFieldScope{}
+	_ importNamespaceScope = (*ConstructorScope)(nil)
+)
+
 func markImportNamespace(scope ValueScope, name string) {
-	switch s := scope.(type) {
-	case *Object:
-		s.mu.Lock()
-		setIn(&s.importNamespaces, name, true)
-		s.mu.Unlock()
-	case OverlayValueScope:
-		markImportNamespace(s.primary, name)
-	case *ConstructorScope:
-		markImportNamespace(s.locals, name)
+	if s, ok := scope.(importNamespaceScope); ok {
+		s.markImportNamespace(name)
 	}
 }
 
-// bindsImportNamespace is resolvesToImportNamespace at runtime: whether name,
-// looked up in scope (without forcing anything), is an import's namespace.
 func bindsImportNamespace(scope ValueScope, name string) bool {
-	switch s := scope.(type) {
-	case *Object:
-		cell := s.dynamicScope
-		for o := s; o != nil; {
-			o.mu.Lock()
-			_, pending := o.Pending[name]
-			_, hasVal := o.Values[name]
-			namespace := o.importNamespaces[name]
-			parent, _ := o.nextFrame(cell)
-			o.mu.Unlock()
-			if pending || hasVal {
-				return namespace
-			}
-			o = parent
+	s, ok := scope.(importNamespaceScope)
+	return ok && s.bindsImportNamespace(name)
+}
+
+func (m *Object) markImportNamespace(name string) {
+	m.mu.Lock()
+	setIn(&m.importNamespaces, name, true)
+	m.mu.Unlock()
+}
+
+func (m *Object) bindsImportNamespace(name string) bool {
+	cell := m.dynamicScope
+	for o := m; o != nil; {
+		o.mu.Lock()
+		_, pending := o.Pending[name]
+		_, hasVal := o.Values[name]
+		namespace := o.importNamespaces[name]
+		parent, _ := o.nextFrame(cell)
+		o.mu.Unlock()
+		if pending || hasVal {
+			return namespace
 		}
-	case OverlayValueScope:
-		if s.primary.Has(name) {
-			return bindsImportNamespace(s.primary, name)
-		}
-		return bindsImportNamespace(s.lexical, name)
-	case *ConstructorScope:
-		if s.locals.Has(name) {
-			return bindsImportNamespace(s.locals, name)
-		}
-		if s.args.Has(name) {
-			return false
-		}
-		if inst, ok := s.instance(); ok && inst.Has(name) {
-			return false
-		}
-		return bindsImportNamespace(s.closure, name)
+		o = parent
 	}
 	return false
+}
+
+func (c OverlayValueScope) markImportNamespace(name string) {
+	markImportNamespace(c.primary, name)
+}
+
+func (c OverlayValueScope) bindsImportNamespace(name string) bool {
+	if c.primary.Has(name) {
+		return bindsImportNamespace(c.primary, name)
+	}
+	return bindsImportNamespace(c.lexical, name)
+}
+
+func (e *ConstructorScope) markImportNamespace(name string) {
+	markImportNamespace(e.locals, name)
+}
+
+func (e *ConstructorScope) bindsImportNamespace(name string) bool {
+	if e.locals.Has(name) {
+		return bindsImportNamespace(e.locals, name)
+	}
+	if e.args.Has(name) {
+		return false
+	}
+	if inst, ok := e.instance(); ok && (inst.Has(name) || declaresField(inst, name)) {
+		return false
+	}
+	return bindsImportNamespace(e.closure, name)
 }
 
 func localTypeBindingIsUnqualifiedImport(env TypeScope, name string) bool {

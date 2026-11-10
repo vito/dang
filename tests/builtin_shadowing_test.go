@@ -174,18 +174,22 @@ type YAML {
   x: Int! = 1
 }
 `,
-			"other/other.dang": "Lib: Int! = 3\nJSON: Int! = 8\n",
+			"other/other.dang": "Lib: Int! = 3\nJSON: Int! = 8\nenum Format { TOML UUID }\n",
 			// The imports' JSON and YAML are reachable qualified only; the
 			// unqualified names stay the builtin imports, in type checking
-			// and evaluation alike, at the top level and in a block, and
-			// two imports both exporting one aren't ambiguous. The same goes
-			// for any import's namespace: Other's Lib doesn't override the
-			// Lib imported around it.
+			// and evaluation alike, at the top level and in a block (a
+			// record field's included), and two imports both exporting one
+			// aren't ambiguous; nor do an import's enum values override
+			// them. The same goes for any import's namespace: Other's Lib
+			// doesn't override the Lib imported around it.
 			"main.dang": `
 import Lib
 import Other
 assert { JSON.encode([1]) == "[1]" }
 assert { YAML.encode(1) == "1" }
+assert { TOML.encode({{a: 1}}) == "a = 1" }
+assert { UUID.v4.length == 36 }
+assert { Other.Format.TOML != Other.Format.UUID }
 assert { Lib.JSON == 7 }
 assert { Other.JSON == 8 }
 assert { Lib.YAML().x == 1 }
@@ -196,6 +200,13 @@ let inBlock = if (true) {
   ""
 }
 assert { inBlock == "[2]" }
+let inRecord = {{x: if (true) {
+  import Lib
+  JSON.encode([3])
+} else {
+  ""
+}}}
+assert { inRecord.x == "[3]" }
 let otherInBlock = if (true) {
   import Other
   Lib.JSON + Other.Lib
