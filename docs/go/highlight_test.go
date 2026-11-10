@@ -154,6 +154,30 @@ func TestSignaturesAreValidDeclarations(t *testing.T) {
 	}
 }
 
+// A builtin whose type variables are bounded declares them in its card's
+// signature, as an interface member header does, and the bound highlights
+// as a type.
+func TestSignaturesShowBounds(t *testing.T) {
+	sigs := map[string]string{}
+	dang.ForEachMethod(dang.ListTypeModule, func(d dang.BuiltinDef) {
+		sigs[d.Name] = signature(d, "")
+	})
+	for name, want := range map[string]string{
+		"sum":    "sum[a: Numeric]: a",
+		"sort":   "sort[a: Ordered](descending: Boolean = false): [a]!",
+		"sortBy": "sortBy[a, k: Ordered](descending: Boolean = false, &block(item: a): k!): [a]!",
+		"reduce": "reduce(initial: b, &block(acc: b, item: a): b): b",
+	} {
+		if got := sigs[name]; got != want {
+			t.Errorf("signature of %s = %q, want %q", name, got, want)
+		}
+	}
+
+	runs := classify(t, "dang", sigs["sortBy"])
+	assertClass(t, runs, "sortBy", "tok-function")
+	assertClass(t, runs, "Ordered", "tok-type")
+}
+
 // A comment trailing code on the same line highlights as a comment. The
 // external scanner used to refuse the `#` because the inline spaces before it
 // were never skipped, turning the comment into a parse error.
