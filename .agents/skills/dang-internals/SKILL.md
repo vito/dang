@@ -149,10 +149,16 @@ the builtins frames as roots.
 The **builtin imports** (`builtin_imports.go`) are the static modules
 (`StaticModules`: `JSON`, `YAML`, `TOML`, `Random`, `UUID`), installed by the
 import installer as qualified-only imports
-(`installQualifiedImportTypeScope`/`installQualifiedImportValueScope`) before
-a module's explicit imports, wherever those go. A builtin import's name always
-resolves to the module's declaration of it if any, else the explicit (or
-auto-) import of that name, else the builtin import:
+(`installBuiltinImportType`/`installQualifiedImportValueScope`) before
+a module's explicit imports, wherever those go. Each name is the host as a
+type and, as a value, its namespace (`builtinNamespaceType`): a namespace
+module such as `Random` is both; a builtin **scalar** host (`JSON`, `YAML`,
+`TOML`: the scalar of valid text in that format, validated by a Go-native
+`new()` hook, `SetGoScalarHook`) keeps its statics on its meta-type and its
+`Statics()` object, as any type's name does, so `JSON.encode` resolves
+static-first (`Select.infer`) and `JSON!` is the scalar. A builtin import's
+name always resolves to the module's declaration of it if any, else the
+explicit (or auto-) import of that name, else the builtin import:
 
 - Single file and REPL (imports go in the module frame):
   `NewPreludeTypeScope` returns `module → builtin imports → prelude`, and
@@ -503,7 +509,16 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   sibling calls redirect.
 - **Hook runs at materialization** (`materializeStringValue` /
   `materializeDecoded`), stored on the `*Type` (`SetScalarHook`) — written
-  once at `ScalarDecl.Eval`, frozen after.
+  once at `ScalarDecl.Eval`, frozen after. A builtin scalar's Go-native hook
+  (`SetGoScalarHook`: `Regexp`, `JSON`, `YAML`, `TOML`) runs at the same
+  boundaries.
+- **Scalar → scalar only in an explicit cast.** `hm.Coercible` accepts
+  String ↔ custom scalar, and is used at value handoffs too
+  (`assignableForValue`), so it must not accept one custom scalar from
+  another. `TypeHint.Infer` alone falls back to `scalarCastable` and marks
+  its `Coerce` with `ConvertScalars`, whose `convertScalars` turns each
+  `ScalarValue` of another scalar into the target's through the target's hook
+  (keeping the text, and `Encoded`, when it has none).
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

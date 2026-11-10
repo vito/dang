@@ -5,14 +5,14 @@
 
 > Meta: short page. The defining characteristic is type-driven parsing — `JSON.decode` produces values of the *expected* type. Open with that.
 
-Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
-`encode` / `decode` static methods. They are plain modules owned by Dang, like
-`Random`, which every module gets as builtin imports, so they work with no
-`import` statement (see [#modules]). Data of unknown shape, whichever
-format it came from, is `Decoded` (see [#decoded-values]). A schema's scalar
-of the same name (e.g. Dagger's `JSON`) is a separate type, reached qualified
-(`Dagger.JSON`), while unqualified `JSON` stays Dang's own (see
-[#enums-scalars]).
+Each format — `JSON`, `YAML`, `TOML` — is a scalar type of text in that
+format, and, as a value, the namespace of its `encode` / `decode` static
+methods. They are owned by Dang, and every module gets them as builtin
+imports, so they work with no `import` statement (see [#modules]). Data of
+unknown shape, whichever format it came from, is `Decoded` (see
+[#decoded-values]). A schema's scalar of the same name (e.g. Dagger's `JSON`)
+is a separate type, reached qualified (`Dagger.JSON`), while unqualified
+`JSON` stays Dang's own (see [#enums-scalars]).
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
@@ -278,6 +278,39 @@ type Options {
 YAML.decode("") :: Options!
 ```
 
+## Text in a format
+
+`JSON!`, `YAML!` and `TOML!` hold text in their format, checked wherever a
+string becomes one: a cast, a string literal where one is expected, decoding
+a string into one. Text that doesn't parse is an error (YAML must be YAML,
+TOML a document):
+
+```dang
+let config = ("""{"name": "nightly", "count": 42}""" :: JSON!)
+let deploy: YAML! = "replicas: 3"
+
+{{config: config, deploy: deploy}}
+```
+
+```dang-failure
+("""{"name": """ :: JSON!)
+```
+
+A value is its text: it passes where a `String!` is expected, so decoding one
+works like decoding a string, and `encode` returns a `String!`, which a cast
+turns into the scalar:
+
+```dang
+let nightly = JSON.decode(config) :: Summary!
+let nightlyText: String! = JSON.encode(nightly)
+
+{{count: nightly.count, text: (nightlyText :: JSON!)}}
+```
+
+A cast also converts between such scalars and others, validating at the
+target, as a schema's JSON scalar needs: `j :: Dagger.JSON!`, and
+`(d :: JSON!)` back (see [#enums-scalars]).
+
 ## Serialization
 
 `JSON.encode(value)`, `YAML.encode(value)`, and `TOML.encode(value)` return
@@ -458,8 +491,8 @@ All of these are recoverable with `rescue` ([#errors]):
 (JSON.decode("{") :: Summary!) rescue { e: Error! => e.message }
 ```
 
-A type with no constructor, such as a namespace (`JSON`, `Random`, an
-import's) or a schema's object type, can't be decoded into. That is a
+A type with no constructor, such as a namespace (`Random`, an import's) or a
+schema's object type, can't be decoded into. That is a
 type error, caught before anything runs, wherever a decoded value must become
 one — a non-null target, its non-null elements, or a required field:
 
