@@ -207,6 +207,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 `JSON`, `YAML`, `TOML`, `Random` and `UUID` are imports Dang provides every module automatically, below the module's own scope:
 - **Qualified only**: `JSON.encode(x)`, `Random.int(min: 0, max: 6)`; there is no bare `encode`/`decode`/`int`.
 - **Shadowable**: a declaration of the same name in the module shadows the builtin import there — `type JSON { … }`/`scalar JSON` as both type and value, `let Random = 3` as a value only (`Random!` as a type and `@JSON.field` directives still reach the builtin).
+- **Replaceable**: an import of the same name (`[imports.YAML]` + `import YAML`, or an auto-import named `YAML`) replaces the builtin import in the file importing it; other files still get the builtin.
 - **Never overridden by an import**: an unqualified name of an explicit import (Dagger's `scalar JSON`, a module's `pub YAML`) never replaces one; reach the import's own qualified (`Dagger.JSON`, `Lib.YAML`).
 - **Private to the module**: an import's namespace never re-exports them; `Test.YAML` and `Lib.YAML` are errors unless the schema or module itself defines a `YAML`.
 

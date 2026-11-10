@@ -149,13 +149,22 @@ the builtins frames as roots.
 The **builtin imports** (`builtin_imports.go`) are the static modules
 (`StaticModules`: `JSON`, `YAML`, `TOML`, `Random`, `UUID`), installed by the
 import installer as qualified-only imports
-(`installQualifiedImportTypeScope`/`installQualifiedImportValueScope`) into a
-frame between the prelude and the module: `NewPreludeTypeScope` returns
-`module → builtin imports → prelude`, and `NewValueScope` mirrors it. A
-directory module's per-file import frames (`newFileImportsScope`) resolve
-through the same builtin imports and prelude, so file imports see them as
-single-file imports do. They
-carry a qualified import origin, are not in `Prelude`, and an import's
+(`installQualifiedImportTypeScope`/`installQualifiedImportValueScope`) before
+a module's explicit imports, wherever those go. A builtin import's name always
+resolves to the module's declaration of it if any, else the explicit (or
+auto-) import of that name, else the builtin import:
+
+- Single file and REPL (imports go in the module frame):
+  `NewPreludeTypeScope` returns `module → builtin imports → prelude`, and
+  `NewValueScope` mirrors it.
+- Directory modules and `LoadDir` sessions (imports go in a per-file frame
+  looked up after the module's declarations): each file's import frame gets
+  the builtin imports first (`newFileImportsScope`,
+  `installBuiltinImportValues` in `evaluateDirectory` and `NewSession`), and
+  the module's own chain has none (`withoutBuiltinImports` in
+  `prepareFileScopes`, `newDirectoryValueScope`).
+
+They carry a qualified import origin, are not in `Prelude`, and an import's
 namespace (schema or native module) never holds them.
 
 Rules that ride on this:
