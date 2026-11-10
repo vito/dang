@@ -293,17 +293,22 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 // whatever types its callers pick, within the interface's own bounds, so
 // they are made rigid once, bounded as the interface declares them, and the
 // method must fit every argument, its block and its return type at once.
-// As hm's function assignability does, each part is fitted on its own,
-// their substitutions composed, and every part checked again under the
-// combination, so the outcome doesn't depend on the arguments' order.
+// As hm's function assignability does, the arguments and block are fitted
+// each on its own and their substitutions composed, so the outcome doesn't
+// depend on the arguments' order; the return type is fitted under what
+// they say of the method's variables (a `b!` return is one of the
+// interface's `a` once an argument says b is a), and every part is checked
+// again under the combination.
 // That rejects an implementation that is less general than the interface:
 // `best(x: String!, ...)` for `best(x: a!, ...)`, one that takes the same
 // type for two of the interface's variables (`(x: a!, y: a!)` for `(x: a!,
 // y: b!)`), and one that bounds a variable the interface doesn't (`pick[a:
 // Ordered](x: a!)` for `pick(x: a!)`, whose `<` would meet values with no
-// order). An implementation may bound less than the interface does, and a
-// concrete type the interface names (`pick(x: Int!)`) satisfies a bound as
-// usual.
+// order). An implementation may bound less than the interface does.
+//
+// An interface method with no type variables of its own only has the
+// implementation's bounds checked, argument by argument: a concrete type
+// the interface names (`pick(x: Int!)`) satisfies a bound as usual.
 func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionType) error {
 	skolem, _ := skolemSubs(ifaceFn)
 	rigid := ifaceFn.Apply(skolem).(*hm.FunctionType)
@@ -315,12 +320,24 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 	if !ok {
 		return nil
 	}
+	generic := len(skolem) > 0
 
 	// A part of the method: values of type from must fit to, and report
-	// says why not.
+	// says why not, given what the parts say of the method's variables.
 	type part struct {
 		from, to hm.Type
-		report   func(error) error
+		report   func(err error, subs hm.Subs) error
+	}
+	// here notes what an implementation's type stands for under subs, when
+	// that reads differently: its `b!` may be the interface's `a!`.
+	here := func(t hm.Type, subs hm.Subs) string {
+		if subs == nil {
+			return t.String()
+		}
+		if applied := t.Apply(subs).(hm.Type); applied.String() != t.String() {
+			return fmt.Sprintf("%s (here %s)", t, applied)
+		}
+		return t.String()
 	}
 	var parts []part
 	for _, arg := range ifaceArgs.Fields {
@@ -331,47 +348,85 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 		}
 		impl, _ := s.Type()
 		key := arg.Key
-		parts = append(parts, part{iface, impl, func(err error) error {
+		parts = append(parts, part{iface, impl, func(err error, subs hm.Subs) error {
 			if be, ok := boundError(err); ok {
 				return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass %s for %s",
 					fieldName, key, be, callersPass(be), iface)
 			}
 			return fmt.Errorf("field %q, argument %q: type %s doesn't fit interface type %s for every type the interface's callers pick",
-				fieldName, key, impl, iface)
+				fieldName, key, here(impl, subs), iface)
 		}})
 	}
 	if ifaceBlock, implBlock := rigid.Block(), implFn.Block(); ifaceBlock != nil && implBlock != nil {
-		parts = append(parts, part{ifaceBlock, implBlock, func(err error) error {
+		parts = append(parts, part{ifaceBlock, implBlock, func(err error, subs hm.Subs) error {
 			if be, ok := boundError(err); ok {
 				return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
 					fieldName, be, FormatType(ifaceFn.Block()))
 			}
 			return fmt.Errorf("field %q, block argument: type %s doesn't fit interface block type %s for every type the interface's callers pick",
-				fieldName, implBlock, ifaceBlock)
+				fieldName, here(implBlock, subs), ifaceBlock)
 		}})
 	}
-	implRet, ifaceRet := implFn.Ret(false), rigid.Ret(false)
-	parts = append(parts, part{implRet, ifaceRet, func(error) error {
-		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s for every type the interface's callers pick",
-			fieldName, implRet, ifaceRet)
-	}})
+
+	if !generic {
+		// Only the implementation's bounds, part by part.
+		for _, p := range parts {
+			if _, err := hm.Assignable(p.from, p.to); err != nil {
+				if _, ok := boundError(err); ok {
+					return p.report(err, nil)
+				}
+			}
+		}
+		return nil
+	}
 
 	subs := hm.NewSubs()
-	for _, p := range parts {
-		s, err := hm.Assignable(p.from, p.to)
+	fit := func(p part, from, to hm.Type) error {
+		s, err := hm.Assignable(from, to)
 		if err != nil {
-			return p.report(err)
+			return p.report(err, subs)
 		}
 		if subs, err = subs.Compose(s); err != nil {
-			return p.report(err)
+			return p.report(err, subs)
 		}
+		return nil
 	}
 	for _, p := range parts {
+		if err := fit(p, p.from, p.to); err != nil {
+			return err
+		}
+	}
+	implRet, ifaceRet := implFn.Ret(false), rigid.Ret(false)
+	ret := part{implRet, ifaceRet, func(_ error, subs hm.Subs) error {
+		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s for every type the interface's callers pick",
+			fieldName, here(implRet, subs), ifaceRet)
+	}}
+	if err := fit(ret, implRet.Apply(subs).(hm.Type), ifaceRet); err != nil {
+		return err
+	}
+	for _, p := range append(parts, ret) {
 		if _, err := hm.Assignable(p.from.Apply(subs).(hm.Type), p.to.Apply(subs).(hm.Type)); err != nil {
-			return p.report(err)
+			return p.report(err, subs)
 		}
 	}
 	return nil
+}
+
+// freshenTypeVars gives t's flexible type variables new identities, keeping
+// their names and bounds, so that they can't coincide with another type's
+// variables by being written with the same letter.
+func freshenTypeVars(t hm.Type) hm.Type {
+	subs := hm.NewSubs()
+	for tv := range t.FreeTypeVar() {
+		if tv.IsRigid() || tv.IsWeak() {
+			continue
+		}
+		subs.Add(tv, hm.Freshen(tv))
+	}
+	if len(subs) == 0 {
+		return t
+	}
+	return t.Apply(subs).(hm.Type)
 }
 
 // boundError recognizes an implementation's bound that the interface's

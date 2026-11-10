@@ -1,0 +1,22 @@
+interface Getter {
+  get(x: a!): a
+}
+
+# A return more specific than the interface's is fine.
+type Echo implements Getter {
+  get(x: a!): a! { x }
+}
+
+# The method's variables are its own, whatever their letters.
+interface Counter {
+  count(xs: [a]!): Int!
+}
+
+type ByLength implements Counter {
+  count(xs: a!): Int! { 1 }
+}
+
+let g: Getter! = Echo
+assert { g.get(1) == 1 }
+let c: Counter! = ByLength
+assert { c.count([1, 2]) == 1 }
