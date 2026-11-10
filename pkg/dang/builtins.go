@@ -688,10 +688,10 @@ func StaticModules() []*Type {
 // shadowedPreludeMemberHint explains a member missing from local, a type
 // declared or imported under a name the Prelude or a builtin import also
 // binds, when what it binds there has it: the local declaration
-// shadows the builtin. hasType reports whether the Prelude's type of that
-// name has the member, and hasValue whether the module a Prelude value or
-// builtin import of that name is (a namespace such as JSON) has it. It
-// returns "" otherwise. Only the error path calls it.
+// shadows the builtin. hasType reports whether the Prelude's or a builtin
+// import's type of that name has the member, and hasValue whether the module
+// a Prelude value or builtin import of that name is (a namespace such as
+// JSON's) has it. It returns "" otherwise. Only the error path calls it.
 func shadowedPreludeMemberHint(local *Type, hasType, hasValue func(*Type) bool) string {
 	if local == nil || local.Named == "" {
 		return ""
@@ -709,7 +709,7 @@ func shadowedPreludeMemberHint(local *Type, hasType, hasValue func(*Type) bool) 
 			}
 		}
 	}
-	if mod, ok := builtinImport(local.Named); ok && !found && mod != local && hasValue(mod) {
+	if mod, ok := builtinImport(local.Named); ok && !found && mod != local && (hasType(mod) || hasValue(builtinNamespaceType(mod))) {
 		found = true
 	}
 	if !found {

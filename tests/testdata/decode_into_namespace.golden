@@ -1,9 +1,9 @@
-[1m[31mError:[0m cannot decode into JSON: it has no constructor
+[1m[31mError:[0m cannot decode into Random: it has no constructor
   [2m[34m--> errors/decode_into_namespace.dang:3:12[0m
  [2m    |[0m
- [2m  1 | # A namespace, such as the builtin JSON import, has no constructor, so decoded[0m
- [2m  2 | # data can't be materialized as it.[0m
- [2m[34m[1m  3 | [0mlet data = JSON.decode("{\"a\": 1}") :: Map[JSON!]!
+ [2m  1 | # A namespace, such as the builtin Random import, has no constructor, so[0m
+ [2m  2 | # decoded data can't be materialized as it.[0m
+ [2m[34m[1m  3 | [0mlet data = JSON.decode("{\"a\": 1}") :: Map[Random!]!
 [2m                  [31m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
  [2m  4 | [0m
  [2m    |[0m

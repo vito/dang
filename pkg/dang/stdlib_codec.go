@@ -15,23 +15,32 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// JSON, YAML, and TOML are data-interchange formats, each a plain namespace
-// module (like Random) holding its encode/decode and field directives,
-// provided to every module as a builtin import so `JSON.encode` resolves with
-// no import statement (see builtin_imports.go). Decoding produces Decoded
-// data, which no format owns. A schema's or user's type of the same name is a
-// separate type. See issue #105.
+// JSON, YAML, and TOML are data-interchange formats, each a builtin scalar
+// type whose values are valid text in that format (checked by a Go-native
+// new() hook wherever a string becomes one), and whose name, used as a value,
+// is the namespace holding its encode/decode, as a scalar's statics are. Both
+// are provided to every module as a builtin import, so `JSON!` and
+// `JSON.encode` resolve with no import statement (see builtin_imports.go).
+// The scalar's type is also the scope of the format's field directives
+// (`@JSON.field`). Decoding produces Decoded data, which no format owns. A
+// schema's or user's type of the same name is a separate type. See issue #105.
 var (
-	JSONModule = NewType("JSON", ObjectKind)
-	YAMLModule = NewType("YAML", ObjectKind)
-	TOMLModule = NewType("TOML", ObjectKind)
+	JSONModule = NewType("JSON", ScalarKind)
+	YAMLModule = NewType("YAML", ScalarKind)
+	TOMLModule = NewType("TOML", ScalarKind)
 )
 
-// registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
-// with the builtin DSL like the Random/UUID modules (see builtin_imports.go
-// for how they are installed).
+// registerCodecs registers the JSON/YAML/TOML scalars and their statics, each
+// directly with the builtin DSL like the Random/UUID modules (see
+// builtin_imports.go for how they are installed).
 func registerCodecs() {
-	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
+	JSONModule.SetTypeDocString("JSON text; as a value, the functions for encoding and decoding JSON")
+	JSONModule.SetGoScalarHook(func(raw string) (string, error) {
+		if _, err := decodeJSON(raw, false); err != nil {
+			return "", err
+		}
+		return raw, nil
+	})
 	// encode takes an arbitrary value, so it cannot live on the String type
 	// (there is no universal receiver); it belongs to the format's namespace.
 	StaticMethod(JSONModule, "encode").
@@ -116,7 +125,13 @@ func registerCodecs() {
 			return DeferredValue{Raw: raw, Naming: jsonNaming}, nil
 		})
 
-	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
+	YAMLModule.SetTypeDocString("YAML text; as a value, the functions for encoding and decoding YAML")
+	YAMLModule.SetGoScalarHook(func(raw string) (string, error) {
+		if _, err := decodeYAMLRaw(raw, false); err != nil {
+			return "", err
+		}
+		return raw, nil
+	})
 	StaticMethod(YAMLModule, "encode").
 		Doc("serializes a value to a YAML string. " +
 			"Fields come out in declaration order (a type's as declared, a record's as written) " +
@@ -166,7 +181,13 @@ func registerCodecs() {
 			return DeferredValue{Raw: raw, Naming: yamlNaming}, nil
 		})
 
-	TOMLModule.SetTypeDocString("functions for encoding and decoding TOML")
+	TOMLModule.SetTypeDocString("TOML text (a document); as a value, the functions for encoding and decoding TOML")
+	TOMLModule.SetGoScalarHook(func(raw string) (string, error) {
+		if _, err := decodeTOML(raw); err != nil {
+			return "", err
+		}
+		return raw, nil
+	})
 	StaticMethod(TOMLModule, "encode").
 		Doc("serializes a value to a TOML string").
 		Example(`TOML.encode({{enabled: true, count: 3}})`).

@@ -370,7 +370,7 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 // mod has a constructor to build its values from the data (an object type
 // declared in Dang, or a schema input object), or a shape of its own (an
 // anonymous record, an enum, a scalar). A namespace has neither: an import's,
-// a builtin one such as JSON or Random, or a schema's object type, which
+// a builtin one such as Random, or a schema's object type, which
 // only its server builds. Interfaces and unions are left to the type
 // patterns that match decoded data (see abstractDecodeTarget).
 func hasDecodableShape(mod *Type) bool {

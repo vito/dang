@@ -1,0 +1,9 @@
+[1m[31mError:[0m invalid JSON: unexpected EOF
+  [2m[34m--> errors/json_scalar_invalid.dang:2:15[0m
+ [2m    |[0m
+ [2m  1 | # JSON! holds valid JSON text: a string that isn't fails where it becomes one.[0m
+ [2m[34m[1m  2 | [0mlet config = ("{\"name\": " :: JSON!)
+[2m                     [31m^^^^^^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

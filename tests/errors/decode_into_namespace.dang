@@ -1,3 +1,3 @@
-# A namespace, such as the builtin JSON import, has no constructor, so decoded
-# data can't be materialized as it.
-let data = JSON.decode("{\"a\": 1}") :: Map[JSON!]!
+# A namespace, such as the builtin Random import, has no constructor, so
+# decoded data can't be materialized as it.
+let data = JSON.decode("{\"a\": 1}") :: Map[Random!]!

@@ -67,6 +67,13 @@ func stdlibLinks(source string) []linkSpan {
 			if node.Receiver == nil || node.Field == nil {
 				return true
 			}
+			if owner := node.StaticOwner(); owner != nil {
+				// A type's static (JSON.encode) never infers its receiver.
+				if statics[owner][node.Field.Name] {
+					addSpan(node.Field, stdlibTag(owner.Named, node.Field.Name))
+				}
+				return true
+			}
 			if key, ok := receiverKey(node.Receiver.GetInferredType(), node.Field.Name, statics); ok {
 				addSpan(node.Field, stdlibTag(key, node.Field.Name))
 			}

@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use JSON! as Decoded!
+[1m[31mError:[0m cannot use JSON! as Decoded!: JSON here is the type itself, not a value of that type
   [2m[34m--> errors/builtin_scalar_name_as_value.dang:8:16[0m
  [2m    |[0m
  [2m  6 | describe(x: Decoded!): String! { toString(x) }[0m

@@ -1,0 +1,101 @@
+# JSON, YAML and TOML are builtin scalars of valid text in their format, and,
+# as values, the namespaces holding their encode and decode.
+
+let j = ("{\"a\": [1, 2]}" :: JSON!)
+let y = ("a: [1, 2]" :: YAML!)
+let t = ("a = [1, 2]" :: TOML!)
+
+# A value is its text, and degrades to String! like any scalar's.
+let text: String! = j
+assert { text == "{\"a\": [1, 2]}" }
+assert { (y :: String!) == "a: [1, 2]" }
+assert { toString(t) == "a = [1, 2]" }
+
+# Literals coerce at a typed boundary, as to any scalar.
+let emptyObject: JSON! = "{}"
+assert { (emptyObject :: String!) == "{}" }
+
+# Construction validates the text, wherever a string becomes one.
+assert {
+  (
+    (("{" :: JSON!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ) == "invalid JSON: unexpected EOF"
+}
+assert {
+  (
+    (("[1] [2]" :: JSON!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ) == "invalid JSON: trailing data"
+}
+assert {
+  (
+    (("a: [" :: YAML!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid YAML: ")
+}
+assert {
+  (
+    (("a =" :: TOML!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid TOML: ")
+}
+assert {
+  (
+    ((["[]", "nope"] :: [JSON!]!) :: [String!]!) rescue {
+      e: Error! => [e.message]
+    }
+  )[0].hasPrefix("[1]: invalid JSON: ")
+}
+
+# encode still returns a String!; decode takes the text, a String! or a value
+# of the scalar (which degrades to it), and returns Decoded data.
+let encoded: String! = JSON.encode([1, 2])
+assert { encoded == "[1,2]" }
+assert { (JSON.decode(j) :: Map[[Int!]!]!) == ["a": [1, 2]] }
+assert { (YAML.decode(y) :: {{a: [Int!]!}}!).a == [1, 2] }
+assert { (TOML.decode(t) :: {{a: [Int!]!}}!).a == [1, 2] }
+assert { (JSON.decode(JSON.encode({{n: 1}}) :: JSON!) :: {{n: Int!}}!).n == 1 }
+
+# A value of the scalar encodes as the string it is.
+assert { JSON.encode(("[1]" :: JSON!)) == "\"[1]\"" }
+
+# An explicit cast converts between custom scalars, validating at the target.
+scalar Blob
+
+let blob = (j :: Blob!)
+assert { (blob :: String!) == "{\"a\": [1, 2]}" }
+assert { ((blob :: JSON!) :: String!) == "{\"a\": [1, 2]}" }
+assert {
+  (
+    ((("x" :: Blob!) :: JSON!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid JSON: ")
+}
+assert { (([j, j] :: [Blob!]!).length) == 2 }
+assert {
+  (
+    ((y :: TOML!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid TOML: ")
+}
+
+# Values compare as scalars do: the same scalar and text.
+assert { ("[1]" :: JSON!) == ("[1]" :: JSON!) }
+assert { ("[1]" :: JSON!) != ("[ 1 ]" :: JSON!) }
+
+# Each format's field directives are scoped by its scalar.
+type Account {
+  displayName: String! @JSON.field(name: "display_name") @YAML.field(name: "display-name")
+}
+
+assert { JSON.encode(Account("Ada")) == "{\"display_name\":\"Ada\"}" }
+assert { YAML.encode(Account("Ada")) == "display-name: Ada" }
+
+print("codec scalar tests passed!")

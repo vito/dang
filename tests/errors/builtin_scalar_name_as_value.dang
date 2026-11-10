@@ -1,5 +1,5 @@
-# The value JSON is the codec namespace, holding `encode` and `decode`, not
-# data.
+# The value JSON is the namespace of the JSON scalar's statics, `encode` and
+# `decode`, not data.
 
 let j = JSON.encode({{a: 1}})
 

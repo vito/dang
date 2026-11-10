@@ -1370,6 +1370,11 @@ func (d *Select) Body() hm.Expression { return d }
 
 func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
+// StaticOwner is the type whose static member the selection resolved to
+// (Regexp for `Regexp.escape`, JSON for `JSON.encode`), or nil if it selects
+// from a value.
+func (d *Select) StaticOwner() *Type { return d.staticOwner }
+
 func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		// Static member: Infer resolved this to a static of a named type. Read

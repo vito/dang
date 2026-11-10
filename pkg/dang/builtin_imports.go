@@ -7,10 +7,11 @@ import (
 )
 
 // The builtin imports are the imports Dang provides every module without an
-// import statement: its builtin namespaces, the modules holding static
-// builtins (JSON, YAML, TOML, Random, UUID; see StaticModules). They are
-// installed by the import installer, reached qualified only (`JSON.encode`,
-// never a bare `encode`), before the module's explicit imports, so that:
+// import statement: the modules holding static builtins (JSON, YAML, TOML,
+// Random, UUID; see StaticModules), each a type and a namespace under one
+// name (see builtinNamespaceType). They are installed by the import
+// installer, reached qualified only (`JSON.encode`, never a bare `encode`),
+// before the module's explicit imports, so that:
 //
 //   - they are imports, with an import's origin, wherever a module's names
 //     are listed or looked up;
@@ -44,9 +45,30 @@ func builtinImportsTypeScope() TypeScope {
 func newFileImportsScope() *Type {
 	imports := NewType("", ObjectKind)
 	for _, mod := range StaticModules() {
-		installQualifiedImportTypeScope(imports, mod.Named, mod)
+		installBuiltinImportType(imports, mod)
 	}
 	return imports
+}
+
+// installBuiltinImportType installs builtin import mod into frame as a
+// qualified-only import. Its name is mod as a type and, as a value, its
+// namespace (builtinNamespaceType): for a scalar such as JSON, the scalar
+// type and the namespace of its statics, as for any type's name.
+func installBuiltinImportType(frame TypeScope, mod *Type) {
+	installQualifiedImport(frame, mod.Named, mod, NonNull(builtinNamespaceType(mod)))
+}
+
+// builtinNamespaceType returns the type of builtin import host's name used as
+// a value, the namespace holding its static methods. A type's statics live
+// on its meta-type (see typeNameValueType), since its values have no such
+// members: so do a builtin scalar's (JSON.encode, while a JSON! value is
+// text). Any other host (Random) is a namespace and nothing else, so its
+// statics are its own members.
+func builtinNamespaceType(host *Type) *Type {
+	if host.Kind == ScalarKind {
+		return host.MetaType()
+	}
+	return host
 }
 
 // withoutBuiltinImports returns a module's type scope (a NewPreludeTypeScope)
@@ -85,10 +107,19 @@ func builtinImport(name string) (*Type, bool) {
 	return nil, false
 }
 
-// builtinImportValue builds the namespace of a builtin import: its static
-// methods, and the values of the enums nested in it.
+// builtinImportValue returns the namespace of a builtin import: a type's
+// statics namespace, or else a namespace built for it.
 func builtinImportValue(hostModule *Type) *Object {
-	modValue := NewObject(hostModule)
+	if statics := hostModule.Statics(); statics != nil {
+		return statics
+	}
+	return newBuiltinImportValue(hostModule)
+}
+
+// newBuiltinImportValue builds the namespace of a builtin import: its static
+// methods, and the values of the enums nested in it.
+func newBuiltinImportValue(hostModule *Type) *Object {
+	modValue := NewObject(builtinNamespaceType(hostModule))
 	ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
 		builtinFn := BuiltinFunction{
