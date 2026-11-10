@@ -425,9 +425,13 @@ func encodeYAML(val Value, sortKeys bool) (string, error) {
 
 // decodeYAMLRaw wraps decodeYAML (deferred_yaml.go) with the "invalid YAML:"
 // prefix, matching decodeJSON/decodeTOML so every format reports decode errors
-// the same way. strict is decodeYAML's.
+// the same way; a stream of several documents is valid YAML, so it is said
+// as it is. strict is decodeYAML's.
 func decodeYAMLRaw(data string, strict bool) (any, error) {
 	raw, err := decodeYAML(data, strict)
+	if errors.Is(err, errYAMLStream) {
+		return nil, err
+	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid YAML: %w", err)
 	}
