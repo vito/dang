@@ -441,3 +441,23 @@ pub larger[k: Ordered](x: k!, y: k!): k! {
 	require.Contains(t, list.Type, "Numeric")
 	require.Contains(t, list.Type, "Ordered")
 }
+
+func TestMembersShowInterfaceHeaderBounds(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope(t, membersSource+`
+interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+  rankBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]!
+}
+`)
+
+	best, err := analysis.Doc(ctx, scope, "Ranker.best")
+	require.NoError(t, err)
+	require.Equal(t, "[a: Ordered]", best.TypeParams)
+	require.Equal(t, "best[a: Ordered](x: a!, y: a!): a!", best.Signature())
+
+	rankBy, err := analysis.Doc(ctx, scope, "Ranker.rankBy")
+	require.NoError(t, err)
+	require.Equal(t, "[a, k: Ordered]", rankBy.TypeParams)
+	require.Equal(t, "[a, k: Ordered](xs: [a!]!, &block: (item: a!): k!): [a!]!", rankBy.Detail())
+}

@@ -1,0 +1,10 @@
+interface Picker {
+  pick[a: Ordered](x: a!, y: a!): a!
+}
+
+# Callers of Picker.pick may pass any Ordered values, strings included.
+type Summer implements Picker {
+  pick[a: Ordered & Numeric](x: a!, y: a!): a! {
+    if (x < y) { y + x } else { x }
+  }
+}

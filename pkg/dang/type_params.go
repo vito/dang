@@ -290,10 +290,12 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 // checkImplementationBounds rejects a parameter type of an object's method
 // (impl) whose bounded type variable the interface's parameter type
 // (iface) doesn't satisfy. The interface's type variables stand for any type
-// its callers pick, so they are checked as rigid ones, with no bound: an
-// interface's `pick(x: a!)` can't be implemented by `pick[a: Ordered](x: a!)`,
-// whose `<` would then meet values with no order. A concrete type the
-// interface names (`pick(x: Int!)`) satisfies the bound as usual.
+// its callers pick within the interface's own bounds, so they are checked as
+// rigid ones bounded as the interface declares them: an interface's
+// `pick(x: a!)` can't be implemented by `pick[a: Ordered](x: a!)`, whose `<`
+// would then meet values with no order, while `pick[a: Ordered](x: a!)` can,
+// and an implementation may bound less than the interface does. A concrete
+// type the interface names (`pick(x: Int!)`) satisfies the bound as usual.
 func checkImplementationBounds(iface, impl hm.Type) error {
 	bounded := false
 	for tv := range impl.FreeTypeVar() {
@@ -306,7 +308,41 @@ func checkImplementationBounds(iface, impl hm.Type) error {
 	_, err := hm.Assignable(iface.Apply(skolem).(hm.Type), impl)
 	var ce hm.ConstraintError
 	if errors.As(err, &ce) {
-		return fmt.Errorf("the implementation bounds %s by %s", ce.Var.Unbounded(), ce.Constraint.Name())
+		e := implementationBoundError{Var: ce.Var.Unbounded(), Bound: ce.Constraint}
+		if t, _ := stripNonNull(ce.Type); t != nil {
+			if tv, ok := t.(hm.TypeVariable); ok {
+				e.Allowed = tv.Bounds()
+			}
+		}
+		return e
 	}
 	return nil
+}
+
+// implementationBoundError is checkImplementationBounds's error: the
+// implementation bounds Var by Bound, which the interface's type variable,
+// bounded only by Allowed, doesn't promise.
+type implementationBoundError struct {
+	Var     hm.TypeVariable
+	Bound   hm.Constraint
+	Allowed []hm.Constraint
+}
+
+func (e implementationBoundError) Error() string {
+	return fmt.Sprintf("the implementation bounds %s by %s", e.Var, e.Bound.Name())
+}
+
+// callersPass says what an interface lets its callers pass for the type
+// variable a checkImplementationBounds error is about: "any type", or "any
+// Ordered type" when the interface bounds it.
+func callersPass(err error) string {
+	var e implementationBoundError
+	if !errors.As(err, &e) || len(e.Allowed) == 0 {
+		return "any type"
+	}
+	names := make([]string, len(e.Allowed))
+	for i, c := range e.Allowed {
+		names[i] = c.Name()
+	}
+	return "any " + strings.Join(names, " & ") + " type"
 }

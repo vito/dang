@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "rankBy", block argument: the implementation bounds k by Numeric, but the interface's callers may pass a block of [k: Ordered](item: Int!): k!
+  [2m[34m--> errors/type_param_interface_bound_stronger_block.dang:6:25[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # Callers of Ranker.rankBy may pass a block returning any Ordered key.[0m
+ [2m[34m[1m  6 | [0mtype ByTotal implements Ranker {
+[2m                               [31m^^^^^^[0m
+ [2m  7 |   rankBy[k: Numeric](xs: [Int!]!, &key(item: Int!): k!): [Int!]! { xs }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

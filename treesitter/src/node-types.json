@@ -4243,6 +4243,16 @@
           }
         ]
       },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param_list",
+            "named": true
+          }
+        ]
+      },
       "prefix_directives": {
         "multiple": true,
         "required": false,
@@ -4653,6 +4663,16 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_param_list",
             "named": true
           }
         ]

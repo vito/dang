@@ -20,6 +20,11 @@ type FieldDecl struct {
 	IsBlockParam bool // True if this is a block parameter (prefixed with &)
 	Loc          *SourceLocation
 
+	// TypeParams is an interface member header's explicit type parameter
+	// list, `sortBy[a, k: Ordered](...): [a]!`. A field with a function
+	// value keeps its list on the FunDecl instead.
+	TypeParams []*TypeParam
+
 	// A type inferred from context, i.e. a lambda passed as a function argument.
 	ContextInferredType hm.Type
 
@@ -101,12 +106,21 @@ func (s *FieldDecl) funDecl() *FunDecl {
 
 // withTypeParams brings the declared type parameters of the function s
 // declares, if any, into scope for its annotation, which is the function's
-// signature.
+// signature: the FunDecl's, or a member header's own.
 func (s *FieldDecl) withTypeParams(ctx context.Context) context.Context {
 	if fd := s.funDecl(); fd != nil {
 		return withTypeParams(ctx, fd.TypeParams)
 	}
-	return ctx
+	return withTypeParams(ctx, s.TypeParams)
+}
+
+// checkHeaderTypeParams checks a member header's type parameter list
+// against its signature t, as checkTypeParams does a function's.
+func (s *FieldDecl) checkHeaderTypeParams(t hm.Type) error {
+	if s.funDecl() != nil || len(s.TypeParams) == 0 {
+		return nil
+	}
+	return checkTypeParams(s.Name.Name, s.TypeParams, t)
 }
 
 func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
@@ -428,6 +442,9 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	if s.Type_ != nil {
 		definedType, err = s.Type_.Infer(s.withTypeParams(ctx), env, fresh)
 		if err != nil {
+			return nil, err
+		}
+		if err := s.checkHeaderTypeParams(definedType); err != nil {
 			return nil, err
 		}
 		if !isParam {

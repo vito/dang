@@ -567,21 +567,23 @@ HeaderField <- docstring:DocString? field:(TypeAndArgsField / TypeOnlyFunField) 
   return field, nil
 }
 
-TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol params:TypeParamList? _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
   c.rejectSecondBlockParam(args.([]*FieldDecl), "function")
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{args.([]*FieldDecl), type_.(TypeNode)},
+    TypeParams: sliceOf[*TypeParam](params),
     Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeOnlyFunField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+TypeOnlyFunField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol params:TypeParamList? _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
+    TypeParams: sliceOf[*TypeParam](params),
     Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),

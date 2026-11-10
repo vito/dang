@@ -1646,8 +1646,8 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 		// pick, which a bounded parameter of the object's method
 		// (`pick[a: Ordered]`) must then accept too.
 		if err := checkImplementationBounds(ifaceArgType, objectArgType); err != nil {
-			return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass any type for %s",
-				fieldName, ifaceArg.Key, err, ifaceArgType)
+			return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass %s for %s",
+				fieldName, ifaceArg.Key, err, callersPass(err), ifaceArgType)
 		}
 	}
 
@@ -1685,7 +1685,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	default:
 		if err := checkImplementationBounds(ifaceBlock, objectBlock); err != nil {
 			return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
-				fieldName, err, ifaceBlock)
+				fieldName, err, FormatType(ifaceBlock))
 		}
 	}
 

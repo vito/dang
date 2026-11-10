@@ -2284,6 +2284,22 @@
         },
         {
           "type": "FIELD",
+          "name": "params",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "type_param_list"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "args",
           "content": {
             "type": "SYMBOL",
@@ -2355,6 +2371,22 @@
           "content": {
             "type": "SYMBOL",
             "name": "symbol"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "params",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "type_param_list"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {

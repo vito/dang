@@ -148,6 +148,37 @@ usePicker(p: IntPicker!): Int! { p.pick(3, 2) }
 
 assert { usePicker(Smaller) == 2 }
 
+# An interface member header declares type parameters and bounds too
+interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+  rankBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]!
+}
+
+# An implementation declares the same bounds...
+type Highest implements Ranker {
+  best[a: Ordered](x: a!, y: a!): a! {
+    if (x < y) { y } else { x }
+  }
+
+  rankBy[a, k: Ordered](xs: [a!]!, &key(item: a!): k!): [a!]! {
+    xs.sortBy(descending: true) { x => key(x) }
+  }
+}
+
+# ...or fewer: it then takes more than the interface's callers pass
+type First implements Ranker {
+  best(x: a!, y: a!): a! { x }
+
+  rankBy(xs: [a!]!, &key(item: a!): k!): [a!]! { xs }
+}
+
+useRanker(r: Ranker!): [String!]! {
+  [r.best("a", "b")] + r.rankBy(["bb", "a", "ccc"]) { s => s.length }
+}
+
+assert { useRanker(Highest) == ["b", "ccc", "bb", "a"] }
+assert { useRanker(First) == ["a", "bb", "a", "ccc"] }
+
 # A nested function sees the enclosing function's bounded parameter
 clamp[a: Ordered](x: a!, lo: a!, hi: a!): a! {
   atLeast(v: a!): a! {

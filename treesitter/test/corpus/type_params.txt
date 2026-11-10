@@ -63,6 +63,77 @@ sortBy[a, k: Ordered](xs: [a!]!): [a!]! {
                 (word_token)))))))))
 
 ================================================================================
+Interface members with type parameters
+================================================================================
+
+interface Picker {
+  pick[a: Ordered](x: a!): a!
+  sum[a: Numeric]: a
+}
+
+--------------------------------------------------------------------------------
+
+(dang
+  (decl
+    (interface_decl
+      (interface_token)
+      (symbol
+        (id
+          (word_token)))
+      (headers_block
+        (header_field
+          (type_and_args_field
+            (symbol
+              (id
+                (word_token)))
+            (type_param_list
+              (immediate_bracket)
+              (type_param
+                (word_token)
+                (colon_token)
+                (type_bounds
+                  (named_type
+                    (upper_id
+                      (upper_token))))))
+            (arg_types
+              (immediate_paren)
+              (arg_type
+                (arg_with_type
+                  (symbol
+                    (id
+                      (word_token)))
+                  (colon_token)
+                  (type
+                    (non_null
+                      (type
+                        (type_variable))
+                      (bang_token))))))
+            (colon_token)
+            (type
+              (non_null
+                (type
+                  (type_variable))
+                (bang_token)))))
+        (sep)
+        (header_field
+          (type_only_fun_field
+            (symbol
+              (id
+                (word_token)))
+            (type_param_list
+              (immediate_bracket)
+              (type_param
+                (word_token)
+                (colon_token)
+                (type_bounds
+                  (named_type
+                    (upper_id
+                      (upper_token))))))
+            (colon_token)
+            (type
+              (type_variable))))))))
+
+================================================================================
 Indexing a name and calling the result
 ================================================================================
 

@@ -1380,6 +1380,9 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 		return
 	}
 
+	// A member header's type parameters: name[a: Ordered](...): T
+	f.write(formatTypeParams(s.TypeParams))
+
 	// Type annotation
 	if s.Type_ != nil {
 		// For FunTypeNode with args, output as method signature: name(args): ret

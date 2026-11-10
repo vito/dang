@@ -1,0 +1,4 @@
+interface Picker {
+  # With a list, every type variable of the signature is declared.
+  pick[a: Ordered](x: a!, y: b!): a!
+}
