@@ -40,17 +40,21 @@
 
 \stdlib-methods{Map}
 
-## `JSON` module
+## `JSON`, `YAML` and `TOML`
 
 > See [#json-yaml]. `JSON`/`YAML`/`TOML` are Dang's scalars of text in their format, validated on construction (`"[1]" :: JSON!`); as values they hold their statics: `encode` serializes any value to a string, `decode` materializes a string against the expected type (`:: T`). A same-named schema scalar such as Dagger's `JSON` is a separate type (`Dagger.JSON`), while unqualified `JSON` stays the builtin. Data of any shape decodes into `Decoded` (see [#decoded-values]).
 
+### `JSON`
+
 \stdlib-statics{JSON}
 
-## `YAML` module
+### `YAML`
+
+> A `YAML!` value may hold several documents; `YAML.decode` reads a single one.
 
 \stdlib-statics{YAML}
 
-## `TOML` module
+### `TOML`
 
 > `TOML.encode` requires a table (record) at the top level.
 

@@ -37,6 +37,18 @@ let served = (opaqueObject :: JSON!)
 assert { (JSON.decode(served) :: {{name: String!}}!).name == "dang" }
 assert { (opaqueObject :: Blob!) == ((opaqueObject :: String!) :: Blob!) }
 
+# This server sends its scalar as raw JSON, so a string value is held bare and
+# isn't JSON text itself; encoding the value works for every kind.
+assert {
+  (
+    ((opaqueString :: JSON!) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid JSON: ")
+}
+assert { (JSON.encode(opaqueString) :: JSON!) == ("\"plain\"" :: JSON!) }
+assert { (JSON.encode(opaqueNumber) :: JSON!) == ("42" :: JSON!) }
+
 # Untyped data is Decoded, whichever format decoded it.
 let any = YAML.decode("n: 1\ns: x\no: {k: [true]}\n") :: Map[Decoded!]!
 assert { toString(any["s"]!) == "\"x\"" }
