@@ -165,6 +165,42 @@ interface Keyed { key: String! }
 type Row implements Keyed { key: ID! }
 ```
 
+### Generic members
+
+An interface method can declare type parameters after its name, with
+bounds, as a function does (see [#type-params]). Callers through the
+interface pick its types within those bounds:
+
+```dang
+interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+}
+
+type Highest implements Ranker {
+  best[a: Ordered](x: a!, y: a!): a! {
+    if (x < y) { y } else { x }
+  }
+}
+
+pickBest(r: Ranker!): String! { r.best("ant", "bee") }
+
+pickBest(Highest)
+```
+
+An implementation declares the same bounds, or fewer: a method that takes
+any `a` takes the `Ordered` values the interface's callers pass. A bound the
+interface doesn't declare is an error, since its callers may pass types
+without it:
+
+```dang-failure
+type Total implements Ranker {
+  best[a: Ordered & Numeric](x: a!, y: a!): a! { x + y }
+}
+```
+
+A member without arguments is read like a field, so it can't have type
+variables, declared or not.
+
 ### Pattern-matching an interface
 
 ```dang

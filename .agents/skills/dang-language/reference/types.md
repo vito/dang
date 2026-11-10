@@ -33,7 +33,7 @@
 ## Type variables
 - single lowercase letters (`a`, `b`), used in generic signatures, inferred at call sites.
 - Opaque in the body: pass, return, `==`/`!=` only (`x * 2` on an `a` is a definition-time error) — unless bounded (below).
-- **Explicit type parameters** (optional): `name[a, k: Ordered](...)` right after a function or method's name. Without a list, variables are implicit; with one, it must declare every variable of the signature, each once, and use every one it declares (`type variable b is not declared`, `type parameter b is not used`).
+- **Explicit type parameters** (optional): `name[a, k: Ordered](...)` right after a function or method's name, and on an interface member header (`interface Ranker { best[a: Ordered](x: a!, y: a!): a! }`; see objects.md variance for implementing one). Without a list, variables are implicit; with one, it must declare every variable of the signature, each once, and use every one it declares (`type variable b is not declared`, `type parameter b is not used`).
 - **`Ordered` bound**: Ordered types are `Int!`, `Float!`, `String!`, `Boolean!`, enums (declaration order), custom scalars, and lists and `{{ }}` records of those (element by element) — exactly what `< <= > >=` compare and `.sort`/`.sortBy` order. Not objects, unions, decoded data or nullable types.
   - In the body, values of a bounded **`a!`** compare (`x < y`) and satisfy other bounds (call another `[k: Ordered]` function, `xs.sort` on `[a!]!`). A bare `a` may be null, so `<` refuses it; an unbounded `a` has no order (`declare it [a: Ordered]`).
   - The bound ignores nullability: `[a: Ordered](xs: [a!]!)` takes an `[Int!]!` (a is Int).

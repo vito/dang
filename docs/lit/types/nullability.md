@@ -541,7 +541,9 @@ abs[a: Ordered & Numeric](x: a!): a! {
 {{int: abs(-3), float: abs(-2.5)}}
 ```
 
-`.sum` on lists is bounded by `Numeric` (see [#collections]).
+`.sum` on lists is bounded by `Numeric` (see [#collections]). An interface
+method declares type parameters and bounds the same way (see
+[#interfaces-unions]).
 
 ## Type hints / casts: `::`
 

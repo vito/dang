@@ -73,7 +73,7 @@ A function or method declaration may list its type parameters right after
 its name (see [#type-params]):
 
 ```
-TypeParamList := '[' TypeParam (Sep TypeParam)* Sep? ']'   # immediately after the name: f[a, k: Ordered](...)
+TypeParamList := '[' TypeParam (Sep TypeParam)* Sep? ']'   # immediately after the name: f[a, k: Ordered](...), and on an interface member header
 TypeParam     := Word (':' Bound ('&' Bound)*)?           # a single lowercase letter
 Bound         := NamedType                                # Ordered or Numeric
 ```
