@@ -61,3 +61,29 @@ type Second implements Chooser {
 let chosen: Chooser! = Second
 let pet: Pet! = chosen.choose(Dog("d"), Cat("c"))
 assert { pet != null }
+
+# ...and so can any argument, whatever its place.
+interface Aged {
+  age: Int!
+}
+
+type Puppy implements Named & Aged {
+  name: String!
+  age: Int!
+}
+
+type Kitten implements Named & Aged {
+  name: String!
+  age: Int!
+}
+
+interface Elder {
+  older(x: Puppy!, y: Kitten!, z: Aged!): Int!
+}
+
+type ByAge implements Elder {
+  older(x: a!, y: a!, z: a!): Int! { 1 }
+}
+
+let elder: Elder! = ByAge
+assert { elder.older(Puppy("p", 1), Kitten("k", 2), Puppy("q", 3)) == 1 }

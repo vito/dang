@@ -435,15 +435,24 @@ func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionTy
 
 	// The arguments and block decide the method's variables, and the
 	// return is fitted under them (a `b!` return is the interface's `a`
-	// once an argument says b is a). Failing that, the return may decide
-	// them: `f(x: a!, y: a!): a!` for `f(x: Dog!, y: Cat!): Pet!` takes a
-	// as Pet, where the arguments alone would join Dog and Cat elsewhere.
+	// once an argument says b is a). Composing joins what two parts say
+	// to one common supertype, which a third may not take, so failing
+	// that, each part in turn gets to decide them first, the others
+	// fitted under it: `f(x: a!, y: a!): a!` for `f(x: Dog!, y: Cat!):
+	// Pet!` takes a as Pet from the return, and `(x: a!, y: a!, z: a!)`
+	// for `(x: Dog!, y: Cat!, z: Aged!)` takes it as Aged from z.
+	all := append(append([]part{}, parts...), ret)
 	subs, err := attempt(parts, []part{ret})
-	if err != nil {
-		var retErr error
-		if subs, retErr = attempt([]part{ret}, parts); retErr != nil {
-			return err
+	for i := 0; err != nil && i < len(all); i++ {
+		others := make([]part, 0, len(all)-1)
+		others = append(others, all[:i]...)
+		others = append(others, all[i+1:]...)
+		if s, seedErr := attempt([]part{all[i]}, others); seedErr == nil {
+			subs, err = s, nil
 		}
+	}
+	if err != nil {
+		return err
 	}
 	if err := hm.CommitWeak(subs); err != nil {
 		return fmt.Errorf("field %q: %w", fieldName, err)
