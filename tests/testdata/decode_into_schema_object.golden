@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot decode into Test.ServerInfo: it has no constructor
+  [2m[34m--> errors/decode_into_schema_object.dang:5:12[0m
+ [2m    |[0m
+ [2m  3 | import Test[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mlet info = JSON.decode("{\"version\": \"1\"}") :: Test.ServerInfo!
+[2m                  [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

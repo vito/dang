@@ -237,13 +237,15 @@ func assignableDecoded(have, want hm.Type) bool {
 }
 
 // checkDecodeTarget rejects decoding into want at a site inferred in env when
-// materializing want would construct an object type the site cannot reach: a
-// type declared in a function, block or type body (Type.localFrame) whose
-// declaring scope does not enclose the site. Such a type has a constructor per
-// call or per instance of its declaring scope, found by identity in the
-// decoding scope (constructorFor), so from outside that scope there is none
-// to call, nor one right one to pick. Its value can still get out (an `if`
-// expression, a method's result), so the type can appear here by inference.
+// materializing want would construct a type that has no constructor or shape
+// to decode into (see hasDecodableShape), or an object type the site cannot
+// reach: a type declared in a function, block or type body (Type.localFrame)
+// whose declaring scope does not enclose the site. Such a type has a
+// constructor per call or per instance of its declaring scope, found by
+// identity in the decoding scope (constructorFor), so from outside that scope
+// there is none to call, nor one right one to pick. Its value can still get
+// out (an `if` expression, a method's result), so the type can appear here by
+// inference.
 //
 // The walk mirrors materializeDecoded: through non-null, unions, lists and
 // maps, an anonymous record's fields, and a named object's constructor
@@ -255,6 +257,12 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 	// via is the field path from want down to t ("Holder.inner"), for the
 	// error, or "" while still at want itself.
 	var walk func(t hm.Type, via string) error
+	noConstructor := func(t hm.Type, via string) error {
+		if via != "" {
+			return fmt.Errorf("cannot decode %s: its type %s has no constructor to decode into", via, t)
+		}
+		return fmt.Errorf("cannot decode into %s: it has no constructor", t)
+	}
 	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) error {
 		for _, field := range fields {
 			if ignoredByAllCodecs(mod, field.Key) {
@@ -296,10 +304,21 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 		}
 		v, ok := t.(*Type)
 		if !ok {
+			// A scope standing for a type is a namespace, such as a native
+			// module's (see dangModule.exportsType): nothing to construct.
+			if _, isScope := t.(*OverlayTypeScope); isScope {
+				return noConstructor(t, via)
+			}
 			return nil
 		}
 		mod := canonicalModule(v)
-		if seen[mod] || mod.Kind != ObjectKind {
+		if seen[mod] {
+			return nil
+		}
+		if !hasDecodableShape(mod) {
+			return noConstructor(mod, via)
+		}
+		if mod.Kind != ObjectKind {
 			return nil
 		}
 		seen[mod] = true
@@ -321,6 +340,23 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 		return nil
 	}
 	return walk(want, "")
+}
+
+// hasDecodableShape reports whether decoded data can materialize as mod:
+// mod has a constructor to build its values from the data (a declared
+// object type, or a schema input object), or a shape of its own (an
+// anonymous record, an enum, a scalar). A namespace has neither: an import's,
+// a builtin one such as JSON or Random, or a schema's object type, which
+// only its server builds. Interfaces and unions are left to the type
+// patterns that match decoded data (see abstractDecodeTarget).
+func hasDecodableShape(mod *Type) bool {
+	switch mod.Kind {
+	case ObjectKind:
+		return mod.Named == "" || mod.constructorType != nil
+	case InputKind:
+		return mod.constructorType != nil
+	}
+	return true
 }
 
 // ignoredByAllCodecs reports whether every registered field naming ignores
