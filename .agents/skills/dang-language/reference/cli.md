@@ -49,7 +49,7 @@ Commands (prefix `:`):
 - `:exit` / `:quit` — leave (also Ctrl+D)
 - `:doc` — interactive API/schema browser
 - `:env` — show environment bindings
-- `:type <expr>` — show the inferred type of an expression; bounded type variables show their bounds (`[].sum` → `[a: Numeric] a!`), and a method selection adds the method's signature (`[1].sort` → `Method: List.sort[a: Ordered](descending: Boolean = false): [a]!`)
+- `:type <expr>` — show the inferred type of an expression; bounded type variables show their bounds (`[].sum` → `[a: Numeric] a!`), and selecting a method with bounded type variables adds its signature (`[1].sort` → `Method: List.sort[a: Ordered](descending: Boolean = false): [a]!`)
 - `:find` / `:search <pattern>` — find functions/types by pattern
 - `:reset` — rebuild the environment from imports
 - `:clear` — clear the screen

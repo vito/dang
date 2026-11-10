@@ -80,7 +80,7 @@ REPL commands (prefix `:`):
 - `:exit` / `:quit` — leave the REPL (also Ctrl+D)
 - `:doc` — interactive API/schema browser. See [#interop].
 - `:env` — show environment bindings
-- `:type <expr>` — show the inferred type of an expression. A bounded type variable shows its bound, as a type parameter list does (`:type [].sum` is `[a: Numeric] a!`), and a method selection also shows the method's own signature (`:type [1].sort` adds `Method: List.sort[a: Ordered](descending: Boolean = false): [a]!`)
+- `:type <expr>` — show the inferred type of an expression. A bounded type variable shows its bound, as a type parameter list does (`:type [].sum` is `[a: Numeric] a!`), and selecting a method whose type variables are bounded also shows the method's own signature (`:type [1].sort` adds `Method: List.sort[a: Ordered](descending: Boolean = false): [a]!`)
 - `:find` / `:search <pattern>` — find functions/types by pattern
 - `:reset` — rebuild the environment from imports
 - `:clear` — clear the screen
