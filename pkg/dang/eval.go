@@ -3838,7 +3838,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		return nil, err
 	}
 	if len(blocks) == 0 {
-		return NewValueScope(NewPreludeTypeScope("")), nil
+		return newDirectoryValueScope(NewPreludeTypeScope("")), nil
 	}
 
 	if isDebug {
@@ -3856,9 +3856,25 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		return nil, ConvertInferError(err)
 	}
 
-	valueScope := NewValueScope(typeScope)
-	for _, block := range blocks {
-		if _, err := EvaluateDeclaredFormsWithPhases(ctx, block.Forms, valueScope); err != nil {
+	// Like evaluateDirectory: each file's imports go in a frame of its own,
+	// after the builtin imports, composed under the shared module scope, and
+	// the file's declarations are evaluated (closing over) that composite.
+	valueScope := newDirectoryValueScope(typeScope)
+	fileScopes := make([]ValueScope, len(blocks))
+	for i, block := range blocks {
+		imports, _ := partitionImports(block.Forms)
+		importsScope := valueScope.Derive(true)
+		installBuiltinImportValues(importsScope)
+		for _, imp := range imports {
+			if _, err := EvalNode(ctx, importsScope, imp); err != nil {
+				return nil, err
+			}
+		}
+		fileScopes[i] = CreateOverlayValueScope(valueScope, importsScope)
+	}
+	for i, block := range blocks {
+		_, rest := partitionImports(block.Forms)
+		if _, err := EvaluateDeclaredFormsWithPhases(ctx, rest, fileScopes[i]); err != nil {
 			return nil, err
 		}
 	}

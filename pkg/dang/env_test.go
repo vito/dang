@@ -364,17 +364,22 @@ type Test {
 	env, err := DeclareDir(ctx, dir, false)
 	require.NoError(t, err)
 
-	daggerVal, found := requireEvalGet(t, env, "Dagger")
+	testVal, found := requireEvalGet(t, env, "Test")
+	require.True(t, found)
+	testCtor, ok := testVal.(*ConstructorFunction)
+	require.True(t, ok)
+
+	// Imports are file-local, so the Dagger namespace is not a binding on the
+	// returned module scope; it is reached through the declaring file's
+	// scope, which a declared type closes over.
+	_, found = requireEvalGet(t, env, "Dagger")
+	require.False(t, found)
+	daggerVal, found := requireEvalGet(t, testCtor.Closure, "Dagger")
 	require.True(t, found)
 	daggerMod, ok := daggerVal.(*Object)
 	require.True(t, ok)
 	importedContainer, found := daggerMod.Mod.NamedType("Container")
 	require.True(t, found)
-
-	testVal, found := requireEvalGet(t, env, "Test")
-	require.True(t, found)
-	testCtor, ok := testVal.(*ConstructorFunction)
-	require.True(t, ok)
 
 	containerEcho, found := testCtor.ObjectType.LocalSchemeOf("containerEcho")
 	require.True(t, found)
