@@ -237,7 +237,8 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 		return
 	}
 	e.writeLogLine(fmt.Sprintf("Expression: %s", expr))
-	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", dang.FormatScheme(inferredType))))
+	typeStr := dang.FormatScheme(inferredType)
+	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", typeStr)))
 	// A selected method's own signature shows the bounds the selection
 	// instantiated away ([1].sort is [Int!]!; sort is [a: Ordered]).
 	if n, ok := node.(dang.Node); ok {
@@ -252,7 +253,11 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 	if !strings.Contains(trimmed, " ") {
 		if scheme, found := r.typeScope.SchemeOf(trimmed); found {
 			if t, _ := scheme.Type(); t != nil {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", dang.FormatScheme(scheme))))
+				// The binding's own scheme, where it reads differently
+				// from the expression's type.
+				if schemeStr := dang.FormatScheme(scheme); schemeStr != typeStr {
+					e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", schemeStr)))
+				}
 			}
 		}
 	}

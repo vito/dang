@@ -99,12 +99,9 @@ func TypeParamsOf(types ...hm.Type) string {
 	bounds := map[string][]hm.Constraint{}
 	bounded := false
 	for _, t := range types {
-		if t == nil {
-			continue
-		}
-		for tv := range t.FreeTypeVar() {
+		typeVarsOf(t, func(tv hm.TypeVariable) {
 			if tv.IsRigid() {
-				continue
+				return
 			}
 			// Not Unbounded's name: a weak variable is known by its bounds
 			// too, and an open one would read as a binding's (`_a`).
@@ -117,7 +114,7 @@ func TypeParamsOf(types ...hm.Type) string {
 			}
 			bounds[name] = cs
 			bounded = bounded || len(cs) > 0
-		}
+		})
 	}
 	if !bounded {
 		return ""
@@ -138,6 +135,48 @@ func TypeParamsOf(types ...hm.Type) string {
 		params[i] = p
 	}
 	return formatTypeParams(params)
+}
+
+// typeVarsOf visits the type variables t mentions, as its FreeTypeVar would,
+// but also inside an anonymous record type (`{{x: xs}}`'s), whose fields
+// FreeTypeVar doesn't look into. A bound weak variable is followed to its
+// binding.
+func typeVarsOf(t hm.Type, visit func(hm.TypeVariable)) {
+	seen := map[*Type]bool{}
+	var walk func(hm.Type)
+	walk = func(t hm.Type) {
+		switch v := t.(type) {
+		case nil:
+		case hm.TypeVariable:
+			if bound := hm.ResolveWeak(v); bound != hm.Type(v) {
+				walk(bound)
+				return
+			}
+			visit(v)
+		case hm.NullableTypeVariable:
+			walk(v.TypeVariable)
+		case *hm.UnionType:
+			for _, o := range v.Options {
+				walk(o)
+			}
+		case *Type:
+			// A named type's members aren't part of how it reads.
+			if v.metaOf == nil && v.Named == "" && v.importedAs == "" && !seen[v] {
+				seen[v] = true
+				walk(v.AsRecord())
+			}
+		case *RecordType:
+			for _, f := range v.Fields {
+				ft, _ := f.Value.Type()
+				walk(ft)
+			}
+		default:
+			for _, c := range t.Types() {
+				walk(c)
+			}
+		}
+	}
+	walk(t)
 }
 
 type typeParamsKey struct{}

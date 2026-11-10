@@ -19,7 +19,7 @@ func TestTypeCommandShowsBounds(t *testing.T) {
 		return e.logs.String()
 	}
 
-	require.Contains(t, typeOf("[].sum"), "Type: [a: Numeric] a")
+	require.Contains(t, typeOf("[].sum"), "Type: [a: Numeric] a!")
 	require.Contains(t, typeOf("[].sort"), "Type: [a: Ordered] [a!]!")
 
 	// A selection instantiates the method's variables; its signature still
@@ -41,8 +41,14 @@ func TestTypeCommandShowsWeakBounds(t *testing.T) {
 	require.NoError(t, err)
 
 	r := &replComponent{ctx: context.Background(), typeScope: s.typeScope}
-	e := newReplEntry(":type xs")
-	r.typeCommand(e, []string{"xs"})
+	typeOf := func(expr string) string {
+		e := newReplEntry(":type " + expr)
+		r.typeCommand(e, []string{expr})
+		return e.logs.String()
+	}
 	// xs's elements aren't known yet, but must be Numeric.
-	require.Contains(t, e.logs.String(), "Numeric")
+	require.Contains(t, typeOf("xs"), "Numeric")
+	require.Contains(t, typeOf("{{x: xs}}"), "Numeric")
+	// The binding's scheme reads the same as its type, so it isn't repeated.
+	require.NotContains(t, typeOf("xs"), "Scheme:")
 }

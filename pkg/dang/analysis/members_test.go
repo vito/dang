@@ -434,4 +434,10 @@ pub larger[k: Ordered](x: k!, y: k!): k! {
 	list, err := analysis.Members(ctx, scope, "[].sum")
 	require.NoError(t, err)
 	require.Contains(t, list.Type, "Numeric")
+
+	// So does one whose bounded variables are in a record's fields.
+	list, err = analysis.Members(ctx, scope, "[{{s: [].sum, o: [].sort}}]")
+	require.NoError(t, err)
+	require.Contains(t, list.Type, "Numeric")
+	require.Contains(t, list.Type, "Ordered")
 }
