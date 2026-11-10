@@ -2,7 +2,6 @@ package dang
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -57,9 +56,8 @@ const (
 	defaultDescribeMaxBytes  = 16 << 10
 	defaultDescribeWidth     = 80
 
-	// describeMaxArgString caps strings in a query chain's arguments, which
-	// are context rather than the value itself (IDs can be kilobytes).
-	describeMaxArgString = 64
+	// describeMaxError caps an error message shown in place of a value.
+	describeMaxError = 128
 )
 
 func (o DescribeOptions) withDefaults() DescribeOptions {
@@ -85,17 +83,18 @@ func (o DescribeOptions) withDefaults() DescribeOptions {
 // for the expression that produced it; nil uses the value's own.
 //
 // Laziness is shown, not hidden: a GraphQL object handle is rendered as
-// `<lazy: chain>`, the query chain it would run, and an object field not
-// initialized yet as `<lazy>`. Describe evaluates neither unless
-// opts.Force is set, so describing a Dagger Container runs no build.
+// `<Container: chain>`, its type and the query chain it would run (argument
+// names, not values), and an object field not initialized yet as `<lazy>`.
+// Describe evaluates neither unless opts.Force is set, so describing a
+// Dagger Container runs no build.
 //
 // The rendering is deterministic: lists keep their order, maps their
 // insertion order, objects their declaration order, and query arguments are
 // sorted by name.
 //
 // Describe differs from Repr, which renders the literal a value reads back as
-// with no caps, types or laziness, and from toString/JSON.encode, which
-// force a GraphQL object to get its ID.
+// with no caps or types (a GraphQL handle in the same `<Type: chain>` form),
+// and from JSON.encode, which forces a GraphQL object to get its ID.
 func Describe(ctx context.Context, v Value, t hm.Type, opts DescribeOptions) string {
 	d := &describer{ctx: ctx, opts: opts.withDefaults()}
 	if t == nil && v != nil {
@@ -447,16 +446,13 @@ func errorMessage(err error) string {
 	if i := strings.IndexByte(msg, '\n'); i >= 0 {
 		msg = msg[:i]
 	}
-	return capped(msg, describeMaxArgString*2)
+	return capped(msg, describeMaxError)
 }
 
 // describeGraphQL renders a GraphQL object handle: the query chain it holds,
 // unevaluated, or with opts.Force, its scalar fields as fetched.
 func (d *describer) describeGraphQL(g GraphQLValue, depth int) describeDoc {
-	lazy := leafDoc(fmt.Sprintf("<lazy %s: %s>", g.TypeName, d.chain(g, 0)))
-	if depth == 0 {
-		lazy = leafDoc(fmt.Sprintf("<lazy: %s>", d.chain(g, 0)))
-	}
+	lazy := leafDoc(d.chain(g))
 	if !d.opts.Force {
 		return lazy
 	}
@@ -624,89 +620,10 @@ type forcedField struct {
 	err error
 }
 
-// chain renders the query chain a GraphQL handle holds, Dang-style:
-// `container.from(address: "alpine").withExec(args: ["echo"])`. Object
-// arguments render as their own chains; nothing is run or marshalled.
-func (d *describer) chain(g GraphQLValue, depth int) string {
-	if g.QueryChain == nil {
-		return g.TypeName
-	}
-	var b strings.Builder
-	if g.IsMutation {
-		b.WriteString("mutation ")
-	}
-	for i, step := range g.QueryChain.Steps() {
-		if i > 0 {
-			b.WriteString(".")
-		}
-		switch {
-		case step.InlineFragment != "":
-			b.WriteString("(as " + step.InlineFragment + ")")
-		case len(step.Fields) > 0:
-			b.WriteString("{{" + strings.Join(step.Fields, ", ") + "}}")
-		default:
-			if step.Alias != "" {
-				b.WriteString(step.Alias + ": ")
-			}
-			b.WriteString(step.Name)
-		}
-		if len(step.Args) > 0 {
-			b.WriteString("(")
-			for j, arg := range step.Args {
-				if j > 0 {
-					b.WriteString(", ")
-				}
-				b.WriteString(arg.Name)
-				b.WriteString(": ")
-				b.WriteString(d.chainArg(arg.Value, depth))
-			}
-			b.WriteString(")")
-		}
-	}
-	return b.String()
-}
-
-// chainArg renders an argument as it was handed to the query builder (see
-// dangValueToGo).
-func (d *describer) chainArg(v any, depth int) string {
-	switch v := v.(type) {
-	case nil:
-		return "null"
-	case string:
-		return quoteCapped(v, describeMaxArgString)
-	case gqlEnumValue:
-		return v.val
-	case gqlObjectMarshaller:
-		if depth >= d.opts.MaxDepth {
-			return "<" + v.val.TypeName + ">"
-		}
-		return d.chain(v.val, depth+1)
-	case []any:
-		parts := make([]string, 0, len(v))
-		for i, elem := range v {
-			if i == d.opts.MaxItems {
-				parts = append(parts, fmt.Sprintf("… (%d more)", len(v)-i))
-				break
-			}
-			parts = append(parts, d.chainArg(elem, depth+1))
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	case map[string]any:
-		keys := make([]string, 0, len(v))
-		for k := range v {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		parts := make([]string, 0, len(keys))
-		for _, k := range keys {
-			parts = append(parts, k+": "+d.chainArg(v[k], depth+1))
-		}
-		return "{{" + strings.Join(parts, ", ") + "}}"
-	case json.Number:
-		return v.String()
-	default:
-		return capped(fmt.Sprint(v), describeMaxArgString)
-	}
+// chain renders a GraphQL handle, `<Container: container.from(address: …)>`,
+// as Display does (see renderHandle): argument values aren't shown.
+func (d *describer) chain(g GraphQLValue) string {
+	return renderHandle(g)
 }
 
 // quoteCapped quotes s as a Dang string literal, keeping max characters of

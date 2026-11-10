@@ -1,7 +1,6 @@
 package dang
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -24,7 +23,10 @@ import (
 //     literal with sorted keys, `["a": 1]`;
 //   - a float always reads back as a float (`1.0`), an enum value nested in
 //     a collection is `Color.RED`, a custom scalar the string literal it
-//     refines from, and a GraphQL object its quoted ID.
+//     refines from, and a GraphQL object the lazy query it is, its type and
+//     the chain that produces it with argument names but not values,
+//     `<Container: container.from(address: …)>` (see renderHandle); nothing
+//     is sent to show it, and the brackets keep it from reading as source.
 //
 // Types without a distinct literal form — modules, functions — fall back to
 // String().
@@ -133,16 +135,10 @@ func writeRepr(b *strings.Builder, v Value) {
 	case FloatValue:
 		b.WriteString(floatRepr(v.Val))
 	case GraphQLValue:
-		// A GraphQL object stands for its ID, as it does when sent back. A
-		// value reached through a mutation isn't asked for its ID unless it
-		// is known: asking would send the mutation again.
-		if v.KnownID != "" || !v.IsMutation {
-			if id, err := v.ID(context.TODO()); err == nil {
-				b.WriteString(strconv.Quote(id))
-				return
-			}
-		}
-		b.WriteString(v.String())
+		// A GraphQL object is the lazy query that produces it, read off the
+		// handle: nothing is sent, so showing a mutation's result doesn't
+		// run it again.
+		b.WriteString(renderHandle(v))
 	case DeferredValue:
 		raw, err := canonicalDecoded(v)
 		if err != nil {

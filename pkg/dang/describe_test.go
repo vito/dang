@@ -108,7 +108,7 @@ func TestDescribeLazyGraphQL(t *testing.T) {
 	require.Zero(t, client.count(), "evaluating the chain ran a query")
 
 	lazy := Describe(ctx, val, typ, DescribeOptions{})
-	require.Equal(t, `Test.Container! = <lazy: container.from(address: "alpine").withEnv(name: "A", value: "b")>
+	require.Equal(t, `Test.Container! = <Container: container.from(address: …).withEnv(name: …, value: …)>
 (not evaluated; select a field such as .sync or .stdout to run it)`, lazy)
 	require.Zero(t, client.count(), "describing a lazy value ran a query")
 	require.Equal(t, lazy, Describe(ctx, val, typ, DescribeOptions{}))
@@ -116,7 +116,7 @@ func TestDescribeLazyGraphQL(t *testing.T) {
 	// Nested, the handle says what type it is.
 	val, typ, err = m.Eval(ctx, "", `{{c: container.from(address: "alpine"), n: 1}}`)
 	require.NoError(t, err)
-	require.Equal(t, `{c: Test.Container!, n: Int!}! = {{c: <lazy Container: container.from(address: "alpine")>, n: 1}}`,
+	require.Equal(t, `{c: Test.Container!, n: Int!}! = {{c: <Container: container.from(address: …)>, n: 1}}`,
 		Describe(ctx, val, typ, DescribeOptions{Width: -1}))
 	require.Zero(t, client.count())
 
@@ -140,7 +140,7 @@ func TestDescribeNeverForcesMutations(t *testing.T) {
 
 	val, typ, err := m.Eval(ctx, "", `Mutation.createContainer(name: "a")`)
 	require.NoError(t, err)
-	require.Equal(t, `Test.Container! = <lazy: mutation createContainer(name: "a")> (not forced: it would send the mutation again)`,
+	require.Equal(t, `Test.Container! = <Container: mutation.createContainer(name: …)> (not forced: it would send the mutation again)`,
 		Describe(ctx, val, typ, DescribeOptions{Force: true}))
 	require.Zero(t, client.count())
 }
@@ -153,7 +153,7 @@ func TestDescribeLazyGraphQLList(t *testing.T) {
 
 	val, typ, err := m.Eval(ctx, "", `containers`)
 	require.NoError(t, err)
-	require.Equal(t, `GraphQL[Test.Container!]! = <lazy: containers>
+	require.Equal(t, `GraphQL[Test.Container!]! = <[Container]: containers>
 (not evaluated; select fields with .{{…}} to run it)`, Describe(ctx, val, typ, DescribeOptions{}))
 	require.Zero(t, client.count())
 

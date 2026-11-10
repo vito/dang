@@ -1,6 +1,19 @@
 import Test
 
-# A GraphQL object renders as its quoted ID, as it is sent back to the server.
-let u = user(id: "User:1")!
-assert { toString(u) == "\"User:1\"" }
-assert { toString([u]) == "[\"User:1\"]" }
+# A GraphQL object renders as the lazy query it is, `<Type: chain>`, read off
+# the handle without a query. Argument values are never shown, only their
+# names: any of them could be a secret.
+assert { toString(primaryUser) == "<User: primaryUser>" }
+assert { toString([primaryUser, secondaryUser]) == "[<User: primaryUser>, <User: secondaryUser>]" }
+assert { [primaryUser, secondaryUser].join(" & ") == "<User: primaryUser> & <User: secondaryUser>" }
+assert { `${primaryUser}` == "<User: primaryUser>" }
+
+# A mutation's result isn't sent to be shown; an interface handle shows its
+# declared type.
+assert { toString(Mutation.touchNode(id: "Post:1")) == "<Node: mutation.touchNode(id: …)>" }
+
+# A handle loaded by ID shows the loader's chain.
+assert { toString(favoriteUserID) == "<User: node(id: …)>" }
+
+# Code that wants the ID selects it.
+assert { toString(primaryUser.id) == "User:1" }
