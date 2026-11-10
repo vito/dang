@@ -165,7 +165,7 @@ func LoadDir(ctx context.Context, dir string, opts LoadOptions) (*Module, error)
 		return nil, withSourceText(ConvertInferError(err), m.sources)
 	}
 
-	values := NewValueScope(types)
+	values := newDirectoryValueScope(types)
 	evalCtx := NewEvalContext(dir, "")
 	evalCtx.sources = m.sources
 	if err := evaluateDirectory(WithEvalContext(ctx, evalCtx), blocks, values, opts.Eager); err != nil {
@@ -312,15 +312,17 @@ type Session struct {
 func (m *Module) NewSession(ctx context.Context) (*Session, error) {
 	ctx = m.context(ctx)
 	// The session's root value frame is sealed, so writes to the module's
-	// bindings stay in the session.
+	// bindings stay in the session. Its imports, like a file's, start with
+	// the builtin imports (see builtin_imports.go).
 	s := &Session{
 		module:       m,
-		types:        m.TypeEnv.Clone().(TypeScope),
+		types:        withoutBuiltinImports(m.TypeEnv).Clone().(TypeScope),
 		values:       m.ValueEnv.Derive(true),
-		importTypes:  newFileImportsScope(m.TypeEnv),
+		importTypes:  newFileImportsScope(),
 		importValues: m.ValueEnv.Derive(true),
 		sources:      maps.Clone(m.sources),
 	}
+	installBuiltinImportValues(s.importValues)
 	if s.sources == nil {
 		s.sources = map[string]string{}
 	}

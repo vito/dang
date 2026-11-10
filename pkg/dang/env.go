@@ -286,6 +286,10 @@ type Type struct {
 	// faults one whose constructor signature failed to check (see
 	// hasDecodableShape).
 	declaredInSource bool
+
+	// builtinImports marks the frame of builtin imports below a module's
+	// own frame (see builtinImportsTypeScope).
+	builtinImports bool
 }
 
 func NewType(name string, kind Kind) *Type {

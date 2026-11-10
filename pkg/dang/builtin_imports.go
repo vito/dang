@@ -10,40 +10,62 @@ import (
 // import statement: its builtin namespaces, the modules holding static
 // builtins (JSON, YAML, TOML, Random, UUID; see StaticModules). They are
 // installed by the import installer, reached qualified only (`JSON.encode`,
-// never a bare `encode`), into a frame of their own between the prelude and
-// each module's scope, so that:
+// never a bare `encode`), before the module's explicit imports, so that:
 //
 //   - they are imports, with an import's origin, wherever a module's names
 //     are listed or looked up;
 //   - the module's own declarations shadow them, as they shadow the prelude;
+//   - an explicit import of the same name replaces one, as it replaces an
+//     earlier import of that name;
 //   - an unqualified name of one of the module's explicit imports never
 //     overrides them, as it never overrides any import's namespace (see
 //     resolvesToImportNamespace);
 //   - they stay the module's own: an import's namespace, a schema's or a
 //     native module's, holds only what the import itself defines.
+//
+// Where they go follows where a module's explicit imports go. A single-file
+// program (and a REPL) imports into its own frame, so they sit in a frame
+// below it, between it and the prelude (NewPreludeTypeScope, NewValueScope).
+// A directory module imports per file, into a frame looked up after the
+// module's declarations, so each file's import frame gets them first
+// (newFileImportsScope, installBuiltinImportValues), and the module's own
+// chain goes without them (withoutBuiltinImports, newDirectoryValueScope).
 
 // builtinImportsTypeScope returns a frame holding the builtin imports, over
 // the prelude.
 func builtinImportsTypeScope() TypeScope {
+	imports := newFileImportsScope()
+	imports.builtinImports = true
+	return &OverlayTypeScope{primary: imports, lexical: preludeChain}
+}
+
+// newFileImportsScope returns a frame holding the builtin imports, for a
+// directory module's file to install its explicit imports in after them.
+func newFileImportsScope() *Type {
 	imports := NewType("", ObjectKind)
 	for _, mod := range StaticModules() {
 		installQualifiedImportTypeScope(imports, mod.Named, mod)
 	}
-	return &OverlayTypeScope{primary: imports, lexical: preludeChain}
+	return imports
 }
 
-// newFileImportsScope returns the frame a file of the module whose type scope
-// is moduleScope (a NewPreludeTypeScope) installs its imports in, kept apart
-// from the module's declarations. It resolves through what lies below those,
-// the builtin imports and the prelude, so the file's imports see the builtin
-// imports as they would in the module's own frame: no unqualified import name
-// overrides one (see resolvesToImportNamespace).
-func newFileImportsScope(moduleScope TypeScope) *Type {
-	frame := NewType("", ObjectKind)
-	if module, ok := moduleScope.(*OverlayTypeScope); ok {
-		frame.Parent = module.lexical
+// withoutBuiltinImports returns a module's type scope (a NewPreludeTypeScope)
+// without the frame of builtin imports below it, for a directory module, whose
+// files import them along with their explicit imports. Any other scope is
+// returned as it is.
+func withoutBuiltinImports(scope TypeScope) TypeScope {
+	module, ok := scope.(*OverlayTypeScope)
+	if !ok {
+		return scope
 	}
-	return frame
+	below, ok := module.lexical.(*OverlayTypeScope)
+	if !ok {
+		return scope
+	}
+	if frame, ok := below.primary.(*Type); !ok || !frame.builtinImports {
+		return scope
+	}
+	return &OverlayTypeScope{primary: module.primary, lexical: below.lexical}
 }
 
 // installBuiltinImportValues binds the builtin imports' namespaces in frame.

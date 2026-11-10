@@ -221,6 +221,42 @@ assert { otherInBlock == 10 }
 		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
 	})
 
+	t.Run("an explicit import replaces a builtin import", func(ctx context.Context, t *testctx.T) {
+		root := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0755))
+		writeFiles(root, map[string]string{
+			"dang.toml":      "[imports.YAML]\npath = \"./yaml\"\n",
+			"yaml/yaml.dang": "x: Int! = 42\n",
+			// The file importing YAML gets the module; a file of the same
+			// module that doesn't still gets the builtin import.
+			"main.dang":  "import YAML\nassert { YAML.x == 42 }\n",
+			"other.dang": "assert { YAML.encode(1) == \"1\" }\n",
+		})
+
+		_, err := dang.RunDir(ctx, root, false)
+		require.NoError(t, err)
+		_, err = dang.DeclareDir(ctx, root, false)
+		require.NoError(t, err)
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "main.dang"), false))
+		require.NoError(t, dang.RunFile(ctx, filepath.Join(root, "other.dang"), false))
+
+		m, err := dang.LoadDir(ctx, root, dang.LoadOptions{})
+		require.NoError(t, err)
+		defer m.Close()
+		session, err := m.NewSession(ctx)
+		require.NoError(t, err)
+		snippet, err := session.Check(ctx, "", "YAML.encode(1)")
+		require.NoError(t, err)
+		val, err := snippet.Eval(ctx)
+		require.NoError(t, err)
+		require.Equal(t, dang.StringValue{Val: "1"}, val)
+		snippet, err = session.Check(ctx, "", "import YAML\nYAML.x")
+		require.NoError(t, err)
+		val, err = snippet.Eval(ctx)
+		require.NoError(t, err)
+		require.Equal(t, dang.IntValue{Val: 42}, val)
+	})
+
 	t.Run("declared functions shadow builtins", func(ctx context.Context, t *testctx.T) {
 		root := t.TempDir()
 		writeFiles(root, map[string]string{

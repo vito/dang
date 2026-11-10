@@ -491,6 +491,28 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 // the frame it is published to is not published again (see FieldDecl.Eval),
 // so a builtin bound there would win over a module's own `let loop = ...`.
 func NewValueScope(typeScope TypeScope) ValueScope {
+	builtinsFrame := newBuiltinsFrame(typeScope)
+
+	// The builtin imports sit between the builtins and the program, like the
+	// type scope's (see NewPreludeTypeScope). The frame is the builtins' too,
+	// as far as copy-on-write and scope listings go: no generations of the
+	// program's frames live there.
+	importsFrame := builtinsFrame.Derive(false).(*Object)
+	importsFrame.builtins = true
+	installBuiltinImportValues(importsFrame)
+
+	return importsFrame.Derive(false)
+}
+
+// newDirectoryValueScope is NewValueScope for a directory module, without the
+// builtin imports, which each file imports along with its explicit imports
+// (see evaluateDirectory and builtin_imports.go).
+func newDirectoryValueScope(typeScope TypeScope) ValueScope {
+	return newBuiltinsFrame(typeScope).Derive(false)
+}
+
+// newBuiltinsFrame returns the frame of builtins below a program's scope.
+func newBuiltinsFrame(typeScope TypeScope) *Object {
 	// Create an Object from the type environment
 	builtinsFrame := NewObject(typeScope)
 	builtinsFrame.builtins = true
@@ -506,16 +528,7 @@ func NewValueScope(typeScope TypeScope) ValueScope {
 	for t, c := range preludeConstructors {
 		builtinsFrame.BindConstructor(t, c)
 	}
-
-	// The builtin imports sit between the builtins and the program, like the
-	// type scope's (see NewPreludeTypeScope). The frame is the builtins' too,
-	// as far as copy-on-write and scope listings go: no generations of the
-	// program's frames live there.
-	importsFrame := builtinsFrame.Derive(false).(*Object)
-	importsFrame.builtins = true
-	installBuiltinImportValues(importsFrame)
-
-	return importsFrame.Derive(false)
+	return builtinsFrame
 }
 
 // ValueScopeFromSchema creates the value namespace of a schema import: the
@@ -3913,7 +3926,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 
 	slog.Debug("directory type inference completed", "dir", dirPath)
 
-	valueScope := NewValueScope(typeScope)
+	valueScope := newDirectoryValueScope(typeScope)
 
 	if isDebug {
 		fmt.Println("Running phased evaluation...")
@@ -3968,8 +3981,12 @@ func evaluateDirectory(ctx context.Context, blocks []*FileBlock, valueScope Valu
 
 		// Install imports into a fresh per-file env. Using Derive (rather than
 		// a sibling Object) keeps the prelude reachable for any lookups
-		// the imports phase performs during installation.
+		// the imports phase performs during installation. The builtin
+		// imports come first, so an explicit import replaces one of the same
+		// name (see builtin_imports.go); valueScope, from
+		// newDirectoryValueScope, has none of its own.
 		importsScope := valueScope.Derive(true)
+		installBuiltinImportValues(importsScope)
 		for _, imp := range imports {
 			if _, err := EvalNode(ctx, importsScope, imp); err != nil {
 				return err

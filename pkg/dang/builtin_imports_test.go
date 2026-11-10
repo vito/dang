@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,33 @@ func TestBuiltinImportsAreQualifiedImports(t *testing.T) {
 	// Qualified only.
 	_, found := scope.SchemeOf("encode")
 	require.False(t, found)
+}
+
+func TestAutoImportReplacesBuiltinImport(t *testing.T) {
+	// An auto-imported config named like a builtin import replaces it, in
+	// every file, as an explicit import would.
+	schema, err := SchemaFromSDL(fakeSchema, "fake.graphqls")
+	require.NoError(t, err)
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:       "YAML",
+		Schema:     schema,
+		Client:     &fakeClient{},
+		AutoImport: true,
+	})
+	dir := writeModule(t, map[string]string{
+		"main.dang": "assert { YAML.engineVersion == \"v1\" }\n",
+	})
+
+	_, err = RunDir(ctx, dir, false)
+	require.NoError(t, err)
+	require.NoError(t, RunFile(ctx, filepath.Join(dir, "main.dang"), false))
+
+	m, err := LoadDir(ctx, dir, LoadOptions{})
+	require.NoError(t, err)
+	defer m.Close()
+	val, _, err := m.Eval(ctx, "", "YAML.engineVersion")
+	require.NoError(t, err)
+	require.Equal(t, StringValue{Val: "v1"}, val)
 }
 
 func TestUnqualifiedImportKeepsBuiltinImport(t *testing.T) {

@@ -186,6 +186,36 @@ func TestResolveImportsAddsImports(t *testing.T) {
 	require.Empty(t, a.Diagnostics())
 }
 
+func TestImportReplacesBuiltinImport(t *testing.T) {
+	// A file importing a schema named like a builtin import sees the schema
+	// under that name; a sibling file that doesn't sees the builtin.
+	schema, err := dang.SchemaFromSDLFile(filepath.Join("..", "..", "..", "tests", "gqlserver", "schema.graphqls"))
+	require.NoError(t, err)
+	mainSrc := "import YAML\n\npub info: YAML.ServerInfo! = YAML.serverInfo\n"
+	otherSrc := "pub encoded = YAML.encode(1)\n"
+	src := mapFS(map[string]string{
+		"main.dang":  mainSrc,
+		"other.dang": otherSrc,
+	})
+
+	a, err := analysis.Analyze(context.Background(), src, ".", analysis.Options{
+		ImportConfigs: []dang.ImportConfig{{Name: "YAML", Schema: schema}},
+	})
+	require.NoError(t, err)
+	require.Empty(t, a.Diagnostics())
+
+	sym, err := a.Inspect("main.dang", at(t, mainSrc, "YAML.serverInfo", 0, 0))
+	require.NoError(t, err)
+	require.NotNil(t, sym.Member)
+	_, found := sym.Member.Scope.NamedType("ServerInfo")
+	require.True(t, found, "YAML is the schema in the file importing it")
+
+	sym, err = a.Inspect("other.dang", at(t, otherSrc, "YAML.encode", 0, 0))
+	require.NoError(t, err)
+	require.NotNil(t, sym.Member)
+	require.Same(t, dang.YAMLModule, sym.Member.Scope, "YAML is the builtin import elsewhere")
+}
+
 func TestDiagnosticsFlagDeprecatedBuiltins(t *testing.T) {
 	src := mapFS(map[string]string{
 		"main.dang": "let s = toJSON([1, 2, 3])\n",

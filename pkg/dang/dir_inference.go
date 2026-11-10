@@ -61,17 +61,21 @@ type fileScope struct {
 // name — whether at file top level or nested inside a block — installs the
 // same *Type and types like Dagger.Workspace unify across file boundaries.
 func prepareFileScopes(ctx context.Context, files []*FileBlock, dirScope TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
+	// The module's declarations come first, then each file's imports: the
+	// builtin imports (see builtin_imports.go), then its explicit ones, which
+	// replace a builtin import of the same name.
+	moduleScope := withoutBuiltinImports(dirScope)
 	scopes := make([]fileScope, 0, len(files))
 	for _, block := range files {
 		block.Forms = prependAutoImports(ctx, block.Forms)
 		imports, rest := partitionImports(block.Forms)
 
-		importsScope := newFileImportsScope(dirScope)
+		importsScope := newFileImportsScope()
 		if _, err := inferImportsPhaseResilient(ctx, imports, importsScope, fresh, errs); err != nil {
 			errs.Add(err)
 		}
 
-		composite := &OverlayTypeScope{primary: dirScope, lexical: importsScope}
+		composite := &OverlayTypeScope{primary: moduleScope, lexical: importsScope}
 		block.TypeScope = composite
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),
