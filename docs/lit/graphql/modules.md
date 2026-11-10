@@ -128,6 +128,21 @@ name (see [#enums-scalars]):
 - imported directives are usable unqualified: `@customDirective(...)` (see [#directives])
 - the import's namespace holds only what the schema defines, plus GraphQL's built-in scalars (`Demo.String`, `Demo.Int`, …); Dang's own builtins and types aren't in it, so `Demo.print` or `Demo.Path` is an error unless the schema defines that name
 
+## Builtin imports
+
+Every module also gets Dang's builtin namespaces — `JSON`, `YAML`, `TOML`,
+`Random` and `UUID` — as imports it doesn't write (see [#json-yaml] and
+[#stdlib]). They are reached qualified only:
+
+```dang
+{{encoded: JSON.encode([1, 2]), uuidLength: UUID.v4.length}}
+```
+
+- there is no bare `encode`, `decode` or `int`: always `JSON.decode(…)`, `Random.int(…)`
+- a declaration of the same name in the module shadows one (`type JSON { … }`, `let Random = …`); the builtin is then out of reach in that module
+- an unqualified name from an explicit import never overrides one: a schema's `scalar JSON` (Dagger has one) is reached as `Dagger.JSON`, and `JSON` stays the codec namespace
+- like every import of a module, they aren't part of what it exports: `Demo.YAML`, or `Helpers.YAML` from a native module, is an error unless that schema or module defines a `YAML`
+
 ## Shadowing
 
 A local declaration shadows an imported name of the same spelling, and the

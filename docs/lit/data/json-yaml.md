@@ -7,7 +7,8 @@
 
 Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with matching
 `encode` / `decode` static methods. They are plain modules owned by Dang, like
-`Random`, so they work with no schema import. Data of unknown shape, whichever
+`Random`, which every module gets as builtin imports, so they work with no
+`import` statement (see [#modules]). Data of unknown shape, whichever
 format it came from, is `Decoded` (see [#decoded-values]). A schema's scalar
 of the same name (e.g. Dagger's `JSON`) is a separate type, reached qualified
 (`Dagger.JSON`), while unqualified `JSON` stays Dang's own (see
@@ -456,5 +457,15 @@ All of these are recoverable with `rescue` ([#errors]):
 ```dang
 (JSON.decode("{") :: Summary!) rescue { e: Error! => e.message }
 ```
+
+A type with no constructor, such as a namespace (`JSON`, `Random`, an
+import's) or a schema's object type, can't be decoded into at all. That is a
+type error, caught before anything runs, in a field as well as at the top:
+
+```dang-failure
+JSON.decode("{}") :: Random!
+```
+
+Write `Decoded!` for data of any shape (see [#decoded-values]).
 
 > Meta: A side-by-side "JSON in / Dang value out" table would be a nice teaching tool.

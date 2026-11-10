@@ -146,6 +146,7 @@ import MyApi
 - A local `type User { ... }` shadows the imported `User` (qualified `MyApi.User` still works); a local declaration also resolves an otherwise-ambiguous unqualified name (local wins).
 - Without a local shadow, an unqualified name provided by two imports is an error: `ambiguous reference to "Status": provided by imports [Other Test]` — must qualify. Same for `Mutation` and directives.
 - Your own declarations shadow builtins too (`let loop = ...`, `pub toString(...)`), but an unqualified import never does: an imported root field named like a builtin is reachable only qualified (`MyApi.print`).
+- Nor does an unqualified import name override an import's namespace, whether an explicit import's or a builtin import's (`JSON`, `YAML`, `TOML`, `Random`, `UUID`; see stdlib.md "Builtin imports"): a schema's `scalar JSON` is reached as `MyApi.JSON`, and unqualified `JSON` stays the codec namespace.
 
 ### Ordering & cycles
 - Forward references across files work.
