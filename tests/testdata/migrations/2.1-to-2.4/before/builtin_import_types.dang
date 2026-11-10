@@ -1,0 +1,32 @@
+# Before Dang 2.4, a bare type named like a builtin import (JSON, YAML, TOML,
+# Random, UUID) is the type an import brings in unqualified, if one does, as
+# Dagger entrypoints' `fnArgs: JSON!` are Dagger's JSON scalar. The value
+# keeps naming the builtin namespace: `JSON.encode` is the builtin's. From
+# Dang 2.4, the namespace is the type too, so the import's type is qualified.
+
+import Scalars
+
+pub call(receiverType: String!, receiverValue: JSON, fnName: String!, fnArgs: JSON!): JSON! {
+  let request = JSON.encode({{
+    receiverType: receiverType,
+    receiverValue: receiverValue,
+    fnName: fnName,
+    fnArgs: fnArgs,
+  }})
+  (request :: JSON!)
+}
+
+let result: JSON! = call("T", ("{}" :: JSON!), "f", ("[1]" :: JSON!))
+assert {
+  JSON.encode(result) == JSON.encode("{\"receiverType\":\"T\",\"receiverValue\":\"{}\",\"fnName\":\"f\",\"fnArgs\":\"[1]\"}")
+}
+
+# The same type, spelled qualified.
+pub same(x: JSON!): Scalars.JSON! { x }
+assert { JSON.encode(same(result)) == JSON.encode(result) }
+
+# A list of it, and a type with fields of it.
+type Request {
+  pub args: [JSON!]! = []
+}
+assert { JSON.encode(Request(args: [("1" :: JSON!)]).args) == "[\"1\"]" }

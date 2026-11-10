@@ -34,20 +34,69 @@ import (
 // reformatted, so moving to a version that changed no syntax this file uses
 // leaves it alone.
 func MigrateSource(filename string, source []byte, from, to Version) (string, error) {
-	return migrateSource(filename, source, from, to, false)
+	return migrateSource(filename, source, from, to, false, nil)
+}
+
+// MigrateSourceWithImports is MigrateSource for source whose imports bring
+// in what imports reports (see BuiltinImportTypes): migrating it past Dang
+// 2.4 qualifies the bare types that resolve differently there (see
+// importTypesOverBuiltinImports), e.g. `JSON` as `Dagger.JSON`, so they keep
+// their meaning. Its module is taken to declare only what source declares.
+func MigrateSourceWithImports(filename string, source []byte, from, to Version, imports map[string]ImportedTypes) (string, error) {
+	qualifiers, err := sourceImportTypeQualifiers(filename, source, from, to, imports, nil)
+	if err != nil {
+		return "", err
+	}
+	return migrateSource(filename, source, from, to, false, qualifiers)
+}
+
+// sourceImportTypeQualifiers returns the importTypeQualifiers of source,
+// written in version from, for migrating it to version to: none unless the
+// migration crosses importTypesOverBuiltinImports. moduleDeclared reports
+// what the source's module declares at its top level besides the source
+// itself, if anything.
+func sourceImportTypeQualifiers(filename string, source []byte, from, to Version, imports map[string]ImportedTypes, moduleDeclared func(string) bool) (map[string]string, error) {
+	if len(imports) == 0 || !from.importTypesOverBuiltinImports() || to.importTypesOverBuiltinImports() {
+		return nil, nil
+	}
+	parsed, err := Parse(filename, source, WithVersion(from))
+	if err != nil {
+		// Reported by the migration itself.
+		return nil, nil
+	}
+	file := parsed.(*FileBlock)
+	own := declaresAtTop(file)
+	declared := func(name string) bool {
+		return slices.Contains(own, name) || (moduleDeclared != nil && moduleDeclared(name))
+	}
+	qualifiers, err := importTypeQualifiers(file, imports, declared)
+	if err != nil {
+		return nil, fmt.Errorf("migrating to Dang %s would change the meaning of a bare type: %w", to, err)
+	}
+	return qualifiers, nil
 }
 
 // migrateSource is MigrateSource, where moduleBindsLoop reports whether
 // another file of the source's module declares `loop` at its top level (see
-// forLoopCollision).
-func migrateSource(filename string, source []byte, from, to Version, moduleBindsLoop bool) (string, error) {
+// forLoopCollision), and the bare types named like a key of qualifiers are
+// qualified by the import it maps to (see qualifyImportTypes).
+func migrateSource(filename string, source []byte, from, to Version, moduleBindsLoop bool, qualifiers map[string]string) (string, error) {
 	if to.Before(from) {
 		return "", fmt.Errorf("cannot migrate from Dang %s back to %s", from, to)
+	}
+	qualified := false
+	var rewrite func(*FileBlock)
+	if len(qualifiers) > 0 {
+		rewrite = func(file *FileBlock) {
+			if qualifyImportTypes(file, qualifiers) {
+				qualified = true
+			}
+		}
 	}
 	// Template interpolations are code, so a migration re-prints them in the
 	// target version rather than echoing them as written.
 	migrating := from.orCurrent() != to.orCurrent()
-	migrated, err := formatSource(filename, source, from, to, migrating)
+	migrated, err := formatRewrittenSource(filename, source, from, to, migrating, rewrite)
 	if err != nil {
 		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, EnhanceParseError(err, filename, source))
 	}
@@ -59,8 +108,9 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		// Compare against the source formatted in its own version, so that
 		// formatting's own normalizations (e.g. dropping empty parens) don't
 		// count as differences. Its interpolations are re-printed too, so
-		// that the two texts are comparable.
-		formatted, err := formatSource(filename, source, from, from, true)
+		// that the two texts are comparable, and its bare types qualified
+		// alike, which means the same in its own version.
+		formatted, err := formatRewrittenSource(filename, source, from, from, true, rewrite)
 		if err != nil {
 			return "", err
 		}
@@ -85,7 +135,7 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		// is rather than reformatting it, provided it means the same as
 		// written. The formatted texts agreeing is not enough: formatting
 		// normalizes old spellings like 2.0's comma separators.
-		if formatted == migrated && sameMeaning(filename, source, from, to) {
+		if formatted == migrated && !qualified && sameMeaning(filename, source, from, to) {
 			return string(source), nil
 		}
 	}
@@ -441,6 +491,16 @@ type MigrateOptions struct {
 	// the target version, which takes precedence over an embedder's pin from
 	// then on; a dang.toml without the key gains it.
 	UndeclaredFrom Version
+
+	// ImportedTypes, if set, returns what the imports of the project whose
+	// dang.toml is configPath bring in (see BuiltinImportTypes), for the
+	// source a dang.toml governs, or root's when none does (configPath is
+	// then where the migration would create one). Migrating past Dang 2.4
+	// needs it to qualify the bare types an import brings in that are named
+	// like a builtin import (see importTypesOverBuiltinImports), e.g. `JSON`
+	// as `Dagger.JSON`; without it, they are left bare, and come to name the
+	// builtin import. It is only called for projects that have such types.
+	ImportedTypes func(configPath string) (map[string]ImportedTypes, error)
 }
 
 // A MigrationPlan is the result of PlanMigrations.
@@ -593,13 +653,46 @@ func PlanMigrations(root string, to Version, opts MigrateOptions) (*MigrationPla
 				loopDecls[filepath.Dir(path)]++
 			}
 		}
+		// What the project's imports bring in, if a bare type may need
+		// qualifying, and what each file declares, for its module's other
+		// files.
+		var imports map[string]ImportedTypes
+		topDecls := make([][]string, len(p.files))
+		if opts.ImportedTypes != nil && p.from.importTypesOverBuiltinImports() && !to.importTypesOverBuiltinImports() {
+			bare := false
+			for i, path := range p.files {
+				if parsed, err := Parse(path, sources[i], WithVersion(p.from)); err == nil {
+					file := parsed.(*FileBlock)
+					topDecls[i] = declaresAtTop(file)
+					bare = bare || hasBareBuiltinImportTypes(file)
+				}
+			}
+			if bare {
+				imports, err = opts.ImportedTypes(configPath)
+				if err != nil {
+					return nil, fmt.Errorf("resolving the imports of %s: %w", configPath, err)
+				}
+			}
+		}
 		for i, path := range p.files {
 			source := sources[i]
 			others := loopDecls[filepath.Dir(path)]
 			if declaresLoop[i] {
 				others--
 			}
-			migrated, err := migrateSource(path, source, p.from, to, others > 0)
+			moduleDeclared := func(name string) bool {
+				for j, other := range p.files {
+					if j != i && filepath.Dir(other) == filepath.Dir(path) && slices.Contains(topDecls[j], name) {
+						return true
+					}
+				}
+				return false
+			}
+			qualifiers, err := sourceImportTypeQualifiers(path, source, p.from, to, imports, moduleDeclared)
+			if err != nil {
+				return nil, fmt.Errorf("migrating %s: %w", path, err)
+			}
+			migrated, err := migrateSource(path, source, p.from, to, others > 0, qualifiers)
 			if errors.Is(err, errUnparseable) {
 				plan.Unparseable = append(plan.Unparseable, UnparseableFile{Path: path, Err: err})
 				continue

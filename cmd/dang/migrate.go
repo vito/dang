@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -88,6 +89,9 @@ did not (e.g. ` + "`loop`" + ` for a ` + "`for`" + ` loop).`,
 				}
 				opts.UndeclaredFrom = v
 			}
+			resolve, stop := importedTypesResolver(cmd.Context())
+			defer stop()
+			opts.ImportedTypes = resolve
 			var files, dirs []string
 			for _, arg := range args {
 				info, err := os.Stat(arg)
@@ -205,7 +209,7 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 	if err != nil {
 		return err
 	}
-	_, config, err := dang.FindProjectConfig(filepath.Dir(file))
+	configPath, config, err := dang.FindProjectConfig(filepath.Dir(file))
 	if err != nil {
 		return err
 	}
@@ -221,13 +225,54 @@ func previewMigration(cmd *cobra.Command, file string, to dang.Version, opts dan
 		_, err = cmd.OutOrStdout().Write(source)
 		return err
 	}
-	migrated, err := dang.MigrateSource(file, source, from, to)
+	var imports map[string]dang.ImportedTypes
+	// Only the move to 2.4 depends on what the imports bring in.
+	if configPath != "" && opts.ImportedTypes != nil && from.Before(dang.Version2_4) && !to.Before(dang.Version2_4) {
+		imports, err = opts.ImportedTypes(configPath)
+		if err != nil {
+			return fmt.Errorf("%s: resolving the imports of %s: %w", file, configPath, err)
+		}
+	}
+	migrated, err := dang.MigrateSourceWithImports(file, source, from, to, imports)
 	if err != nil {
 		return fmt.Errorf("%s: %w", file, err)
 	}
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: Dang %s -> %s (preview; migrate its project's directory, %s, to write)\n", file, from, to, projectDir(file))
 	_, err = fmt.Fprint(cmd.OutOrStdout(), migrated)
 	return err
+}
+
+// importedTypesResolver returns a MigrateOptions.ImportedTypes that resolves
+// a project's dang.toml imports as running it would, Dagger's included, and a
+// func stopping the import services it started. A project no dang.toml
+// governs has no imports it can know of: an embedder (e.g. a Dagger SDK)
+// supplies those.
+func importedTypesResolver(ctx context.Context) (func(string) (map[string]dang.ImportedTypes, error), func()) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	services := &dang.ServiceRegistry{}
+	ctx = dang.ContextWithServices(ctx, services)
+	resolve := func(configPath string) (map[string]dang.ImportedTypes, error) {
+		if _, err := os.Stat(configPath); err != nil {
+			return nil, nil
+		}
+		config, err := dang.LoadProjectConfig(configPath)
+		if err != nil {
+			return nil, err
+		}
+		dir := filepath.Dir(configPath)
+		ctx := dang.ContextWithProjectConfig(ctx, configPath, config)
+		resolved, err := dang.ResolveImportConfigs(ctx, config, dir)
+		if err != nil {
+			return nil, err
+		}
+		if slices.ContainsFunc(resolved, func(ic dang.ImportConfig) bool { return ic.Dagger }) {
+			resolved = dang.ResolveDaggerImport(ctx, resolved, dir)
+		}
+		return dang.BuiltinImportTypes(ctx, resolved)
+	}
+	return resolve, services.StopAll
 }
 
 // projectDir returns the directory of the project file belongs to: that of

@@ -48,6 +48,7 @@ func (DangSuite) TestMigrations(ctx context.Context, t *testctx.T) {
 		scripts, err := filepath.Glob(filepath.Join(beforeDir, "*.dang"))
 		require.NoError(t, err)
 		require.NotEmpty(t, scripts, "no scripts in %s", beforeDir)
+		imports := migrationImports(ctx, t, beforeDir)
 
 		// after/ holds nothing but the migrated scripts.
 		migrated, err := filepath.Glob(filepath.Join(afterDir, "*.dang"))
@@ -64,7 +65,7 @@ func (DangSuite) TestMigrations(ctx context.Context, t *testctx.T) {
 
 				source, err := os.ReadFile(script)
 				require.NoError(t, err)
-				got, err := dang.MigrateSource(script, source, from, to)
+				got, err := dang.MigrateSourceWithImports(script, source, from, to, imports)
 				require.NoError(t, err)
 				golden.Assert(t, got, filepath.Join("migrations", name, "after", base))
 
@@ -73,6 +74,18 @@ func (DangSuite) TestMigrations(ctx context.Context, t *testctx.T) {
 			})
 		}
 	}
+}
+
+// migrationImports returns what the imports of the dang.toml governing dir
+// bring in, as `dang migrate` resolves them (see dang.BuiltinImportTypes).
+func migrationImports(ctx context.Context, t *testctx.T, dir string) map[string]dang.ImportedTypes {
+	configPath, config, err := dang.FindProjectConfig(dir)
+	require.NoError(t, err)
+	resolved, err := dang.ResolveImportConfigs(ctx, config, filepath.Dir(configPath))
+	require.NoError(t, err)
+	imports, err := dang.BuiltinImportTypes(ctx, resolved)
+	require.NoError(t, err)
+	return imports
 }
 
 func requireDirVersion(t *testctx.T, dir string, want dang.Version) {

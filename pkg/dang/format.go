@@ -72,9 +72,18 @@ func FormatFileWithVersion(source []byte, version Version) (string, error) {
 // version to's syntax. migrating re-prints template interpolations rather
 // than echoing them; see MigrateSource.
 func formatSource(filename string, source []byte, from, to Version, migrating bool) (string, error) {
+	return formatRewrittenSource(filename, source, from, to, migrating, nil)
+}
+
+// formatRewrittenSource is formatSource, where rewrite, if any, edits the
+// parsed AST before it is formatted (see qualifyImportTypes).
+func formatRewrittenSource(filename string, source []byte, from, to Version, migrating bool, rewrite func(*FileBlock)) (string, error) {
 	result, commentMap, err := ParseWithComments(filename, source, WithVersion(from))
 	if err != nil {
 		return "", err
+	}
+	if rewrite != nil {
+		rewrite(result.(*FileBlock))
 	}
 
 	// Also extract structured comments for nofmt/blank-line logic
