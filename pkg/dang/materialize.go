@@ -849,12 +849,13 @@ func isStructuralKind(k Kind) bool {
 
 // wrapCoerce inserts a Coerce wrapper around node so its value is materialized
 // against target at runtime. If node is already a Coerce, the target is
-// tightened to the new target.
+// tightened to the new target, unless it converts scalars for a cast: that
+// conversion is to the cast's own type, so it is wrapped instead.
 func wrapCoerce(node Node, target hm.Type, path string) Node {
 	if node == nil || target == nil {
 		return node
 	}
-	if c, ok := node.(*Coerce); ok {
+	if c, ok := node.(*Coerce); ok && !c.ConvertScalars {
 		c.Target = target
 		if path != "" {
 			c.Path = path

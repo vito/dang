@@ -518,7 +518,10 @@ Scalar declarations may carry a body (`scalar Path { new(...) {...} ... }`,
   another. `TypeHint.Infer` alone falls back to `scalarCastable` and marks
   its `Coerce` with `ConvertScalars`, whose `convertScalars` turns each
   `ScalarValue` of another scalar into the target's through the target's hook
-  (keeping the text, and `Encoded`, when it has none).
+  (keeping the text, and `Encoded`, when it has none). A hint may be inferred
+  more than once (an unannotated field), so it decides the cast from the
+  expression under its own `Coerce` every time, and `wrapCoerce` wraps a
+  converting `Coerce` rather than retargeting it.
 
 The **Dang-source prelude** (`pkg/dang/prelude/*.dang`, loader in
 `prelude.go`) parses/infers/evals once via `sync.Once`, lazily on first

@@ -3693,7 +3693,14 @@ func (t *TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
 
 func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
-		exprType, err := t.Expr.Infer(ctx, env, fresh)
+		// An earlier inference of this hint wrapped its expression in a
+		// Coerce, which reports the hint's own type; the cast is decided
+		// from the expression's, every time.
+		expr := t.Expr
+		if c, ok := expr.(*Coerce); ok {
+			expr = c.Expr
+		}
+		exprType, err := expr.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -3712,7 +3719,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			subs, err = hm.AssignableWithCoercion(exprType, hintType)
 			if err == nil {
-				if litErr := checkEnumLiterals(t.Expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
+				if litErr := checkEnumLiterals(expr, hintType.Apply(subs).(hm.Type)); litErr != nil {
 					return nil, litErr
 				}
 			}
@@ -3720,7 +3727,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil && assignableDecoded(exprType, hintType) {
 			subs, err = hm.NewSubs(), nil
 			if decodeErr := checkDecodeTarget(env, hintType); decodeErr != nil {
-				return nil, NewInferError(decodeErr, t.Expr)
+				return nil, NewInferError(decodeErr, expr)
 			}
 		}
 		convertScalars := false
@@ -3729,14 +3736,16 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			convertScalars = true
 		}
 		if err != nil {
-			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
+			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), expr)
 		}
 
 		result := hintType.Apply(subs).(hm.Type)
 		t.SetInferredType(result)
-		t.Expr = wrapCoerce(t.Expr, result, "")
 		if c, ok := t.Expr.(*Coerce); ok {
-			c.ConvertScalars = convertScalars
+			c.Target, c.ConvertScalars = result, convertScalars
+			c.SetInferredType(result)
+		} else {
+			t.Expr = &Coerce{Expr: expr, Target: result, ConvertScalars: convertScalars}
 		}
 		return result, nil
 	})

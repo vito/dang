@@ -8,6 +8,13 @@ let t = ("a = [1, 2]" :: TOML!)
 # YAML text may hold several documents.
 let stream = ("a: 1\n---\nb: 2\n" :: YAML!)
 assert { (stream :: String!).hasPrefix("a: 1\n---") }
+assert {
+  (
+    (YAML.decode(stream) :: String!) rescue {
+      e: Error! => e.message
+    }
+  ) == "YAML.decode: the text holds more than one document; YAML.decode reads a single document"
+}
 
 # A value is its text, and degrades to String! like any scalar's.
 let text: String! = j
@@ -88,6 +95,25 @@ assert {
       e: Error! => e.message
     }
   ).hasPrefix("invalid TOML: ")
+}
+
+# A cast converts wherever it is written, also in an unannotated field, whose
+# value is inferred more than once.
+type CastField {
+  pub z = (("[1]" :: Blob!) :: JSON!)
+}
+
+type BadCastField {
+  pub bad = (("x" :: Blob!) :: JSON!)
+}
+
+assert { CastField.z == ("[1]" :: JSON!) }
+assert {
+  (
+    toString(BadCastField.bad) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid JSON: ")
 }
 
 # Values compare as scalars do: the same scalar and text.
