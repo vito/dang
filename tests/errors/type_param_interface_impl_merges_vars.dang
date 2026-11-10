@@ -1,0 +1,10 @@
+interface Pair {
+  best[a: Ordered, b: Ordered](x: a!, y: b!): a!
+}
+
+# Callers of Pair.best may pass two different types, like 1 and "z".
+type Same implements Pair {
+  best[a: Ordered](x: a!, y: a!): a! {
+    if (x < y) { y } else { x }
+  }
+}

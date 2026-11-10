@@ -1,0 +1,8 @@
+interface Getter {
+  get(x: a!): a!
+}
+
+# Callers of Getter.get expect back the type they passed.
+type Liar implements Getter {
+  get(x: a!): String! { "no" }
+}

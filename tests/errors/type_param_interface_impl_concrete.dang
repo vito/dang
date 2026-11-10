@@ -1,0 +1,8 @@
+interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+}
+
+# Callers of Ranker.best may pass any Ordered values, Ints included.
+type Strs implements Ranker {
+  best(x: String!, y: String!): String! { x + y }
+}

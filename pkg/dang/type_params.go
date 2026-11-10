@@ -287,41 +287,100 @@ func (l typeParamList) GetSourceLocation() *SourceLocation {
 	return &loc
 }
 
-// checkImplementationBounds rejects a parameter type of an object's method
-// (impl) whose bounded type variable the interface's parameter type
-// (iface) doesn't satisfy. The interface's type variables stand for any type
-// its callers pick within the interface's own bounds, so they are checked as
-// rigid ones bounded as the interface declares them: an interface's
-// `pick(x: a!)` can't be implemented by `pick[a: Ordered](x: a!)`, whose `<`
-// would then meet values with no order, while `pick[a: Ordered](x: a!)` can,
-// and an implementation may bound less than the interface does. A concrete
-// type the interface names (`pick(x: Int!)`) satisfies the bound as usual.
-func checkImplementationBounds(iface, impl hm.Type) error {
-	bounded := false
-	for tv := range impl.FreeTypeVar() {
-		bounded = bounded || (len(tv.Bounds()) > 0 && !tv.IsRigid())
-	}
-	if !bounded {
+// checkGenericImplementation checks an object's method (impl) against the
+// interface method it implements (iface) as a whole, once the per-part
+// variance checks have passed: the interface's type variables stand for
+// whatever types its callers pick, within the interface's own bounds, so
+// they are made rigid once, bounded as the interface declares them, and the
+// method must fit every argument, its block and its return type at once.
+// That rejects an implementation that is less general than the interface:
+// `best(x: String!, ...)` for `best(x: a!, ...)`, one that takes the same
+// type for two of the interface's variables (`(x: a!, y: a!)` for `(x: a!,
+// y: b!)`), and one that bounds a variable the interface doesn't (`pick[a:
+// Ordered](x: a!)` for `pick(x: a!)`, whose `<` would meet values with no
+// order). An implementation may bound less than the interface does, and a
+// concrete type the interface names (`pick(x: Int!)`) satisfies a bound as
+// usual.
+func checkGenericImplementation(fieldName string, ifaceFn, implFn *hm.FunctionType) error {
+	skolem, _ := skolemSubs(ifaceFn)
+	rigid := ifaceFn.Apply(skolem).(*hm.FunctionType)
+	ifaceArgs, ok := rigid.Arg().(*RecordType)
+	if !ok {
 		return nil
 	}
-	skolem, _ := skolemSubs(iface)
-	_, err := hm.Assignable(iface.Apply(skolem).(hm.Type), impl)
-	var ce hm.ConstraintError
-	if errors.As(err, &ce) {
-		e := implementationBoundError{Var: ce.Var.Unbounded(), Bound: ce.Constraint}
-		if t, _ := stripNonNull(ce.Type); t != nil {
-			if tv, ok := t.(hm.TypeVariable); ok {
-				e.Allowed = tv.Bounds()
-			}
+	var impl hm.Type = implFn
+	fit := func(have, want hm.Type) error {
+		subs, err := hm.Assignable(have, want)
+		if err != nil {
+			return err
 		}
-		return e
+		impl = impl.Apply(subs).(hm.Type)
+		return nil
+	}
+	implArg := func(key string) (hm.Type, bool) {
+		rec, ok := impl.(*hm.FunctionType).Arg().(*RecordType)
+		if !ok {
+			return nil, false
+		}
+		s, ok := rec.SchemeOf(key)
+		if !ok {
+			return nil, false
+		}
+		t, _ := s.Type()
+		return t, true
+	}
+	for _, arg := range ifaceArgs.Fields {
+		have, _ := arg.Value.Type()
+		want, ok := implArg(arg.Key)
+		if !ok {
+			continue // reported by the variance checks
+		}
+		if err := fit(have, want); err != nil {
+			if be, ok := boundError(err); ok {
+				return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass %s for %s",
+					fieldName, arg.Key, be, callersPass(be), have)
+			}
+			return fmt.Errorf("field %q, argument %q: type %s doesn't fit interface type %s for every type the interface's callers pick",
+				fieldName, arg.Key, want, have)
+		}
+	}
+	if ifaceBlock, implBlock := rigid.Block(), impl.(*hm.FunctionType).Block(); ifaceBlock != nil && implBlock != nil {
+		if err := fit(ifaceBlock, implBlock); err != nil {
+			if be, ok := boundError(err); ok {
+				return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
+					fieldName, be, FormatType(ifaceFn.Block()))
+			}
+			return fmt.Errorf("field %q, block argument: type %s doesn't fit interface block type %s for every type the interface's callers pick",
+				fieldName, implBlock, ifaceBlock)
+		}
+	}
+	implRet := impl.(*hm.FunctionType).Ret(false)
+	if err := fit(implRet, rigid.Ret(false)); err != nil {
+		return fmt.Errorf("field %q: return type %s doesn't fit interface return type %s for every type the interface's callers pick",
+			fieldName, implRet, rigid.Ret(false))
 	}
 	return nil
 }
 
-// implementationBoundError is checkImplementationBounds's error: the
-// implementation bounds Var by Bound, which the interface's type variable,
-// bounded only by Allowed, doesn't promise.
+// boundError recognizes an implementation's bound that the interface's
+// (rigid, declared-bounded) type variable doesn't satisfy.
+func boundError(err error) (implementationBoundError, bool) {
+	var ce hm.ConstraintError
+	if !errors.As(err, &ce) || ce.Var == 0 {
+		return implementationBoundError{}, false
+	}
+	e := implementationBoundError{Var: ce.Var.Unbounded(), Bound: ce.Constraint}
+	if t, _ := stripNonNull(ce.Type); t != nil {
+		if tv, ok := t.(hm.TypeVariable); ok {
+			e.Allowed = tv.Bounds()
+		}
+	}
+	return e, true
+}
+
+// implementationBoundError is checkGenericImplementation's error for a
+// bound: the implementation bounds Var by Bound, which the interface's type
+// variable, bounded only by Allowed, doesn't promise.
 type implementationBoundError struct {
 	Var     hm.TypeVariable
 	Bound   hm.Constraint
@@ -333,11 +392,10 @@ func (e implementationBoundError) Error() string {
 }
 
 // callersPass says what an interface lets its callers pass for the type
-// variable a checkImplementationBounds error is about: "any type", or "any
-// Ordered type" when the interface bounds it.
-func callersPass(err error) string {
-	var e implementationBoundError
-	if !errors.As(err, &e) || len(e.Allowed) == 0 {
+// variable a bound error is about: "any type", or "any Ordered type" when
+// the interface bounds it.
+func callersPass(e implementationBoundError) string {
+	if len(e.Allowed) == 0 {
 		return "any type"
 	}
 	names := make([]string, len(e.Allowed))

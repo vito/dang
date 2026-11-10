@@ -1642,13 +1642,6 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, objectArgType, ifaceArgType)
 		}
-		// The interface's own type variables stand for any type its callers
-		// pick, which a bounded parameter of the object's method
-		// (`pick[a: Ordered]`) must then accept too.
-		if err := checkImplementationBounds(ifaceArgType, objectArgType); err != nil {
-			return fmt.Errorf("field %q, argument %q: %w, but the interface's callers may pass %s for %s",
-				fieldName, ifaceArg.Key, err, callersPass(err), ifaceArgType)
-		}
 	}
 
 	// Check that any additional arguments in object are optional
@@ -1682,14 +1675,11 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldTy
 	case !hm.IsSubtypeOf(ifaceBlock, objectBlock):
 		return fmt.Errorf("field %q: block argument type %s is not compatible with interface block type %s (contravariance required)",
 			fieldName, objectBlock, ifaceBlock)
-	default:
-		if err := checkImplementationBounds(ifaceBlock, objectBlock); err != nil {
-			return fmt.Errorf("field %q, block argument: %w, but the interface's callers may pass a block of %s",
-				fieldName, err, FormatType(ifaceBlock))
-		}
 	}
 
-	return nil
+	// The interface's own type variables stand for any type its callers
+	// pick, which the object's method must then take.
+	return checkGenericImplementation(fieldName, ifaceFn, objectFn)
 }
 
 // sameParamNames reports whether two function types name their parameters
