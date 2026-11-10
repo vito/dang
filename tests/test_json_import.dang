@@ -2,14 +2,32 @@ import Test
 
 # The imported schema defines `scalar JSON`, as Dagger does. It is a separate
 # type, reached as `Test.JSON`; unqualified `JSON` stays the builtin import (an
-# unqualified import never overrides an import's namespace), so the codec
-# namespace is unaffected.
+# unqualified import never overrides an import's namespace), as a type (the
+# builtin JSON scalar) and as a value (its encode and decode).
 
 let encoded = JSON.encode([1, 2, 3])
 assert { encoded == "[1,2,3]" }
 
 let decoded = JSON.decode("[4, 5, 6]") :: [Int!]!
 assert { decoded == [4, 5, 6] }
+
+# A bare JSON type is the builtin scalar; an explicit cast converts between it
+# and the schema's, validating JSON text on the way in.
+wrap(s: String!): JSON! { (s :: JSON!) }
+
+toSchema(j: JSON!): Test.JSON! { (j :: Test.JSON!) }
+
+fromSchema(j: Test.JSON!): JSON! { (j :: JSON!) }
+
+assert { (fromSchema(toSchema(wrap("[1]"))) :: String!) == "[1]" }
+assert { parseJSON(toSchema(wrap("{\"k\":1}"))) == "Parsed JSON: {\"k\":1}" }
+assert {
+  (
+    (fromSchema("nope") :: String!) rescue {
+      e: Error! => e.message
+    }
+  ).hasPrefix("invalid JSON: ")
+}
 
 # Untyped data is Decoded, whichever format decoded it.
 let any = YAML.decode("n: 1\ns: x\no: {k: [true]}\n") :: Map[Decoded!]!

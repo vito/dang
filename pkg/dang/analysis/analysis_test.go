@@ -216,6 +216,33 @@ func TestImportReplacesBuiltinImport(t *testing.T) {
 	require.Same(t, dang.YAMLModule, sym.Member.Scope, "YAML is the builtin import elsewhere")
 }
 
+func TestBuiltinJSONScalarBesideSchemaJSON(t *testing.T) {
+	// A bare JSON type is the builtin JSON scalar in every version, though an
+	// auto-import brings in a scalar of that name (Dagger's), and the value
+	// JSON is the namespace of its statics; analysis resolves them as type
+	// checking and evaluation do.
+	schema, err := dang.SchemaFromSDL("type Query {\n  echo(value: JSON!): JSON!\n}\n\nscalar JSON\n", "schema.graphqls")
+	require.NoError(t, err)
+	mainSrc := "pub call(fnArgs: JSON!): JSON! {\n  (JSON.encode({{ fnArgs: fnArgs }}) :: JSON!)\n}\n\npub toSchema(j: JSON!): Dagger.JSON! { (j :: Dagger.JSON!) }\n"
+	src := mapFS(map[string]string{"main.dang": mainSrc})
+	imports := []dang.ImportConfig{{Name: "Dagger", Schema: schema, AutoImport: true}}
+
+	for _, version := range []dang.Version{dang.Version2_1, dang.Version2_4} {
+		a, err := analysis.Analyze(context.Background(), src, ".", analysis.Options{ImportConfigs: imports, Version: version})
+		require.NoError(t, err)
+		require.Empty(t, a.Diagnostics(), version.String())
+
+		named, found := a.FileScope("main.dang").NamedType("JSON")
+		require.True(t, found)
+		require.Same(t, dang.JSONModule, named, "bare JSON is the builtin scalar")
+
+		sym, err := a.Inspect("main.dang", at(t, mainSrc, "JSON.encode", 0, 0))
+		require.NoError(t, err)
+		require.NotNil(t, sym.Member)
+		require.Same(t, dang.JSONModule, sym.Member.Scope, "encode is a static of the builtin JSON scalar")
+	}
+}
+
 func TestDiagnosticsFlagDeprecatedBuiltins(t *testing.T) {
 	src := mapFS(map[string]string{
 		"main.dang": "let s = toJSON([1, 2, 3])\n",
