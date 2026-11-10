@@ -251,19 +251,27 @@ func assignableDecoded(have, want hm.Type) bool {
 // maps, an anonymous record's fields, and a named object's constructor
 // parameters, except those every codec ignores (they are never decoded). A
 // parameter with a default is walked: decoding builds it whenever the data has
-// its key.
+// its key. A type with no constructor is only rejected where every value
+// decoded there must become one: reached through non-null types, list and map
+// elements, and required fields, but not a nullable type, a defaulted
+// parameter or a union's option, which data can satisfy without it.
 func checkDecodeTarget(env hm.Env, want hm.Type) error {
-	seen := map[*Type]bool{}
+	type visit struct {
+		mod      *Type
+		required bool
+	}
+	seen := map[visit]bool{}
 	// via is the field path from want down to t ("Holder.inner"), for the
-	// error, or "" while still at want itself.
-	var walk func(t hm.Type, via string) error
+	// error, or "" while still at want itself. required is whether every
+	// value decoded at t must be a t (see above).
+	var walk func(t hm.Type, via string, required bool) error
 	noConstructor := func(t hm.Type, via string) error {
 		if via != "" {
 			return fmt.Errorf("cannot decode %s: its type %s has no constructor to decode into", via, t)
 		}
 		return fmt.Errorf("cannot decode into %s: it has no constructor", t)
 	}
-	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string) error {
+	walkFields := func(mod *Type, fields []Keyed[*hm.Scheme], via string, required bool) error {
 		for _, field := range fields {
 			if ignoredByAllCodecs(mod, field.Key) {
 				continue
@@ -278,52 +286,57 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 			} else if mod.Named != "" {
 				next = mod.Named + "." + field.Key
 			}
-			if err := walk(ft, next); err != nil {
+			if err := walk(ft, next, required); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	walk = func(t hm.Type, via string) error {
-		if nn, ok := t.(hm.NonNullType); ok {
-			return walk(nn.Type, via)
+	walk = func(t hm.Type, via string, required bool) error {
+		nn, nonNull := t.(hm.NonNullType)
+		if nonNull {
+			t = nn.Type
 		}
+		required = required && nonNull
 		if union, ok := t.(*hm.UnionType); ok {
 			for _, option := range union.Options {
-				if err := walk(option, via); err != nil {
+				if err := walk(option, via, false); err != nil {
 					return err
 				}
 			}
 			return nil
 		}
 		if elem, ok := listElementTarget(t); ok {
-			return walk(elem, via)
+			return walk(elem, via, required)
 		}
 		if val, ok := mapValueTarget(t); ok {
-			return walk(val, via)
+			return walk(val, via, required)
 		}
 		v, ok := t.(*Type)
 		if !ok {
 			// A scope standing for a type is a namespace, such as a native
 			// module's (see dangModule.exportsType): nothing to construct.
-			if _, isScope := t.(*OverlayTypeScope); isScope {
+			if _, isScope := t.(*OverlayTypeScope); isScope && required {
 				return noConstructor(t, via)
 			}
 			return nil
 		}
 		mod := canonicalModule(v)
-		if seen[mod] {
+		if seen[visit{mod, required}] {
 			return nil
 		}
 		if !hasDecodableShape(mod) {
-			return noConstructor(mod, via)
+			if required {
+				return noConstructor(mod, via)
+			}
+			return nil
 		}
 		if mod.Kind != ObjectKind {
 			return nil
 		}
-		seen[mod] = true
+		seen[visit{mod, required}] = true
 		if mod.Named == "" {
-			return walkFields(mod, mod.AsRecord().Fields, via)
+			return walkFields(mod, mod.AsRecord().Fields, via, required)
 		}
 		if mod.localFrame != nil && !envEncloses(env, mod.localFrame) {
 			const why = "is declared in a function, block or type body that does not enclose this code, so there is no constructor for it here"
@@ -334,17 +347,17 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 		}
 		if mod.constructorType != nil {
 			if args, ok := mod.constructorType.Arg().(*RecordType); ok {
-				return walkFields(mod, args.Fields, via)
+				return walkFields(mod, args.Fields, via, required)
 			}
 		}
 		return nil
 	}
-	return walk(want, "")
+	return walk(want, "", true)
 }
 
 // hasDecodableShape reports whether decoded data can materialize as mod:
-// mod has a constructor to build its values from the data (a declared
-// object type, or a schema input object), or a shape of its own (an
+// mod has a constructor to build its values from the data (an object type
+// declared in Dang, or a schema input object), or a shape of its own (an
 // anonymous record, an enum, a scalar). A namespace has neither: an import's,
 // a builtin one such as JSON or Random, or a schema's object type, which
 // only its server builds. Interfaces and unions are left to the type
@@ -352,7 +365,7 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 func hasDecodableShape(mod *Type) bool {
 	switch mod.Kind {
 	case ObjectKind:
-		return mod.Named == "" || mod.constructorType != nil
+		return mod.Named == "" || mod.declaredInSource || mod.constructorType != nil
 	case InputKind:
 		return mod.constructorType != nil
 	}

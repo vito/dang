@@ -793,6 +793,7 @@ func declareLocalType(ctx context.Context, env TypeScope, name string, kind Kind
 	}
 
 	mod := NewType(name, kind)
+	mod.declaredInSource = true
 	// Stamp the declaring module so module-level `let` visibility can tell
 	// same-module access from foreign access. Nil ctx module (un-instrumented
 	// entry point) leaves it nil, which disables enforcement for this type.

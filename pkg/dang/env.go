@@ -279,6 +279,13 @@ type Type struct {
 	// when its schema is loaded. checkDecodeTarget reads its parameters (the
 	// fields decoding constructs), and decoding builds input objects from it.
 	constructorType *hm.FunctionType
+
+	// declaredInSource marks a type declared in Dang source (see
+	// declareLocalType), as opposed to a builtin or schema type. A declared
+	// object type always has a constructor, so the decode-target check never
+	// faults one whose constructor signature failed to check (see
+	// hasDecodableShape).
+	declaredInSource bool
 }
 
 func NewType(name string, kind Kind) *Type {
