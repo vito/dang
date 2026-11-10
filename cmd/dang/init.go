@@ -11,22 +11,16 @@ func initCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init [dir]",
 		Short: "Create a dang.toml declaring the Dang version",
-		Long: `Make a directory (default: the current directory) a Dang project whose
-dang.toml declares the Dang version its source is written in.
+		Long: `Declare this Dang's version in a directory's dang.toml (default: the
+current directory), creating the file if needed, so a later Dang keeps
+reading the source the same way.
 
-Without a dang.toml, init creates one declaring this Dang's version, which
-is what the directory's source already means. An existing dang.toml that
-declares no version follows this Dang's version too, so init pins it there;
-nothing changes meaning, but a later Dang won't move it.
-
-Source whose version something else decides (e.g. a Dagger engine version),
-or a project from an older Dang whose dang.toml predates the key, should
-use dang migrate --from instead, which records the version it is really
-written for.`,
+Run it when starting a new project. For a project written for an older
+Dang, use dang migrate --from <version> instead.`,
 		Example: `  # Start a project in the current directory
   dang init
 
-  # Pin an existing dang.toml's version
+  # Pin the version of an existing project
   dang init ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

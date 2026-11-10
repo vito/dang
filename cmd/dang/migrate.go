@@ -22,52 +22,30 @@ func migrateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate [flags] [path...]",
 		Short: "Migrate Dang source to a newer Dang version",
-		Long: `Migrate every project under the given directories (default: the current
-directory) to a newer Dang version: each .dang file a dang.toml governs is
-rewritten in the target version's syntax and formatted, and the dang.toml's
-` + "`dang`" + ` version is updated to match.
+		Long: `Upgrade projects to a newer Dang version (default: this Dang's): rewrite
+their .dang files in its syntax and update the version their dang.toml
+declares.
 
-By default, migrate only reports what it would change. Use -w to write.
+Run it to bring a project written for an older Dang up to date. It covers
+every project under the given directories (default: the current directory)
+and only reports what it would change until you pass -w.
 
-Given a file, migrate prints what migrating it makes of it instead, writing
-nothing. A file can't be migrated with -w: its version is its project's, so
-migrating it alone would leave the rest of the project read in the new
-version without having been rewritten for it.
+If a project doesn't declare its version in dang.toml, pass --from with the
+version it was written for.
 
-Source whose version nothing declares - a dang.toml without a ` + "`dang`" + ` key,
-or no dang.toml at all - is in this Dang's version, unless something else
-decides its version (e.g. a Dagger engine version). Use --from to say which
-version such source is really written for, e.g. a project from an older Dang
-that predates the key; migrating then records the new version, creating a
-dang.toml if there is none. --from applies to all of it under the given
-directories: the source no dang.toml governs and every dang.toml without a
-` + "`dang`" + ` key. Projects whose dang.toml declares a version migrate from it.
-Without --from, migrate lists the projects that declare no version, since
-nothing can tell an older Dang's source among them but you.
-
-Migration rewrites syntax. Code that a newer version rejects for other
-reasons (e.g. a stricter type check) is left for you to fix; run the
-migrated project to find it. A file that doesn't parse in its project's
-version can't be migrated: migrate refuses to write, unless
---skip-unparseable leaves such files as they are.
-
-The output is for this Dang: migrating to a version older than this Dang's
-can print spellings this Dang reads in that version but that Dang release
-did not (e.g. ` + "`loop`" + ` for a ` + "`for`" + ` loop).`,
-		Example: `  # See what migrating the current project to this Dang's version changes
+Migration only rewrites syntax; run the project afterwards to catch anything
+else the new version rejects.`,
+		Example: `  # See what migrating the current project would change
   dang migrate
 
   # Migrate it
   dang migrate -w
 
-  # Migrate a Dang 2.0 project whose dang.toml predates the dang key
+  # Migrate a project written for Dang 2.0 that doesn't declare its version
   dang migrate -w --from 2.0 ./my-module
 
-  # Migrate a module without a dang.toml that is written for Dang 1.0
-  dang migrate -w --from 1.0 ./my-module
-
-  # Print what migrating one file from Dang 2.0 makes of it
-  dang migrate --from 2.0 ./my-module/main.dang`,
+  # Preview the migration of a single file
+  dang migrate ./my-module/main.dang`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				args = []string{"."}
@@ -116,7 +94,7 @@ did not (e.g. ` + "`loop`" + ` for a ` + "`for`" + ` loop).`,
 	}
 
 	cmd.Flags().StringVar(&to, "to", "", "Dang version to migrate to (default: this Dang's version)")
-	cmd.Flags().StringVar(&from, "from", "", "Dang version of source whose version no dang.toml declares")
+	cmd.Flags().StringVar(&from, "from", "", "Dang version of projects that don't declare one in dang.toml")
 	cmd.Flags().BoolVarP(&write, "write", "w", false, "Write the migrated files and dang.toml")
 	cmd.Flags().BoolVar(&skipUnparseable, "skip-unparseable", false, "Leave files that don't parse in their version as they are")
 

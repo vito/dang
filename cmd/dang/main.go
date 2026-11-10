@@ -37,8 +37,11 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "dang [flags] [file|directory]",
 		Short: "Dang language interpreter",
-		Long: `Dang is a functional language for building Dagger pipelines.
-It provides type-safe, composable abstractions for container operations.`,
+		Long: `Dang is a statically typed language for scripting GraphQL APIs.
+
+Its types and functions are loaded directly from each API's schema, so
+scripts are type-checked against the services they call, with no codegen
+step in between.`,
 		Example: `  # Run a Dang script
   dang script.dang
 
@@ -49,8 +52,7 @@ It provides type-safe, composable abstractions for container operations.`,
   dang
 
   # Run with debug logging enabled
-  dang --debug script.dang
-  dang -d ./my-module`,
+  dang --debug script.dang`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Start CPU profile if requested.
@@ -257,11 +259,9 @@ func fmtCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fmt [flags] [path...]",
 		Short: "Format Dang source files",
-		Long: `Format Dang source files according to the canonical style.
-
-By default, fmt prints the formatted source to stdout.
-Use -w to write the result back to the source file.
-Use -l to list files that would be changed.`,
+		Long: `Format Dang source files in the canonical style, printing the result to
+stdout unless -w or -l is given. Directories are scanned for .dang files
+(non-recursively).`,
 		Example: `  # Format a file and print to stdout
   dang fmt script.dang
 
