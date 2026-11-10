@@ -494,8 +494,7 @@ smaller[a](x: a!, y: a!): a! {
 }
 ```
 
-`Ordered` is a constraint, not a type: `x: Ordered!` is an error. It is the
-only bound for now.
+`Ordered` is a constraint, not a type: `x: Ordered!` is an error.
 
 ## Type hints / casts: `::`
 
