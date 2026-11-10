@@ -439,7 +439,7 @@ func daggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir st
 	type schemaJSON struct {
 		IntrospectionSchemaJSON struct {
 			Contents string `json:"contents"`
-		} `json:"introspectionSchemaJSON"`
+		} `json:"introspectionSchemaJson"`
 	}
 	var resp struct {
 		ModuleSource struct {
@@ -451,7 +451,7 @@ func daggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir st
 	req := &graphql.Request{
 		Query: `query DangModuleSchema($ref: String!) {
 			moduleSource(refString: $ref) {
-				introspectionSchemaJSON {
+				introspectionSchemaJson {
 					contents
 				}
 			}
@@ -465,7 +465,7 @@ func daggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir st
 		req.Query = `query DangModuleSchema($ref: String!, $version: String!) {
 			moduleSource(refString: $ref) {
 				withEngineVersion(version: $version) {
-					introspectionSchemaJSON {
+					introspectionSchemaJson {
 						contents
 					}
 				}
