@@ -52,7 +52,7 @@ type Module struct {
 
 	// TypeEnv holds the types of the module's top-level declarations, from
 	// every file, private (`let`) ones included. Imports are file-local, so
-	// they are not in it.
+	// they are not in it, the builtin imports (JSON, Random, …) included.
 	TypeEnv TypeScope
 
 	// ValueEnv holds the values of the module's top-level declarations,
@@ -176,7 +176,7 @@ func LoadDir(ctx context.Context, dir string, opts LoadOptions) (*Module, error)
 	}
 
 	m.Files = blocks
-	m.TypeEnv = types
+	m.TypeEnv = withoutBuiltinImports(types)
 	m.ValueEnv = values
 	for i, key := range moduleContextKeys {
 		m.values[i] = ctx.Value(key)
@@ -316,7 +316,7 @@ func (m *Module) NewSession(ctx context.Context) (*Session, error) {
 	// the builtin imports (see builtin_imports.go).
 	s := &Session{
 		module:       m,
-		types:        withoutBuiltinImports(m.TypeEnv).Clone().(TypeScope),
+		types:        m.TypeEnv.Clone().(TypeScope),
 		values:       m.ValueEnv.Derive(true),
 		importTypes:  newFileImportsScope(),
 		importValues: m.ValueEnv.Derive(true),

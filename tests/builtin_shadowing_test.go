@@ -243,6 +243,11 @@ assert { otherInBlock == 10 }
 		m, err := dang.LoadDir(ctx, root, dang.LoadOptions{})
 		require.NoError(t, err)
 		defer m.Close()
+		// Like a file's imports, the builtin imports aren't the module's
+		// own: its type and value environments agree on leaving them out.
+		_, inTypes := m.TypeEnv.SchemeOf("YAML")
+		require.False(t, inTypes)
+		require.False(t, m.ValueEnv.Has("YAML"))
 		session, err := m.NewSession(ctx)
 		require.NoError(t, err)
 		snippet, err := session.Check(ctx, "", "YAML.encode(1)")
