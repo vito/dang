@@ -120,7 +120,7 @@ Rule of thumb: **quotes are for text, backticks are for code; double quotes inte
 - **Untyped template bindings are `String!`**: `` let re = `\d+` `` is a String, not a `Regexp`; the literal-to-scalar coercion happens only where the literal meets a typed slot, so `s.containsMatch(re)` fails with `cannot use String! as Regexp!`. Annotate: `` let re: Regexp! = `\d+` `` (same for `Path!`, `URL!`, ...).
 - **Write `!x`, not `x == false`**, on a `Boolean!`. `!` rejects a nullable `Boolean` (narrow it, or `!(x ?? false)`); `x == false` on one is `false` for null.
 - **Prefer interpolation to `+` chains**: `"${name} (${i})"` over `name + " (" + toString(i) + ")"` — interpolation stringifies any value.
-- **`${` in a `"..."` string interpolates**: shell variables, GitHub Actions expressions or `replaceMatches`' `${name}` backrefs belong in `'...'`/`'''...'''` (or escape them, `\${HOME}`). An unknown name is a compile error (`"HOME" not found`), but a name that happens to be in scope interpolates silently.
+- **`${` in a `"..."` string interpolates**: shell variables, GitHub Actions expressions or `replaceMatches`' `${name}` backrefs belong in `'...'`/`'''...'''` (or escape them, `\${HOME}`). An unknown name is a compile error (`"HOME" not found; to write ${HOME} as text, single-quote the string or escape it as \${HOME}`), but a name that happens to be in scope interpolates silently.
 
 ### Arithmetic
 - `+ - * / %` on `Int`/`Float` (mixed promotes to `Float`), or on a type variable bounded `[a: Numeric]` (see types.md). Float `%` is Go's `math.Mod`: the remainder takes the dividend's sign (`-7.5 % 2 == -1.5`).
