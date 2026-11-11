@@ -17,6 +17,8 @@ functions are loaded directly from the schema.
   [GitHub](https://github.com/vito/dang)
 }{
   [pkg.go.dev](https://pkg.go.dev/github.com/vito/dang)
+}{
+  [v2.4.1 release notes](/releases/v2.4.1.html)
 }
 
 \shell{go install github.com/vito/dang/v2/cmd/dang@latest}
