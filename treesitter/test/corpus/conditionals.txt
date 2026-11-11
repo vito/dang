@@ -25,14 +25,14 @@ let x = if (cond) { "yes" } else { "no" }
           (block
             (literal
               (string
-                (immediate_string_content)
+                (string_content)
                 (immediate_quote_token))))
           (else_clause
             (else_token)
             (block
               (literal
                 (string
-                  (immediate_string_content)
+                  (string_content)
                   (immediate_quote_token))))))))))
 
 ===
@@ -61,13 +61,13 @@ let x = if (cond) "yes" else "no"
                 (word_token))))
           (literal
             (string
-              (immediate_string_content)
+              (string_content)
               (immediate_quote_token)))
           (else_clause
             (else_token)
             (literal
               (string
-                (immediate_string_content)
+                (string_content)
                 (immediate_quote_token)))))))))
 
 ===

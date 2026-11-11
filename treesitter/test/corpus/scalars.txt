@@ -43,49 +43,49 @@ false
   (form_sep)
   (literal
     (string
-      (immediate_string_content)
+      (string_content)
       (immediate_quote_token)))
   (form_sep)
   (literal
     (string
-      (immediate_string_content)
+      (string_content)
       (immediate_escape)
-      (immediate_string_content)
+      (string_content)
       (immediate_quote_token)))
   (form_sep)
   (literal
     (string
-      (immediate_string_content)
+      (string_content)
       (immediate_escape)
-      (immediate_string_content)
+      (string_content)
       (immediate_quote_token)))
   (form_sep)
   (literal
     (string
-      (immediate_string_content)
+      (string_content)
       (immediate_escape)
-      (immediate_string_content)
+      (string_content)
       (immediate_quote_token)))
   (form_sep)
   (literal
     (string
-      (immediate_string_content)
+      (string_content)
       (immediate_escape)
-      (immediate_string_content)
+      (string_content)
       (immediate_quote_token)))
   (form_sep)
   (literal
     (string
-      (immediate_string_content)
+      (string_content)
       (immediate_escape)
-      (immediate_string_content)
+      (string_content)
       (immediate_quote_token)))
   (form_sep)
   (list
     (literal
       (triple_quote_string
         (triple_quote)
-        (immediate_triple_quote_string_content)
+        (string_content)
         (triple_quote)))
     (sep)
     (literal

@@ -21,7 +21,7 @@ node(id: "x").{{ ... on Dagger.Editor! }}
               (colon_token)
               (literal
                 (string
-                  (immediate_string_content)
+                  (string_content)
                   (immediate_quote_token))))))))
     (dot_token)
     (object_selection
@@ -61,7 +61,7 @@ node(id: "x").{{
               (colon_token)
               (literal
                 (string
-                  (immediate_string_content)
+                  (string_content)
                   (immediate_quote_token))))))))
     (dot_token)
     (object_selection

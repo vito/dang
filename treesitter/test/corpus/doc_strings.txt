@@ -53,7 +53,7 @@ type Dev {
         (literal
           (triple_quote_string
             (triple_quote)
-            (immediate_triple_quote_string_content)
+            (string_content)
             (triple_quote)))
         (form_sep)
         (decl
@@ -76,7 +76,7 @@ type Dev {
         (literal
           (triple_quote_string
             (triple_quote)
-            (immediate_triple_quote_string_content)
+            (string_content)
             (triple_quote)))
         (form_sep)
         (decl
@@ -119,13 +119,13 @@ type Dev {
                               (list
                                 (literal
                                   (string
-                                    (immediate_string_content)
+                                    (string_content)
                                     (immediate_quote_token)))
                                 (sep
                                   (comma_token))
                                 (literal
                                   (string
-                                    (immediate_string_content)
+                                    (string_content)
                                     (immediate_quote_token)))))))))))
                 (form_sep)
                 (symbol_or_call
@@ -136,7 +136,7 @@ type Dev {
         (literal
           (triple_quote_string
             (triple_quote)
-            (immediate_triple_quote_string_content)
+            (string_content)
             (triple_quote)))
         (form_sep)
         (decl
@@ -152,7 +152,7 @@ type Dev {
                 (arg_type
                   (doc_string
                     (triple_quote)
-                    (immediate_triple_quote_string_content)
+                    (string_content)
                     (triple_quote))
                   (sep)
                   (arg_with_default
@@ -196,7 +196,7 @@ type Dev {
         (literal
           (triple_quote_string
             (triple_quote)
-            (immediate_triple_quote_string_content)
+            (string_content)
             (triple_quote)))
         (form_sep)
         (decl
@@ -230,19 +230,19 @@ type Dev {
                         (list
                           (literal
                             (string
-                              (immediate_string_content)
+                              (string_content)
                               (immediate_quote_token)))
                           (sep
                             (comma_token))
                           (literal
                             (string
-                              (immediate_string_content)
+                              (string_content)
                               (immediate_quote_token)))
                           (sep
                             (comma_token))
                           (literal
                             (string
-                              (immediate_string_content)
+                              (string_content)
                               (immediate_quote_token))))))))))))))))
 
 ===
@@ -268,7 +268,7 @@ greet(
           (arg_type
             (doc_string
               (triple_quote)
-              (immediate_triple_quote_string_content)
+              (string_content)
               (triple_quote))
             (sep)
             (arg_with_type
@@ -294,5 +294,11 @@ greet(
         (block
           (literal
             (string
-              (immediate_string_content)
+              (string_content)
+              (interpolation
+                (symbol_or_call
+                  (auto_call_symbol
+                    (id
+                      (word_token)))))
+              (string_content)
               (immediate_quote_token))))))))

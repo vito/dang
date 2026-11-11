@@ -80,7 +80,7 @@ type T {
                       (colon_token)
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token))))))))))))))
 
 ===
@@ -168,7 +168,7 @@ type T {
                       (colon_token)
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))))))
               (directive_application
                 (id
@@ -184,5 +184,5 @@ type T {
                       (colon_token)
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token))))))))))))))

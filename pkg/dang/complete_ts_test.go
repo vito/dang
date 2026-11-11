@@ -433,6 +433,104 @@ func TestComplete_NoResults(t *testing.T) {
 	}
 }
 
+func TestComplete_Strings(t *testing.T) {
+	env := testCompletionTypeScope()
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		text       string
+		line, col  int
+		wantLabels []string // nil: no completions
+	}{
+		{
+			name: "double-quoted content",
+			text: `let x = "cont"`,
+			col:  len(`let x = "cont`),
+		},
+		{
+			name: "single-quoted content",
+			text: `let x = 'cont'`,
+			col:  len(`let x = 'cont`),
+		},
+		{
+			name: "triple-quoted content",
+			text: "let x = \"\"\"\ncont\n\"\"\"",
+			line: 1,
+			col:  len("cont"),
+		},
+		{
+			name: "triple single-quoted content",
+			text: "let x = '''\ncont\n'''",
+			line: 1,
+			col:  len("cont"),
+		},
+		{
+			name: "unterminated string",
+			text: `let x = "cont`,
+			col:  len(`let x = "cont`),
+		},
+		{
+			name: "single-quoted dollar brace is content",
+			text: `let x = '${cont}'`,
+			col:  len(`let x = '${cont`),
+		},
+		{
+			name: "language tag",
+			text: "let x = \"\"\"cont\nabc\n\"\"\"",
+			col:  len(`let x = """cont`),
+		},
+		{
+			name: "unterminated triple-quoted string",
+			text: "let x = \"\"\"\ncont",
+			line: 1,
+			col:  len("cont"),
+		},
+		{
+			name:       "bare ident in interpolation",
+			text:       `let x = "a ${cont}"`,
+			col:        len(`let x = "a ${cont`),
+			wantLabels: []string{"container"},
+		},
+		{
+			name:       "member in interpolation",
+			text:       `let x = "a ${container.fr} b"`,
+			col:        len(`let x = "a ${container.fr`),
+			wantLabels: []string{"from"},
+		},
+		{
+			name:       "interpolation in triple-quoted string",
+			text:       "let x = \"\"\"\na ${cont}\n\"\"\"",
+			line:       1,
+			col:        len("a ${cont"),
+			wantLabels: []string{"container"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Complete(ctx, env, tt.text, tt.line, tt.col)
+			labels := make([]string, len(result.Items))
+			got := map[string]bool{}
+			for i, c := range result.Items {
+				labels[i] = c.Label
+				got[c.Label] = true
+			}
+			if tt.wantLabels == nil {
+				if len(result.Items) != 0 {
+					t.Errorf("expected no completions, got %v", labels)
+				}
+				return
+			}
+			for _, want := range tt.wantLabels {
+				if !got[want] {
+					t.Errorf("missing expected completion %q in %v", want, labels)
+				}
+			}
+		})
+	}
+}
+
 func TestByteOffsetToLineCol(t *testing.T) {
 	// Test the REPL helper
 	tests := []struct {

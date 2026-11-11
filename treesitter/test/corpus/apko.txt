@@ -70,7 +70,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
         (equal_token)
         (literal
           (string
-            (immediate_string_content)
+            (string_content)
             (immediate_quote_token))))))
   (form_sep)
   (comment_token)
@@ -85,7 +85,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
         (equal_token)
         (literal
           (string
-            (immediate_string_content)
+            (string_content)
             (immediate_quote_token))))))
   (form_sep)
   (decl
@@ -147,7 +147,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                           (colon_token)
                           (literal
                             (string
-                              (immediate_string_content)
+                              (string_content)
                               (immediate_quote_token))))))))
                 (sep)
                 (object_field
@@ -186,7 +186,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (equal_token)
                     (literal
                       (string
-                        (immediate_string_content)
+                        (string_content)
                         (immediate_quote_token))))))
               (colon_token)
               (type
@@ -215,7 +215,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (list
                     (literal
                       (string
-                        (immediate_string_content)
+                        (string_content)
                         (immediate_quote_token)))))
                 (form_sep)
                 (reassignment
@@ -251,7 +251,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                                 (additive_expr
                                                   (literal
                                                     (string
-                                                      (immediate_string_content)
+                                                      (string_content)
                                                       (immediate_quote_token)))
                                                   (additive_op)
                                                   (symbol_or_call
@@ -261,7 +261,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                   (additive_op)
                                   (literal
                                     (string
-                                      (immediate_string_content)
+                                      (string_content)
                                       (immediate_quote_token))))))))))))))))
         (form_sep)
         (decl
@@ -420,7 +420,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                       (positional_value
                                         (literal
                                           (string
-                                            (immediate_string_content)
+                                            (string_content)
                                             (immediate_quote_token)))))))
                                 (dot_token)
                                 (field_id)
@@ -430,7 +430,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                     (positional_value
                                       (literal
                                         (string
-                                          (immediate_string_content)
+                                          (string_content)
                                           (immediate_quote_token)))))
                                   (sep
                                     (comma_token))
@@ -447,7 +447,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                               (positional_value
                                                 (literal
                                                   (string
-                                                    (immediate_string_content)
+                                                    (string_content)
                                                     (immediate_quote_token))))))))))))
                               (dot_token)
                               (field_id)
@@ -457,7 +457,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                   (positional_value
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))))
                                 (sep
                                   (comma_token))
@@ -487,43 +487,43 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                   (list
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))
                                     (sep
                                       (comma_token))
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))
                                     (sep
                                       (comma_token))
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))
                                     (sep
                                       (comma_token))
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))
                                     (sep
                                       (comma_token))
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))
                                     (sep
                                       (comma_token))
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token)))
                                     (sep
                                       (comma_token))
                                     (literal
                                       (string
-                                        (immediate_string_content)
+                                        (string_content)
                                         (immediate_quote_token))))))))
                           (dot_token)
                           (field_id)
@@ -533,7 +533,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                               (positional_value
                                 (literal
                                   (string
-                                    (immediate_string_content)
+                                    (string_content)
                                     (immediate_quote_token)))))))))))))))
         (form_sep)
         (decl
@@ -582,7 +582,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (equal_token)
                     (literal
                       (string
-                        (immediate_string_content)
+                        (string_content)
                         (immediate_quote_token))))))
               (colon_token)
               (type
@@ -679,7 +679,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                           (list
                             (literal
                               (string
-                                (immediate_string_content)
+                                (string_content)
                                 (immediate_quote_token))))))))
                   (dot_token)
                   (field_id))
@@ -692,13 +692,13 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                       (list
                         (literal
                           (string
-                            (immediate_string_content)
+                            (string_content)
                             (immediate_quote_token)))
                         (sep
                           (comma_token))
                         (literal
                           (string
-                            (immediate_string_content)
+                            (string_content)
                             (immediate_quote_token))))))))
               (dot_token)
               (field_id)))))))
@@ -728,7 +728,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                         (list
                           (literal
                             (string
-                              (immediate_string_content)
+                              (string_content)
                               (immediate_quote_token))))))))
                 (dot_token)
                 (field_id)
@@ -739,13 +739,13 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                       (list
                         (literal
                           (string
-                            (immediate_string_content)
+                            (string_content)
                             (immediate_quote_token)))
                         (sep
                           (comma_token))
                         (literal
                           (string
-                            (immediate_string_content)
+                            (string_content)
                             (immediate_quote_token))))))))
               (dot_token)
               (field_id))))))))
