@@ -572,6 +572,7 @@ func TestVersionQuotes(t *testing.T) {
 		for _, src := range []string{
 			"let x = \"\"\"Summary.\nmore\n\"\"\"",
 			"let x = \"\"\"${x}\nmore\n\"\"\"",
+			"print(\"\"\"Summary.\nmore\n\"\"\")",
 			"'''sh echo\nmore\n'''",
 			"```hello world\nmore\n```",
 		} {
@@ -592,6 +593,8 @@ func TestVersionQuotes(t *testing.T) {
 			assert.NotContains(t, msg, "opening line", doc)
 			assert.NotContains(t, msg, "invalid escape", doc)
 		}
+		// Where no declaration follows, it is a string after all.
+		assert.Contains(t, parseErr(t, "pub f: String! {\n  \"\"\"\n  \\d\n  \"\"\"\n}\n", Version2_5), "invalid escape")
 	})
 
 	t.Run("whitespace may trail a language tag", func(t *testing.T) {

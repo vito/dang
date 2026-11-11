@@ -233,7 +233,8 @@ func patchRepeatContent(rule treesitter.Rule) treesitter.Rule {
 // and all). The PEG keeps docstrings verbatim. The scanner takes a backslash
 // starting no escape as text, so most docstrings still parse, but one whose
 // `${` starts no expression (`${HOME:-/root}`), or that ends in a backslash,
-// is an error to tree-sitter alone.
+// is an error to tree-sitter alone. (EnhanceParseError then reports the
+// error nearest where the PEG failed, rather than that one.)
 func patchDocStringShape(treesitter.Rule) treesitter.Rule {
 	return *tsInlineRule("CookedTripleQuoteString", 0)
 }

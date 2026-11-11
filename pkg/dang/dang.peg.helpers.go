@@ -247,7 +247,8 @@ func (c *current) rejectOpeningLineText(delim string) {
 
 const docStringsKey = "docStrings"
 
-// recordDocString records the source a DocString matched, for inDocString.
+// recordDocString records the source a DocString matched, for inDocString,
+// when a declaration appears to follow it.
 func (c *current) recordDocString() {
 	ranges, _ := c.globalStore[docStringsKey].(map[int]int)
 	if ranges == nil {

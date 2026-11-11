@@ -1247,11 +1247,21 @@ MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBacktic
   return string(c.text), nil
 }
 
-DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
-  c.recordDocString()
+DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ decl:_declAhead? {
+  if decl != nil {
+    c.recordDocString()
+  }
   return normalizeTripleQuoteString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
+}
+
+// Whether what follows a docstring looks like the start of a declaration or
+// a parameter: a directive, or a word followed by another word or by one of
+// `: ( = [ {`. Only then is a docstring that fails to make one taken for a
+// failed declaration rather than a string (see inDocString).
+_declAhead <- &( '@' / '$'? [a-zA-Z_] [a-zA-Z0-9_]* ( [ \t]* [:(=[{] / [ \t]+ '$'? [a-zA-Z_] ) ) {
+  return true, nil
 }
 
 Boolean <- TrueToken {
