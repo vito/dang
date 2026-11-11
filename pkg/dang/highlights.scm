@@ -32,10 +32,26 @@
 (self_keyword) @variable.special
 
 ;; Literals
-(string) @string
-(string (immediate_escape) @string.escape) @string
+;; Strings are captured piecewise, so expressions interpolated with `${...}`
+;; keep their own highlighting.
+(string "\"" @string)
+(string (immediate_quote_token) @string)
+(triple_quote_string (triple_quote) @string)
+(single_quote_string "'" @string)
+(single_quote_string (immediate_single_quote_token) @string)
+(triple_single_quote_string (triple_single_quote) @string)
+(string (string_content) @string)
+(triple_quote_string (string_content) @string)
+(single_quote_string (string_content) @string)
+(triple_single_quote_string (string_content) @string)
+(string (immediate_escape) @string.escape)
+(triple_quote_string (immediate_escape) @string.escape)
+(triple_quote_string
+  (lang_tag_part (lang_tag_name) @label))
+(triple_single_quote_string
+  (lang_tag_part (lang_tag_name) @label))
+;; Docstrings are verbatim: no escapes, no interpolation.
 (doc_string) @string
-(triple_quote_string) @string
 (single_template "`" @string)
 (single_template
   (single_template_part !e) @string)
@@ -126,6 +142,8 @@
   e: (_)
   "}" @punctuation.special)
   (#trim! @punctuation.special 0 1 0 0))
+(interpolation "${" @punctuation.special)
+(interpolation "}" @punctuation.special)
 
 ;; Identifiers - using more generic patterns
 (symbol) @variable
