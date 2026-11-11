@@ -67,6 +67,12 @@ pre.cmd{border-left:3px solid var(--teal)}
 .fix{margin:8px 0 0;padding:8px 12px;background:var(--green-bg);border-radius:6px;font-size:14.5px}
 .fix::before{content:"Fix  ";font-weight:800;color:var(--green)}
 .src{font-size:12.5px;color:var(--soft);margin:6px 0 0}
+.cta{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--card);border:1px solid var(--hair);border-left:4px solid var(--teal);border-radius:10px;padding:16px 20px;margin:22px 0}
+.cta p{margin:0;flex:1 1 320px}
+.cta p b{display:block;font-size:16.5px;margin-bottom:2px}
+a.btn{display:inline-flex;align-items:center;gap:8px;background:var(--teal);color:var(--paper);font-weight:700;font-size:15px;text-decoration:none;padding:10px 18px;border-radius:8px;white-space:nowrap}
+a.btn:hover{filter:brightness(1.12)}
+a.btn::after{content:"→"}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .mini{background:var(--card);border:1px solid var(--hair);border-radius:8px;padding:14px 16px}
 .mini h4{margin:0 0 6px;font-size:15.5px}
@@ -88,6 +94,7 @@ footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--hair);font-si
   <a class="sub" href="#b-graphql">GraphQL objects</a>
   <a class="sub" href="#b-order">Encoder key order</a>
   <a class="sub" href="#b-strict">Stricter checks</a>
+  <a href="#soundness">Type soundness</a>
   <a href="#dagger">Dagger modules</a>
   <a href="#new">What's new</a>
   <a class="sub" href="#n-decoded">Decoded data</a>
@@ -103,7 +110,7 @@ footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--hair);font-si
 <div class="kicker">Release notes · v2.4.0 + v2.4.1</div>
 <h1>Dang 2.4<small>Upgrading from v2.3: what breaks, how to fix it, and what to try</small></h1>
 
-<p class="lede">Dang 2.4 is a new <b>language version</b>. Only one rule is tied to it: type patterns in <code>case</code> and <code>rescue</code> take a <code>!</code>, and <code>dang migrate</code> adds it for you. A few <b>output changes apply to every project</b>, whatever version it pins: values print as Dang literals instead of JSON, GraphQL objects print as their query, and the encoders keep field order. In return you get a <code>Decoded</code> type for data of unknown shape, strict decoding, <code>case</code> as a real type switch, and <code>Ordered</code>/<code>Numeric</code> bounds with <code>sort</code> and <code>sum</code>.</p>
+<p class="lede">Dang 2.4 is a new <b>language version</b>. Only one rule is tied to it: type patterns in <code>case</code> and <code>rescue</code> take a <code>!</code>, and <code>dang migrate</code> adds it for you. A few <b>output changes apply to every project</b>, whatever version it pins: values print as Dang literals instead of JSON, GraphQL objects print as their query, and the encoders keep field order. The type checker also closes every known soundness hole, so programs it used to accept and then fail at runtime are compile errors now (<a href="#soundness">details and the full write-up</a>). In return you get a <code>Decoded</code> type for data of unknown shape, strict decoding, <code>case</code> as a real type switch, and <code>Ordered</code>/<code>Numeric</code> bounds with <code>sort</code> and <code>sum</code>.</p>
 
 <div class="callout">
   <p><b>Install v2.4.1, not v2.4.0.</b> v2.4.1 is a patch release with no new language version. It brings back <code>JSON</code>, <code>YAML</code> and <code>TOML</code> as builtin scalar types (v2.4.0 had made them namespaces only), which Dagger module entrypoints rely on. These notes describe v2.4.1. If you already moved to v2.4.0, see <a href="#v240">Coming from v2.4.0</a>.</p>
@@ -121,7 +128,7 @@ dang migrate -w --from 2.1 .    <span class="c-com"># for projects that never de
   <li><b>Find JSON built with <code>toString</code>, <code>join</code> or <code>${…}</code></b> and call <code>JSON.encode</code> instead (<a href="#b-display">details</a>).</li>
   <li><b>Find GraphQL object IDs read through <code>toString</code> or interpolation</b> and select <code>.id</code> (<a href="#b-graphql">details</a>).</li>
   <li><b>Check goldens of <code>JSON.encode</code> / <code>YAML.encode</code> output.</b> Keys now come out in declaration order; pass <code>sortKeys: true</code> for the old sorted order (<a href="#b-order">details</a>).</li>
-  <li><b>Run it.</b> A few stricter checks now fail at compile time with a message naming the fix (<a href="#b-strict">list</a>).</li>
+  <li><b>Run it.</b> A few stricter checks now fail at compile time with a message naming the fix (<a href="#b-strict">list</a>), and the type checker no longer accepts programs that would fail at runtime (<a href="#soundness">type soundness</a>).</li>
 </ol>
 
 <!-- ================================================================ -->
@@ -260,8 +267,30 @@ count: 1</pre></div>
     <tr><td>an interface member <code>f(x: Int!, y: String!): Int!</code> implemented as <code>f(x: c!, y: c!): c! { y }</code></td><td><code>field "f", argument "y": type c! (here Int!) doesn't fit interface type String!</code> — this returned a String as <code>Int!</code></td><td>match the interface's types</td></tr>
   </tbody>
 </table>
-<p>The type-soundness sweep (#219–#249) landed in the same range and closes the remaining known cases of the checker accepting a program that then fails. It has its own notes: <a href="https://gistpreview.github.io/?7466a76346390a8516a0d9f03a430aff">Closing soundness holes in Dang's type checker</a>.</p>
+<p>The type-soundness fixes are a larger set of stricter checks; they have <a href="#soundness">their own section</a>.</p>
 <p>One runtime change: decoding an explicit <code>null</code> into a non-null field with a default now takes the default (<code>{"retries": null}</code> into <code>retries: Int! = 3</code> gives <code>3</code>), where it used to leave null in an <code>Int!</code>.</p>
+
+<!-- ================================================================ -->
+<h2 id="soundness">Type soundness <span class="tag t-all">every version</span></h2>
+<p class="intro">The checker now rejects every known program that it used to accept and that then failed at runtime.</p>
+<p>A type checker is sound when the type it gives a value is the type the value has at runtime: a <code>T!</code> is never null, an <code>Int!</code> is never a <code>String</code>. Before 2.4, Dang's checker accepted dozens of programs that broke this. Some were caught later by a runtime check, others failed somewhere unrelated, gave a wrong answer, or panicked the interpreter. A sweep across generics, nulls, builtins, subtyping and control flow (#219–#249) fixed every case it found. Each one is now a compile error at the cause, or runs and gives the right answer. A few valid programs that the old checker rejected now compile.</p>
+<div class="cta">
+  <p><b>Closing soundness holes in Dang's type checker</b>The full write-up: a before/after gallery of every case, how each area was fixed, the decisions made along the way, and the measured breaking-change risk.</p>
+  <a class="btn" href="https://gistpreview.github.io/?7466a76346390a8516a0d9f03a430aff">Read the full write-up</a>
+</div>
+<p>The changes most likely to reach existing code are listed below. The write-up's search of about 455 <code>.dang</code> files across 60 repositories found confirmed breaks in only two of them. Messages are as printed at v2.4.1.</p>
+<table>
+  <thead><tr><th style="width:38%">You wrote</th><th>You now see</th><th style="width:24%">Fix</th></tr></thead>
+  <tbody>
+    <tr><td><code>let xs = []</code><br><code>xs += ["a"]</code><br><code>let n: Int! = xs[0]!</code></td><td><code>cannot use [String!]! as [Int]!</code>. A binding that starts open (<code>[]</code>, <code>null</code>) keeps the first type a use pins it to; it used to accept any type at every use</td><td>use one type, or annotate the binding</td></tr>
+    <tr><td><code>first[a](xs: [a]!): a { xs[0] }</code></td><td><code>cannot use a possibly-null value as a: callers may pick a non-null type for a; assert it with `xs[0]!`, …</code>. A type variable <code>a</code> may stand for a non-null type</td><td><code>xs[0]!</code>, <code>?? other</code>, or a null check</td></tr>
+    <tr><td><code>let p: Int = null</code><br><code>p + 1</code></td><td><code>operator addition is not defined for nullable type Int: check it for null first, supply a default with ??, or assert it with !</code></td><td><code>p! + 1</code> or <code>(p ?? 0) + 1</code></td></tr>
+    <tr><td><code>c == s</code> with <code>c: Color!</code>, <code>s: String!</code></td><td><code>cannot compare Color! with String!: they are unrelated types; compare with a Color value, like Color.RED, or cast the string: (s :: Color!)</code>. This was always false; a string <i>literal</i> still converts</td><td><code>c == Color.GREEN</code> or <code>(s :: Color!)</code></td></tr>
+    <tr><td><code>o.maybe.x = 4</code> with <code>maybe: Inner</code></td><td><code>cannot assign to o.maybe.x: o.maybe may be null; assert it with ! to raise if it is (`o.maybe!.x = ...`), or check it for null first</code></td><td><code>o.maybe!.x = 4</code></td></tr>
+    <tr><td>A script's helper <code>report</code> reading <code>total</code>, which a top-level statement updates</td><td><code>`report` reads `total`, which a top-level statement writes (line 3), but functions may be called while top-level declarations are initialized, before any statement, so it could see the value from before the write; pass `total` as an argument instead</code></td><td>pass the value as an argument</td></tr>
+  </tbody>
+</table>
+<p>Null checks now also stop applying once something could set the name back to null, such as a reassignment, a closure or a loop. A <code>case</code> that covers every value of an enum or <code>Boolean</code> is non-null without an <code>else</code>. Strings gain <code>.length</code> and <code>.isEmpty</code>, counting Unicode code points. Parser errors that used to panic are now reported. The write-up covers all of it.</p>
 
 <!-- ================================================================ -->
 <h2 id="dagger">Dagger module authors</h2>
@@ -504,9 +533,11 @@ toInt: "0x10" is not a base-16 integer</pre></div>
   <a href="https://github.com/vito/dang/pull/272">#272</a>/<a href="https://github.com/vito/dang/pull/274">#274</a>/<a href="https://github.com/vito/dang/pull/290">#290</a>/<a href="https://github.com/vito/dang/pull/293">#293</a> (bounds),
   <a href="https://github.com/vito/dang/pull/258">#258</a>/<a href="https://github.com/vito/dang/pull/263">#263</a> (stdlib),
   <a href="https://github.com/vito/dang/pull/291">#291</a>/<a href="https://github.com/vito/dang/pull/292">#292</a> (imports),
+  <a href="https://github.com/vito/dang/pull/219">#219</a>–<a href="https://github.com/vito/dang/pull/249">#249</a> (type soundness),
   <a href="https://github.com/vito/dang/pull/295">#295</a> (v2.4.1);
   and <a href="https://github.com/dagger/dagger/pull/15128">dagger/dagger#15128</a> for the Dagger version rules.</p>
   <p><b>Verification.</b> Every program and output not otherwise marked was run with <code>dang</code> built at v2.4.1, with no <code>dang.toml</code> (so language 2.4). GraphQL display is quoted from <code>tests/test_graphql_object_tostring.dang</code>, the <code>Dagger.JSON</code> casts from <code>pkg/dang/builtin_codec_scalars_test.go</code>, the <code>Lib.toString</code> error from the <code>import_dang_qualified_builtin</code> golden, and v2.3 output from #284's description.</p>
+  <p><b>Other releases.</b> <a href="/releases/v2.3.0.html">v2.3.0</a> · <a href="/releases/v2.2.0.html">v2.2.0</a></p>
 </footer>
 </main>
 </div>
