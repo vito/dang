@@ -606,7 +606,7 @@ func inferExpr(ctx context.Context, scope dang.TypeScope, expr string) (hm.Type,
 // inferErrorMessage reduces an inference error to its messages, leaving out
 // rendered source snippets.
 func inferErrorMessage(err error) error {
-	diags := errorDiagnostics(err, CodeType, "", func(string) (string, bool) { return "", true })
+	diags := errorDiagnostics(err, CodeType, "", func(string) (string, bool) { return "", true }, nil)
 	if len(diags) == 0 {
 		return err
 	}
