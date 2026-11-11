@@ -1,0 +1,3 @@
+let script = """sh echo
+  hello
+"""

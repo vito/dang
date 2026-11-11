@@ -12,7 +12,7 @@ let page = {{
 
 # Defaults: compact, HTML-escaped, fields in the order written.
 assert {
-  JSON.encode(page) == """{"title":"\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e","ids":[1,2],"none":[],"meta":{}}"""
+  JSON.encode(page) == '''{"title":"\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e","ids":[1,2],"none":[],"meta":{}}'''
 }
 assert { JSON.encode(page, indent: "", escapeHTML: true) == JSON.encode(page) }
 
@@ -22,7 +22,7 @@ assert {
 
 # Empty lists and objects stay on one line, as with json.MarshalIndent.
 assert {
-  JSON.encode(page, indent: "  ") == """
+  JSON.encode(page, indent: "  ") == '''
   {
     "title": "\u003cb\u003eTom \u0026 Jerry\u003c/b\u003e",
     "ids": [
@@ -32,7 +32,7 @@ assert {
     "none": [],
     "meta": {}
   }
-  """
+  '''
 }
 
 # Layout composes with sorting.

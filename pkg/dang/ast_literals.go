@@ -488,6 +488,13 @@ func (t *Template) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if p.Expr == nil {
 			continue
 		}
+		// `${NAME}` in a double-quoted string is often text meant for a
+		// shell, written before double quotes interpolated.
+		if sym, ok := p.Expr.(*Symbol); ok && t.Quote == '"' {
+			if _, found := env.SchemeOf(sym.Name); !found {
+				return nil, NewInferError(fmt.Errorf("%q not found; to write ${%s} as text, single-quote the string or escape it as \\${%s}", sym.Name, sym.Name, sym.Name), sym)
+			}
+		}
 		if _, err := p.Expr.Infer(ctx, env, fresh); err != nil {
 			return nil, err
 		}

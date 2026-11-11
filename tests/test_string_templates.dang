@@ -25,7 +25,7 @@ assert { escaped_dollar == "\\$ is dollar" }
 
 # \${} escapes to literal ${}
 let escaped_interp = `\${foo} is not interpolated`
-assert { escaped_interp == "${foo} is not interpolated" }
+assert { escaped_interp == '${foo} is not interpolated' }
 
 # Lone $ not followed by { is literal
 let stray_dollar = `cost $5`
@@ -36,7 +36,7 @@ assert { stray_dollar == "cost $5" }
 let backslash = `\d+`
 assert { backslash == "\\d+" }
 let literal_dollar_brace = `prefix \${name} suffix`
-assert { literal_dollar_brace == "prefix ${name} suffix" }
+assert { literal_dollar_brace == "prefix \${name} suffix" }
 
 # Expression interpolation (not just symbols)
 let x = 2
@@ -92,7 +92,7 @@ assert { multi_block == "hello world!" }
 let multi_escaped = ```
 hello \${who}!
 ```
-assert { multi_escaped == "hello ${who}!" }
+assert { multi_escaped == 'hello ${who}!' }
 
 # Fence bumping: 4 backticks wrap a 3-backtick code block
 let readme = ````

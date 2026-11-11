@@ -1,0 +1,8 @@
+[1m[31mError:[0m "GOBIN" not found; to write ${GOBIN} as text, single-quote the string or escape it as \${GOBIN}
+  [2m[34m--> errors/string_interpolates_undefined.dang:1:15[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlet path = "${GOBIN}:${PATH}"
+[2m                     [31m^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

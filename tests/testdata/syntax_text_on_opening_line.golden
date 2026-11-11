@@ -1,0 +1,9 @@
+[1m[31mError:[0m syntax error: text on the opening line of a multi-line string: start it on the next line (only a language tag may follow the opening """, like """sh)
+  [2m[34m--> errors/syntax_text_on_opening_line.dang:1:14[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlet script = """sh echo
+[2m                    [31m^^^^^^^^^^[0m
+ [2m  2 |   hello[0m
+ [2m  3 | """[0m
+ [2m    |[0m
+
