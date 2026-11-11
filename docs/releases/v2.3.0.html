@@ -313,7 +313,7 @@ let typed = boom rescue {
 
 let fallback = boom rescue "fallback"</code></pre></div>
 </div>
-<p>The dropped <code>pub</code> and <code>()</code> are only <code>dang fmt</code>'s usual spelling, which a migrated file is printed in: declarations are public by default in every version, so the formatter leaves <code>pub</code> implicit, and it drops an empty <code>()</code> from declarations and calls. Neither changes meaning, and neither is new in 2.3.</p>
+<p>The dropped <code>pub</code> and <code>()</code> are only <code>dang fmt</code>'s usual spelling, which a migrated file is printed in: a function or field declared without <code>pub</code> is public in every version, so the formatter leaves <code>pub</code> implicit, and it drops an empty <code>()</code> from declarations and calls. Neither changes meaning, and neither is new in 2.3.</p>
 <ul>
   <li><b>What <code>rescue</code> can't express stays <code>try</code>/<code>catch</code>:</b> clauses that can never match (after a catch-all, or repeating a type), and a catch whose only content is comments. It still runs at 2.1, with the warning above. Comments in the try body or the catch stay where they were.</li>
   <li><b>A <code>for</code> loop the migration would change is refused.</b> At 2.1 a <code>for</code> loop becomes a <code>loop</code> call, so a <code>loop</code> of your own in scope would capture it. That includes a top-level <code>loop</code> in a sibling file of the same module. Migration stops with: <code>migrating to Dang 2.1 would change the meaning of line N: its `for` loop becomes a call to `loop`, which names a binding of this program's own there rather than the builtin; rename that binding first</code>.</li>
