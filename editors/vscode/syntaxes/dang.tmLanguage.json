@@ -5,8 +5,10 @@
   "patterns": [
     { "include": "#comment" },
     { "include": "#template-string" },
-    { "include": "#string" },
     { "include": "#triple-quote-string" },
+    { "include": "#string" },
+    { "include": "#triple-single-quote-string" },
+    { "include": "#single-quote-string" },
     { "include": "#number" },
     { "include": "#boolean" },
     { "include": "#null" },
@@ -25,9 +27,43 @@
       "name": "comment.line.number-sign.dang"
     },
     "triple-quote-string": {
-      "begin": "\"\"\"",
+      "begin": "(\"\"\")([A-Za-z][A-Za-z0-9_-]*$)?",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.string.begin.dang" },
+        "2": { "name": "entity.name.tag.dang" }
+      },
       "end": "\"\"\"",
-      "name": "string.quoted.triple.dang"
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.dang" }
+      },
+      "name": "string.quoted.triple.dang",
+      "patterns": [
+        { "include": "#string-escape" },
+        { "include": "#string-interpolation" }
+      ]
+    },
+    "triple-single-quote-string": {
+      "begin": "(''')([A-Za-z][A-Za-z0-9_-]*$)?",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.string.begin.dang" },
+        "2": { "name": "entity.name.tag.dang" }
+      },
+      "end": "'''",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.dang" }
+      },
+      "name": "string.quoted.triple.single.dang"
+    },
+    "single-quote-string": {
+      "begin": "'",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.dang" }
+      },
+      "end": "'|$",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.dang" }
+      },
+      "name": "string.quoted.single.dang"
     },
     "template-string": {
       "patterns": [
@@ -76,24 +112,42 @@
         { "include": "$self" }
       ]
     },
+    "string-interpolation": {
+      "begin": "\\$\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.interpolation.begin.dang" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.interpolation.end.dang" }
+      },
+      "name": "meta.interpolation.dang",
+      "patterns": [
+        { "include": "$self" }
+      ]
+    },
     "string": {
       "begin": "\"",
-      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.dang" }
+      },
+      "end": "\"|$",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.dang" }
+      },
       "name": "string.quoted.double.dang",
       "patterns": [
+        { "include": "#string-escape" },
         {
-          "match": "\\\\[\"\\\\nrt]",
-          "name": "constant.character.escape.dang"
+          "match": "\\\\.",
+          "name": "invalid.illegal.escape.dang"
         },
-        {
-          "begin": "\\{\\{",
-          "end": "\\}\\}",
-          "name": "meta.interpolation.dang",
-          "patterns": [
-            { "include": "$self" }
-          ]
-        }
+        { "include": "#string-interpolation" }
       ]
+    },
+    "string-escape": {
+      "match": "\\\\([abfnrtv\"\\\\/$]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{3})",
+      "name": "constant.character.escape.dang"
     },
     "number": {
       "match": "\\b[0-9]+\\b",
