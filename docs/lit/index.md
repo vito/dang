@@ -18,7 +18,7 @@ functions are loaded directly from the schema.
 }{
   [pkg.go.dev](https://pkg.go.dev/github.com/vito/dang)
 }{
-  [v2.4.1 release notes](/releases/v2.4.1.html)
+  [release notes](#releases)
 }
 
 \shell{go install github.com/vito/dang/v2/cmd/dang@latest}
@@ -392,3 +392,4 @@ print(```ruby
 \include-section{./graphql.md}
 \include-section{./data.md}
 \include-section{./reference.md}
+\include-section{./releases.md}
