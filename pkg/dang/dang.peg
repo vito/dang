@@ -1039,7 +1039,16 @@ LegacyTripleQuoteString <- LiteralQuotes TripleQuote content:ImmediateTripleQuot
   }, nil
 }
 
-CookedTripleQuoteString <- !LiteralQuotes TripleQuote lang:LangTagPart? parts:TripleQuotePart* TripleQuote {
+// A text that didn't make a docstring, because no declaration followed it,
+// is parsed again as a string. Text a docstring may hold but a string may
+// not then fails the string quietly instead of rejecting it (see
+// inDocString), so that the error is reported where the declaration went
+// wrong.
+CookedTripleQuoteString <- s:CookedTripleQuoteBody &{ return s != nil, nil } {
+  return s, nil
+}
+
+CookedTripleQuoteBody <- !LiteralQuotes TripleQuote lang:LangTagPart? parts:TripleQuotePart* TripleQuote {
   return c.quotedString(parts, '"', true, lang)
 }
 
@@ -1109,7 +1118,14 @@ ImmediateEscape <- '\\' (
 
 // An escape ImmediateEscape doesn't know, reported where it is rather than at
 // the start of the form. Tree-sitter leaves it out, so editors still flag it.
-InvalidEscape <- '\\' . {
+// In a docstring's text parsed again as a string, it fails quietly instead
+// (see CookedTripleQuoteString).
+InvalidEscape <- e:_invalidEscape &{ return e != nil, nil }
+
+_invalidEscape <- '\\' . {
+  if c.inDocString() {
+    return nil, nil
+  }
   c.reject(c.Loc(), "invalid escape sequence in string literal")
   return nil, nil
 }
@@ -1184,8 +1200,8 @@ MultiTemplate <- ticks:MultiTemplateOpenToken #{
   if lang != nil {
     l = lang.(string)
   }
-  if l == "" && !versionFromStore(c.globalStore).literalQuotes() {
-    c.rejectOpeningLineText(sliceOf[TemplatePart](parts), "```")
+  if l == "" && !versionFromStore(c.globalStore).literalQuotes() && hasOpeningLineText(sliceOf[TemplatePart](parts)) {
+    c.rejectOpeningLineText("```")
   }
   return makeTemplate(parts, len(ticks.([]byte)), l, c.Loc()), nil
 }
@@ -1206,7 +1222,9 @@ LangTagPart <- name:LangTagName LangTagTerminator {
 LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
   return string(c.text), nil
 }
-LangTagTerminator <- '\n'
+// Whitespace may trail a language tag, from Dang 2.5 (where nothing else
+// may follow it on the opening line).
+LangTagTerminator <- !LiteralQuotes [ \t\r]* '\n' / '\n'
 
 MultiTemplatePart <-
     "\\${" {
@@ -1230,6 +1248,7 @@ MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBacktic
 }
 
 DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
+  c.recordDocString()
   return normalizeTripleQuoteString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil

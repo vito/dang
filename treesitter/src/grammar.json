@@ -221,7 +221,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 190,
+      "value": 191,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -318,7 +318,7 @@
     },
     "non_null_assert": {
       "type": "PREC_LEFT",
-      "value": 189,
+      "value": 190,
       "content": {
         "type": "SEQ",
         "members": [
@@ -519,7 +519,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 182,
+      "value": 183,
       "content": {
         "type": "SEQ",
         "members": [
@@ -606,7 +606,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 181,
+      "value": 182,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3067,7 +3067,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 121,
+      "value": 122,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3185,7 +3185,7 @@
     },
     "named_type": {
       "type": "PREC_LEFT",
-      "value": 119,
+      "value": 120,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3339,7 +3339,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 115,
+      "value": 116,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3427,7 +3427,7 @@
     },
     "rescue_expr": {
       "type": "PREC_LEFT",
-      "value": 111,
+      "value": 112,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3719,7 +3719,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 106,
+      "value": 107,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3783,7 +3783,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 105,
+      "value": 106,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3847,7 +3847,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 104,
+      "value": 105,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3928,7 +3928,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 102,
+      "value": 103,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -4017,7 +4017,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 100,
+      "value": 101,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -4098,7 +4098,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 98,
+      "value": 99,
       "content": {
         "type": "SEQ",
         "members": [

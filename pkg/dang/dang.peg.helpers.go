@@ -140,15 +140,19 @@ func unescapeString(raw string) (string, error) {
 // quotedString builds a double-quoted string literal (from Dang 2.5) from its
 // parts, whose literal text is still as written: a multi-line string is
 // dedented before its escapes are decoded, so that an escape like `\t` is
-// text rather than indentation. It is a String unless it interpolates.
+// text rather than indentation. It is a String unless it interpolates. It is
+// nil for a docstring's text that a string can't hold (see inDocString).
 func (c *current) quotedString(rawParts any, quote byte, triple bool, lang any) (any, error) {
 	parts := sliceOf[TemplatePart](rawParts)
 	l, _ := lang.(string)
 	fence := 1
 	if triple {
 		fence = 3
-		if l == "" {
-			c.rejectOpeningLineText(parts, `"""`)
+		if l == "" && hasOpeningLineText(parts) {
+			if c.inDocString() {
+				return nil, nil
+			}
+			c.rejectOpeningLineText(`"""`)
 		}
 		parts = normalizeTemplateParts(parts)
 	}
@@ -161,6 +165,9 @@ func (c *current) quotedString(rawParts any, quote byte, triple bool, lang any) 
 		}
 		lit, err := unescapeString(p.Lit)
 		if err != nil {
+			if c.inDocString() {
+				return nil, nil
+			}
 			// The grammar admits escapes that encode no character, like \777.
 			c.reject(c.Loc(), "invalid escape sequence in string literal")
 		}
@@ -196,8 +203,8 @@ func (c *current) verbatimTripleString(content, lang any) (any, error) {
 		raw = string(content.([]byte))
 	}
 	l, _ := lang.(string)
-	if l == "" {
-		c.rejectOpeningLineText([]TemplatePart{{Lit: raw}}, "'''")
+	if l == "" && hasOpeningLineText([]TemplatePart{{Lit: raw}}) {
+		c.rejectOpeningLineText("'''")
 	}
 	return &String{
 		Value:        normalizeTripleQuoteString([]byte(raw)),
@@ -209,13 +216,13 @@ func (c *current) verbatimTripleString(content, lang any) (any, error) {
 	}, nil
 }
 
-// rejectOpeningLineText rejects a multi-line string with text on its opening
-// line, given the parts that follow its opening delimiter (written delim)
-// when no language tag does. From Dang 2.5 a multi-line string's text starts
-// on the next line, so that a word there can't be mistaken for a language tag
-// or the other way around. A string that ends on its opening line is inline,
+// hasOpeningLineText reports whether a multi-line string has text on its
+// opening line, given the parts that follow its opening delimiter when no
+// language tag does. From Dang 2.5 a multi-line string's text starts on the
+// next line, so that a word there can't be mistaken for a language tag or
+// the other way around. A string that ends on its opening line is inline,
 // and fine.
-func (c *current) rejectOpeningLineText(parts []TemplatePart, delim string) {
+func hasOpeningLineText(parts []TemplatePart) bool {
 	text := false
 	for _, p := range parts {
 		if p.Expr != nil {
@@ -227,11 +234,43 @@ func (c *current) rejectOpeningLineText(parts []TemplatePart, delim string) {
 			text = text || strings.TrimSpace(p.Lit) != ""
 			continue
 		}
-		if text || strings.TrimSpace(p.Lit[:i]) != "" {
-			c.reject(c.Loc(), fmt.Sprintf("text on the opening line of a multi-line string: start it on the next line (only a language tag may follow the opening %s, like %ssh)", delim, delim))
-		}
-		return
+		return text || strings.TrimSpace(p.Lit[:i]) != ""
 	}
+	return false
+}
+
+// rejectOpeningLineText rejects a multi-line string, opened with delim, that
+// has text on its opening line (see hasOpeningLineText).
+func (c *current) rejectOpeningLineText(delim string) {
+	c.reject(c.Loc(), fmt.Sprintf("text on the opening line of a multi-line string: start it on the next line (only a language tag may follow the opening %s, like %ssh)", delim, delim))
+}
+
+const docStringsKey = "docStrings"
+
+// recordDocString records the source a DocString matched, for inDocString.
+func (c *current) recordDocString() {
+	ranges, _ := c.globalStore[docStringsKey].(map[int]int)
+	if ranges == nil {
+		ranges = map[int]int{}
+		c.globalStore[docStringsKey] = ranges
+	}
+	ranges[c.pos.offset] = c.pos.offset + len(c.text)
+}
+
+// inDocString reports whether the current match starts within source that
+// matched as a docstring. Text before a declaration parses as its docstring,
+// and again as a string when no declaration follows after all. A docstring
+// may hold what a string may not, like text on its opening line or a
+// backslash that isn't an escape, so there it isn't an error of its own: the
+// string fails quietly, leaving the error to the declaration that failed.
+func (c *current) inDocString() bool {
+	ranges, _ := c.globalStore[docStringsKey].(map[int]int)
+	for start, end := range ranges {
+		if c.pos.offset >= start && c.pos.offset < end {
+			return true
+		}
+	}
+	return false
 }
 
 func (c current) Loc() *SourceLocation {

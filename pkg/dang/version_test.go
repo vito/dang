@@ -570,8 +570,8 @@ func TestVersionQuotes(t *testing.T) {
 
 	t.Run("Dang 2.5 rejects text on the opening line", func(t *testing.T) {
 		for _, src := range []string{
-			"\"\"\"Summary.\nmore\n\"\"\"",
-			"\"\"\"${x}\nmore\n\"\"\"",
+			"let x = \"\"\"Summary.\nmore\n\"\"\"",
+			"let x = \"\"\"${x}\nmore\n\"\"\"",
 			"'''sh echo\nmore\n'''",
 			"```hello world\nmore\n```",
 		} {
@@ -584,6 +584,20 @@ func TestVersionQuotes(t *testing.T) {
 		decl, ok := node.(*FieldDecl)
 		require.True(t, ok, "expected *FieldDecl, got %T", node)
 		assert.Equal(t, "Summary \\n ${x}\nmore", decl.DocString)
+	})
+
+	t.Run("a declaration's error isn't blamed on its docstring", func(t *testing.T) {
+		for _, doc := range []string{"\"\"\"Summary.\nmore\n\"\"\"", "\"\"\"\nSummary \\d.\n\"\"\""} {
+			msg := parseErr(t, doc+"\npub f(x: Int!): Int! { x + }\n", Version2_5)
+			assert.NotContains(t, msg, "opening line", doc)
+			assert.NotContains(t, msg, "invalid escape", doc)
+		}
+	})
+
+	t.Run("whitespace may trail a language tag", func(t *testing.T) {
+		s := str(t, "\"\"\"sql  \r\n  select 1\n\"\"\"", Version2_5)
+		assert.Equal(t, "sql", s.Lang)
+		assert.Equal(t, "select 1", s.Value)
 	})
 
 	t.Run("migrating to 2.5 keeps every string's value", func(t *testing.T) {

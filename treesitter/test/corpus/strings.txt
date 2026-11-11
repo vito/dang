@@ -329,6 +329,25 @@ echo "$HOME" ${x} \n ''
       (triple_single_quote))))
 
 ===
+Whitespace may trail a language tag
+===
+
+'''sh   
+echo hi
+'''
+
+---
+
+(dang
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (lang_tag_part
+        (lang_tag_name))
+      (string_content)
+      (triple_single_quote))))
+
+===
 Backtick template with a language tag
 ===
 
@@ -414,7 +433,6 @@ A language tag is a lone word on the opening line
     (template
       (multi_template
         (multi_template_open_token)
-        (multi_template_part)
         (multi_template_part)
         (multi_template_part)
         (multi_template_part)

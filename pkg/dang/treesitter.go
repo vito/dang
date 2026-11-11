@@ -121,6 +121,7 @@ var tsInlinedRules = map[string]bool{
 	"TypePattern":             true,
 	"LegacyTripleQuoteString": true,
 	"CookedTripleQuoteString": true,
+	"CookedTripleQuoteBody":   true,
 	"LegacyString":            true,
 	"CookedString":            true,
 	"ImmediateStringContent":  true,

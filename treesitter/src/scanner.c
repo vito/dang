@@ -171,9 +171,14 @@ static bool scan_template_close(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// Scan the newline that terminates a language tag. Only valid right after a
-// lang_tag_name, which made sure the newline is there.
+// Scan the end of the line a language tag sits on: trailing whitespace and
+// the newline. Only valid right after a lang_tag_name, which made sure the
+// newline is there.
 static bool scan_lang_tag_terminator(TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         lexer->lookahead == '\r') {
+    lexer->advance(lexer, false);
+  }
   if (lexer->lookahead != '\n') {
     return false;
   }
@@ -365,25 +370,28 @@ static bool scan_single_quote_content(TSLexer *lexer) {
 }
 
 // Scan the language tag of a multi-line string, right after its opening
-// fence: a word ([A-Za-z][A-Za-z0-9_-]*) alone on the opening line. When the
-// line holds anything else, the word is content of the string instead: a
-// template content char of its first letter, or the start of the
+// fence: a word ([A-Za-z][A-Za-z0-9_-]*) alone on the opening line, but for
+// trailing whitespace. When the line holds anything else, the word is content
+// of the string instead: a template content char, or the start of the
 // triple-quoted string's content.
 static bool scan_lang_tag_name(TSLexer *lexer, const bool *valid_symbols) {
   lexer->advance(lexer, false);
-  lexer->mark_end(lexer);
   while (is_alpha(lexer->lookahead) ||
          (lexer->lookahead >= '0' && lexer->lookahead <= '9') ||
          lexer->lookahead == '_' || lexer->lookahead == '-') {
     lexer->advance(lexer, false);
   }
+  lexer->mark_end(lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         lexer->lookahead == '\r') {
+    lexer->advance(lexer, false);
+  }
   if (lexer->lookahead == '\n') {
-    lexer->mark_end(lexer);
     lexer->result_symbol = LANG_TAG_NAME;
     return true;
   }
   if (valid_symbols[TEMPLATE_CONTENT_CHAR]) {
-    // The token ends after the first letter, as template content chars do.
+    // The word is template content; the whitespace after it is scanned next.
     lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
     return true;
   }
