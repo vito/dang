@@ -7,6 +7,10 @@ import (
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func registerAssert() {
@@ -21,19 +25,99 @@ func registerAssert() {
 				return nil, fmt.Errorf("assert requires a block argument")
 			}
 			fn := *args.Block
-
-			result, err := callFunc(ctx, fn)
-			if err != nil {
-				return nil, fmt.Errorf("assert block: %w", err)
-			}
-
-			if isTruthy(result) {
-				return NullValue{}, nil
-			}
-
 			msgVal, _ := args.Get("message")
-			return nil, buildAssertionError(ctx, fn, msgVal)
+
+			ctx, span := startAssertSpan(ctx, fn, msgVal)
+			err := runAssert(ctx, fn, msgVal)
+			endAssertSpan(span, err)
+			if err != nil {
+				return nil, err
+			}
+			return NullValue{}, nil
 		})
+}
+
+func runAssert(ctx context.Context, fn FunctionValue, msgVal Value) error {
+	result, err := callFunc(ctx, fn)
+	if err != nil {
+		return fmt.Errorf("assert block: %w", err)
+	}
+	if isTruthy(result) {
+		return nil
+	}
+	return buildAssertionError(ctx, fn, msgVal)
+}
+
+// assertInstrumentationLibrary names the tracer assert spans come from.
+const assertInstrumentationLibrary = "github.com/vito/dang/v2/pkg/dang"
+
+// uiBoundaryAttr is dagger.io/ui.boundary (UIBoundaryAttr in
+// github.com/dagger/otel-go), spelled out here so the interpreter doesn't
+// import that package and its OTLP exporters just for one constant. It
+// keeps telemetry beneath a test case from bubbling up past it in the
+// Dagger UI, as Go test spans do.
+const uiBoundaryAttr = "dagger.io/ui.boundary"
+
+// startAssertSpan starts a span for one assertion, following the OTel test
+// semantic conventions so tracing frontends show each assertion as a test
+// case. With no recording span in ctx (no tracer provider, or an unsampled
+// trace) it returns a no-op span and does no other work.
+func startAssertSpan(ctx context.Context, fn FunctionValue, msgVal Value) (context.Context, trace.Span) {
+	parent := trace.SpanFromContext(ctx)
+	if !parent.IsRecording() {
+		return ctx, parent
+	}
+
+	var name string
+	var loc *SourceLocation
+	if body, ok := fn.Body.(*Block); ok && body != nil {
+		loc = body.GetSourceLocation()
+		if len(body.Forms) > 0 {
+			last := body.Forms[len(body.Forms)-1]
+			name = assertNodeToString(last)
+			if l := last.GetSourceLocation(); l != nil {
+				loc = l
+			}
+		}
+	}
+	if msg, ok := msgVal.(StringValue); ok && msg.Val != "" {
+		name = msg.Val
+	}
+	if name == "" {
+		name = "assert"
+	}
+
+	attrs := []attribute.KeyValue{
+		semconv.TestCaseName(name),
+		attribute.Bool(uiBoundaryAttr, true),
+	}
+	if loc != nil {
+		if loc.Filename != "" {
+			attrs = append(attrs, semconv.CodeFilePath(loc.Filename))
+		}
+		attrs = append(attrs,
+			semconv.CodeLineNumber(loc.Line),
+			semconv.CodeColumnNumber(loc.Column),
+		)
+	}
+	return parent.TracerProvider().Tracer(assertInstrumentationLibrary).
+		Start(ctx, name, trace.WithAttributes(attrs...))
+}
+
+// endAssertSpan records the assertion's outcome on its span and ends it.
+func endAssertSpan(span trace.Span, err error) {
+	if !span.IsRecording() {
+		return
+	}
+	if err != nil {
+		span.SetAttributes(semconv.TestCaseResultStatusFail)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetAttributes(semconv.TestCaseResultStatusPass)
+		span.SetStatus(codes.Ok, "")
+	}
+	span.End()
 }
 
 func buildAssertionError(ctx context.Context, fn FunctionValue, msgVal Value) error {
