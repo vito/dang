@@ -1,0 +1,5 @@
+# A function body that returns literal text the JSON! hook rejects fails on
+# the literal, not as a return type mismatch.
+config(name: String!): JSON! {
+  "{\"name\": "
+}

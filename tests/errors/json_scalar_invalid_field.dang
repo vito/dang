@@ -1,0 +1,7 @@
+# A typed computed field holding literal text the JSON! hook rejects fails on
+# the literal, not as a return type mismatch.
+type Manifest {
+  meta: JSON! {
+    "{"
+  }
+}
