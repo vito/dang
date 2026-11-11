@@ -1,0 +1,32 @@
+schema:
+  - schema.graphqls
+
+exec:
+  package: awaitserver
+  layout: single-file
+  filename: generated.go
+
+model:
+  filename: models_gen.go
+  package: awaitserver
+
+resolver:
+  package: awaitserver
+  layout: single-file
+  filename: resolvers.go
+
+models:
+  Timer:
+    model: github.com/vito/dang/v2/tests/awaitserver.Timer
+  Build:
+    model: github.com/vito/dang/v2/tests/awaitserver.Build
+  Mailbox:
+    model: github.com/vito/dang/v2/tests/awaitserver.Mailbox
+  MailboxEvent:
+    model: github.com/vito/dang/v2/tests/awaitserver.MailboxEvent
+  Duration:
+    model: github.com/99designs/gqlgen/graphql.String
+
+directives:
+  expectedType:
+    skip_runtime: true

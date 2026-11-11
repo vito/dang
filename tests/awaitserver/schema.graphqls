@@ -1,0 +1,102 @@
+# A fake slice of the Dagger API proposed in
+# docs/proposals/concurrency-engine-side.md: awaitables are names for facts,
+# and the server (standing in for the engine) owns the race. Dang needs no
+# new syntax to drive it; tests/test_await_engine.dang is the proof.
+
+directive @expectedType(
+  """The name of the expected object or interface type."""
+  name: String!
+) on ARGUMENT_DEFINITION | FIELD_DEFINITION
+
+directive @goField(
+  forceResolver: Boolean
+  name: String
+  omittable: Boolean
+  type: String
+) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
+
+"A Go-syntax duration, e.g. \"300ms\", \"5m\"."
+scalar Duration
+
+interface Node {
+  id: ID!
+}
+
+"An object that can be forced. For awaitables, sync blocks until the fact exists."
+interface Syncer implements Node {
+  id: ID!
+  sync: ID! @expectedType(name: "Syncer")
+}
+
+enum AwaitMode {
+  "The first awaitable to finish wins, failure included (failure raises)."
+  FIRST_SETTLED
+  "Failures are skipped; raises only when every awaitable failed."
+  FIRST_SUCCESS
+}
+
+enum MailboxEventKind {
+  MESSAGE
+  TICK
+}
+
+type Query {
+  node(id: ID!): Node
+
+  "Block for a duration. Never cached."
+  sleep(duration: Duration!): Boolean!
+
+  "Mint a deadline `after` from now, pinned to its absolute instant."
+  timer(after: Duration!): ID! @expectedType(name: "Timer")
+
+  "Mint a session mailbox. The handle is the capability."
+  mailbox(name: String! = ""): ID! @expectedType(name: "Mailbox")
+
+  "Stand-in for an evaluator awaitable such as a Container: syncing it does work."
+  build(name: String!, duration: Duration!, fail: Boolean = false): Build!
+
+  """
+  Block until the first of the awaitables is synced; return its index, or
+  null when the timeout elapses first. Losers are cancelled and awaited.
+  """
+  awaitAny(
+    of: [ID!]! @expectedType(name: "Syncer")
+    timeout: Duration
+    mode: AwaitMode = FIRST_SETTLED
+  ): Int
+
+  "How many evaluator syncs were cancelled because they lost a race."
+  cancellations: Int!
+}
+
+type Timer implements Node & Syncer {
+  id: ID!
+  at: String!
+  sync: ID! @expectedType(name: "Timer") @goField(forceResolver: true)
+}
+
+type Build implements Node & Syncer {
+  id: ID!
+  name: String!
+  sync: ID! @expectedType(name: "Build") @goField(forceResolver: true)
+}
+
+type Mailbox implements Node {
+  id: ID!
+  name: String!
+  "Append a message; returns its sequence number."
+  send(message: String!): Int!
+  "Append a TICK event labelled `label` after `after`, then every `every`."
+  schedule(label: String!, after: Duration!, every: Duration): Boolean!
+  "The first event after `after`. Naming it never blocks; reading it does."
+  next(after: Int! = 0): MailboxEvent!
+}
+
+type MailboxEvent implements Node & Syncer {
+  id: ID!
+  seq: Int! @goField(forceResolver: true)
+  kind: MailboxEventKind! @goField(forceResolver: true)
+  label: String! @goField(forceResolver: true)
+  text: String! @goField(forceResolver: true)
+  sync: ID! @expectedType(name: "MailboxEvent") @goField(forceResolver: true)
+}
