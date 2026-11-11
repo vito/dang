@@ -110,7 +110,7 @@ footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--hair);font-si
 <div class="kicker">Release notes · v2.4.0 + v2.4.1</div>
 <h1>Dang 2.4<small>Upgrading from v2.3: what breaks, how to fix it, and what to try</small></h1>
 
-<p class="lede">Dang 2.4 is a new <b>language version</b>. Only one rule is tied to it: type patterns in <code>case</code> and <code>rescue</code> take a <code>!</code>, and <code>dang migrate</code> adds it for you. A few <b>output changes apply to every project</b>, whatever version it pins: values print as Dang literals instead of JSON, GraphQL objects print as their query, and the encoders keep field order. The type checker also closes every known soundness hole, so programs it used to accept and then fail at runtime are compile errors now (<a href="#soundness">details and the full write-up</a>). In return you get a <code>Decoded</code> type for data of unknown shape, strict decoding, <code>case</code> as a real type switch, and <code>Ordered</code>/<code>Numeric</code> bounds with <code>sort</code> and <code>sum</code>.</p>
+<p class="lede">Dang 2.4 is a new <b>language version</b>. Only one rule is tied to it: type patterns in <code>case</code> and <code>rescue</code> take a <code>!</code>, and <code>dang migrate</code> adds it for you. A few <b>output changes apply to every project</b>, whatever version it pins: values print as Dang literals instead of JSON, GraphQL objects print as their query, and the encoders keep field order. The type checker also closes every known soundness hole: a value now always has the type the checker gave it, so code that broke that is a compile error at the cause (<a href="#soundness">details and the full write-up</a>). In return you get a <code>Decoded</code> type for data of unknown shape, strict decoding, <code>case</code> as a real type switch, and <code>Ordered</code>/<code>Numeric</code> bounds with <code>sort</code> and <code>sum</code>.</p>
 
 <div class="callout">
   <p><b>Install v2.4.1, not v2.4.0.</b> v2.4.1 is a patch release with no new language version. It brings back <code>JSON</code>, <code>YAML</code> and <code>TOML</code> as builtin scalar types (v2.4.0 had made them namespaces only), which Dagger module entrypoints rely on. These notes describe v2.4.1. If you already moved to v2.4.0, see <a href="#v240">Coming from v2.4.0</a>.</p>
@@ -128,7 +128,7 @@ dang migrate -w --from 2.1 .    <span class="c-com"># for projects that never de
   <li><b>Find JSON built with <code>toString</code>, <code>join</code> or <code>${…}</code></b> and call <code>JSON.encode</code> instead (<a href="#b-display">details</a>).</li>
   <li><b>Find GraphQL object IDs read through <code>toString</code> or interpolation</b> and select <code>.id</code> (<a href="#b-graphql">details</a>).</li>
   <li><b>Check goldens of <code>JSON.encode</code> / <code>YAML.encode</code> output.</b> Keys now come out in declaration order; pass <code>sortKeys: true</code> for the old sorted order (<a href="#b-order">details</a>).</li>
-  <li><b>Run it.</b> A few stricter checks now fail at compile time with a message naming the fix (<a href="#b-strict">list</a>), and the type checker no longer accepts programs that would fail at runtime (<a href="#soundness">type soundness</a>).</li>
+  <li><b>Run it.</b> A few stricter checks now fail at compile time with a message naming the fix (<a href="#b-strict">list</a>), and the type checker no longer accepts programs whose values don't match their types at runtime (<a href="#soundness">type soundness</a>).</li>
 </ol>
 
 <!-- ================================================================ -->
@@ -272,7 +272,7 @@ count: 1</pre></div>
 
 <!-- ================================================================ -->
 <h2 id="soundness">Type soundness <span class="tag t-all">every version</span></h2>
-<p class="intro">The checker now rejects every known program that it used to accept and that then failed at runtime.</p>
+<p class="intro">Every known case of a value not matching the type the checker gave it is now caught at compile time.</p>
 <p>A type checker is sound when the type it gives a value is the type the value has at runtime: a <code>T!</code> is never null, an <code>Int!</code> is never a <code>String</code>. Before 2.4, Dang's checker accepted dozens of programs that broke this. Some were caught later by a runtime check, others failed somewhere unrelated, gave a wrong answer, or panicked the interpreter. A sweep across generics, nulls, builtins, subtyping and control flow (#219–#249) fixed every case it found. Each one is now a compile error at the cause, or runs and gives the right answer. A few valid programs that the old checker rejected now compile.</p>
 <div class="cta">
   <p><b>Closing soundness holes in Dang's type checker</b>The full write-up: a before/after gallery of every case, how each area was fixed, the decisions made along the way, and the measured breaking-change risk.</p>
@@ -282,7 +282,7 @@ count: 1</pre></div>
 <table>
   <thead><tr><th style="width:38%">You wrote</th><th>You now see</th><th style="width:24%">Fix</th></tr></thead>
   <tbody>
-    <tr><td><code>let xs = []</code><br><code>xs += ["a"]</code><br><code>let n: Int! = xs[0]!</code></td><td><code>cannot use [String!]! as [Int]!</code>. A binding that starts open (<code>[]</code>, <code>null</code>) keeps the first type a use pins it to; it used to accept any type at every use</td><td>use one type, or annotate the binding</td></tr>
+    <tr><td>In a function body:<br><code>let xs = []</code><br><code>xs += ["a"]</code><br><code>let n: Int! = xs[0]!</code></td><td><code>cannot use String! as Int!</code> at <code>xs[0]!</code>. A binding that starts open (<code>[]</code>, <code>null</code>) keeps the first type a use pins it to (here <code>String!</code>); it used to accept any type at every use</td><td>use one element type, or annotate <code>let xs: [Int!]! = []</code></td></tr>
     <tr><td><code>first[a](xs: [a]!): a { xs[0] }</code></td><td><code>cannot use a possibly-null value as a: callers may pick a non-null type for a; assert it with `xs[0]!`, …</code>. A type variable <code>a</code> may stand for a non-null type</td><td><code>xs[0]!</code>, <code>?? other</code>, or a null check</td></tr>
     <tr><td><code>let p: Int = null</code><br><code>p + 1</code></td><td><code>operator addition is not defined for nullable type Int: check it for null first, supply a default with ??, or assert it with !</code></td><td><code>p! + 1</code> or <code>(p ?? 0) + 1</code></td></tr>
     <tr><td><code>c == s</code> with <code>c: Color!</code>, <code>s: String!</code></td><td><code>cannot compare Color! with String!: they are unrelated types; compare with a Color value, like Color.RED, or cast the string: (s :: Color!)</code>. This was always false; a string <i>literal</i> still converts</td><td><code>c == Color.GREEN</code> or <code>(s :: Color!)</code></td></tr>

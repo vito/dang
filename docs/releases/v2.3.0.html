@@ -105,7 +105,7 @@ footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--hair);font-si
 <p class="intro">For a typical project, in order.</p>
 <ol class="steps">
   <li><b>Find out which language version your project is read as</b> (<a href="#versions">table below</a>). Nothing about that changed since v2.2.</li>
-  <li><b>Look for top-level declarations named like a builtin</b> (<code>loop</code>, <code>toString</code>, <code>print</code>, …) in projects with a <code>dang.toml</code> and in imported Dang modules. Your declaration now wins. If you relied on the builtin, rename yours (<a href="#b-shadow">details</a>).</li>
+  <li><b>Look for top-level declarations named like a builtin</b> (<code>loop</code>, <code>toString</code>, <code>print</code>, …) in directories run as a module (<code>dang ./dir</code>, imported Dang modules, Dagger modules). Your declaration now wins. If you relied on the builtin, rename yours (<a href="#b-shadow">details</a>).</li>
   <li><b>Pinned to 1.0 or 2.0?</b> Postfix <code>rescue</code> no longer parses there. v2.2's <code>dang fmt</code> wrote it into such projects, so look for it and turn it back into <code>try { } catch { }</code>, or migrate to 2.1 (<a href="#b-rescue">details</a>).
 <pre class="cmd">grep -rnw rescue --include='*.dang' .   <span class="c-com"># in a project pinned to 1.0 or 2.0</span></pre></li>
   <li><b>Moving a 2.0 project to 2.1?</b> <code>dang migrate</code> now carries names spelled <code>rescue</code> and <code>try</code>/<code>catch</code> blocks across (<a href="#n-migrate">details</a>).
