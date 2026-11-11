@@ -1,0 +1,8 @@
+# An explicit return of literal text the Regexp! hook rejects fails on the
+# literal, not as a return type mismatch.
+pattern(strict: Boolean!): Regexp! {
+  if (strict) {
+    return "("
+  }
+  "a+"
+}

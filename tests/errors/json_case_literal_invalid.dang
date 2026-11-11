@@ -1,0 +1,9 @@
+# A literal case pattern is checked like any literal handed to the operand's
+# scalar: one that isn't JSON text is a compile error.
+let j = ("[1]" :: JSON!)
+
+let kind = case (j) {
+  "[1]" => "one"
+  "[" => "broken"
+  else => "other"
+}

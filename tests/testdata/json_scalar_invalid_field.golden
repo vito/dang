@@ -1,0 +1,11 @@
+[1m[31mError:[0m invalid JSON: unexpected EOF
+  [2m[34m--> errors/json_scalar_invalid_field.dang:5:5[0m
+ [2m    |[0m
+ [2m  3 | type Manifest {[0m
+ [2m  4 |   meta: JSON! {[0m
+ [2m[34m[1m  5 | [0m    "{"
+[2m           [31m^^^[0m
+ [2m  6 |   }[0m
+ [2m  7 | }[0m
+ [2m    |[0m
+

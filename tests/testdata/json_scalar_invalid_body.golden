@@ -1,0 +1,11 @@
+[1m[31mError:[0m invalid JSON: unexpected EOF
+  [2m[34m--> errors/json_scalar_invalid_body.dang:4:3[0m
+ [2m    |[0m
+ [2m  2 | # the literal, not as a return type mismatch.[0m
+ [2m  3 | config(name: String!): JSON! {[0m
+ [2m[34m[1m  4 | [0m  "{\"name\": "
+[2m         [31m^^^^^^^^^^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

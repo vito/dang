@@ -213,7 +213,8 @@ string doesn't join a list of `Email!`s:
 ["ada@example.com" :: Email!, "grace@example.com"]
 ```
 
-Only a `String` converts to a scalar. `42 :: Email!` is a type error:
+Only a `String`, or a value of another custom scalar (see below), converts to
+a scalar. `42 :: Email!` is a type error:
 
 ```dang-failure
 42 :: Email!
@@ -237,8 +238,24 @@ text. Demo's `Opaque` scalar is one of these:
 ```
 
 A schema's `scalar JSON` is a schema scalar like the ones above, its values as
-the server sends them. Unqualified, `JSON` is Dang's codec namespace, and
-decoded data of any shape is `Decoded` (see [#decoded-values]).
+the server sends them. Unqualified, `JSON` is Dang's own scalar of JSON text
+(see [#json-yaml]), a separate type, and decoded data of any shape is
+`Decoded` (see [#decoded-values]). Distinct scalars never mix on their own,
+but a cast converts one to another, validating at the target, so
+`j :: Dagger.JSON!` and `d :: JSON!` both work:
+
+```dang
+let pair = ("[1, 2]" :: JSON!)
+let pairEmail = (pair :: Email!)
+
+[(pairEmail :: JSON!) == pair, (pairEmail :: String!) == "[1, 2]"]
+```
+
+Text the target rejects fails the cast:
+
+```dang-failure
+("ada@example.com" :: Email!) :: JSON!
+```
 
 ### Treating scalars as opaque
 

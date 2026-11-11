@@ -155,6 +155,17 @@ func returnMismatch(declared, inferred hm.Type, cause error) error {
 	return fmt.Errorf("return type mismatch: declared %s, inferred %s", declared, inferred)
 }
 
+// rejectedLiteral returns err when it is a literal that checkLiterals rejected
+// (an enum value it doesn't name, or text a Go scalar hook refuses), which
+// explains itself and points at the literal, or nil otherwise.
+func rejectedLiteral(err error) error {
+	var literalErr *InferError
+	if errors.As(err, &literalErr) {
+		return err
+	}
+	return nil
+}
+
 // env is the function body's environment, where its result materializes.
 func inferReturnTypeWithEarlyReturns(env hm.Env, body Node, bodyType hm.Type, declaredType hm.Type, target *InferControlTarget) (hm.Type, error) {
 	returns := collectReturnStatements(body, target)
@@ -162,6 +173,9 @@ func inferReturnTypeWithEarlyReturns(env hm.Env, body Node, bodyType hm.Type, de
 	if declaredType != nil {
 		subs, err := assignableForValue(env, bodyType, declaredType, body)
 		if err != nil {
+			if literalErr := rejectedLiteral(err); literalErr != nil {
+				return nil, literalErr
+			}
 			return nil, NewInferError(
 				withUnionProvenance(returnMismatch(declaredType, bodyType, err), bodyType),
 				body,
@@ -178,6 +192,9 @@ func inferReturnTypeWithEarlyReturns(env hm.Env, body Node, bodyType hm.Type, de
 			}
 			retSubs, err := assignableForValue(env, retType, declaredType, ret.Value)
 			if err != nil {
+				if literalErr := rejectedLiteral(err); literalErr != nil {
+					return nil, literalErr
+				}
 				return nil, NewInferError(
 					withUnionProvenance(returnMismatch(declaredType, retType, err), retType),
 					ret.Value,

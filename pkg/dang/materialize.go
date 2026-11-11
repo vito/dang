@@ -23,6 +23,11 @@ type Coerce struct {
 	Expr   Node
 	Target hm.Type
 	Path   string
+
+	// ConvertScalars is set on an explicit cast between custom scalars
+	// (scalarCastable): their values become Target's scalars first (see
+	// convertScalars).
+	ConvertScalars bool
 }
 
 var _ Node = (*Coerce)(nil)
@@ -53,6 +58,12 @@ func (c *Coerce) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		val, err := EvalNode(ctx, scope, c.Expr)
 		if err != nil {
 			return nil, err
+		}
+		if c.ConvertScalars {
+			val, err = convertScalars(ctx, scope, val, c.Target, c.Path)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return materializeValue(ctx, scope, val, c.Target, c.Path)
 	})
@@ -114,7 +125,7 @@ func assignableForValue(env hm.Env, have, want hm.Type, value Node) (hm.Subs, er
 	}
 	if isLiteralExpr(value) || containsDegradableScalar(have) {
 		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
-			if err := checkEnumLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
+			if err := checkLiterals(value, want.Apply(coerceSubs).(hm.Type)); err != nil {
 				return nil, err
 			}
 			return coerceSubs, nil
@@ -359,7 +370,7 @@ func checkDecodeTarget(env hm.Env, want hm.Type) error {
 // mod has a constructor to build its values from the data (an object type
 // declared in Dang, or a schema input object), or a shape of its own (an
 // anonymous record, an enum, a scalar). A namespace has neither: an import's,
-// a builtin one such as JSON or Random, or a schema's object type, which
+// a builtin one such as Random, or a schema's object type, which
 // only its server builds. Interfaces and unions are left to the type
 // patterns that match decoded data (see abstractDecodeTarget).
 func hasDecodableShape(mod *Type) bool {
@@ -442,20 +453,23 @@ func containsDecoded(t hm.Type) bool {
 	return false
 }
 
-// checkEnumLiterals rejects a string literal handed to an enum slot that
-// names none of the enum's values. Its
-// value is known statically, so there is no need to wait for
-// materialization to fail at runtime. It follows
-// the literal through lists, maps and a block's tail; anything else (a
-// template, a union slot) is left to runtime validation.
-func checkEnumLiterals(value Node, want hm.Type) error {
+// checkLiterals rejects a string literal handed to an enum slot that
+// names none of the enum's values, or to a builtin scalar slot whose Go-native
+// new() hook (GoScalarHook: Regexp, JSON, YAML, TOML) rejects it. Its
+// value is known statically, and such a hook is a pure function of the text,
+// so there is no need to wait for materialization to fail at runtime. It
+// follows the literal (a quoted string or a template with no interpolations)
+// through lists, maps and a block's tail; anything else (a computed string, a
+// union slot, a scalar with a Dang-defined new()) is validated when it
+// converts at runtime.
+func checkLiterals(value Node, want hm.Type) error {
 	switch t := want.(type) {
 	case hm.NonNullType:
-		return checkEnumLiterals(value, t.Type)
+		return checkLiterals(value, t.Type)
 	case ListType:
 		if l, ok := value.(*List); ok {
 			for _, el := range l.Elements {
-				if err := checkEnumLiterals(el, t.Type); err != nil {
+				if err := checkLiterals(el, t.Type); err != nil {
 					return err
 				}
 			}
@@ -463,31 +477,60 @@ func checkEnumLiterals(value Node, want hm.Type) error {
 	case MapType:
 		if m, ok := value.(*MapLiteral); ok {
 			for _, entry := range m.Entries {
-				if err := checkEnumLiterals(entry.Value, t.Type); err != nil {
+				if err := checkLiterals(entry.Value, t.Type); err != nil {
 					return err
 				}
 			}
 		}
 	case *Type:
-		if t.Kind != EnumKind {
+		hook := t.GoScalarHook()
+		if t.Kind != EnumKind && (t.Kind != ScalarKind || hook == nil) {
 			return nil
 		}
-		switch v := value.(type) {
-		case *String:
-			if !enumHasValue(t, v.Value) {
+		if b, ok := value.(*Block); ok {
+			if len(b.Forms) > 0 {
+				return checkLiterals(b.Forms[len(b.Forms)-1], want)
+			}
+			return nil
+		}
+		text, ok := literalText(value)
+		if !ok {
+			return nil
+		}
+		if t.Kind == EnumKind {
+			if !enumHasValue(t, text) {
 				return NewInferError(
 					fmt.Errorf("%q is not a value of %s; expected one of %s",
-						v.Value, t, strings.Join(enumValueNames(t), ", ")),
-					v,
+						text, t, strings.Join(enumValueNames(t), ", ")),
+					value,
 				)
 			}
-		case *Block:
-			if len(v.Forms) > 0 {
-				return checkEnumLiterals(v.Forms[len(v.Forms)-1], want)
-			}
+			return nil
+		}
+		if _, err := hook(text); err != nil {
+			return NewInferError(err, value)
 		}
 	}
 	return nil
+}
+
+// literalText returns the text of a string literal: a quoted string, or a
+// template with no interpolations (`` `PASSED` ``).
+func literalText(n Node) (string, bool) {
+	switch v := n.(type) {
+	case *String:
+		return v.Value, true
+	case *Template:
+		if !v.IsLiteralOnly() {
+			return "", false
+		}
+		var text strings.Builder
+		for _, p := range v.Parts {
+			text.WriteString(p.Lit)
+		}
+		return text.String(), true
+	}
+	return "", false
 }
 
 // enumValueNames lists an enum's values in declaration order.
@@ -527,6 +570,86 @@ func containsDegradableScalar(t hm.Type) bool {
 	default:
 		return false
 	}
+}
+
+// scalarCastable reports whether an explicit cast (`x :: T`) may convert a
+// value of type have to want by turning custom scalars into other custom
+// scalars: every custom scalar is text underneath (ScalarValue), so its text
+// can become any other's, through that one's new() hook like a String's
+// (`j :: Dagger.JSON!`, `d :: JSON!`). The two match through non-null, list
+// and map wrappers, and the cast may not drop nullability. This is for
+// explicit casts only: at a value handoff, distinct scalars never mix.
+func scalarCastable(have, want hm.Type) bool {
+	switch w := want.(type) {
+	case hm.NonNullType:
+		h, ok := have.(hm.NonNullType)
+		return ok && scalarCastable(h.Type, w.Type)
+	case ListType:
+		h, ok := unwrapNonNull(have).(ListType)
+		return ok && scalarCastable(h.Type, w.Type)
+	case MapType:
+		h, ok := unwrapNonNull(have).(MapType)
+		return ok && scalarCastable(h.Type, w.Type)
+	case *Type:
+		h, ok := unwrapNonNull(have).(*Type)
+		return ok && isDegradableScalar(h) && isDegradableScalar(w)
+	}
+	return false
+}
+
+// convertScalars converts the custom scalar values in val to the scalars
+// target names, for an explicit cast between them (scalarCastable). A value
+// of another scalar becomes one of target's through target's new() hook, as
+// its text would from a String; without a hook it keeps its text, and, for
+// a schema's scalar, how it is held (ScalarValue.Encoded). Lists and maps
+// convert element by element; materializeValue does the rest.
+func convertScalars(ctx context.Context, scope ValueScope, val Value, target hm.Type, path string) (Value, error) {
+	switch v := val.(type) {
+	case ScalarValue:
+		mod, ok := unwrapNonNull(target).(*Type)
+		if !ok || !isDegradableScalar(mod) || v.ScalarType == mod {
+			return val, nil
+		}
+		converted, hooked, err := applyScalarHook(ctx, scope, mod, v.Val)
+		if err != nil {
+			return nil, materializeError(path, "%s", err.Error())
+		}
+		if !hooked {
+			// Only a schema's scalar holds a value the server sent as data
+			// (Encoded); a Dang-owned one holds its text.
+			converted = ScalarValue{Val: v.Val, ScalarType: mod, Encoded: v.Encoded && mod.SourceSchema != nil}
+		}
+		return converted, nil
+	case ListValue:
+		elemTarget, ok := listElementTarget(target)
+		if !ok {
+			return val, nil
+		}
+		elements := make([]Value, len(v.Elements))
+		for i, elem := range v.Elements {
+			converted, err := convertScalars(ctx, scope, elem, elemTarget, joinIndexPath(path, i))
+			if err != nil {
+				return nil, err
+			}
+			elements[i] = converted
+		}
+		return ListValue{Elements: elements, ElemType: v.ElemType}, nil
+	case MapValue:
+		valTarget, ok := mapValueTarget(target)
+		if !ok {
+			return val, nil
+		}
+		entries := make(map[string]Value, len(v.Entries))
+		for _, k := range v.Keys {
+			converted, err := convertScalars(ctx, scope, v.Entries[k], valTarget, joinKeyPath(path, k))
+			if err != nil {
+				return nil, err
+			}
+			entries[k] = converted
+		}
+		return MapValue{Keys: append([]string{}, v.Keys...), Entries: entries, ValType: v.ValType}, nil
+	}
+	return val, nil
 }
 
 // diagnoseAssignment expands an hm.Assignable failure into a detailed

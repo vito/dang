@@ -9,6 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// errYAMLStream is decodeYAML's error for text holding more than one
+// document: valid YAML (a YAML! value may hold it), which decode can't read.
+var errYAMLStream = errors.New("the text holds more than one document, but only a single document decodes")
+
 // decodeYAML parses a single YAML document into decoded data. strict also
 // rejects a mapping that repeats a key, which a plain decode resolves by
 // keeping the last.
@@ -23,12 +27,21 @@ func decodeYAML(data string, strict bool) (any, error) {
 		return nil, err
 	}
 
-	var extra yaml.Node
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+	// Documents after the first are tolerated while they hold nothing: a
+	// trailing `---` (common at the end of Kubernetes-style manifests) or an
+	// explicit null leaves one document with content.
+	for {
+		var extra yaml.Node
+		err := decoder.Decode(&extra)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("trailing document")
+		if !emptyYAMLDocument(&extra) {
+			return nil, errYAMLStream
+		}
 	}
 
 	if strict {
@@ -38,6 +51,22 @@ func decodeYAML(data string, strict bool) (any, error) {
 	}
 
 	return yamlNodeToDeferredRaw(&doc, map[*yaml.Node]bool{})
+}
+
+// emptyYAMLDocument reports whether doc holds no content: nothing at all, or
+// a lone null scalar (an empty document, `~` or `null`).
+func emptyYAMLDocument(doc *yaml.Node) bool {
+	if doc.Kind != yaml.DocumentNode {
+		return false
+	}
+	switch len(doc.Content) {
+	case 0:
+		return true
+	case 1:
+		node := doc.Content[0]
+		return node.Kind == yaml.ScalarNode && node.ShortTag() == "!!null"
+	}
+	return false
 }
 
 // checkYAMLDuplicateKeys reports the first mapping under node that repeats a

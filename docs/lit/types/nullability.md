@@ -578,7 +578,8 @@ let plan = "PRO" :: Plan!
 plan == Plan.PRO
 ```
 
-Only `String` values convert this way. Anything else is rejected before the
+Only `String` values convert to an enum; `String` values and values of another
+custom scalar convert to a custom scalar. Anything else is rejected before the
 script runs:
 
 ```dang-failure

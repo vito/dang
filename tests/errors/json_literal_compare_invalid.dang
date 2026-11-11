@@ -1,0 +1,5 @@
+# A string literal compared with a JSON! value must be JSON text: it is
+# checked like any literal handed to the scalar.
+let j = ("[1]" :: JSON!)
+
+assert { j != "" }

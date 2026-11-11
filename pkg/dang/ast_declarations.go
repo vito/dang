@@ -1398,7 +1398,7 @@ type DirectiveApplication struct {
 
 	// scopeType and decl are what Scope and Name resolved to when the
 	// application was inferred, so readers match a directive by identity
-	// (the JSON namespace's @field) rather than by how it is spelled.
+	// (the JSON scalar's @field) rather than by how it is spelled.
 	scopeType *Type
 	decl      *DirectiveDecl
 }

@@ -194,7 +194,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				_, err = assignableForValue(env, valueType, exprType, clause.Value)
 				if err != nil {
 					// A literal that names no value of the enum explains
-					// itself, pointing at the literal (checkEnumLiterals).
+					// itself, pointing at the literal (checkLiterals).
 					var literalErr *InferError
 					if errors.As(err, &literalErr) {
 						return nil, err

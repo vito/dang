@@ -16,11 +16,18 @@ func installImportedTypeScope(parentTypeScope TypeScope, importName string, sche
 // namespace into parentTypeScope, for an import whose names are reached
 // qualified only (see builtin_imports.go).
 func installQualifiedImportTypeScope(parentTypeScope TypeScope, importName string, schemaModule TypeScope) {
+	installQualifiedImport(parentTypeScope, importName, schemaModule, NonNull(schemaModule))
+}
+
+// installQualifiedImport installs an import's namespace into parentTypeScope
+// as typeScope, the type its name names (and qualified types resolve in), and
+// valueType, the type of its name used as a value.
+func installQualifiedImport(parentTypeScope TypeScope, importName string, typeScope TypeScope, valueType hm.Type) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
-	parentTypeScope.AddObject(importName, schemaModule)
+	parentTypeScope.AddObject(importName, typeScope)
 	parentTypeScope.SetTypeOrigin(importName, qualifiedOrigin)
-	parentTypeScope.Add(importName, hm.NewScheme(nil, NonNull(schemaModule)))
+	parentTypeScope.Add(importName, hm.NewScheme(nil, valueType))
 	parentTypeScope.SetVisibility(importName, importedBindingVisibility)
 	parentTypeScope.SetValueOrigin(importName, qualifiedOrigin)
 }

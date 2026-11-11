@@ -182,7 +182,7 @@ func TestUnqualifiedImportKeepsBuiltinImport(t *testing.T) {
 	scheme, found := scope.SchemeOf("JSON")
 	require.True(t, found)
 	jsonType, _ := scheme.Type()
-	require.Equal(t, NonNull(JSONModule), jsonType)
+	require.Equal(t, NonNull(JSONModule.MetaType()), jsonType, "the value is the namespace of JSON's statics")
 
 	libVal := NewObject(lib)
 	libVal.Bind("JSON", StringValue{Val: "lib"}, PublicVisibility)
@@ -194,5 +194,5 @@ func TestUnqualifiedImportKeepsBuiltinImport(t *testing.T) {
 	require.True(t, found)
 	obj, ok := val.(*Object)
 	require.True(t, ok, "JSON is %T", val)
-	require.Same(t, JSONModule, obj.Mod)
+	require.Same(t, JSONModule.Statics(), obj)
 }

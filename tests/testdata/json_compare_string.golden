@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot compare JSON! with String!: they are unrelated types; cast the string to compare: (s :: JSON!)
+  [2m[34m--> errors/json_compare_string.dang:6:10[0m
+ [2m    |[0m
+ [2m  4 | let s = "[1]"[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0massert { j == s }
+[2m                [31m^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

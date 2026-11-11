@@ -130,7 +130,7 @@ name (see [#enums-scalars]):
 
 ## Builtin imports
 
-Every module also gets Dang's builtin namespaces — `JSON`, `YAML`, `TOML`,
+Every module also gets Dang's builtin imports — `JSON`, `YAML`, `TOML`,
 `Random` and `UUID` — as imports it doesn't write (see [#json-yaml] and
 [#stdlib]). They are reached qualified only:
 
@@ -139,9 +139,9 @@ Every module also gets Dang's builtin namespaces — `JSON`, `YAML`, `TOML`,
 ```
 
 - there is no bare `encode`, `decode` or `int`: always `JSON.decode(…)`, `Random.int(…)`
-- a declaration of the same name in the module shadows one: a `type JSON { … }` or `scalar JSON` both as a type and as a value, a `let Random = …` as a value only (`Random!` as a type, and `@JSON.field` directives, still reach the builtin)
+- a declaration of the same name in the module shadows one: a `type JSON { … }` or `scalar JSON` both as a type and as a value, a `let Random = …` as a value only (`Random!` as a type, `@JSON.field` directives, and a type's statics such as `JSON.encode`, still reach the builtin)
 - an import of the same name replaces one: with `[imports.YAML]` in `dang.toml`, a file that writes `import YAML` (or gets it as an auto-import) sees that import as `YAML`, and other files still see the builtin
-- an unqualified name from an explicit import never overrides one: a schema's `scalar JSON` (Dagger has one) is reached as `Dagger.JSON`, and `JSON` stays the codec namespace
+- an unqualified name from an explicit import never overrides one: a schema's `scalar JSON` (Dagger has one) is reached as `Dagger.JSON`, and `JSON` stays Dang's, as a type (the `JSON` scalar) and as a value (`JSON.encode`)
 - like every import of a module, they aren't part of what it exports: `Demo.YAML`, or `Helpers.YAML` from a native module, is an error unless that schema or module defines a `YAML`
 
 ## Shadowing

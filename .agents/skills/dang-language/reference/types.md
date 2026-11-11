@@ -54,9 +54,9 @@ mean[a: Numeric](xs: [a!]!): Float! { xs.reduce(0.0) { acc, x => acc + x } / xs.
 ## Type hints / casts: `::`
 - `expr :: Type!` annotates an expression's type.
 - Binds only a bare `Term` on the left — wrap compound exprs in parens: `(a + b) :: T!`.
-- `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here. The reverse degrade also works: `myUrl :: String!`, `p :: String!`.
-- Coercion source is limited: only **`String`** values coerce to custom scalars/enums (and custom scalars back to `String`). `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
-- Enum casts of a string **literal** are checked **statically**: `"NOPE" :: Status!` → `"NOPE" is not a value of Status; expected one of …`. A non-literal `String` is checked at **runtime** (`s :: Status!` → `invalid enum value`).
+- `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`, `JSON!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here. The reverse degrade also works: `myUrl :: String!`, `p :: String!`. So do custom scalar → custom scalar casts, which turn the text into the target scalar through its `new()` hook (validated): `j :: Dagger.JSON!`, `d :: JSON!`, through list/map wrappers too (`[Blob!]! :: [JSON!]!`).
+- Coercion source is limited: only **`String`** values and custom scalars coerce to custom scalars (enums only from `String`), and custom scalars back to `String`. `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
+- Enum casts of a string **literal** (quoted, or a template with no interpolations) are checked **statically**: `"NOPE" :: Status!`, `` s == `NOPE` `` → `"NOPE" is not a value of Status; expected one of …`, in casts, comparisons, arguments, typed slots and `case` patterns alike. A computed `String` is checked at **runtime** (`s :: Status!` → `invalid enum value`), and raises there. A literal handed to a builtin scalar whose `new()` is Go-native (`Regexp`, `JSON`, `YAML`, `TOML`) is checked statically too: `"{" :: JSON!` → `invalid JSON: unexpected EOF`, at compile time; a scalar with a Dang `new()` validates its literals at runtime.
 - Nullable → non-null casts are checked at **runtime**, rejecting null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
 Two uses to keep distinct:
@@ -66,8 +66,8 @@ Two uses to keep distinct:
 ## Coercion rules
 - Assignment / arguments: pure subtyping, **no** scalar coercion — a non-literal `String!` won't pass where `URL!` is expected (`cannot use String! as URL!`).
 - **Exception 1 (refine)**: *literal* expressions (string/template literals, list literals of them, map literals whose values are) auto-coerce to compatible scalars at value-handoff boundaries (call args, typed slots, returns) — `fetchURL(url: "https://…")` and ``fetchURL(url: `https://${host}`)`` both work.
-- **Exception 2 (degrade)**: a **custom scalar value** (Path, ID, URL, Regexp, schema scalars — every non-primitive scalar) auto-degrades to `String`/`String!` at the same value-handoff boundaries (call args, typed slots, returns, reassignment, `::`, case-clause values) — custom scalars are strings underneath. So `dir.file(p)` works where `file(path: String!)`. Any expression qualifies, not just literals — the mirror image of the literal rule. No transitivity: `Path!` still can't flow into `URL!`.
-- `::` casts: explicit `String`/enum/`ID` coercion permitted, both directions for scalars.
+- **Exception 2 (degrade)**: a **custom scalar value** (Path, ID, URL, Regexp, JSON, schema scalars — every non-primitive scalar) auto-degrades to `String`/`String!` at the same value-handoff boundaries (call args, typed slots, returns, reassignment, `::`, case-clause values) — custom scalars are strings underneath. So `dir.file(p)` works where `file(path: String!)`. Any expression qualifies, not just literals — the mirror image of the literal rule. No transitivity: `Path!` still can't flow into `URL!` (`cannot use Path! as URL!`); only an explicit cast converts one custom scalar to another.
+- `::` casts: explicit `String`/enum/`ID` coercion permitted, both directions for scalars, and custom scalar → custom scalar.
 - List merges are pure — `String!` does not become `ID!` element-wise, and `[p, "b"]` is `no common type between Path! and String!` (degrade applies at boundaries, not merges).
 
 ## Flow-sensitive typing (null narrowing)
@@ -155,13 +155,13 @@ scalar URL
 - *Literal* expressions auto-coerce to a compatible scalar at value-handoff boundaries (call args, typed slots, list and map literals, returns) — including backtick templates with `${...}`.
 - A *non-literal* String (a variable or `a + b`) does NOT auto-coerce — needs an explicit `::` cast: `fetchURL(url: myUrl :: URL!)`, `(base + domain) :: URL!`. Otherwise `cannot use String! as URL!`.
 - List merging is pure/invariant: `["abc" :: ID!, "def"]` → `no common type between String! and ID!`.
-- Runtime materialization supports `String -> custom scalar` and `custom scalar -> String` only (`42 :: URL!` is a type error).
+- Runtime materialization supports `String -> custom scalar`, `custom scalar -> String` and, in an explicit `::` cast, `custom scalar -> custom scalar` (`42 :: URL!` is a type error).
 - Scalars from GraphQL responses flow naturally; no cast needed.
-- **Decoding** (`JSON`/`YAML`/`TOML.decode`) differs by owner: a scalar from an imported **schema** accepts any JSON value (object, array, number, ...) and holds it as JSON text; a **Dang-owned** scalar — `scalar Foo` you declare (with or without a body), `Path` and `Regexp` — accepts **only a string** (`expected string for scalar Foo, got array`). For data of any shape, use `Decoded`. Details in stdlib.md "Coercion during parsing".
+- **Decoding** (`JSON`/`YAML`/`TOML.decode`) differs by owner: a scalar from an imported **schema** accepts any JSON value (object, array, number, ...) and holds it as JSON text; a **Dang-owned** scalar — `scalar Foo` you declare (with or without a body), `JSON`, `YAML`, `TOML`, `Path` and `Regexp` — accepts **only a string** (`expected string for scalar Foo, got array`). For data of any shape, use `Decoded`. Details in stdlib.md "Coercion during parsing".
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
 - Equality, list membership, records/lists all work between values of the same scalar. A string *literal* converts to the scalar (`urlValue == "https://…"`); a non-literal `String` needs a cast (`urlValue == (s :: URL!)` or `(urlValue :: String!) == s`).
 - The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below.
-- A schema's `scalar JSON` (e.g. `Dagger.JSON`) is an ordinary schema scalar, below; unqualified, `JSON` is the codec namespace (see stdlib.md).
+- `JSON`, `YAML` and `TOML` are builtin scalars of valid text in their format, validated on construction; as values they hold `encode`/`decode` (see stdlib.md). A schema's `scalar JSON` (e.g. `Dagger.JSON`) is an ordinary schema scalar, below, and a separate type; unqualified, `JSON` is the builtin.
 - A scalar from a connected schema whose server returns a non-string value (a number, object, …) holds that value's JSON text, and sends it back as the same value.
 
 ### Scalar bodies: methods and the `new()` hook

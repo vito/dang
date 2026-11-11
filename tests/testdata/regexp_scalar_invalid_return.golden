@@ -1,0 +1,11 @@
+[1m[31mError:[0m invalid regexp "(": error parsing regexp: missing closing ): `(`
+  [2m[34m--> errors/regexp_scalar_invalid_return.dang:5:12[0m
+ [2m    |[0m
+ [2m  3 | pattern(strict: Boolean!): Regexp! {[0m
+ [2m  4 |   if (strict) {[0m
+ [2m[34m[1m  5 | [0m    return "("
+[2m                  [31m^^^[0m
+ [2m  6 |   }[0m
+ [2m  7 |   "a+"[0m
+ [2m    |[0m
+

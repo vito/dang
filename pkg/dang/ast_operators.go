@@ -441,20 +441,22 @@ func hasFreeVar(t hm.Type) bool { return len(t.FreeTypeVar()) > 0 }
 //
 // A string literal compared with a scalar or enum value converts to it, as
 // it does at every other boundary (arguments, `case` patterns): the returned
-// operands wrap it in that conversion, and an enum literal must name one of
-// the enum's values.
+// operands wrap it in that conversion, and a literal must name one of an
+// enum's values, or be text a builtin scalar's Go-native hook accepts
+// (checkLiterals). A computed string (a template with interpolations) is
+// validated when it converts, raising if the target rejects it.
 func checkComparable(left, right Node, lt, rt hm.Type) (Node, Node, error) {
 	if typesComparable(lt, rt) {
 		return left, right, nil
 	}
 	if target, ok := literalComparisonTarget(left, rt); ok {
-		if err := checkEnumLiterals(unwrapGrouped(left), target); err != nil {
+		if err := checkLiterals(unwrapGrouped(left), target); err != nil {
 			return nil, nil, err
 		}
 		return wrapCoerce(left, target, ""), right, nil
 	}
 	if target, ok := literalComparisonTarget(right, lt); ok {
-		if err := checkEnumLiterals(unwrapGrouped(right), target); err != nil {
+		if err := checkLiterals(unwrapGrouped(right), target); err != nil {
 			return nil, nil, err
 		}
 		return left, wrapCoerce(right, target, ""), nil

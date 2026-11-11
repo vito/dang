@@ -1,0 +1,6 @@
+# A string that isn't a literal never compares with a JSON! value, whose text
+# it might not be: cast it first.
+let j = ("[1]" :: JSON!)
+let s = "[1]"
+
+assert { j == s }

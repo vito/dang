@@ -1,0 +1,7 @@
+# A template with no interpolations is a literal: one that names no value of
+# the enum is a compile error, as a quoted one is.
+enum Status { PASSED FAILED }
+
+let status = Status.PASSED
+
+assert { status == `PASSD` }

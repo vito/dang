@@ -301,18 +301,20 @@ func TestDocOfStatics(t *testing.T) {
 	ctx := context.Background()
 	scope := testScope(t, membersSource)
 
-	// JSON is a namespace like Random: encode is its member, documented by
-	// its builtin definition.
+	// JSON is a scalar whose name holds its statics, like Regexp: encode is
+	// one, documented by its builtin definition.
 	encode, err := analysis.Doc(ctx, scope, "JSON.encode")
 	require.NoError(t, err)
 	require.True(t, encode.Builtin)
+	require.True(t, encode.Static)
 	require.NotEmpty(t, encode.Doc, "a builtin's docs come from its definition")
 	require.NotEmpty(t, encode.Example)
 
+	// Random is a namespace: int is its member.
 	random, err := analysis.Doc(ctx, scope, "Random.int")
 	require.NoError(t, err)
 	require.NotEmpty(t, random.Doc)
-	require.Equal(t, random.Static, encode.Static)
+	require.False(t, random.Static)
 
 	escape, err := analysis.Doc(ctx, scope, "Regexp.escape")
 	require.NoError(t, err)

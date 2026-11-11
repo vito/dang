@@ -1100,14 +1100,19 @@ func registerBuiltinTypes() {
 		})
 	}
 
-	// Register all static method types on their host modules.
+	// Register all static method types on their host modules' namespaces.
 	for _, hostModule := range StaticModules() {
-		target := hostModule
+		target := builtinNamespaceType(hostModule)
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			target.Add(def.Name, hm.NewScheme(nil, fnType))
 			target.SetVisibility(def.Name, PublicVisibility)
 		})
+		if target != hostModule {
+			// A type's statics are read off its statics namespace
+			// (Select.Eval), as a declared scalar's self { } members are.
+			hostModule.SetStatics(newBuiltinImportValue(hostModule))
+		}
 	}
 }
 
