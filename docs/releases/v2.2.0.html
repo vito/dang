@@ -395,7 +395,7 @@ print(retries)</code></pre></div>
 <p>The value is a release's major.minor. A leading <code>v</code> and a patch are accepted and the patch dropped (<code>"v2.1.4"</code> is 2.1): from now on, patch releases don't change the language. The nearest <code>dang.toml</code> walking up from a file decides, stopping at a <code>.git</code> boundary; a <code>path</code> import gets its version from its own path.</p>
 <p>Old forms parse behind version gates and build the current equivalent, which is what <code>dang migrate</code> prints:</p>
 <table>
-  <thead><tr><th>Before</th><th>Old form</th><th>Migrates to</th></tr></thead>
+  <thead><tr><th>Replaced in</th><th>Old form</th><th>Migrates to</th></tr></thead>
   <tbody>
     <tr><td>2.0</td><td><code>recv.{ a, b }</code></td><td><code>recv.{{ a, b }}</code></td></tr>
     <tr><td>2.1</td><td><code>... on User { name }</code> in a selection</td><td><code>... on User {{ name }}</code></td></tr>
