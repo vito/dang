@@ -467,6 +467,26 @@ bool tree_sitter_dang_external_scanner_scan(
       scan_template_open(s, lexer, !valid_symbols[AUTOMATIC_NEWLINE])) {
     return true;
   }
+  // Inside a multi-line template, a fence where neither fence can come is
+  // most likely the template's close after an unclosed `${` (`${name` and
+  // then the closing fence). Offering the close anyway (invalid here) lets
+  // error recovery insert the missing `}` right after the expression;
+  // otherwise the lexer, sharing a lex state with the single backtick, would
+  // read the fence as a stray template. Only where no newline or inline space
+  // token could be taken instead, so skipping whitespace here is harmless.
+  if (!recovering && s->depth > 0 && !valid_symbols[TEMPLATE_MULTI_CLOSE] &&
+      !valid_symbols[TEMPLATE_MULTI_OPEN] &&
+      !valid_symbols[TEMPLATE_CONTENT_CHAR] &&
+      !valid_symbols[AUTOMATIC_NEWLINE] && !valid_symbols[INLINE_SPACE] &&
+      !in_string_content(valid_symbols)) {
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+           lexer->lookahead == '\r' || lexer->lookahead == '\n') {
+      lexer->advance(lexer, true);
+    }
+    if (scan_template_close(s, lexer)) {
+      return true;
+    }
+  }
   // A newline in a single-line string means it's unterminated. Tree-sitter's
   // lexer, sharing a lex state with tokens that may follow whitespace, would
   // otherwise skip the newline and read on into the next line; offering the
