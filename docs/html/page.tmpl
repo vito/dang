@@ -399,6 +399,83 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 
 .links p{margin:0}
 
+/* ── release notes (release.go) ──────────────────────────────────────── */
+/* Pills say who a change applies to; the kind picks the color. */
+.pill{
+  --pill:var(--fg2);
+  display:inline-block;vertical-align:middle;margin-left:.35em;padding:.05rem .5rem;border-radius:99px;
+  font-family:'Inter',system-ui,sans-serif;font-size:.68rem;font-weight:600;letter-spacing:.02em;line-height:1.5;white-space:nowrap;
+  color:var(--pill);background:color-mix(in srgb,var(--pill) 14%,transparent);border:1px solid color-mix(in srgb,var(--pill) 35%,transparent);
+}
+td .pill{margin-left:0}
+.pill-lang{--pill:var(--orange)}
+.pill-all{--pill:var(--pink)}
+.pill-new{--pill:var(--green)}
+.pill-patch{--pill:var(--cyan)}
+.pill-info{--pill:var(--link)}
+.pill-go{--pill:var(--fg2)}
+.lede,.lede p{font-size:1.02rem;line-height:1.65}
+.lede{margin-bottom:.75rem}
+/* Numbered checklist: big accent counters in the gutter, dashed rules. */
+.steps ol{list-style:none;counter-reset:step;padding:0;margin:1rem 0}
+.steps li{counter-increment:step;position:relative;padding:.6rem 0 .6rem 2.6rem;margin:0;border-bottom:1px dashed var(--code-border)}
+.steps li:last-child{border-bottom:none}
+.steps li::before{
+  content:counter(step);position:absolute;left:0;top:.55rem;width:1.75rem;height:1.75rem;border-radius:50%;
+  display:grid;place-items:center;background:var(--accent);color:var(--on-accent);font-size:.8rem;font-weight:700;
+}
+.steps li p{margin-bottom:.4rem}
+.steps li p:last-child{margin-bottom:0}
+.steps li pre{margin:.5rem 0 0}
+/* Side-by-side panes; they stack on narrow screens (see the media query). */
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.75rem;margin:.75rem 0}
+.pair-side{min-width:0}
+.pair-side>.pane:first-child{margin-top:0}
+.pane{margin:.75rem 0}
+.pane-label{
+  display:flex;justify-content:space-between;gap:.5rem;margin-bottom:.3rem;
+  font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2);
+}
+.pane-label i{font-style:normal;font-weight:500;letter-spacing:0;text-transform:none}
+.pane-label code{text-transform:none;letter-spacing:0}
+.pane>pre,.pane>.code-out{margin:0}
+.pane>pre+pre,.pane>pre+.code-out,.pane>.code-out+pre{margin-top:.5rem}
+.pane>p{font-size:.85rem;color:var(--fg2);margin:.5rem 0 0}
+/* Quoted program output: what it printed, or what it failed with. */
+.code-out{white-space:pre;overflow-x:auto}
+.code-out-ok{border-left:3px solid var(--green)}
+.code-out-err{border-left:3px solid var(--pink);white-space:pre-wrap;word-break:break-word}
+.fix{
+  margin:.6rem 0 1rem;padding:.55rem .8rem;border-radius:6px;font-size:.9rem;
+  background:color-mix(in srgb,var(--green) 12%,transparent);border:1px solid color-mix(in srgb,var(--green) 30%,transparent);
+}
+.fix-label{font-weight:700;color:var(--green);margin-right:.5em}
+.fix p{display:inline;margin:0}
+.fix p+p{display:block;margin-top:.4rem}
+.sourced{font-size:.78rem;color:var(--fg2);margin:.3rem 0 .9rem}
+.sourced p{font-size:inherit;color:inherit;margin:0}
+/* Call to action for a longer write-up hosted elsewhere. */
+.write-up{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;
+  margin:1.25rem 0;padding:1rem 1.2rem;border-radius:8px;
+  background:var(--bg2);border:1px solid var(--code-border);border-left:4px solid var(--accent);
+}
+.write-up-text{flex:1 1 20rem;color:var(--fg2);font-size:.88rem}
+.write-up-title{font-weight:600;font-size:1rem;margin-bottom:.15rem;color:var(--fg)}
+.write-up-text p{margin:0;color:inherit;font-size:inherit}
+a.write-up-btn{
+  flex:none;display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1rem;border-radius:6px;
+  background:var(--accent);color:var(--on-accent);font-weight:600;font-size:.9rem;white-space:nowrap;
+}
+a.write-up-btn::after{content:"→"}
+a.write-up-btn:hover{background:var(--accent2);text-decoration:none}
+.cards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.75rem;margin:.75rem 0}
+.card{background:var(--bg2);border:1px solid var(--code-border);border-radius:8px;padding:.75rem .9rem;min-width:0;font-size:.85rem;color:var(--fg2)}
+.card-title{font-weight:600;font-size:.92rem;margin-bottom:.35rem;color:var(--fg)}
+.card p{font-size:inherit;color:inherit;margin-bottom:.5rem}
+.card pre{margin:.5rem 0 0;font-size:.75rem;padding:.7rem .85rem}
+td code,.fix code,.sourced code,.write-up-text code,.card-title code{background:var(--bg3);padding:.1em .35em;border-radius:4px;font-size:.85em}
+
 .screenshot{margin:.75rem 0}
 .screenshot img{width:100%;border-radius:6px;border:1px solid var(--code-border)}
 
@@ -416,6 +493,7 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
   .sidebar-nav{display:none;max-height:70vh;overflow-y:auto;margin-top:.75rem}
   .nav-toggle:checked ~ nav.sidebar .sidebar-nav{display:block}
   main{padding:1.5rem 1rem 3rem}
+  .pair,.cards{grid-template-columns:minmax(0,1fr)}
   .heading-anchor{display:none}
 }
 </style>

@@ -25,7 +25,15 @@ import (
 // out: it highlights (and auto-links) as Dang but is never evaluated, for
 // fragments that can't run at all. Outside a literate scope both extra tags
 // just highlight as Dang.
+//
+// ```output and ```error fences quote what a program printed or failed with,
+// verbatim (see release.go): the release notes quote older Dangs' output,
+// which can't be produced at build time.
 func (p Plugin) CodeBlock(language string, code booklit.Content, styleName ...string) (booklit.Content, error) {
+	if kind, ok := outputLanguages[language]; ok {
+		return outputBlock(kind, code), nil
+	}
+
 	switch language {
 	case "dang":
 		if literateFencesEnabled(p.section) {
