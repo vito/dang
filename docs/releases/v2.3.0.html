@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dang 2.3 release notes (v2.3.0)</title>
+<style>
+:root{
+  --paper:#fbfaf6;--card:#fff;--ink:#1d2025;--soft:#59606b;--hair:#e4e1d8;--wash:#f3f1ea;
+  --teal:#0e7468;--amber:#a15c00;--amber-bg:#fdf3e1;--rose:#b4233c;--rose-bg:#fcebee;
+  --slate:#4a5568;--slate-bg:#edf0f4;--green:#1f7a3a;--green-bg:#e8f5ec;
+  --code:#f6f5f0;--codeink:#23262b;--c-com:#8a8f98;--c-str:#2f7a3f;--c-kw:#8a3fb8;--c-ty:#1b5fae;--c-num:#b4501c;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#16181c;--card:#1d2026;--ink:#e7e9ed;--soft:#a2a9b5;--hair:#2e323a;--wash:#22262d;
+  --teal:#4cc2b2;--amber:#f0b45a;--amber-bg:#3a2c14;--rose:#ff8094;--rose-bg:#3d1b22;
+  --slate:#b5c0d0;--slate-bg:#272c35;--green:#6fd28f;--green-bg:#183022;
+  --code:#121418;--codeink:#dfe2e7;--c-com:#6f7682;--c-str:#a5d68a;--c-kw:#d39cf0;--c-ty:#87b4ff;--c-num:#f4a26f;
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+a{color:var(--teal)}
+code,pre,kbd{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+p code,li code,td code,h3 code,h2 code,.fix code{font-size:.86em;background:var(--wash);border-radius:4px;padding:.05em .3em}
+.page{display:grid;grid-template-columns:210px minmax(0,780px);gap:56px;max-width:1100px;margin:0 auto;padding:0 28px}
+nav.side{position:sticky;top:0;align-self:start;padding:56px 0 24px;font-size:14px}
+nav.side b{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:0 0 10px}
+nav.side a{display:block;color:var(--soft);text-decoration:none;padding:3px 0 3px 12px;border-left:2px solid var(--hair)}
+nav.side a:hover{color:var(--ink);border-left-color:var(--teal)}
+nav.side a.sub{padding-left:24px;font-size:13px}
+main{padding:48px 0 80px}
+.kicker{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);font-weight:700}
+h1{font-size:44px;line-height:1.05;letter-spacing:-.025em;margin:.25em 0 .3em}
+h1 small{display:block;font-size:19px;font-weight:500;letter-spacing:0;color:var(--soft);margin-top:10px}
+.lede{font-size:18px}
+h2{font-size:28px;letter-spacing:-.015em;margin:64px 0 8px;padding-top:12px;border-top:1px solid var(--hair)}
+h3{font-size:19px;margin:36px 0 6px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.intro{color:var(--soft);margin-top:0}
+.tag{font-size:11.5px;font-weight:700;letter-spacing:.03em;padding:2px 8px;border-radius:99px;white-space:nowrap;vertical-align:middle}
+.t-pre21{color:var(--amber);background:var(--amber-bg)}
+.t-all{color:var(--rose);background:var(--rose-bg)}
+.t-new{color:var(--green);background:var(--green-bg)}
+.callout{background:var(--card);border:1px solid var(--hair);border-left:4px solid var(--teal);border-radius:8px;padding:14px 18px;margin:22px 0}
+.callout p{margin:.3em 0}
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:18px 0}
+ol.steps>li{counter-increment:s;position:relative;padding:12px 0 12px 46px;border-bottom:1px dashed var(--hair)}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:11px;width:30px;height:30px;border-radius:50%;background:var(--teal);color:var(--paper);font-weight:700;display:grid;place-items:center;font-size:14px}
+ol.steps>li:last-child{border-bottom:0}
+ol.steps pre{margin:8px 0 0}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:14px 0;background:var(--card);border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);background:var(--wash)}
+tr:last-child td{border-bottom:0}
+pre{margin:0;background:var(--code);color:var(--codeink);border:1px solid var(--hair);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:13.5px;line-height:1.5}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.pair>div{min-width:0}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--soft);margin:0 0 4px;display:flex;justify-content:space-between;gap:8px}
+.lbl i{font-style:normal;font-weight:500;letter-spacing:0;text-transform:none}
+pre.out{border-left:3px solid var(--green);background:var(--card)}
+pre.err{border-left:3px solid var(--rose);background:var(--card);white-space:pre-wrap}
+pre.cmd{border-left:3px solid var(--teal)}
+.stack{margin:12px 0}
+.stack pre+.lbl,.stack pre+pre{margin-top:8px}
+.fix{margin:8px 0 0;padding:8px 12px;background:var(--green-bg);border-radius:6px;font-size:14.5px}
+.fix::before{content:"Fix  ";font-weight:800;color:var(--green)}
+.src{font-size:12.5px;color:var(--soft);margin:6px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mini{background:var(--card);border:1px solid var(--hair);border-radius:8px;padding:14px 16px}
+.mini h4{margin:0 0 6px;font-size:15.5px}
+.mini p{margin:0 0 8px;font-size:14.5px;color:var(--soft)}
+.c-com{color:var(--c-com);font-style:italic}.c-str{color:var(--c-str)}.c-kw{color:var(--c-kw)}.c-ty{color:var(--c-ty)}.c-num{color:var(--c-num)}
+footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--hair);font-size:13.5px;color:var(--soft)}
+@media (max-width:920px){.page{grid-template-columns:1fr;gap:0}nav.side{display:none}.pair,.grid2{grid-template-columns:1fr}h1{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="page">
+<nav class="side">
+  <b>Dang 2.3</b>
+  <a href="#upgrade">Upgrade checklist</a>
+  <a href="#versions">Who is affected</a>
+  <a href="#breaking">What breaks</a>
+  <a class="sub" href="#b-shadow">Declarations shadow builtins</a>
+  <a class="sub" href="#b-rescue">No postfix <code>rescue</code> before 2.1</a>
+  <a href="#new">What's new</a>
+  <a class="sub" href="#n-escape"><code>$name</code></a>
+  <a class="sub" href="#n-old">1.0 and 2.0 projects</a>
+  <a class="sub" href="#n-migrate"><code>dang migrate</code> to 2.1</a>
+</nav>
+
+<main>
+<div class="kicker">Release notes · v2.3.0</div>
+<h1>Dang 2.3<small>Upgrading from v2.2: what breaks, how to fix it, and what to try</small></h1>
+
+<p class="lede">Dang 2.3 adds <b>no new language version</b>: the newest is still 2.1, and a project reads as whatever its <code>dang = "X.Y"</code> pin says. It fixes how the older versions behave. A project pinned to <code>"1.0"</code> or <code>"2.0"</code> now reads like the Dang it was written for: <code>rescue</code> is an ordinary name again, <code>try { } catch { }</code> is the error handling syntax again, and <code>dang fmt</code> keeps it. In every version, a module's own top-level declarations now shadow builtins such as <code>loop</code> and <code>toString</code>. They used to be silently dropped. <code>$name</code> is a new escape for names spelled like a reserved word, which <code>dang migrate</code> writes when moving 2.0 code to 2.1.</p>
+
+<div class="callout">
+  <p><b>Most projects need no changes.</b> If your project is read as 2.1 (it pins <code>"2.1"</code>, has a <code>dang.toml</code> without a <code>dang</code> key, or has no <code>dang.toml</code>), the only change you can hit is <a href="#b-shadow">declarations shadowing builtins</a>. The rest is for projects pinned to 1.0 or 2.0.</p>
+  <p>The type-soundness sweep is <b>not</b> in 2.3; it shipped in v2.4.0 (<a href="/releases/v2.4.1.html#soundness">see the 2.4 notes</a>).</p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="upgrade">Upgrade checklist</h2>
+<p class="intro">For a typical project, in order.</p>
+<ol class="steps">
+  <li><b>Find out which language version your project is read as</b> (<a href="#versions">table below</a>). Nothing about that changed since v2.2.</li>
+  <li><b>Look for top-level declarations named like a builtin</b> (<code>loop</code>, <code>toString</code>, <code>print</code>, …) in projects with a <code>dang.toml</code> and in imported Dang modules. Your declaration now wins. If you relied on the builtin, rename yours (<a href="#b-shadow">details</a>).</li>
+  <li><b>Pinned to 1.0 or 2.0?</b> Postfix <code>rescue</code> no longer parses there. v2.2's <code>dang fmt</code> wrote it into such projects, so look for it and turn it back into <code>try { } catch { }</code>, or migrate to 2.1 (<a href="#b-rescue">details</a>).
+<pre class="cmd">grep -rnw rescue --include='*.dang' .   <span class="c-com"># in a project pinned to 1.0 or 2.0</span></pre></li>
+  <li><b>Moving a 2.0 project to 2.1?</b> <code>dang migrate</code> now carries names spelled <code>rescue</code> and <code>try</code>/<code>catch</code> blocks across (<a href="#n-migrate">details</a>).
+<pre class="cmd">dang migrate        <span class="c-com"># preview</span>
+dang migrate -w     <span class="c-com"># rewrite .dang files, bump dang.toml to "2.1"</span></pre></li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="versions">Who is affected</h2>
+<p class="intro">Per-project language versions and <code>dang migrate</code> arrived in <a href="/releases/v2.2.0.html">v2.2.0</a>. v2.3 reads projects at the same versions as v2.2. What changed is how 1.0 and 2.0 behave.</p>
+<table>
+  <thead><tr><th>Your project</th><th>Read as</th><th><code>rescue</code></th><th><code>try { } catch { }</code></th></tr></thead>
+  <tbody>
+    <tr><td><code>dang = "1.0"</code> or <code>"2.0"</code></td><td><b>1.0</b> / <b>2.0</b></td><td>an ordinary name <span class="tag t-pre21">changed</span>; no postfix <code>rescue</code></td><td>the error syntax, no warning <span class="tag t-pre21">changed</span></td></tr>
+    <tr><td><code>dang = "2.1"</code></td><td><b>2.1</b></td><td>reserved; postfix <code>rescue</code></td><td>still runs, with a warning</td></tr>
+    <tr><td><code>dang.toml</code> without a <code>dang</code> key</td><td><b>2.1</b></td><td>reserved; postfix <code>rescue</code></td><td>still runs, with a warning</td></tr>
+    <tr><td>no <code>dang.toml</code> (a lone script)</td><td><b>2.1</b></td><td>reserved; postfix <code>rescue</code></td><td>still runs, with a warning</td></tr>
+  </tbody>
+</table>
+<p>Changes marked <span class="tag t-pre21">1.0 / 2.0 only</span> apply only to projects pinned to those versions. Changes marked <span class="tag t-all">every version</span> apply whatever the pin. Everything marked <span class="tag t-new">new</span> works at every version. The pre-2.1 fixes come from Dagger moving old modules off its Dang v1 library onto Dang v2 in <code>dang = "1.0"</code> mode: a parity run found where that mode didn't match Dang v1.</p>
+
+<!-- ================================================================ -->
+<h2 id="breaking">What breaks, and how to fix it</h2>
+<p class="intro">In order of how likely each is to hit existing code.</p>
+
+<h3 id="b-shadow">A module's declarations shadow builtins <span class="tag t-all">every version</span></h3>
+<p>A directory evaluated as a module (<code>dang ./dir</code>, an imported Dang module, a Dagger module) dropped top-level declarations named like a builtin or prelude binding when it ran. The type checker still used them. Every builtin name was affected, <code>loop</code> and <code>toString</code> included. A single file (<code>dang main.dang</code>) was not affected. Now the module's own declaration wins, in type checking and at runtime, as any outer binding would be shadowed.</p>
+<div class="pair">
+  <div><div class="lbl">Before <i>v2.2, a module's main.dang</i></div>
+<pre><code class="dang">pub loop(n: Int!): Int! { n }
+loop(2)
+# too many positional arguments: got 1, expected at most 0</code></pre></div>
+  <div><div class="lbl">After <i>v2.3</i></div>
+<pre><code class="dang">pub loop(n: Int!): Int! { n }
+assert { loop(2) == 2 }   # passes in 1.0, 2.0 and 2.1</code></pre></div>
+</div>
+<p>Likewise <code>let loop = 1</code> followed by <code>assert { loop == 1 }</code> failed with <code>left: builtin:loop</code>, and now passes.</p>
+<p>Unqualified imports still never shadow a builtin. With <code>import Lib</code>, bare <code>toString(1)</code> is the builtin, and <code>Lib.toString(1)</code> reaches the import's.</p>
+<p class="fix">Usually nothing: the program now does what it says. If code in the module meant the builtin, rename your declaration.</p>
+<p class="src">v2.2's errors are quoted from #212's description; v2.3's behaviour from <code>tests/builtin_shadowing_test.go</code> at v2.3.0. A lone script can't show either, because <code>dang script.dang</code> was never affected.</p>
+
+<h3 id="b-rescue">Postfix <code>rescue</code> is 2.1 syntax <span class="tag t-pre21">1.0 / 2.0 only</span></h3>
+<p>Dang 2.1 introduced postfix <code>rescue</code>, but v2.2 reserved the word, and parsed the syntax, in every version. Now both start at 2.1. In a project pinned to 1.0 or 2.0, <code>expr rescue …</code> is a syntax error, and a <code>rescue(1)</code> line after <code>let y = foo</code> is a form of its own instead of rescuing the line above. v2.2's <code>dang fmt</code> rewrote <code>try</code>/<code>catch</code> into postfix <code>rescue</code> in those projects too, so formatted code is where to look.</p>
+<div class="pair">
+  <div><div class="lbl">Before <i>v2.2, pinned 2.0</i></div>
+<pre><code class="dang">let unmatched = classify(9) rescue {
+  e: Error => e.message
+}</code></pre></div>
+  <div><div class="lbl">After <i>v2.3, pinned 2.0</i></div>
+<pre><code class="dang">let unmatched = try {
+  classify(9)
+} catch {
+  e: Error => e.message
+}</code></pre></div>
+</div>
+<p class="fix">Write the pinned version's syntax, <code>try { } catch { }</code>, which <code>dang fmt</code> now keeps. Or move the project to 2.1 with <code>dang migrate -w</code> (<a href="#n-migrate">below</a>), where postfix <code>rescue</code> is right.</p>
+<p class="src">The pair is the change #212 made to the migration fixture <code>tests/testdata/migrations/2.0-to-2.1/before/case_unmatched_raises.dang</code> ("2.0 never had postfix rescue"). The syntax error is from <code>TestVersionRescue</code>; <code>run</code> can't pin 2.0, so it was not run here.</p>
+
+<!-- ================================================================ -->
+<h2 id="new">What's new and worth trying</h2>
+<p class="intro">Unless marked, examples were run with <code>dang</code> built at v2.3.0 (<code>3ee188d</code>) and no <code>dang.toml</code>, so at language 2.1, and the output is quoted as printed.</p>
+
+<h3 id="n-escape"><code>$name</code> is the identifier <code>name</code> <span class="tag t-new">new</span></h3>
+<p>Write <code>$rescue</code> to name something <code>rescue</code> where the word is reserved. Only the spelling changes: the name is still <code>rescue</code>, so <code>x.rescue</code> reads a field declared <code>pub $rescue</code>, and a Dagger API name stays <code>rescue</code>. Where only a name can go, you don't need the escape: after a dot, in a <code>{{ }}</code> selection, as a named argument, and as an object key.</p>
+<div class="pair">
+  <div><div class="lbl">Program</div>
+<pre><code class="dang">let $rescue = 1
+
+inc($rescue: Int!): Int! {
+  $rescue + 1
+}
+
+type Thing {
+  pub $rescue: Int! = 3
+}
+
+let thing = Thing
+print(inc(rescue: 41))
+print(thing.rescue)
+print(thing.{{rescue}}.rescue)
+print({{rescue: 4}}.rescue)
+print($rescue)</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">42
+3
+3
+4
+1</pre>
+  <div class="lbl" style="margin-top:10px">Without the escape, at 2.1</div>
+<pre class="err">let rescue = 1
+print(rescue)
+
+Error: syntax error: unexpected 'rescue'
+  --> /tmp/script.dang:2:7</pre></div>
+</div>
+<p>The escape works for any keyword at every version (<code>let $true = 1</code>, <code>let $if = 2</code>, then <code>print($true + $if)</code> prints <code>3</code>). <code>dang fmt</code> writes it for a name the formatted version reserves, and keeps it wherever the bare word would parse as something else (<code>$true</code>, <code>$self</code>, <code>$break</code>, …).</p>
+
+<h3 id="n-old">1.0 and 2.0 projects read like the Dang they were written for <span class="tag t-pre21">1.0 / 2.0 only</span></h3>
+<div class="grid2">
+  <div class="mini"><h4><code>rescue</code> is a name</h4>
+    <p>Each of these parses again at 1.0 and 2.0. In v2.2 all of them were syntax errors.</p>
+<pre><code class="dang">let rescue = 1
+pub rescue: Int! = 1
+f(rescue: Int!): Int! { rescue }
+let x = f(rescue: 1)</code></pre>
+  </div>
+  <div class="mini"><h4><code>try</code>/<code>catch</code> keeps its own rules</h4>
+    <p>No warnings, bare <code>err =&gt;</code> catch-alls included. A <code>catch</code> with no clauses re-raises, and clauses that can't match are dead code rather than errors. <code>dang fmt</code> leaves it as written.</p>
+<pre><code class="dang">let x = try {
+  boom
+} catch {
+  err => 1
+  e: Error => 2
+}</code></pre>
+  </div>
+  <div class="mini"><h4><code>for</code> loops can't be captured</h4>
+    <p>Before 2.1, a <code>for</code> loop runs as a call to the <code>loop</code> builtin. Now that declarations shadow builtins, a module's own <code>loop</code> would capture it, so it calls the builtin by an alias nothing can shadow.</p>
+<pre><code class="dang">pub loop(n: Int!): Int! { n }   # loop.dang
+
+count(): Int! {                 # main.dang
+  let i = 0
+  for (i &lt; 3) {
+    i += 1
+  }
+  i
+}
+assert { count() == 3 }
+assert { loop(2) == 2 }</code></pre>
+  </div>
+  <div class="mini"><h4><code>dang fmt</code> keeps <code>for</code> loops</h4>
+    <p>v2.2's formatter printed a pre-2.1 <code>for</code> loop as a <code>loop</code> call, which a module's own <code>loop</code> would then capture, and <code>try</code>/<code>catch</code> as postfix <code>rescue</code>. Both now print as written. Only migrating to 2.1 changes the spelling.</p>
+  </div>
+</div>
+<p class="src">Quoted from <code>TestVersionRescue</code>, <code>TestVersionForLoops</code> (<code>pkg/dang/version_test.go</code>) and <code>tests/builtin_shadowing_test.go</code> at v2.3.0, which pin 1.0 and 2.0 in a <code>dang.toml</code> or through the Go API; not run here.</p>
+
+<p>At 2.1, <code>try</code>/<code>catch</code> still runs as before, with a warning, and <code>dang fmt -w</code> rewrites it to postfix <code>rescue</code>. The exception is a catch that postfix <code>rescue</code> would reject, which the formatter now keeps as written:</p>
+<div class="pair">
+  <div><div class="lbl">Program <i>2.1</i></div>
+<pre><code class="dang">let first = try {
+  raise "boom"
+} catch {
+  err => "first"
+  e: Error => "second"
+}
+print(first)</code></pre></div>
+  <div><div class="lbl">Output <i>source excerpts trimmed</i></div>
+<pre class="out">Warning: try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate
+  --> /tmp/script.dang:1:13
+Warning: bare catch-all `err =>` is no longer supported; bind the error with `err: Error =>` or discard it with `else =>`
+  --> /tmp/script.dang:4:3
+first</pre></div>
+</div>
+<p>The same clauses written as a postfix <code>rescue</code> fail with <code>unreachable clause: the Error clause on line 2 already matches every error</code>.</p>
+
+<h3 id="n-migrate"><code>dang migrate</code> from 2.0 to 2.1 <span class="tag t-new">new</span></h3>
+<p>Migrating to 2.1, the version that reserves <code>rescue</code>, escapes the names spelled like it, public ones included. It rewrites each <code>try</code>/<code>catch</code> to postfix <code>rescue</code>, turning bare <code>err =&gt;</code> into <code>err: Error =&gt;</code>, and drops a catch with no clauses. In v2.2, a 2.0 file naming anything <code>rescue</code> didn't parse at all.</p>
+<div class="pair">
+  <div><div class="lbl">Before <i>dang = "2.0"</i></div>
+<pre><code class="dang">let rescue = 1
+
+pub inc(rescue: Int!): Int! {
+  rescue + 1
+}
+assert { inc(rescue: 1) == 2 }
+
+type Thing {
+  pub rescue: Int! = 3
+}
+
+boom(): String! {
+  raise "boom"
+}
+
+let typed = try {
+  boom()
+} catch {
+  e: Error => e.message
+}
+
+let fallback = try {
+  boom()
+} catch {
+  err => "fallback"
+}</code></pre></div>
+  <div><div class="lbl">After <i>dang migrate -w</i></div>
+<pre><code class="dang">let $rescue = 1
+
+inc($rescue: Int!): Int! {
+  $rescue + 1
+}
+
+assert { inc(rescue: 1) == 2 }
+
+type Thing {
+  $rescue: Int! = 3
+}
+
+boom: String! {
+  raise "boom"
+}
+
+let typed = boom rescue {
+  e: Error => e.message
+}
+
+let fallback = boom rescue "fallback"</code></pre></div>
+</div>
+<ul>
+  <li><b>What <code>rescue</code> can't express stays <code>try</code>/<code>catch</code>:</b> clauses that can never match (after a catch-all, or repeating a type), and a catch whose only content is comments. It still runs at 2.1, with the warning above. Comments in the try body or the catch stay where they were.</li>
+  <li><b>A <code>for</code> loop the migration would change is refused.</b> At 2.1 a <code>for</code> loop becomes a <code>loop</code> call, so a <code>loop</code> of your own in scope would capture it. That includes a top-level <code>loop</code> in a sibling file of the same module. Migration stops with: <code>migrating to Dang 2.1 would change the meaning of line N: its `for` loop becomes a call to `loop`, which names a binding of this program's own there rather than the builtin; rename that binding first</code>.</li>
+  <li><b>Known limit:</b> a dead clause that only types reveal (a subtype after an interface pattern) migrates to a <code>rescue</code> that 2.1 rejects at compile time.</li>
+</ul>
+<p class="src">Excerpts of the migration fixtures <code>rescue_identifier.dang</code> and <code>try_catch.dang</code> under <code>tests/testdata/migrations/2.0-to-2.1/</code> at v2.3.0; the refusal message is <code>pkg/dang/migrate.go</code>'s, with the line number left as N.</p>
+
+<footer>
+  <p><b>Sources.</b> v2.3.0 (<code>3ee188d</code>, tagged 2026-10-29) is v2.2.0 (<code>10fb92d</code>) plus one pull request, <a href="https://github.com/vito/dang/pull/212">#212</a> "Version-gate reserved words; let modules shadow builtins": module declarations shadow builtins (<code>9e98b65</code>), <code>rescue</code> reserved from 2.1 only (<code>187f22c</code>), the <code>$name</code> escape (<code>9eba4b6</code>), unshadowable <code>for</code> loops (<code>7054ac5</code>), formatter fixes (<code>d87acf2</code>), pre-2.1 <code>try</code>/<code>catch</code> rules (<code>ece919c</code>) and migration keeping what <code>rescue</code> can't express (<code>16d9d2d</code>).</p>
+  <p><b>Verification.</b> Every program and output under <a href="#n-escape"><code>$name</code></a>, and the 2.1 <code>try</code>/<code>catch</code> warnings and <code>unreachable clause</code> error, were run with <code>dang</code> built at v2.3.0, with no <code>dang.toml</code> (so language 2.1); ANSI colours are stripped and source excerpts trimmed where marked. Behaviour that needs a module directory or a 1.0/2.0 pin can't be run as a lone script, so it is quoted from the tests and fixtures at v2.3.0 named under each example, and v2.2's errors from #212's description.</p>
+  <p><b>Other releases.</b> <a href="/releases/v2.2.0.html">v2.2.0</a> · <a href="/releases/v2.4.1.html">v2.4.1</a></p>
+</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  const KW = new Set("type let pub if else case rescue raise import enum interface implements scalar union null true false and or not return try catch for".split(" "));
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const re = /(#[^\n]*)|("""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|(\$?\b[A-Za-z_]\w*\b)|([\s\S])/g;
+  document.querySelectorAll("code.dang").forEach(el => {
+    const src = el.textContent; let out = "", m;
+    while ((m = re.exec(src))) {
+      if (m[1]) out += `<span class="c-com">${esc(m[1])}</span>`;
+      else if (m[2]) out += `<span class="c-str">${esc(m[2])}</span>`;
+      else if (m[3]) out += `<span class="c-num">${m[3]}</span>`;
+      else if (m[4]) out += KW.has(m[4]) ? `<span class="c-kw">${m[4]}</span>` : /^[A-Z]/.test(m[4]) ? `<span class="c-ty">${m[4]}</span>` : m[4];
+      else out += esc(m[5]);
+    }
+    el.innerHTML = out;
+  });
+})();
+</script>
+</body>
+</html>
