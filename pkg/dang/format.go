@@ -3007,7 +3007,13 @@ func (f *Formatter) formatTripleQuotedString(s *String) {
 func (f *Formatter) formatRawTripleQuotedString(s *String, orig string, inline bool) bool {
 	delim, escape := `"""`, false
 	if strings.Contains(s.Value, `\`) || strings.Contains(s.Value, "${") {
-		if tripleSingleQuotable(s.Value, inline) {
+		// Text right before the closing quotes, as on an inline string's
+		// one line, runs into them.
+		lastLine := orig[strings.LastIndexByte(orig, '\n')+1 : len(orig)-3]
+		if inline {
+			lastLine = orig[3 : len(orig)-3]
+		}
+		if tripleSingleQuotable(s.Value, strings.TrimSpace(lastLine) != "") {
 			delim = "'''"
 		} else {
 			escape = true
@@ -3035,13 +3041,13 @@ func (f *Formatter) formatRawTripleQuotedString(s *String, orig string, inline b
 }
 
 // tripleSingleQuotable reports whether value can be written as a `'''`
-// string: one holding `'''` can't, nor, written inline, one ending in a quote,
-// which would run into the closing quotes.
-func tripleSingleQuotable(value string, inline bool) bool {
+// string: one holding `'''` can't, nor, when its text runs into the closing
+// quotes (closesAfterText), one ending in a quote.
+func tripleSingleQuotable(value string, closesAfterText bool) bool {
 	if strings.Contains(value, "'''") {
 		return false
 	}
-	return !inline || !strings.HasSuffix(value, "'")
+	return !closesAfterText || !strings.HasSuffix(value, "'")
 }
 
 // writeTripleQuoted writes value as a triple-quoted string delimited by

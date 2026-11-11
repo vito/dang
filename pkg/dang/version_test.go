@@ -595,6 +595,7 @@ func TestVersionQuotes(t *testing.T) {
 			{"let a = \"\"\"a'\\b\"\"\"\n", "let a = '''a'\\b'''\n"},
 			{"let a = \"\"\"a\\b'\"\"\"\n", "let a = \"\"\"a\\\\b'\"\"\"\n"},
 			{"let a = \"\"\"\n  C:\\path ${x}\n\"\"\"\n", "let a = '''\n  C:\\path ${x}\n'''\n"},
+			{"let a = \"\"\"\n  C:\\path'\"\"\"\n", "let a = \"\"\"\nC:\\\\path'\n\"\"\"\n"},
 			{"let a = \"\"\"\n  ''' \\\n\"\"\"\n", "let a = \"\"\"\n''' \\\\\n\"\"\"\n"},
 			{"let a = \"\"\"Summary.\n  more\n\"\"\"\n", "let a = \"\"\"\nSummary.\n  more\n\"\"\"\n"},
 			{"let a = \"\"\"sql\nselect\n\"\"\"\n", "let a = \"\"\"\nsql\nselect\n\"\"\"\n"},
