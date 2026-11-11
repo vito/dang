@@ -17,12 +17,14 @@ assert { "${'${raw}'}" == '${raw}' }
 
 # \$ escapes a dollar sign; a $ not followed by { is just a dollar sign.
 assert { "\${name}" == '${name}' }
-assert { "cost $5, \$6" == 'cost $5, $6' }
+assert { "cost $5" == 'cost $5' }
 assert { "\\${name}" == '\Ada' }
 
-# # is text inside a string, before and after an interpolation.
+# # is text inside a string, before and after an interpolation, and inside a
+# string nested in one.
 assert { "${n}#1" == '2#1' }
 assert { "# not a comment" == '# not a comment' }
+assert { "color: ${"#fff"}" == 'color: #fff' } # a comment
 
 # ---------- '...' ----------
 

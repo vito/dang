@@ -78,7 +78,7 @@ func formatSource(filename string, source []byte, from, to Version, migrating bo
 	}
 
 	// Also extract structured comments for nofmt/blank-line logic
-	comments := extractComments(source)
+	comments := extractComments(source, commentMap, result.(*FileBlock))
 
 	f := &Formatter{
 		comments:        comments,
@@ -197,110 +197,61 @@ func (f *Formatter) lineColumnToOffset(line, col int) int {
 	return offset
 }
 
-// extractComments extracts all comments from source with their line numbers
-func extractComments(source []byte) []Comment {
-	var comments []Comment
-
-	// Track the triple quotes of a triple-quoted string we're inside across
-	// lines ("" = not in one)
-	tripleQuote := ""
-	// Track open backtick-template fence length (0 = not in a template)
-	tickFence := 0
-	lines := bytes.Split(source, []byte("\n"))
-
-	for i, line := range lines {
-		lineNum := i + 1 // 1-indexed
-
-		// Process the line character by character to handle strings and comments
-		j := 0
-		lineStr := string(line)
-		// The quote of the single-line string we're inside (0 = none)
-		var quote byte
-
-		for j < len(lineStr) {
-			// Check for triple quotes
-			if j+2 < len(lineStr) && tickFence == 0 && quote == 0 {
-				if triple := lineStr[j : j+3]; (triple == `"""` || triple == "'''") && (tripleQuote == "" || tripleQuote == triple) {
-					if tripleQuote == "" {
-						tripleQuote = triple
-					} else {
-						tripleQuote = ""
-					}
-					j += 3
-					continue
-				}
+// extractComments lists the comments the parser found in source (commentMap,
+// line number to comment text), in line order. The parser knows which `#`
+// starts a comment: inside a string, including one nested in an
+// interpolation, it is text. Comments within a multi-line string or template
+// of root, inside its ${...} interpolations, are left out: the literal is
+// written as it is in the source, comments and all.
+func extractComments(source []byte, commentMap map[int]string, root Node) []Comment {
+	inLiteral := map[int]bool{}
+	root.Walk(func(n Node) bool {
+		var loc *SourceLocation
+		switch n := n.(type) {
+		case *Template:
+			loc = n.Loc
+		case *String:
+			// Only a triple-quoted string spans lines. (A synthesized
+			// one, like the message of the else clause added to a case
+			// before 2.1, borrows the location of other code.)
+			if n.TripleQuoted {
+				loc = n.Loc
 			}
-
-			// Skip everything inside triple-quoted strings
-			if tripleQuote != "" {
-				j++
-				continue
+		}
+		// A comment runs to the end of its line, so one on the literal's
+		// last line follows it.
+		if loc != nil && loc.End != nil {
+			for line := loc.Line; line < loc.End.Line; line++ {
+				inLiteral[line] = true
 			}
-
-			// Backtick template fences. A run of backticks either opens or
-			// closes a template; only an exact-length match closes the open one.
-			if lineStr[j] == '`' && quote == 0 {
-				k := j
-				for k < len(lineStr) && lineStr[k] == '`' {
-					k++
-				}
-				run := k - j
-				if tickFence == 0 {
-					if run >= 3 || run == 1 {
-						tickFence = run
-					}
-				} else if run == tickFence {
-					tickFence = 0
-				}
-				j = k
-				continue
-			}
-
-			// Skip everything inside backtick templates.
-			if tickFence > 0 {
-				j++
-				continue
-			}
-
-			// Check for regular string start/end
-			if (lineStr[j] == '"' || lineStr[j] == '\'') && (quote == 0 || quote == lineStr[j]) {
-				if quote == 0 {
-					quote = lineStr[j]
-				} else {
-					quote = 0
-				}
-				j++
-				continue
-			}
-
-			// Skip everything inside regular strings
-			if quote != 0 {
-				// Handle escape sequences
-				if quote == '"' && lineStr[j] == '\\' && j+1 < len(lineStr) {
-					j += 2
-					continue
-				}
-				j++
-				continue
-			}
-
-			// Found a comment outside of strings
-			if lineStr[j] == '#' {
-				commentText := lineStr[j:]
-				prefix := lineStr[:j]
-				hasCodeBefore := len(strings.TrimSpace(prefix)) > 0
-				comments = append(comments, Comment{
-					Line:       lineNum,
-					Text:       commentText,
-					IsTrailing: hasCodeBefore,
-				})
-				break
-			}
-
-			j++
+		}
+		return true
+	})
+	lineNums := make([]int, 0, len(commentMap))
+	for line := range commentMap {
+		if !inLiteral[line] {
+			lineNums = append(lineNums, line)
 		}
 	}
-
+	sort.Ints(lineNums)
+	lines := bytes.Split(source, []byte("\n"))
+	comments := make([]Comment, 0, len(lineNums))
+	for _, lineNum := range lineNums {
+		text := commentMap[lineNum]
+		hasCodeBefore := false
+		if lineNum >= 1 && lineNum <= len(lines) {
+			// A comment runs to the end of its line.
+			lineStr := string(lines[lineNum-1])
+			if prefix, ok := strings.CutSuffix(lineStr, text); ok {
+				hasCodeBefore = strings.TrimSpace(prefix) != ""
+			}
+		}
+		comments = append(comments, Comment{
+			Line:       lineNum,
+			Text:       text,
+			IsTrailing: hasCodeBefore,
+		})
+	}
 	return comments
 }
 
