@@ -42,7 +42,7 @@ The coercion is the literal rule (types.md): it happens where a template meets a
 - `.containsMatch(pattern: Regexp!) -> Boolean!`
 - `.match(pattern: Regexp!) -> Match` — first match, or null
 - `.matchAll(pattern: Regexp!) -> [Match!]!`
-- `.replaceMatches(pattern: Regexp!, with: String!, count: Int = -1) -> String!` — `$0`/`$1`/`$name`/`${name}` backref expansion
+- `.replaceMatches(pattern: Regexp!, with: String!, count: Int = -1) -> String!` — `$0`/`$1`/`$name`/`${name}` backref expansion (a `"..."` replacement would interpolate `${name}`: write it `'${name}'`)
 - `.rewriteMatches(pattern: Regexp!, count: Int = -1) { match => String! } -> String!`
 - `.splitMatches(pattern: Regexp!, limit: Int = 0) -> [String!]!`
 
