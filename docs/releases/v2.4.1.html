@@ -4,6 +4,23 @@
 <meta charset="utf-8">
 <title>Dang 2.4 release notes</title>
 <link rel="canonical" href="/v2.4.html">
+<script>
+// The notes moved into the docs, where their anchors carry a version
+// prefix; keep deep links into the old page pointing at their section.
+(function () {
+  var ids = {
+    upgrade: "v2.4-upgrade", versions: "v2.4-versions", breaking: "v2.4-breaking",
+    "b-patterns": "v2.4-type-patterns", "b-display": "v2.4-display",
+    "b-graphql": "v2.4-graphql", "b-order": "v2.4-order", "b-strict": "v2.4-strict",
+    soundness: "v2.4-soundness", dagger: "v2.4-dagger", "new": "v2.4-new",
+    "n-decoded": "v2.4-decoded", "n-scalars": "v2.4-scalars", "n-case": "v2.4-case",
+    "n-generics": "v2.4-generics", "n-stdlib": "v2.4-stdlib",
+    embedders: "v2.4-embedders", v240: "v2.4-from-v2.4.0"
+  };
+  var id = ids[location.hash.slice(1)];
+  location.replace("/v2.4.html" + (id ? "#" + id : ""));
+})();
+</script>
 <meta http-equiv="refresh" content="0; url=/v2.4.html">
 </head>
 <body>
