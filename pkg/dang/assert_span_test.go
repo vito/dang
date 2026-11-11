@@ -6,11 +6,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/v2/pkg/hm"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // evalTraced evaluates src, as file assert_test.dang, under a recording
@@ -20,20 +22,7 @@ func evalTraced(t *testing.T, src string) ([]sdktrace.ReadOnlySpan, error) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
 	ctx, parent := tp.Tracer("test").Start(context.Background(), "parent")
-
-	parsed, err := ParseWithRecovery("assert_test.dang", []byte(src), GlobalStore("filePath", "assert_test.dang"))
-	require.NoError(t, err, "parse")
-	file, ok := parsed.(*FileBlock)
-	require.True(t, ok, "unexpected parse result %T", parsed)
-	typeScope, valueScope := BuildScopesFromImports("", nil)
-	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
-	require.NoError(t, err, "infer")
-	ctx = WithEvalContext(ctx, NewEvalContext("assert_test.dang", src))
-	for _, node := range file.Forms {
-		if _, err = EvalNode(ctx, valueScope, node); err != nil {
-			break
-		}
-	}
+	err := evalAsserts(t, ctx, src)
 	parent.End()
 
 	var spans []sdktrace.ReadOnlySpan
@@ -45,6 +34,54 @@ func evalTraced(t *testing.T, src string) ([]sdktrace.ReadOnlySpan, error) {
 		spans = append(spans, span)
 	}
 	return spans, err
+}
+
+// evalAsserts evaluates src as file assert_test.dang.
+func evalAsserts(t *testing.T, ctx context.Context, src string) error {
+	t.Helper()
+	parsed, err := ParseWithRecovery("assert_test.dang", []byte(src), GlobalStore("filePath", "assert_test.dang"))
+	require.NoError(t, err, "parse")
+	file, ok := parsed.(*FileBlock)
+	require.True(t, ok, "unexpected parse result %T", parsed)
+	typeScope, valueScope := BuildScopesFromImports("", nil)
+	_, err = InferFormsWithPhases(ctx, file.Forms, typeScope, hm.NewSimpleFresher())
+	require.NoError(t, err, "infer")
+	ctx = WithEvalContext(ctx, NewEvalContext("assert_test.dang", src))
+	for _, node := range file.Forms {
+		if _, err := EvalNode(ctx, valueScope, node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Under a remote parent, as when tests run under otelgotest, the parent's
+// TracerProvider is a no-op, so assert spans come from the global provider.
+func TestAssertSpanRemoteParent(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)))
+	t.Cleanup(func() { otel.SetTracerProvider(prev) })
+
+	remote := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    trace.TraceID{0x01},
+		SpanID:     trace.SpanID{0x02},
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+	ctx := trace.ContextWithRemoteSpanContext(context.Background(), remote)
+	require.NoError(t, evalAsserts(t, ctx, "assert { 1 + 1 == 2 }\n"))
+
+	var spans []sdktrace.ReadOnlySpan
+	for _, span := range recorder.Ended() {
+		if span.Parent().SpanID() == remote.SpanID() {
+			spans = append(spans, span)
+		}
+	}
+	require.Len(t, spans, 1)
+	require.Equal(t, "1 + 1 == 2", spans[0].Name())
+	require.Equal(t, remote.TraceID(), spans[0].SpanContext().TraceID())
+	require.Equal(t, semconv.TestCaseResultStatusPass.Value, spanAttrs(spans[0])[semconv.TestCaseResultStatusKey])
 }
 
 func spanAttrs(span sdktrace.ReadOnlySpan) map[attribute.Key]attribute.Value {
@@ -108,7 +145,7 @@ func TestAssertSpanBlockError(t *testing.T) {
 	require.Equal(t, semconv.TestCaseResultStatusFail.Value, spanAttrs(spans[0])[semconv.TestCaseResultStatusKey])
 }
 
-// Without a recording span in the context, asserts emit nothing.
+// Without a span context, asserts emit nothing.
 func TestAssertSpanNoTracer(t *testing.T) {
 	_, err := evalWithContext(t, context.Background(), "assert { 1 == 1 }\n")
 	require.NoError(t, err)

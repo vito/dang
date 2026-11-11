@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
@@ -60,11 +61,20 @@ const uiBoundaryAttr = "dagger.io/ui.boundary"
 
 // startAssertSpan starts a span for one assertion, following the OTel test
 // semantic conventions so tracing frontends show each assertion as a test
-// case. With no recording span in ctx (no tracer provider, or an unsampled
-// trace) it returns a no-op span and does no other work.
+// case. With no span context in ctx it returns a no-op span and does no
+// other work.
 func startAssertSpan(ctx context.Context, fn FunctionValue, msgVal Value) (context.Context, trace.Span) {
 	parent := trace.SpanFromContext(ctx)
-	if !parent.IsRecording() {
+	var tp trace.TracerProvider
+	switch {
+	case parent.IsRecording():
+		// An in-process span, e.g. the engine's call span: use its provider.
+		tp = parent.TracerProvider()
+	case parent.SpanContext().IsValid():
+		// A remote parent, e.g. propagated from a test coordinator such as
+		// otelgotest, whose TracerProvider is a no-op: use the global one.
+		tp = otel.GetTracerProvider()
+	default:
 		return ctx, parent
 	}
 
@@ -100,7 +110,7 @@ func startAssertSpan(ctx context.Context, fn FunctionValue, msgVal Value) (conte
 			semconv.CodeColumnNumber(loc.Column),
 		)
 	}
-	return parent.TracerProvider().Tracer(assertInstrumentationLibrary).
+	return tp.Tracer(assertInstrumentationLibrary).
 		Start(ctx, name, trace.WithAttributes(attrs...))
 }
 
