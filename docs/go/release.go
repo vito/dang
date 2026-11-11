@@ -44,11 +44,13 @@ func (p Plugin) Pill(kind, text booklit.Content) (booklit.Content, error) {
 		sort.Strings(kinds)
 		return nil, fmt.Errorf(`\pill kind %q in %s: want one of %s`, k, p.section.FilePath(), strings.Join(kinds, ", "))
 	}
-	return booklit.Styled{
+	// Aux: the heading shows the pill, but tables of contents (stripAux in
+	// toc.tmpl) list the bare title.
+	return booklit.Aux{Content: booklit.Styled{
 		Style:    "pill",
 		Content:  text,
 		Partials: booklit.Partials{"Kind": booklit.String(k)},
-	}, nil
+	}}, nil
 }
 
 // Lede renders a page's opening paragraph in a larger size: the summary a
@@ -91,8 +93,11 @@ func (p Plugin) Steps(steps ...booklit.Content) booklit.Content {
 //	}
 func (p Plugin) Pair(left, right booklit.Content) booklit.Content {
 	return booklit.Styled{
-		Style:    "pair",
-		Content:  booklit.Empty,
+		Style: "pair",
+		// The template places the sides from the partials; the content
+		// carries them too, since a Styled's text (what the search index
+		// reads) is its content alone.
+		Content:  booklit.Sequence{left, right},
 		Partials: booklit.Partials{"Left": left, "Right": right},
 		Block:    true,
 	}
@@ -144,11 +149,14 @@ func (p Plugin) Sourced(content booklit.Content) booklit.Content {
 //	}
 func (p Plugin) WriteUp(title, url, description booklit.Content) booklit.Content {
 	return booklit.Styled{
-		Style:   "write-up",
-		Content: description,
+		Style: "write-up",
+		// Title and description both go in the content too, so the search
+		// index (which reads only a Styled's content) finds the write-up.
+		Content: booklit.Sequence{title, description},
 		Partials: booklit.Partials{
-			"Title": title,
-			"URL":   booklit.String(strings.TrimSpace(url.String())),
+			"Title":       title,
+			"Description": description,
+			"URL":         booklit.String(strings.TrimSpace(url.String())),
 		},
 		Block: true,
 	}
@@ -166,12 +174,13 @@ func (p Plugin) Cards(cards ...booklit.Content) booklit.Content {
 	return booklit.Styled{Style: "cards", Content: booklit.Sequence(cards), Block: true}
 }
 
-// Card renders one card of a \cards grid.
+// Card renders one card of a \cards grid. Like \write-up, its title is in
+// the content as well as a partial, so search finds it.
 func (p Plugin) Card(title, body booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:    "card",
-		Content:  body,
-		Partials: booklit.Partials{"Title": title},
+		Content:  booklit.Sequence{title, body},
+		Partials: booklit.Partials{"Title": title, "Body": body},
 		Block:    true,
 	}
 }

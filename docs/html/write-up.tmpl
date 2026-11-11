@@ -1,7 +1,7 @@
 <div class="write-up">
 <div class="write-up-text">
 <div class="write-up-title">{{.Partial "Title" | render}}</div>
-{{.Content | render}}
+{{.Partial "Description" | render}}
 </div>
 <a class="write-up-btn" href="{{.Partial "URL" | rawURL}}">Read the full write-up</a>
 </div>
