@@ -16,6 +16,19 @@ assert {
   ) == "YAML.decode: the text holds more than one document, but only a single document decodes"
 }
 
+# Documents holding nothing don't count: a leading or trailing `---` (as
+# Kubernetes-style manifests often end) or a trailing null still decodes.
+assert { (YAML.decode("a: 1\n---\n") :: Map[Int!]!)["a"] == 1 }
+assert { (YAML.decode("---\na: 1\n") :: Map[Int!]!)["a"] == 1 }
+assert { (YAML.decode("a: 1\n---\n~\n---\n") :: Map[Int!]!)["a"] == 1 }
+assert {
+  (
+    toString(YAML.decode("a: 1\n---\n---\nb: 2\n") :: Map[Int!]!) rescue {
+      e: Error! => e.message
+    }
+  ) == "YAML.decode: the text holds more than one document, but only a single document decodes"
+}
+
 # A value is its text, and degrades to String! like any scalar's.
 let text: String! = j
 assert { text == "{\"a\": [1, 2]}" }
