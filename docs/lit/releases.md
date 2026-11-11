@@ -9,6 +9,7 @@ release before it.
 
 \table-of-contents
 
+\include-section{./releases/v2.5.md}
 \include-section{./releases/v2.4.md}
 \include-section{./releases/v2.3.md}
 \include-section{./releases/v2.2.md}
