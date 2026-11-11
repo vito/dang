@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dang 2.4 release notes (v2.4.0 + v2.4.1)</title>
+<style>
+:root{
+  --paper:#fbfaf6;--card:#fff;--ink:#1d2025;--soft:#59606b;--hair:#e4e1d8;--wash:#f3f1ea;
+  --teal:#0e7468;--amber:#a15c00;--amber-bg:#fdf3e1;--rose:#b4233c;--rose-bg:#fcebee;
+  --slate:#4a5568;--slate-bg:#edf0f4;--green:#1f7a3a;--green-bg:#e8f5ec;
+  --code:#f6f5f0;--codeink:#23262b;--c-com:#8a8f98;--c-str:#2f7a3f;--c-kw:#8a3fb8;--c-ty:#1b5fae;--c-num:#b4501c;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#16181c;--card:#1d2026;--ink:#e7e9ed;--soft:#a2a9b5;--hair:#2e323a;--wash:#22262d;
+  --teal:#4cc2b2;--amber:#f0b45a;--amber-bg:#3a2c14;--rose:#ff8094;--rose-bg:#3d1b22;
+  --slate:#b5c0d0;--slate-bg:#272c35;--green:#6fd28f;--green-bg:#183022;
+  --code:#121418;--codeink:#dfe2e7;--c-com:#6f7682;--c-str:#a5d68a;--c-kw:#d39cf0;--c-ty:#87b4ff;--c-num:#f4a26f;
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+a{color:var(--teal)}
+code,pre,kbd{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+p code,li code,td code,h3 code,h2 code,.fix code{font-size:.86em;background:var(--wash);border-radius:4px;padding:.05em .3em}
+.page{display:grid;grid-template-columns:210px minmax(0,780px);gap:56px;max-width:1100px;margin:0 auto;padding:0 28px}
+nav.side{position:sticky;top:0;align-self:start;padding:56px 0 24px;font-size:14px}
+nav.side b{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:0 0 10px}
+nav.side a{display:block;color:var(--soft);text-decoration:none;padding:3px 0 3px 12px;border-left:2px solid var(--hair)}
+nav.side a:hover{color:var(--ink);border-left-color:var(--teal)}
+nav.side a.sub{padding-left:24px;font-size:13px}
+main{padding:48px 0 80px}
+.kicker{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);font-weight:700}
+h1{font-size:44px;line-height:1.05;letter-spacing:-.025em;margin:.25em 0 .3em}
+h1 small{display:block;font-size:19px;font-weight:500;letter-spacing:0;color:var(--soft);margin-top:10px}
+.lede{font-size:18px}
+h2{font-size:28px;letter-spacing:-.015em;margin:64px 0 8px;padding-top:12px;border-top:1px solid var(--hair)}
+h3{font-size:19px;margin:36px 0 6px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.intro{color:var(--soft);margin-top:0}
+.tag{font-size:11.5px;font-weight:700;letter-spacing:.03em;padding:2px 8px;border-radius:99px;white-space:nowrap;vertical-align:middle}
+.t-24{color:var(--amber);background:var(--amber-bg)}
+.t-all{color:var(--rose);background:var(--rose-bg)}
+.t-go{color:var(--slate);background:var(--slate-bg)}
+.t-new{color:var(--green);background:var(--green-bg)}
+.t-241{color:var(--teal);background:var(--wash);border:1px solid var(--hair)}
+.callout{background:var(--card);border:1px solid var(--hair);border-left:4px solid var(--teal);border-radius:8px;padding:14px 18px;margin:22px 0}
+.callout p{margin:.3em 0}
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:18px 0}
+ol.steps>li{counter-increment:s;position:relative;padding:12px 0 12px 46px;border-bottom:1px dashed var(--hair)}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:11px;width:30px;height:30px;border-radius:50%;background:var(--teal);color:var(--paper);font-weight:700;display:grid;place-items:center;font-size:14px}
+ol.steps>li:last-child{border-bottom:0}
+ol.steps pre{margin:8px 0 0}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:14px 0;background:var(--card);border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);background:var(--wash)}
+tr:last-child td{border-bottom:0}
+pre{margin:0;background:var(--code);color:var(--codeink);border:1px solid var(--hair);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:13.5px;line-height:1.5}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.pair>div{min-width:0}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--soft);margin:0 0 4px;display:flex;justify-content:space-between;gap:8px}
+.lbl i{font-style:normal;font-weight:500;letter-spacing:0;text-transform:none}
+pre.out{border-left:3px solid var(--green);background:var(--card)}
+pre.err{border-left:3px solid var(--rose);background:var(--card);white-space:pre-wrap}
+pre.cmd{border-left:3px solid var(--teal)}
+.stack{margin:12px 0}
+.stack pre+.lbl,.stack pre+pre{margin-top:8px}
+.fix{margin:8px 0 0;padding:8px 12px;background:var(--green-bg);border-radius:6px;font-size:14.5px}
+.fix::before{content:"Fix  ";font-weight:800;color:var(--green)}
+.src{font-size:12.5px;color:var(--soft);margin:6px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mini{background:var(--card);border:1px solid var(--hair);border-radius:8px;padding:14px 16px}
+.mini h4{margin:0 0 6px;font-size:15.5px}
+.mini p{margin:0 0 8px;font-size:14.5px;color:var(--soft)}
+.c-com{color:var(--c-com);font-style:italic}.c-str{color:var(--c-str)}.c-kw{color:var(--c-kw)}.c-ty{color:var(--c-ty)}.c-num{color:var(--c-num)}
+footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--hair);font-size:13.5px;color:var(--soft)}
+@media (max-width:920px){.page{grid-template-columns:1fr;gap:0}nav.side{display:none}.pair,.grid2{grid-template-columns:1fr}h1{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="page">
+<nav class="side">
+  <b>Dang 2.4</b>
+  <a href="#upgrade">Upgrade checklist</a>
+  <a href="#versions">Which version you get</a>
+  <a href="#breaking">What breaks</a>
+  <a class="sub" href="#b-patterns">Type patterns need <code>!</code></a>
+  <a class="sub" href="#b-display">Values print as Dang</a>
+  <a class="sub" href="#b-graphql">GraphQL objects</a>
+  <a class="sub" href="#b-order">Encoder key order</a>
+  <a class="sub" href="#b-strict">Stricter checks</a>
+  <a href="#dagger">Dagger modules</a>
+  <a href="#new">What's new</a>
+  <a class="sub" href="#n-decoded">Decoded data</a>
+  <a class="sub" href="#n-scalars">JSON/YAML/TOML text</a>
+  <a class="sub" href="#n-case">case as a type switch</a>
+  <a class="sub" href="#n-generics">Bounds, sort, sum</a>
+  <a class="sub" href="#n-stdlib">Smaller additions</a>
+  <a href="#embedders">Go embedders</a>
+  <a href="#v240">Coming from v2.4.0</a>
+</nav>
+
+<main>
+<div class="kicker">Release notes · v2.4.0 + v2.4.1</div>
+<h1>Dang 2.4<small>Upgrading from v2.3: what breaks, how to fix it, and what to try</small></h1>
+
+<p class="lede">Dang 2.4 is a new <b>language version</b>. Only one rule is tied to it: type patterns in <code>case</code> and <code>rescue</code> take a <code>!</code>, and <code>dang migrate</code> adds it for you. A few <b>output changes apply to every project</b>, whatever version it pins: values print as Dang literals instead of JSON, GraphQL objects print as their query, and the encoders keep field order. In return you get a <code>Decoded</code> type for data of unknown shape, strict decoding, <code>case</code> as a real type switch, and <code>Ordered</code>/<code>Numeric</code> bounds with <code>sort</code> and <code>sum</code>.</p>
+
+<div class="callout">
+  <p><b>Install v2.4.1, not v2.4.0.</b> v2.4.1 is a patch release with no new language version. It brings back <code>JSON</code>, <code>YAML</code> and <code>TOML</code> as builtin scalar types (v2.4.0 had made them namespaces only), which Dagger module entrypoints rely on. These notes describe v2.4.1. If you already moved to v2.4.0, see <a href="#v240">Coming from v2.4.0</a>.</p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="upgrade">Upgrade checklist</h2>
+<p class="intro">For a typical project, in order. Steps 1–2 handle the only syntax change; steps 3–5 catch output that changed under you.</p>
+<ol class="steps">
+  <li><b>Find out which language version your project gets</b> (<a href="#versions">table below</a>). A <code>dang.toml</code> without a <code>dang = "…"</code> key, or no <code>dang.toml</code> at all, now means 2.4.</li>
+  <li><b>Migrate, or pin.</b> Preview with <code>dang migrate</code>, then write with <code>-w</code>. A project with no <code>dang</code> key that was written for 2.1 needs <code>--from 2.1</code>, because Dang can't tell. To stay on 2.1 for now, write <code>dang = "2.1"</code> in <code>dang.toml</code>; everything in <a href="#new">What's new</a> still works there.
+<pre class="cmd">dang migrate                    <span class="c-com"># preview what would change</span>
+dang migrate -w                 <span class="c-com"># rewrite .dang files, bump dang.toml to "2.4"</span>
+dang migrate -w --from 2.1 .    <span class="c-com"># for projects that never declared a version</span></pre></li>
+  <li><b>Find JSON built with <code>toString</code>, <code>join</code> or <code>${…}</code></b> and call <code>JSON.encode</code> instead (<a href="#b-display">details</a>).</li>
+  <li><b>Find GraphQL object IDs read through <code>toString</code> or interpolation</b> and select <code>.id</code> (<a href="#b-graphql">details</a>).</li>
+  <li><b>Check goldens of <code>JSON.encode</code> / <code>YAML.encode</code> output.</b> Keys now come out in declaration order; pass <code>sortKeys: true</code> for the old sorted order (<a href="#b-order">details</a>).</li>
+  <li><b>Run it.</b> A few stricter checks now fail at compile time with a message naming the fix (<a href="#b-strict">list</a>).</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="versions">Which language version you get</h2>
+<p class="intro">Dang reads each project at the version its <code>dang.toml</code> declares. What changed is the undeclared case: it used to stay at 2.1 forever, and now it follows the Dang you run.</p>
+<table>
+  <thead><tr><th>Your project</th><th>Read as</th><th>Bare patterns (<code>c: Cat =&gt;</code>)</th></tr></thead>
+  <tbody>
+    <tr><td><code>dang.toml</code> with <code>dang = "2.1"</code></td><td><b>2.1</b></td><td>still accepted</td></tr>
+    <tr><td><code>dang.toml</code> without a <code>dang</code> key</td><td><b>2.4</b> <span class="tag t-24">changed: was 2.1</span></td><td>compile error with the fix</td></tr>
+    <tr><td>no <code>dang.toml</code> (a lone script)</td><td><b>2.4</b></td><td>compile error with the fix</td></tr>
+    <tr><td>new project from <code>dang init</code></td><td><b>2.4</b>, written as <code>dang = "2.4"</code></td><td>compile error with the fix</td></tr>
+  </tbody>
+</table>
+<p>Run without <code>--from</code>, <code>dang migrate</code> lists every project that declares no version, reports it as read in Dang 2.4, and suggests <code>--from</code>. With <code>--from</code>, the version applies to every undeclared project under the directories you pass, nested ones included, so pass only the directories written for that version.</p>
+<p>Two kinds of change in these notes ignore the pin, because they change output or close holes rather than syntax. They are marked <span class="tag t-all">every version</span>. The one change gated on 2.4 is marked <span class="tag t-24">2.4 only</span>. Everything new works at 2.1 as well.</p>
+
+<!-- ================================================================ -->
+<h2 id="breaking">What breaks, and how to fix it</h2>
+<p class="intro">In order of how likely each is to hit existing code. Unless marked, examples are run with <code>dang</code> built at v2.4.1 (<code>247f410</code>) and the output is quoted as printed.</p>
+
+<h3 id="b-patterns">Type patterns are written <code>T!</code> <span class="tag t-24">2.4 only</span></h3>
+<p>A <code>case</code>, <code>rescue</code> or decoded-data arm binds a value that is never null, so the pattern now says so. At 2.1 the bare form still works and means the same thing.</p>
+<div class="pair">
+  <div><div class="lbl">Before <i>v2.3 / pinned 2.1</i></div>
+<pre><code class="dang">print(case (p) {
+  c: Cat => "cat " + c.name
+  d: Dog => "dog " + d.name
+})
+
+let msg = { raise "boom" } rescue {
+  e: Error => "caught: " + e.message
+}</code></pre></div>
+  <div><div class="lbl">After <i>2.4</i></div>
+<pre><code class="dang">print(case (p) {
+  c: Cat! => "cat " + c.name
+  d: Dog! => "dog " + d.name
+})
+
+let msg = { raise "boom" } rescue {
+  e: Error! => "caught: " + e.message
+}</code></pre></div>
+</div>
+<div class="lbl">The bare form under 2.4</div>
+<pre class="err">Error: a type pattern is the non-null type its arm binds: write `c: Cat! =>`
+  --> /tmp/script.dang:10:6
+     |
+   8 | let p: Pet! = Cat
+   9 | print(case (p) {
+  10 |   c: Cat => "cat " + c.name
+            ^^^
+  11 |   d: Dog => "dog " + d.name
+  12 | })</pre>
+<p class="fix"><code>dang migrate -w</code> adds the <code>!</code> to every pattern that lacks it, list and map patterns included (<code>xs: [Decoded!] =&gt;</code> becomes <code>xs: [Decoded!]! =&gt;</code>), turns any leftover <code>try { } catch { }</code> into postfix <code>rescue</code>, and bumps <code>dang.toml</code> to <code>"2.4"</code>. <code>dang fmt -w</code> adds the <code>!</code> too. Or pin <code>dang = "2.1"</code>.</p>
+<p class="src">The before/after pair is the shape of the migration fixture <code>tests/testdata/migrations/2.1-to-2.4</code>; 2.1 can't be selected without a <code>dang.toml</code>, so the bare form was run only under 2.4.</p>
+
+<h3 id="b-display">Values print as Dang literals, not JSON <span class="tag t-all">every version</span></h3>
+<p><code>toString</code>, <code>${…}</code> interpolation, <code>List.join</code>, <code>print</code> and the REPL share one rendering: the Dang literal you would write. Strings, enum values and custom scalars still print as their bare text.</p>
+<table>
+  <thead><tr><th>Expression</th><th>v2.3 <span style="text-transform:none;letter-spacing:0;font-weight:500">(from #284)</span></th><th>v2.4</th></tr></thead>
+  <tbody>
+    <tr><td><code>toString([1, 2])</code></td><td><code>[1,2]</code></td><td><code>[1, 2]</code></td></tr>
+    <tr><td><code>toString({{a: 1}})</code></td><td><code>{"a":1}</code></td><td><code>{{a: 1}}</code></td></tr>
+    <tr><td><code>`${["a"]}`</code></td><td><code>[a]</code></td><td><code>["a"]</code></td></tr>
+    <tr><td><code>print(User(name: "alice"))</code></td><td><code>module User</code></td><td><code>{{name: "alice"}}</code></td></tr>
+  </tbody>
+</table>
+<div class="pair">
+  <div><div class="lbl">More of the new form</div>
+<pre><code class="dang">type User {
+  name: String!
+  let secret = 42
+}
+enum Color { RED GREEN }
+
+print(`tags: ${["a", "b"]}`)
+print(["k": 1.0])
+print(User(name: "alice"))
+print([Color.RED, Color.GREEN])
+print(JSON.encode({{a: 1, b: "x"}}))</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">tags: ["a", "b"]
+["k": 1.0]
+{{name: "alice"}}
+[Color.RED, Color.GREEN]
+{"a":1,"b":"x"}</pre>
+  <p style="font-size:14px;color:var(--soft)">Objects show their public fields only (the private <code>let secret</code> is left out), floats always keep a fraction, and an enum inside a collection reads back as <code>Color.RED</code>.</p></div>
+</div>
+<p class="fix">Where you meant JSON, say so: <code>JSON.encode(x)</code>.</p>
+
+<h3 id="b-graphql">GraphQL objects print as their query, not their ID <span class="tag t-all">every version</span></h3>
+<p>Showing a GraphQL object (a Dagger <code>Container</code>, say) used to fetch and print its ID. It now prints the lazy query it is, with argument names but never their values, and sends nothing to the server.</p>
+<pre><code class="dang"># from tests/test_graphql_object_tostring.dang
+assert { toString(primaryUser) == "&lt;User: primaryUser&gt;" }
+assert { `${primaryUser}` == "&lt;User: primaryUser&gt;" }
+assert { toString(Mutation.touchNode(id: "Post:1")) == "&lt;Node: mutation.touchNode(id: …)&gt;" }
+
+# Code that wants the ID selects it.
+assert { toString(primaryUser.id) == "User:1" }</code></pre>
+<p>In a Dagger module, <code>print(ctr)</code> shows something like <code>&lt;Container: container.from(address: …).withEnv(name: …, value: …)&gt;</code> (from #289).</p>
+<p class="fix">Select <code>.id</code> wherever you relied on the ID.</p>
+<p class="src">Needs a GraphQL schema, so quoted from the test suite rather than run here.</p>
+
+<h3 id="b-order">Encoders keep field order <span class="tag t-all">every version</span></h3>
+<p><code>JSON.encode</code> and <code>YAML.encode</code> used to sort every object's keys. They now write a type's fields in declaration order, a record's as written, and a map's in insertion order.</p>
+<div class="pair">
+  <div><div class="lbl">Program</div>
+<pre><code class="dang">type Module {
+  name: String!
+  source: String!
+  deps: [String!]! = []
+}
+let m = Module(name: "web", source: "./web")
+print(JSON.encode(m))
+print(JSON.encode(m, sortKeys: true))
+print(YAML.encode({{name: "x", count: 1}}))</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">{"name":"web","source":"./web","deps":[]}
+{"deps":[],"name":"web","source":"./web"}
+name: x
+count: 1</pre></div>
+</div>
+<p class="fix">Pass <code>sortKeys: true</code> to either encoder for the old order, or update your goldens.</p>
+
+<h3 id="b-strict">Stricter checks <span class="tag t-all">every version</span></h3>
+<p>Each of these used to type-check and then fail at runtime, return a wrong answer, or reach something it shouldn't. Each is now a compile error at the cause. Messages are as printed at v2.4.1.</p>
+<table>
+  <thead><tr><th style="width:38%">You wrote</th><th>You now see</th><th style="width:24%">Fix</th></tr></thead>
+  <tbody>
+    <tr><td><code>let n: Int! = counts.get("a")</code></td><td><code>cannot use Int as Int!</code> — <code>Map.get</code> is nullable, like <code>m["a"]</code></td><td><code>counts.get("a") ?? 0</code></td></tr>
+    <tr><td><code>JSON.decode("1") :: Random!</code></td><td><code>cannot decode into Random: it has no constructor</code></td><td>decode into <code>Decoded!</code> or a real type</td></tr>
+    <tr><td><code>"{" :: JSON!</code></td><td><code>invalid JSON: unexpected EOF</code> — string literals cast to <code>JSON!</code>, <code>YAML!</code>, <code>TOML!</code> are validated</td><td>fix the literal; computed strings raise at runtime instead</td></tr>
+    <tr><td><code>status == "PASSD"</code> on an enum</td><td><code>"PASSD" is not a value of Status; expected one of PASSED, FAILED</code> — also in <code>case</code> patterns, and for <code>Regexp</code> literals</td><td>fix the typo</td></tr>
+    <tr><td><code>scalar JSON</code> then <code>JSON.encode(…)</code></td><td><code>field "encode" not found in JSON; the JSON declared here shadows the builtin JSON, which has it; rename the declaration to use the builtin</code></td><td>rename your scalar</td></tr>
+    <tr><td><code>import Lib</code> then <code>Lib.toString(1)</code></td><td><code>field "toString" not found in Lib</code> — an import exposes only its own <code>pub</code> declarations <i>(golden <code>import_dang_qualified_builtin</code>)</i></td><td>call builtins unqualified</td></tr>
+    <tr><td>an interface member <code>f(x: Int!, y: String!): Int!</code> implemented as <code>f(x: c!, y: c!): c! { y }</code></td><td><code>field "f", argument "y": type c! (here Int!) doesn't fit interface type String!</code> — this returned a String as <code>Int!</code></td><td>match the interface's types</td></tr>
+  </tbody>
+</table>
+<p>The type-soundness sweep (#219–#249) landed in the same range and closes the remaining known cases of the checker accepting a program that then fails. It has its own notes: <a href="https://gistpreview.github.io/?7466a76346390a8516a0d9f03a430aff">Closing soundness holes in Dang's type checker</a>.</p>
+<p>One runtime change: decoding an explicit <code>null</code> into a non-null field with a default now takes the default (<code>{"retries": null}</code> into <code>retries: Int! = 3</code> gives <code>3</code>), where it used to leave null in an <code>Int!</code>.</p>
+
+<!-- ================================================================ -->
+<h2 id="dagger">Dagger module authors</h2>
+<p class="intro">Dagger's Dang SDK embeds Dang and picks the language version for you. These rules apply to Dagger engines that embed Dang 2.4, starting with v1.0.0-beta.28 (introduced by dagger/dagger#15128).</p>
+<table>
+  <thead><tr><th>Module's <code>engineVersion</code></th><th>Dang version when <code>dang.toml</code> declares none</th></tr></thead>
+  <tbody>
+    <tr><td>below v0.21.5</td><td>1.0 (unchanged)</td></tr>
+    <tr><td>v0.21.5 up to, not including, v1.0.0-beta.28</td><td><b>2.1</b>: what these modules always got</td></tr>
+    <tr><td>v1.0.0-beta.28 and later</td><td><b>2.4</b></td></tr>
+    <tr><td>SDK-generated entrypoints</td><td>2.1 (they pin <code>dang = "2.1"</code>)</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><b>Existing modules keep their syntax.</b> A module stays on 2.1 until you raise its <code>engineVersion</code> to v1.0.0-beta.28 or later. At that point bare patterns fail: run <code>dang migrate -w --from 2.1</code>, or write <code>dang = "2.1"</code> in <code>dang.toml</code>. A declared <code>dang = "X.Y"</code> always wins.</li>
+  <li><b>The output changes still reach you.</b> <code>print(ctr)</code> and <code>"${ctr}"</code> show <code>&lt;Container: container.from(address: …)&gt;</code> instead of an ID, and records print as <code>{{…}}</code>, at every version. Select <code>.id</code>; build JSON with <code>JSON.encode</code>.</li>
+  <li><b>Bare <code>JSON</code> is Dang's; the schema's is <code>Dagger.JSON</code>.</b> In a type, <code>JSON</code> always means Dang's builtin JSON-text scalar, as it did in v2.3, even with Dagger's schema imported. Dagger's own <code>scalar JSON</code> is <code>Dagger.JSON</code>. Convert with an explicit cast; the target checks the text:
+<pre><code class="dang"># from pkg/dang/builtin_codec_scalars_test.go
+pub toSchema(j: JSON!): Dagger.JSON! { (j :: Dagger.JSON!) }
+pub fromSchema(j: Dagger.JSON!): JSON! { (j :: JSON!) }</code></pre>
+  Only an explicit cast converts; passing one where the other is expected is still an error (run with a local <code>scalar Blob</code> standing in for <code>Dagger.JSON</code>: <code>cannot use Blob! as JSON!</code>).</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 id="new">What's new and worth trying</h2>
+<p class="intro">All of it is available at every language version, 2.1 pins included. Every example below was run at v2.4.1.</p>
+
+<h3 id="n-decoded">Data you haven't typed yet: <code>Decoded</code> <span class="tag t-new">new</span></h3>
+<p><code>Decoded</code> is the type of decoded data whose shape you haven't fixed. Cast it one level at a time. It compares as data, so key order, number spelling and the source format don't matter, and a <code>Decoded!</code> field encodes back exactly as it came in.</p>
+<div class="pair">
+  <div><div class="lbl">Program</div>
+<pre><code class="dang">let text = """{"modules": [{"name": "a", "pin": {"rev": 3}}]}"""
+let config = JSON.decode(text) :: Map[Decoded!]!
+let modules = config["modules"]! :: [Map[Decoded!]!]!
+let pin = modules[0]!["pin"]! :: Map[Int!]!
+print(pin["rev"])
+print(config)
+
+let a = JSON.decode("{\"b\": 1.50, \"a\": [1]}") :: Decoded!
+let b = YAML.decode("a: [1]\nb: 1.5") :: Decoded!
+print(a == b)</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">3
+["modules": [["name": "a", "pin": ["rev": 3]]]]
+true</pre></div>
+</div>
+
+<div class="grid2">
+  <div class="mini"><h4>Strict decoding <span class="tag t-new">new</span></h4>
+    <p><code>strict: true</code> rejects unknown and duplicate keys, all reported at once with their paths.</p>
+<pre><code class="dang"># text: "- name: a\n  nmae: b\n  source:\n    url: x\n    tomlTabel: y"
+YAML.decode(text, strict: true) :: [Module!]!</code></pre>
+<pre class="out" style="margin-top:6px">[0]: field nmae not found
+[0].source: field tomlTabel not found</pre>
+    <p style="margin:6px 0 0">Without <code>strict</code>, the typos are silently dropped.</p>
+  </div>
+  <div class="mini"><h4><code>Map[T]</code> targets and YAML merge keys</h4>
+    <p>Decode straight into a map of a type; <code>&lt;&lt;: *anchor</code> merges, with the mapping's own keys winning.</p>
+<pre><code class="dang">type Service {
+  image: String!
+  port: Int! = 80
+}
+let text = "base: &amp;base\n  image: nginx\nweb:\n  &lt;&lt;: *base\n  port: 8080"
+let svcs = YAML.decode(text) :: Map[Service!]!
+print(svcs["web"])</code></pre>
+<pre class="out" style="margin-top:6px">{{image: "nginx", port: 8080}}</pre>
+  </div>
+</div>
+<p>The encoders also take <code>indent:</code>, <code>escapeHTML:</code> and <code>sortKeys:</code>, matching Go's <code>MarshalIndent</code> and <code>SetEscapeHTML</code>. <code>TOML.decode</code> accepts <code>nan</code> and <code>inf</code>.</p>
+
+<h3 id="n-scalars"><code>JSON!</code>, <code>YAML!</code>, <code>TOML!</code> hold checked text <span class="tag t-241">v2.4.1</span></h3>
+<p>The same names are both the codec (<code>JSON.encode</code>, <code>JSON.decode</code>) and a scalar type of text in that format. The text is checked when a value is created: a bad literal is a compile error (see <a href="#b-strict">above</a>), a bad computed string raises. For nested data, use <code>Decoded!</code>: a <code>JSON!</code> holds text, so <code>Map[JSON!]!</code> fails on <code>{"a": [1, 2]}</code> with <code>["a"]: expected string for scalar JSON, got array</code>.</p>
+<div class="pair">
+  <div><div class="lbl">Program</div>
+<pre><code class="dang">let j = "{\"a\": [1, 2]}" :: JSON!
+print(JSON.decode(j) :: Map[[Int!]!]!)
+print(JSON.encode({{n: 1}}) :: JSON!)
+
+parse(s: String!): String! {
+  ((s :: JSON!) :: String!) rescue {
+    e: Error! => e.message
+  }
+}
+print(parse("[1, 2]"))
+print(parse("{"))
+
+let stream = "a: 1\n---\nb: 2\n" :: YAML!</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">["a": [1, 2]]
+{"n":1}
+[1, 2]
+invalid JSON: unexpected EOF</pre>
+  <p style="font-size:14px;color:var(--soft)">A multi-document stream is valid <code>YAML!</code>, but <code>YAML.decode</code> reads one document and says so: <code>YAML.decode: the text holds more than one document, but only a single document decodes</code>. Empty trailing documents are ignored.</p></div>
+</div>
+
+<h3 id="n-case"><code>case</code> is a type switch <span class="tag t-new">new</span></h3>
+<p>Any type can be a pattern: named types, lists, maps, records, and decoded data, which matches by shape. Coverage is checked, so an inline union of list types needs no <code>else</code>, and a pattern that can never match is a compile error.</p>
+<div class="pair">
+  <div><div class="lbl">Program</div>
+<pre><code class="dang">describe(d: Decoded!): String! {
+  case (d) {
+    n: Int! => `the number ${n}`
+    items: [Decoded!]! => `${items.length} items`
+    fields: Map[Decoded!]! => `fields ${fields.keys.join(", ")}`
+    else => "something else"
+  }
+}
+print(describe(JSON.decode("42")))
+print(describe(JSON.decode("[1, 2, 3]")))
+print(describe(YAML.decode("b: 1\na: 2")))
+
+kinds(ints: Boolean!): String! {
+  let xs = if (ints) { [1, 2] } else { ["a"] }
+  case (xs) {          # no else needed
+    is: [Int!]! => `ints ${is.length}`
+    ss: [String!]! => `strings ${ss.join(",")}`
+  }
+}
+print(kinds(false))
+
+print(case ({{name: "a", n: 1}}) {
+  r: {{name: String!, n: Int!}}! => `record ${r.name}`
+})</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">the number 42
+3 items
+fields a, b
+strings a
+record a</pre>
+  <div class="lbl" style="margin-top:10px">A pattern that can't match</div>
+<pre class="err">let n = 1
+print(case (n) {
+  s: String! => s
+  else => "not a string"
+})
+
+Error: pattern String! can't match a value of type Int!</pre>
+  <p style="font-size:14px;color:var(--soft)">A <code>case</code> on decoded data needs an <code>else</code>. Lists match by the element type they were built with: a list annotated <code>[Animal!]!</code> doesn't match <code>[Cat!]!</code> even if it holds only cats.</p></div>
+</div>
+
+<h3 id="n-generics">Bounded generics, <code>sort</code> and <code>sum</code> <span class="tag t-new">new</span></h3>
+<p>A type variable can declare what it supports: <code>Ordered</code> for comparison, <code>Numeric</code> for arithmetic (exactly <code>Int!</code> and <code>Float!</code>), or both with <code>&amp;</code>. Interface members take type parameters too. Lists gain stable <code>sort</code> and <code>sortBy</code> (enums sort in declaration order, records field by field) and <code>sum</code>.</p>
+<div class="pair">
+  <div><div class="lbl">Program</div>
+<pre><code class="dang">mySum[a: Numeric](xs: [a!]!, zero: a!): a! {
+  xs.reduce(zero) { acc, x => acc + x }
+}
+abs[a: Ordered &amp; Numeric](x: a!): a! {
+  if (x &lt; 0) { -x } else { x }
+}
+print(mySum([0.5, 0.25], 0.0))
+print(abs(-4))
+print([3, 1, 2].sort(descending: true))
+print([1.5, 2.0].sum)
+
+enum Role { ADMIN USER GUEST }
+let entries = [
+  {{role: Role.GUEST, uri: "b"}},
+  {{role: Role.ADMIN, uri: "z"}},
+  {{role: Role.GUEST, uri: "a"}},
+]
+print(entries.sortBy { e => {{role: e.role, uri: e.uri}} }
+  .map { e => e.uri })</code></pre></div>
+  <div><div class="lbl">Output</div>
+<pre class="out">0.75
+4
+[3, 2, 1]
+3.5
+["z", "a", "b"]</pre>
+  <div class="lbl" style="margin-top:10px">Forgot the bound?</div>
+<pre class="err">twice(x: a!): a! { x + x }
+
+Error: operator addition is not defined for the generic type a: a type variable supports no operations; declare it `[a: Numeric]` to use it</pre></div>
+</div>
+<pre><code class="dang">interface Ranker {
+  best[a: Ordered](x: a!, y: a!): a!
+}
+type ByMax implements Ranker {
+  pub best[a: Ordered](x: a!, y: a!): a! { if (x > y) { x } else { y } }
+}
+let r: Ranker! = ByMax
+print(r.best(3, 7))      # 7
+print(r.best("a", "b"))  # b</code></pre>
+
+<h3 id="n-stdlib">Smaller additions <span class="tag t-new">new</span></h3>
+<div class="pair">
+  <div>
+<pre><code class="dang">let roles = ["admin", "user"]
+print(roles.indexOf("user"))
+print(roles.indexOf("guest") ?? -1)
+print([[1, 2], [3]].flatMap { xs => xs })
+print("ff".toInt(base: 16))
+print("42".toInt)
+print("0x10".toInt(base: 16) rescue {
+  e: Error! => e.message
+})</code></pre></div>
+  <div>
+<pre class="out">1
+-1
+[1, 2, 3]
+255
+42
+toInt: "0x10" is not a base-16 integer</pre></div>
+</div>
+<ul>
+  <li><b>Editor support.</b> The LSP gains find-references and scope-aware rename (a shadowed local no longer renames as the outer binding). Hover, completion, the REPL's <code>:type</code>/<code>:doc</code> and the docs site show bounds, e.g. <code>sum</code> as <code>[a: Numeric] -&gt; a</code>.</li>
+  <li><b>Imports.</b> An explicit import named <code>JSON</code>, <code>YAML</code>, <code>TOML</code>, <code>Random</code> or <code>UUID</code> replaces the builtin in the file that imports it; sibling files keep the builtin.</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 id="embedders">Go embedders <span class="tag t-go">Go API</span></h2>
+<table>
+  <thead><tr><th>Removed or changed</th><th>Use instead</th></tr></thead>
+  <tbody>
+    <tr><td><code>dang.DefaultVersion</code>, <code>ProjectConfig.EffectiveVersion</code></td><td><code>dang.Version2_1</code> (or your own constant) where you mean a fixed version; <code>ContextWithVersion</code> to pin a module, unchanged</td></tr>
+    <tr><td><code>DeclareDir</code>'s scope binding every file's imports</td><td>Imports are file-local. Evaluate declaration-time arguments (e.g. interface directive args) in <code>dang.DeclarationScope(env, name)</code></td></tr>
+    <tr><td><code>JSON</code>, <code>YAML</code>, <code>TOML</code>, <code>Random</code>, <code>UUID</code> in <code>Module.TypeEnv</code>/<code>ValueEnv</code> and <code>RunDir</code>'s scope</td><td>They are per-file builtin imports now, absent from those scopes</td></tr>
+  </tbody>
+</table>
+<p>New: evaluation stops when its <code>context</code> is cancelled (a <code>*CancelledError</code> that <code>rescue</code> can't catch); <code>LoadDir</code> → <code>Module</code> → <code>Session</code> → <code>Snippet</code> for checking and running snippets inside a module; <code>Describe</code> for capped <code>TYPE = VALUE</code> rendering; <code>PrepareDir</code> to check once and evaluate many times; and <code>pkg/dang/analysis</code>, a transport-free language service the LSP now runs on.</p>
+
+<!-- ================================================================ -->
+<h2 id="v240">Coming from v2.4.0</h2>
+<p>Nothing written for v2.4.0 needs to change: <code>Decoded!</code>, <code>String!</code> and <code>Dagger.JSON!</code> mean what they did. v2.4.1 adds:</p>
+<ul>
+  <li><code>JSON!</code>, <code>YAML!</code> and <code>TOML!</code> are builtin scalar types again, at every language version, holding validated text. v2.4.0 had made them namespaces only, which broke Dagger entrypoints spelled with bare <code>JSON</code>.</li>
+  <li>An explicit cast converts between any two custom scalars, validated by the target (<code>j :: Dagger.JSON!</code>).</li>
+  <li>Enum, <code>Regexp</code> and codec string literals are now checked in comparisons and <code>case</code> patterns too, so <code>s == "PASSD"</code> is a compile error.</li>
+  <li><code>YAML.decode</code> ignores empty trailing documents, so a manifest ending in <code>---</code> decodes.</li>
+</ul>
+
+<footer>
+  <p><b>Sources.</b> The vito/dang pull requests merged between v2.3.0 (<code>3ee188d</code>) and v2.4.1 (<code>247f410</code>), chiefly
+  <a href="https://github.com/vito/dang/pull/286">#286</a> (<code>T!</code> patterns, type switch),
+  <a href="https://github.com/vito/dang/pull/287">#287</a> (undeclared means current),
+  <a href="https://github.com/vito/dang/pull/284">#284</a> and <a href="https://github.com/vito/dang/pull/289">#289</a> (display),
+  <a href="https://github.com/vito/dang/pull/255">#255</a>/<a href="https://github.com/vito/dang/pull/283">#283</a> (encoding order),
+  <a href="https://github.com/vito/dang/pull/277">#277</a>/<a href="https://github.com/vito/dang/pull/281">#281</a> (<code>Decoded</code>),
+  <a href="https://github.com/vito/dang/pull/254">#254</a> (strict decoding),
+  <a href="https://github.com/vito/dang/pull/272">#272</a>/<a href="https://github.com/vito/dang/pull/274">#274</a>/<a href="https://github.com/vito/dang/pull/290">#290</a>/<a href="https://github.com/vito/dang/pull/293">#293</a> (bounds),
+  <a href="https://github.com/vito/dang/pull/258">#258</a>/<a href="https://github.com/vito/dang/pull/263">#263</a> (stdlib),
+  <a href="https://github.com/vito/dang/pull/291">#291</a>/<a href="https://github.com/vito/dang/pull/292">#292</a> (imports),
+  <a href="https://github.com/vito/dang/pull/295">#295</a> (v2.4.1);
+  and <a href="https://github.com/dagger/dagger/pull/15128">dagger/dagger#15128</a> for the Dagger version rules.</p>
+  <p><b>Verification.</b> Every program and output not otherwise marked was run with <code>dang</code> built at v2.4.1, with no <code>dang.toml</code> (so language 2.4). GraphQL display is quoted from <code>tests/test_graphql_object_tostring.dang</code>, the <code>Dagger.JSON</code> casts from <code>pkg/dang/builtin_codec_scalars_test.go</code>, the <code>Lib.toString</code> error from the <code>import_dang_qualified_builtin</code> golden, and v2.3 output from #284's description.</p>
+</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  const KW = new Set("type let pub if else case rescue raise import enum interface implements scalar union null true false and or not return".split(" "));
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const re = /(#[^\n]*)|("""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_]\w*\b)|([\s\S])/g;
+  document.querySelectorAll("code.dang").forEach(el => {
+    const src = el.textContent; let out = "", m;
+    while ((m = re.exec(src))) {
+      if (m[1]) out += `<span class="c-com">${esc(m[1])}</span>`;
+      else if (m[2]) out += `<span class="c-str">${esc(m[2])}</span>`;
+      else if (m[3]) out += `<span class="c-num">${m[3]}</span>`;
+      else if (m[4]) out += KW.has(m[4]) ? `<span class="c-kw">${m[4]}</span>` : /^[A-Z]/.test(m[4]) ? `<span class="c-ty">${m[4]}</span>` : m[4];
+      else out += esc(m[5]);
+    }
+    el.innerHTML = out;
+  });
+})();
+</script>
+</body>
+</html>
