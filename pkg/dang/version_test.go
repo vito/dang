@@ -513,8 +513,103 @@ func TestVersionTypePatterns(t *testing.T) {
 	})
 }
 
+// TestVersionQuotes checks that `"..."` and `"""..."""` take `${` literally
+// before 2.5, where `"""` is also raw, and process escapes and interpolate
+// from 2.5 on; that the opening line of a multi-line string holds at most a
+// language tag from 2.5 on; and that migrating keeps every string's value.
+func TestVersionQuotes(t *testing.T) {
+	str := func(t *testing.T, src string, v Version) *String {
+		t.Helper()
+		node := parseSingleForm(t, src, v)
+		s, ok := node.(*String)
+		require.True(t, ok, "expected *String, got %T", node)
+		return s
+	}
+	parseErr := func(t *testing.T, src string, v Version) string {
+		t.Helper()
+		_, err := Parse("version_test.dang", []byte(src), WithVersion(v))
+		require.Error(t, err)
+		return err.Error()
+	}
+
+	t.Run("Dang 2.4 double quotes take ${ literally", func(t *testing.T) {
+		assert.Equal(t, "${x} \t", str(t, `"${x} \t"`, Version2_4).Value)
+		assert.Equal(t, `a\tb ${x}`, str(t, "\"\"\"\n  a\\tb ${x}\n\"\"\"", Version2_4).Value)
+		assert.Equal(t, "sql\nselect", str(t, "\"\"\"sql\nselect\n\"\"\"", Version2_4).Value)
+		assert.Equal(t, "hello world\nmore", parseSingleForm(t, "```hello world\nmore\n```", Version2_4).(*Template).Parts[0].Lit)
+	})
+
+	t.Run("Dang 2.5 double quotes process escapes and interpolate", func(t *testing.T) {
+		tmpl, ok := parseSingleForm(t, `"a\t${x}\${y}"`, Version2_5).(*Template)
+		require.True(t, ok)
+		assert.Equal(t, byte('"'), tmpl.Quote)
+		require.Len(t, tmpl.Parts, 3)
+		assert.Equal(t, "a\t", tmpl.Parts[0].Lit)
+		assert.Equal(t, "${y}", tmpl.Parts[2].Lit)
+
+		assert.Equal(t, "${y} $z", str(t, `"\${y} $z"`, Version2_5).Value)
+
+		// Escapes are text, not indentation: dedenting comes first.
+		s := str(t, "\"\"\"sql\n  \\tselect \\\"\"\"\n    1\n\"\"\"", Version2_5)
+		assert.Equal(t, "\tselect \"\"\"\n  1", s.Value)
+		assert.Equal(t, "sql", s.Lang)
+
+		assert.Equal(t, "inline", str(t, `"""inline"""`, Version2_5).Value)
+	})
+
+	t.Run("single quotes are verbatim", func(t *testing.T) {
+		for _, v := range []Version{Version2_4, Version2_5} {
+			assert.Equal(t, `${x}\t`, str(t, `'${x}\t'`, v).Value)
+			assert.Equal(t, "", str(t, `''`, v).Value)
+			s := str(t, "'''sh\n  echo \"${HOME}\" \\\n    it's\n'''", v)
+			assert.Equal(t, "echo \"${HOME}\" \\\n  it's", s.Value)
+			assert.Equal(t, "sh", s.Lang)
+			assert.Equal(t, "it's", str(t, `'''it's'''`, v).Value)
+		}
+	})
+
+	t.Run("Dang 2.5 rejects text on the opening line", func(t *testing.T) {
+		for _, src := range []string{
+			"\"\"\"Summary.\nmore\n\"\"\"",
+			"\"\"\"${x}\nmore\n\"\"\"",
+			"'''sh echo\nmore\n'''",
+			"```hello world\nmore\n```",
+		} {
+			assert.Contains(t, parseErr(t, src, Version2_5), "text on the opening line of a multi-line string")
+		}
+	})
+
+	t.Run("docstrings stay verbatim", func(t *testing.T) {
+		node := parseSingleForm(t, "\"\"\"Summary \\n ${x}\nmore\n\"\"\"\nlet a = 1\n", Version2_5)
+		decl, ok := node.(*FieldDecl)
+		require.True(t, ok, "expected *FieldDecl, got %T", node)
+		assert.Equal(t, "Summary \\n ${x}\nmore", decl.DocString)
+	})
+
+	t.Run("migrating to 2.5 keeps every string's value", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{"let a = \"${HOME}/bin\"\n", "let a = '${HOME}/bin'\n"},
+			{"let a = \"it's ${HOME}\\n\"\n", "let a = \"it's \\${HOME}\\n\"\n"},
+			{"let a = \"plain\\tstring\"\n", "let a = \"plain\\tstring\"\n"},
+			{"let a = \"\"\"a\\b\"\"\"\n", "let a = '''a\\b'''\n"},
+			{"let a = \"\"\"a'\\b\"\"\"\n", "let a = '''a'\\b'''\n"},
+			{"let a = \"\"\"a\\b'\"\"\"\n", "let a = \"\"\"a\\\\b'\"\"\"\n"},
+			{"let a = \"\"\"\n  C:\\path ${x}\n\"\"\"\n", "let a = '''\n  C:\\path ${x}\n'''\n"},
+			{"let a = \"\"\"\n  ''' \\\n\"\"\"\n", "let a = \"\"\"\n''' \\\\\n\"\"\"\n"},
+			{"let a = \"\"\"Summary.\n  more\n\"\"\"\n", "let a = \"\"\"\nSummary.\n  more\n\"\"\"\n"},
+			{"let a = \"\"\"sql\nselect\n\"\"\"\n", "let a = \"\"\"\nsql\nselect\n\"\"\"\n"},
+			{"let a = ```hello ${1}\n  more\n```\n", "let a = ```\nhello ${1}\n  more\n```\n"},
+			{"let a = \"\"\"\n  no escapes\n\"\"\"\n", "let a = \"\"\"\n  no escapes\n\"\"\"\n"},
+		} {
+			migrated, err := MigrateSource("version_test.dang", []byte(tc.src), Version2_4, Version2_5)
+			require.NoError(t, err, tc.src)
+			assert.Equal(t, tc.want, migrated, tc.src)
+		}
+	})
+}
+
 // versions lists every Dang version.
-var versions = []Version{Version1_0, Version2_0, Version2_1, Version2_4}
+var versions = []Version{Version1_0, Version2_0, Version2_1, Version2_4, Version2_5}
 
 // TestReservedWords checks every reserved word in every version: it is an
 // identifier exactly where it isn't reserved, `$word` is the identifier in

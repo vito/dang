@@ -8,12 +8,12 @@ import (
 	"strings"
 )
 
-// Repr renders a value as Dang source syntax: strings are quoted, and lists,
-// maps, records and decoded data recurse so their nested strings are quoted
-// too. It's the form used to echo REPL results, where the output should read
-// back as the literal that produced it (and highlight under the same
-// grammar), and, through Display, how toString, List.join, interpolation and
-// print render a value.
+// Repr renders a value as Dang source syntax: strings are quoted (see
+// quoteString), and lists, maps, records and decoded data recurse so their
+// nested strings are quoted too. It's the form used to echo REPL results,
+// where the output should read back as the literal that produced it (and
+// highlight under the same grammar), and, through Display, how toString,
+// List.join, interpolation and print render a value.
 //
 //   - a record or object is a record literal of its public data fields,
 //     `{{a: 1}}`, in the order encoding uses (see objectBindings), `{{}}`
@@ -36,6 +36,13 @@ func Repr(v Value) string {
 	return b.String()
 }
 
+// quoteString quotes s as a double-quoted Dang string literal: Go's quoting,
+// with `${` escaped as `\${` so that it reads back as text rather than an
+// interpolation.
+func quoteString(s string) string {
+	return strings.ReplaceAll(strconv.Quote(s), "${", `\${`)
+}
+
 // Display renders a value as text, the way toString, List.join, string
 // interpolation and print show it: a string, an enum value or a custom
 // scalar is its own text, bare; anything else is its Repr.
@@ -55,7 +62,7 @@ func Display(v Value) string {
 func writeRepr(b *strings.Builder, v Value) {
 	switch v := v.(type) {
 	case StringValue:
-		b.WriteString(strconv.Quote(v.Val))
+		b.WriteString(quoteString(v.Val))
 	case ScalarValue:
 		if v.Encoded {
 			// A schema scalar holding a non-string value is that data.
@@ -64,7 +71,7 @@ func writeRepr(b *strings.Builder, v Value) {
 				return
 			}
 		}
-		b.WriteString(strconv.Quote(v.Val))
+		b.WriteString(quoteString(v.Val))
 	case ListValue:
 		b.WriteString("[")
 		for i, elem := range v.Elements {
@@ -84,7 +91,7 @@ func writeRepr(b *strings.Builder, v Value) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteString(strconv.Quote(k))
+			b.WriteString(quoteString(k))
 			b.WriteString(": ")
 			writeRepr(b, v.Entries[k])
 		}
@@ -190,7 +197,7 @@ func writeDataRepr(b *strings.Builder, raw any) {
 	case bool:
 		b.WriteString(strconv.FormatBool(x))
 	case string:
-		b.WriteString(strconv.Quote(x))
+		b.WriteString(quoteString(x))
 	case DataNumber:
 		b.WriteString(x.String())
 	case []any:
@@ -217,7 +224,7 @@ func writeDataRepr(b *strings.Builder, raw any) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteString(strconv.Quote(k))
+			b.WriteString(quoteString(k))
 			b.WriteString(": ")
 			writeDataRepr(b, x[k])
 		}
@@ -232,7 +239,7 @@ func writeDataRepr(b *strings.Builder, raw any) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteString(strconv.Quote(e.key))
+			b.WriteString(quoteString(e.key))
 			b.WriteString(": ")
 			writeDataRepr(b, e.val)
 		}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -89,24 +90,148 @@ func rejectedSourceError(pegErr error, filename string, source []byte) (*SourceE
 	return NewSourceError(fmt.Errorf("syntax error: %s", rejected.msg), &loc, string(source)), true
 }
 
-// unquoteString decodes a double-quoted string literal. It accepts every Go
-// escape plus `\/` for `/` (as JSON does), which strconv.Unquote rejects.
+// unquoteString decodes a double-quoted string literal, quotes included (see
+// unescapeString).
 func unquoteString(text []byte) (string, error) {
-	if !bytes.Contains(text, []byte(`\/`)) {
-		return strconv.Unquote(string(text))
+	if len(text) < 2 || text[0] != '"' || text[len(text)-1] != '"' {
+		return "", strconv.ErrSyntax
 	}
-	// Rewrite only escapes that are `\/`: in `\\/` the backslash is escaped.
-	buf := make([]byte, 0, len(text))
-	for i := 0; i < len(text); i++ {
-		if text[i] == '\\' && i+1 < len(text) {
-			i++
-			if text[i] != '/' {
-				buf = append(buf, '\\')
+	return unescapeString(string(text[1 : len(text)-1]))
+}
+
+// unescapeString decodes the escapes in raw, the text of a double-quoted
+// string as written. It accepts every Go escape, plus `\/` for `/` (as JSON
+// does) and `\$` for `$` (to write a literal `${`). Unescaped quotes and
+// newlines are kept as they are: triple-quoted strings may hold them.
+func unescapeString(raw string) (string, error) {
+	if !strings.Contains(raw, `\`) {
+		return raw, nil
+	}
+	var b strings.Builder
+	for raw != "" {
+		if raw[0] != '\\' {
+			i := strings.IndexByte(raw, '\\')
+			if i < 0 {
+				i = len(raw)
 			}
+			b.WriteString(raw[:i])
+			raw = raw[i:]
+			continue
 		}
-		buf = append(buf, text[i])
+		if len(raw) >= 2 && (raw[1] == '/' || raw[1] == '$') {
+			b.WriteByte(raw[1])
+			raw = raw[2:]
+			continue
+		}
+		r, multibyte, tail, err := strconv.UnquoteChar(raw, '"')
+		if err != nil {
+			return "", err
+		}
+		if r < utf8.RuneSelf || !multibyte {
+			b.WriteByte(byte(r))
+		} else {
+			b.WriteRune(r)
+		}
+		raw = tail
 	}
-	return strconv.Unquote(string(buf))
+	return b.String(), nil
+}
+
+// quotedString builds a double-quoted string literal (from Dang 2.5) from its
+// parts, whose literal text is still as written: a multi-line string is
+// dedented before its escapes are decoded, so that an escape like `\t` is
+// text rather than indentation. It is a String unless it interpolates.
+func (c *current) quotedString(rawParts any, quote byte, triple bool, lang any) (any, error) {
+	parts := sliceOf[TemplatePart](rawParts)
+	l, _ := lang.(string)
+	fence := 1
+	if triple {
+		fence = 3
+		if l == "" {
+			c.rejectOpeningLineText(parts, `"""`)
+		}
+		parts = normalizeTemplateParts(parts)
+	}
+	parts = coalesceTemplateParts(parts)
+	interpolates := false
+	for i, p := range parts {
+		if p.Expr != nil {
+			interpolates = true
+			continue
+		}
+		lit, err := unescapeString(p.Lit)
+		if err != nil {
+			// The grammar admits escapes that encode no character, like \777.
+			c.reject(c.Loc(), "invalid escape sequence in string literal")
+		}
+		parts[i].Lit = lit
+	}
+	if !interpolates {
+		var value strings.Builder
+		for _, p := range parts {
+			value.WriteString(p.Lit)
+		}
+		return &String{
+			Value:        value.String(),
+			TripleQuoted: triple,
+			Quote:        quote,
+			Lang:         l,
+			Loc:          c.Loc(),
+		}, nil
+	}
+	return &Template{
+		Parts: parts,
+		Fence: fence,
+		Lang:  l,
+		Quote: quote,
+		Loc:   c.Loc(),
+	}, nil
+}
+
+// verbatimTripleString builds a `'''...'''` string from its content as
+// written, dedented.
+func (c *current) verbatimTripleString(content, lang any) (any, error) {
+	raw := ""
+	if content != nil {
+		raw = string(content.([]byte))
+	}
+	l, _ := lang.(string)
+	if l == "" {
+		c.rejectOpeningLineText([]TemplatePart{{Lit: raw}}, "'''")
+	}
+	return &String{
+		Value:        normalizeTripleQuoteString([]byte(raw)),
+		TripleQuoted: true,
+		Quote:        '\'',
+		Verbatim:     true,
+		Lang:         l,
+		Loc:          c.Loc(),
+	}, nil
+}
+
+// rejectOpeningLineText rejects a multi-line string with text on its opening
+// line, given the parts that follow its opening delimiter (written delim)
+// when no language tag does. From Dang 2.5 a multi-line string's text starts
+// on the next line, so that a word there can't be mistaken for a language tag
+// or the other way around. A string that ends on its opening line is inline,
+// and fine.
+func (c *current) rejectOpeningLineText(parts []TemplatePart, delim string) {
+	text := false
+	for _, p := range parts {
+		if p.Expr != nil {
+			text = true
+			continue
+		}
+		i := strings.IndexByte(p.Lit, '\n')
+		if i < 0 {
+			text = text || strings.TrimSpace(p.Lit) != ""
+			continue
+		}
+		if text || strings.TrimSpace(p.Lit[:i]) != "" {
+			c.reject(c.Loc(), fmt.Sprintf("text on the opening line of a multi-line string: start it on the next line (only a language tag may follow the opening %s, like %ssh)", delim, delim))
+		}
+		return
+	}
 }
 
 func (c current) Loc() *SourceLocation {

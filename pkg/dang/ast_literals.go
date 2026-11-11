@@ -385,12 +385,27 @@ func (s *SelfKeyword) Walk(fn func(Node) bool) {
 	fn(s)
 }
 
-// String represents a string literal
+// String represents a string literal without interpolations. A double-quoted
+// literal with ${...} interpolations is a Template.
 type String struct {
 	InferredTypeHolder
 	Value        string
 	TripleQuoted bool // true if originally written with triple quotes
-	Loc          *SourceLocation
+
+	// Quote is the quote the literal was written with: '"' (or zero) for
+	// `"..."` and `"""..."""`, '\'' for `'...'` and `'''...'''`.
+	Quote byte `dang:"spelling"`
+
+	// Verbatim reports whether the literal's text is its value as written
+	// (dedenting aside), with no escapes or interpolation: single-quoted
+	// strings, and triple-quoted ones before Dang 2.5 (see literalQuotes).
+	Verbatim bool `dang:"spelling"`
+
+	// Lang is the optional language tag of a triple-quoted string (used for
+	// editor highlighting).
+	Lang string `dang:"spelling"`
+
+	Loc *SourceLocation
 }
 
 var _ Node = (*String)(nil)
@@ -431,16 +446,23 @@ type TemplatePart struct {
 	Expr Node
 }
 
-// Template represents a backtick-delimited template string literal with
-// optional ${...} interpolations. Fence is the count of backticks used as the
-// delimiter (1 for single-line, >=3 for multi-line). Lang is the optional
-// language tag on multi-line templates (used for editor highlighting).
+// Template represents a string literal that may interpolate ${...}: a
+// backtick-delimited template (with or without interpolations), or a
+// double-quoted string with at least one interpolation.
+// Fence is the count of delimiters (1 for single-line, >=3 for multi-line).
+// Lang is the optional language tag on multi-line templates (used for editor
+// highlighting).
 type Template struct {
 	InferredTypeHolder
 	Parts []TemplatePart
 	Fence int
 	Lang  string
-	Loc   *SourceLocation
+
+	// Quote is the delimiter the template was written with: '`' (or zero)
+	// for backticks, '"' for a double-quoted string.
+	Quote byte `dang:"spelling"`
+
+	Loc *SourceLocation
 }
 
 var _ Node = (*Template)(nil)
