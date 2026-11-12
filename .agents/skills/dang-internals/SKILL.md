@@ -463,6 +463,21 @@ an object returns the interfaces it implements and the unions it belongs to
 relationship, the *more specific* type lists the more general one among its
 `Supertypes()`.
 
+Interfaces declared in Dang are also **structural** (`structural.go`): after
+the supertypes, `hm.assignable` asks a want that is an `hm.StructuralType`
+(`*Type.SatisfiedBy`, which says no unless it's an interface with no
+`SourceSchema`) whether have has its shape. hm threads the pairs it is
+assuming (`assumptions`, on the stack of one check, so concurrent checks
+never share them) through the parts, so recursive shapes are coinductive.
+The check is a question, never a constraint: `fitsOwn` refuses an answer
+that binds anything but the field's own freshened variables (the
+interface's are skolemized), and hm drops the substitution. Static pattern
+checks (`moduleFits`, `resolveInterfaceTypePattern`) and runtime matching
+(`matchesType`) go through `satisfies`, i.e. `hm.IsSubtypeOf`, so they
+agree with inference. A union satisfies when each member does — asked
+directly, never through the member's `Supertypes()`, which lead back to the
+union the check is assuming. Schema interfaces stay nominal.
+
 Function types are checked by `assignableFunction`: contravariant in the
 argument record and the block, covariant in the result, without value-level
 coercions, and every pair rechecked under the composed substitution (a

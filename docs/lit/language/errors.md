@@ -3,12 +3,12 @@
 
 # Errors: `raise` and `rescue` {#errors}
 
-An error is a value — an object implementing the `Error` interface — and
-error handling is expression-shaped like everything else in Dang (see
-[#control-flow]): `raise` cuts the computation short with an error
-describing what went wrong, and the postfix `rescue` operator attaches a
-recovery to any expression, yielding the operand's value when it succeeds
-and the rescue's when it doesn't.
+An error is a value — any object with the `Error` interface's `message`
+field — and error handling is expression-shaped like everything else in
+Dang (see [#control-flow]): `raise` cuts the computation short with an
+error describing what went wrong, and the postfix `rescue` operator
+attaches a recovery to any expression, yielding the operand's value when
+it succeeds and the rescue's when it doesn't.
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
@@ -40,7 +40,7 @@ produces a real error value:
 rescue y` reads as `raise (x rescue y)` — to rescue a raise, wrap it in a
 block.)
 
-Only a `String!` or a value implementing `Error` (below) can be raised:
+Only a `String!` or an `Error` (below) can be raised:
 
 ```dang-failure
 raise 42
@@ -115,17 +115,18 @@ interface Error {
 }
 ```
 
-A user error type opts in with `implements Error` (see
-[#interfaces-unions]), and conformance is enforced — leaving out `message`
-is a compile error:
+Like every interface declared in Dang, it is structural (see
+[#interfaces-unions]): any type with a public `message: String!` is an
+`Error`, whether or not it says so. A type can also opt in with
+`implements Error`, which checks the shape where the type is declared —
+leaving out `message` is a compile error there:
 
 ```dang-failure
 type BrokenError implements Error { code: Int! }
 ```
 
-A value implementing `Error` raises as-is — no wrapping — and any
-additional fields, like `resource` here, ride along on the raised value for
-a `rescue` to read:
+An error raises as-is — no wrapping — and any additional fields, like
+`resource` here, ride along on the raised value for a `rescue` to read:
 
 ```dang
 type NotFoundError implements Error {
@@ -148,6 +149,22 @@ describe(err: Error!): String! { `error: ${err.message}` }
   err: Error! => describe(err)
 }
 ```
+
+A type without the shape can't be raised, and the error says what it lacks:
+
+```dang-failure
+type Receipt {
+  total: Int!
+}
+
+raise Receipt(3)
+```
+
+Being structural, `Error` reaches across schemas: an imported GraphQL
+schema's own error type with a `message: String!` field — Dagger's `Error`,
+say — is an `Error` too, so a value of it raises and rescues like any
+other, though the schema knows nothing of Dang's interface. Its message is
+read when it is raised.
 
 ## Rescue clauses
 
@@ -235,7 +252,7 @@ type or declines to bind it, so a bare `err =>` is rejected:
 lookup(0) rescue { err => err.message }
 ```
 
-Pattern types must be errors — a type implementing `Error`, or a union of
+Pattern types must be errors — a type with `Error`'s shape, or a union of
 such types — validated like a `case` over an
 interface operand (see [#control-flow]):
 
