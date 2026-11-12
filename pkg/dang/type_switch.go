@@ -193,6 +193,12 @@ func moduleFitsVia(have, want *Type, inProgress map[*Type]bool) bool {
 			return true
 		}
 	}
+	if w.isStructural() && satisfies(have, w) {
+		// An interface declared in Dang takes every type of its shape
+		// (see structural.go). The shape is have's own: a projection
+		// narrowed by inline fragments holds only the fields selected.
+		return true
+	}
 	if h.Kind == UnionKind {
 		members := h.GetMembers()
 		for _, m := range members {

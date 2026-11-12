@@ -1,0 +1,13 @@
+# A generic interface method's callers pick its type variables, so a method
+# for one type only doesn't have its shape.
+interface Picker {
+  pick(x: a!): a!
+}
+
+type OnlyStrings {
+  pick(x: String!): String! { x }
+}
+
+use(p: Picker!): Int! { p.pick(1) }
+
+print(use(OnlyStrings))

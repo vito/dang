@@ -1,0 +1,12 @@
+# A type without an interface's fields isn't one of its values.
+interface Named {
+  name: String!
+}
+
+type Rock {
+  weight: Int!
+}
+
+greet(n: Named!): String! { n.name }
+
+print(greet(Rock(3)))

@@ -670,6 +670,14 @@ func diagnoseAssignment(have, want hm.Type) error {
 	if !ok {
 		return nil
 	}
+	if len(issues) == 0 && wantMod.isStructural() && haveMod.Named != "" {
+		// An interface declared in Dang takes a type of its shape, which
+		// this one isn't, though no public field says why (see
+		// structural.go): a field it hides, or a method less general.
+		if reason := structuralMismatch(haveMod, wantMod, hm.AssignableUncommitted); reason != "" {
+			return fmt.Errorf("cannot use %s as %s: %s", have, want, reason)
+		}
+	}
 	if len(issues) == 0 {
 		switch {
 		case haveMod.Named == "" && wantMod.Named == "":
