@@ -39,8 +39,7 @@ go run ./cmd/genthemes
   done
 } > html/base16-options.tmpl
 
-# CGO_ENABLED=1: code blocks are highlighted by tree-sitter grammars (Dang
-# uses the same parser and highlight query as the editors and the playground;
-# sh/toml fences use their upstream grammars), which bind the generated C
-# parsers via cgo. The build image needs a C compiler.
-CGO_ENABLED=1 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"
+# Code blocks are highlighted at build time: Dang by tree-sitter (the grammar
+# and highlight query the editors and the playground use, run as WebAssembly
+# like the REPL's), shell/TOML/Go/Ruby/YAML by chroma. Neither needs cgo.
+go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"

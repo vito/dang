@@ -288,10 +288,10 @@ type Dang {
         "clang",
       ])
       .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
-      # cgo needs a C compiler: the docs build compiles the tree-sitter
-      # grammars (docs/go/danglang among them) into its highlighter, and the
-      # race-enabled dang binary the LSP tests drive needs it too. Wolfi
-      # ships clang, not gcc (Go's default CC).
+      # A C compiler for what still needs one: the race-enabled dang binary
+      # the LSP tests drive (-race needs cgo), and the tree-sitter CLI, which
+      # compiles the grammar to run its corpus tests. Dang itself and the docs
+      # build need none. Wolfi ships clang, not gcc (Go's default CC).
       .withEnvVariable("CC", "clang")
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")
       .withMountedCache("/go/build-cache", cacheVolume("go-build"))
@@ -381,15 +381,17 @@ type Test {
   }
 
   """
-  Vet everything without cgo, as the Dagger engine builds Dang. Dang uses no
-  cgo (tree-sitter runs as WebAssembly), so the Go tests cover the engine's
-  build already; this keeps a dependency that needs cgo from creeping in.
+  Vet everything without cgo, the docs module too, as the Dagger engine
+  builds Dang. Nothing needs cgo (tree-sitter runs as WebAssembly), so the
+  Go tests cover the engine's build already; this keeps a dependency that
+  needs cgo from creeping in.
   """
   nocgo: Void @check {
     dang
       .generated
       .withEnvVariable("CGO_ENABLED", "0")
       .withExec(["go", "vet", "./..."])
+      .withExec(["go", "-C", "docs", "vet", "./..."])
       .sync
 
     null

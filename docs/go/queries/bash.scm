@@ -1,7 +1,7 @@
 ; Bash highlight query, copied verbatim from tree-sitter-bash
-; queries/highlights.scm at the version pinned in go.mod. Captures with no
-; tok-* class mapping (see captureClass in ../highlight.go), like @embedded,
-; render unstyled.
+; queries/highlights.scm at the version build-highlight-assets.sh pins.
+; Captures with no tok-* class mapping (see docs/js/playground.js), like
+; @embedded, render unstyled.
 [
   (string)
   (raw_string)

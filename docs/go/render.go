@@ -7,12 +7,12 @@ import (
 	"github.com/vito/booklit"
 )
 
-// CodeBlock renders every fenced code block with tree-sitter highlighting
-// (see highlight.go for the registered grammars). ```dang fences additionally
-// get stdlib auto-links: the snippet is typechecked against the prelude and
-// every call-position name that resolves to a stdlib builtin becomes a
-// reference into the stdlib docs. Languages without a grammar — and every
-// language when built without cgo — render as plain code in the same wrapper.
+// CodeBlock renders every fenced code block highlighted (see highlight.go
+// for the languages). ```dang fences additionally get stdlib auto-links: the
+// snippet is typechecked against the prelude and every call-position name
+// that resolves to a stdlib builtin becomes a reference into the stdlib
+// docs. Languages that aren't highlighted render as plain code in the same
+// wrapper.
 // Booklit resolves plugin methods first-match across the section's plugin
 // stack and baselit always sits first, so NewPlugin prepends this plugin to
 // make this override reachable.
@@ -89,8 +89,8 @@ func (p Plugin) renderSignature(sig, name, tag string) booklit.Content {
 // interleaved with booklit references for the link spans. References render
 // as plain <a> elements inside the surrounding token <span>, so links keep
 // their token color (page.tmpl underlines them on hover). When the language
-// has no grammar (or the build has no cgo) the code renders plain — same
-// wrapper, no token spans — so every fence shares this one path.
+// isn't highlighted the code renders plain — same wrapper, no token spans —
+// so every fence shares this one path.
 func renderCode(section *booklit.Section, language, source string, links []linkSpan, inline bool) booklit.Content {
 	classes := classifyCode(language, source)
 	if classes == nil {
@@ -169,8 +169,8 @@ func renderCode(section *booklit.Section, language, source string, links []linkS
 // bare tok-* spans with no .syntax wrapper. This matches what playground.js's
 // highlightHtml produces for the same value client-side, so the baked literate
 // result and its enhanced replay look identical, and unstyled characters
-// inherit the result line's color (.dang-playground-result, green). Without a
-// grammar (or cgo) it degrades to escaped plain text.
+// inherit the result line's color (.dang-playground-result, green). If
+// highlighting fails it degrades to escaped plain text.
 func highlightResult(value string) booklit.Content {
 	classes := classifyCode("dang", value)
 	classAt := func(i int) string {

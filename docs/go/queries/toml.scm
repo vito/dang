@@ -1,8 +1,8 @@
 ; TOML highlight query, adapted from tree-sitter-toml queries/highlights.scm
-; at the version pinned in go.mod. Upstream captures bare keys as @type and
-; whole pairs as @property, which would paint keys in the type color; keys
-; here are @property (the conventional capture), matching how the site has
-; always colored TOML keys.
+; at the version build-highlight-assets.sh pins. Upstream captures bare keys
+; as @type and whole pairs as @property, which would paint keys in the type
+; color; keys here are @property (the conventional capture), matching how the
+; site has always colored TOML keys.
 
 (bare_key) @property
 (quoted_key) @string

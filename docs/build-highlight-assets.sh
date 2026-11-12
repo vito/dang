@@ -78,21 +78,17 @@ if $do_grammar; then
 
   # Embedded-language grammars, for highlighting injected code blocks
   # (```toml … ``` inside a Dang string) in the playground editor. Built the
-  # same way as the Dang grammar, for publishing to R2. Sourced from the docs Go
-  # module's grammar deps (the module cache is read-only, so build from a copy).
+  # same way as the Dang grammar, for publishing to R2, from these upstream
+  # versions (the module cache is read-only, so build from a copy). Keep
+  # docs/go/queries/*.scm in step with them.
   for pair in \
-    "github.com/tree-sitter-grammars/tree-sitter-toml:toml" \
-    "github.com/tree-sitter-grammars/tree-sitter-yaml:yaml" \
-    "github.com/tree-sitter/tree-sitter-ruby:ruby" \
-    "github.com/tree-sitter/tree-sitter-bash:bash" \
-    "github.com/tree-sitter/tree-sitter-go:go"; do
+    "github.com/tree-sitter-grammars/tree-sitter-toml@v0.7.0:toml" \
+    "github.com/tree-sitter-grammars/tree-sitter-yaml@v0.7.2:yaml" \
+    "github.com/tree-sitter/tree-sitter-ruby@v0.23.1:ruby" \
+    "github.com/tree-sitter/tree-sitter-bash@v0.25.1:bash" \
+    "github.com/tree-sitter/tree-sitter-go@v0.25.0:go"; do
     mod="${pair%%:*}"; lang="${pair##*:}"
-    # Extract the grammar module into the cache if it isn't already: a fresh
-    # build env (e.g. the publishGrammars container) only has it as a go.sum
-    # entry, and `go list -m -f {{.Dir}}` reports an empty dir until it's
-    # downloaded, which would silently skip the grammar.
-    go mod download "$mod" 2>/dev/null || true
-    dir="$(go list -m -f '{{.Dir}}' "$mod" 2>/dev/null || true)"
+    dir="$(go mod download -json "$mod" 2>/dev/null | sed -n 's/.*"Dir": "\(.*\)".*/\1/p' || true)"
     if [ -z "$dir" ]; then echo "warning: $lang grammar not found; skipping" >&2; continue; fi
     work="$(mktemp -d)"; cp -r "$dir"/. "$work/"; chmod -R u+w "$work"
     echo "==> $lang grammar wasm"
@@ -128,8 +124,9 @@ if $do_runtime; then
   fi
 
   echo "==> embedded-language highlight queries"
-  # The same queries docs/go embeds (queries/*.scm), copied for the browser so
-  # client-side injection colours match the build-time highlighting.
+  # The tree-sitter queries for the embedded grammars (docs/go/queries/*.scm),
+  # copied for the browser. (Static pages highlight these languages with
+  # chroma, mapped onto the same classes.)
   for lang in bash toml go ruby yaml; do
     cp "$root/docs/go/queries/$lang.scm" "js/$lang-highlights.scm"
   done
