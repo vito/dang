@@ -41,8 +41,9 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 
 // EnhanceParseError produces a SourceError with a precise location and a
 // human-readable message when the PEG parser fails: a pitfall's (see
-// Pitfall) if the failure is one, else tree-sitter's diagnosis. If neither
-// can improve the error, the original error is returned.
+// Pitfall) if the failure is one, else tree-sitter's diagnosis, else the
+// token the parser failed at. If none applies, the original error is
+// returned.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
 	return enhanceParseError(pegErr, filename, source, CurrentVersion)
 }
@@ -55,13 +56,24 @@ func enhanceParseError(pegErr error, filename string, source []byte, v Version) 
 	if pitfall, ok := syntaxPitfallError(pegErr, filename, source, v); ok {
 		return pitfall
 	}
+	if diagnosed, ok := treeSitterSyntaxError(pegErr, filename, source); ok {
+		return diagnosed
+	}
+	if unexpected, ok := unexpectedSyntaxError(pegErr, filename, source); ok {
+		return unexpected
+	}
+	return pegErr
+}
 
+// treeSitterSyntaxError diagnoses a syntax error the PEG parser failed with
+// (pegErr) with tree-sitter's error recovery, if it finds one.
+func treeSitterSyntaxError(pegErr error, filename string, source []byte) (*SourceError, bool) {
 	tsMu.Lock()
 	tree := tsParser.Parse(source, nil)
 	tsMu.Unlock()
 
 	if tree == nil {
-		return pegErr
+		return nil, false
 	}
 	defer tree.Close()
 
@@ -72,7 +84,7 @@ func enhanceParseError(pegErr error, filename string, source []byte, v Version) 
 	collectTSErrors(root, source, &errors)
 
 	if len(errors) == 0 {
-		return pegErr
+		return nil, false
 	}
 
 	// Use the first (earliest) error to produce the diagnostic, unless the
@@ -98,7 +110,7 @@ func enhanceParseError(pegErr error, filename string, source []byte, v Version) 
 		Length:   max(1, first.length),
 	}
 
-	return NewSourceError(fmt.Errorf("syntax error: %s", first.message), loc, string(source))
+	return NewSourceError(fmt.Errorf("syntax error: %s", first.message), loc, string(source)), true
 }
 
 // tsError represents a single error found by tree-sitter.

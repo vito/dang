@@ -28,9 +28,9 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 	return result, nil
 }
 
-// EnhanceParseError reports syntax a grammar action rejected, or a pitfall
-// (see Pitfall), with its source location. Otherwise it returns the original
-// error as-is, since tree-sitter is not available without CGo.
+// EnhanceParseError reports syntax a grammar action rejected, a pitfall (see
+// Pitfall), or else the token the parser failed at, with its source
+// location. Without CGo there is no tree-sitter to diagnose it further.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
 	return enhanceParseError(pegErr, filename, source, CurrentVersion)
 }
@@ -42,6 +42,9 @@ func enhanceParseError(pegErr error, filename string, source []byte, v Version) 
 	}
 	if pitfall, ok := syntaxPitfallError(pegErr, filename, source, v); ok {
 		return pitfall
+	}
+	if unexpected, ok := unexpectedSyntaxError(pegErr, filename, source); ok {
+		return unexpected
 	}
 	return pegErr
 }
