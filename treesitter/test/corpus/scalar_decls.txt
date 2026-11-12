@@ -79,7 +79,7 @@ scalar Slug {
               (block
                 (literal
                   (string
-                    (immediate_string_content)
+                    (string_content)
                     (immediate_quote_token)))))))))))
 
 ================================================================================
@@ -141,5 +141,5 @@ scalar Marker @example("x")
             (positional_value
               (literal
                 (string
-                  (immediate_string_content)
+                  (string_content)
                   (immediate_quote_token))))))))))

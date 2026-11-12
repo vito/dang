@@ -357,15 +357,22 @@ type Circle implements Shape {
 }{
 \dang-feature{Multi-line strings}{{{
 ## triple-quoted strings trim leading whitespace
+## and, like "...", interpolate ${...}
+let who = "there"
 print("""
-  hey there
+  hey ${who}
     im indented
       me too
 """)
 print("---")
 
+## single quotes are verbatim: no escapes, no ${...}
+print('''sh
+  echo "${HOME}" | tr -d '\n'
+''')
+print("---")
 
-## backtick-fenced strings support interpolation
+## backtick fences are for code: raw text, with ${...}
 let daggerBin = "dagger-dev"
 let daggerVersion = [1, 0, 0]
 print(```
@@ -374,7 +381,7 @@ ${daggerVersion.join(".")}
 ```)
 print("---")
 
-# backtick-fences support language tags, like Markdown
+# all of them support language tags, like Markdown
 # why? because it looks nice.
 print(```ruby
   class << self

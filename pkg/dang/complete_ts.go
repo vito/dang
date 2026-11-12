@@ -87,8 +87,9 @@ func computeReplaceFrom(text string, line, col int, cc *CompletionContext) int {
 // content. Error recovery on an unterminated string (e.g. `f(x: "ab`) leaves
 // the content as a loose token whose position otherwise reads as an
 // argument/identifier slot; never offer completions inside a string literal.
-// Template interpolation (`${...}`) is unaffected: its expression isn't string
-// content.
+// Interpolation (`${...}`) is unaffected: its expression isn't string content.
+// Every kind of string content is a string_content node, even loose in an
+// ERROR node; a multi-line string's language tag counts as content too.
 func cursorInStringContent(root *tree_sitter.Node, line, col uint) bool {
 	found := false
 	walkTS(root, func(n *tree_sitter.Node) bool {
@@ -96,7 +97,7 @@ func cursorInStringContent(root *tree_sitter.Node, line, col uint) bool {
 			return false
 		}
 		switch n.Kind() {
-		case "immediate_string_content", "immediate_triple_quote_string_content":
+		case "string_content", "lang_tag_name":
 			found = true
 			return false
 		}

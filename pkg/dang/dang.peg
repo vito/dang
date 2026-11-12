@@ -985,7 +985,7 @@ HeadersBlock <- '{' _ eles:(e:HeaderField Sep { return e, nil })* last:HeaderFie
 
 // Literals
 
-Literal <- Float / Int / Boolean / TripleQuoteString / String / Template / Null / SelfKeyword
+Literal <- Float / Int / Boolean / TripleQuoteString / String / TripleSingleQuoteString / SingleQuoteString / Template / Null / SelfKeyword
 
 Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit*) Exponent)) {
   value, err := strconv.ParseFloat(string(c.text), 64)
@@ -1016,19 +1016,55 @@ DecimalDigit <- [0-9]
 
 Exponent <- 'e'i [+-]? DecimalDigit+
 
-TripleQuoteString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
+// Double-quoted strings process escapes and interpolate ${...} (since Dang
+// 2.5). Before 2.5 (LiteralQuotes), `"..."` takes `${` literally and
+// `"""..."""` is raw: no escapes, no interpolation, no language tag.
+LiteralQuotes <- &{ return versionFromStore(c.globalStore).literalQuotes(), nil }
+
+TripleQuoteString <- LegacyTripleQuoteString / CookedTripleQuoteString
+
+LegacyTripleQuoteString <- LiteralQuotes TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
   return &String{
     Value:        normalizeTripleQuoteString(content.([]byte)),
     TripleQuoted: true,
+    Verbatim:     true,
     Loc:          c.Loc(),
   }, nil
-} / TripleQuote TripleQuote {
+} / LiteralQuotes TripleQuote TripleQuote {
   return &String{
     Value:        "",
     TripleQuoted: true,
+    Verbatim:     true,
     Loc:          c.Loc(),
   }, nil
 }
+
+// A text that didn't make a docstring, because no declaration followed it,
+// is parsed again as a string. Text a docstring may hold but a string may
+// not then fails the string quietly instead of rejecting it (see
+// inDocString), so that the error is reported where the declaration went
+// wrong.
+CookedTripleQuoteString <- s:CookedTripleQuoteBody &{ return s != nil, nil } {
+  return s, nil
+}
+
+CookedTripleQuoteBody <- !LiteralQuotes TripleQuote lang:LangTagPart? parts:TripleQuotePart* TripleQuote {
+  return c.quotedString(parts, '"', true, lang)
+}
+
+TripleQuotePart <-
+    ImmediateTripleQuoteContent {
+      return TemplatePart{Lit: string(c.text)}, nil
+    }
+  / ImmediateEscape {
+      return TemplatePart{Lit: string(c.text)}, nil
+    }
+  / InvalidEscape
+  / Interpolation
+
+// Text of a triple-quoted string up to an escape, an interpolation or the
+// closing quotes. A quote or two may come before the close only escaped.
+ImmediateTripleQuoteContent <- ( [^"\\$] / '"' '"'? !'"' / '$' !'{' )+
 
 ImmediateTripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
   return c.text, nil
@@ -1036,8 +1072,9 @@ ImmediateTripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
 
 TripleQuote <- "\"\"\""
 
+String <- LegacyString / CookedString
 
-String <- '"' ( ImmediateStringContent / ImmediateEscape / InvalidEscape )* ImmediateQuoteToken {
+LegacyString <- LiteralQuotes '"' ( ImmediateStringContent / ImmediateEscape / InvalidEscape )* ImmediateQuoteToken {
   value, err := unquoteString(c.text)
   if err != nil {
     // The grammar admits escapes that encode no character, like \777.
@@ -1049,10 +1086,30 @@ String <- '"' ( ImmediateStringContent / ImmediateEscape / InvalidEscape )* Imme
   }, nil
 }
 
+CookedString <- !LiteralQuotes '"' parts:QuotePart* ImmediateQuoteToken {
+  return c.quotedString(parts, '"', false, nil)
+}
+
+QuotePart <-
+    ImmediateQuoteContent {
+      return TemplatePart{Lit: string(c.text)}, nil
+    }
+  / ImmediateEscape {
+      return TemplatePart{Lit: string(c.text)}, nil
+    }
+  / InvalidEscape
+  / Interpolation
+
+ImmediateQuoteContent <- ( [^\\"\n$] / '$' !'{' )+
+
+Interpolation <- "${" _ e:Expr _ "}" {
+  return TemplatePart{Expr: e.(Node)}, nil
+}
+
 ImmediateQuoteToken <- '"'
 ImmediateStringContent <- [^\\"\n]+
 ImmediateEscape <- '\\' (
-    [abfnrtv"\\/]
+    [abfnrtv"\\/$]
   / 'x' [0-9a-f]i [0-9a-f]i
   / 'u' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / 'U' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
@@ -1061,9 +1118,47 @@ ImmediateEscape <- '\\' (
 
 // An escape ImmediateEscape doesn't know, reported where it is rather than at
 // the start of the form. Tree-sitter leaves it out, so editors still flag it.
-InvalidEscape <- '\\' . {
+// In a docstring's text parsed again as a string, it fails quietly instead
+// (see CookedTripleQuoteString).
+InvalidEscape <- e:_invalidEscape &{ return e != nil, nil }
+
+_invalidEscape <- '\\' . {
+  if c.inDocString() {
+    return nil, nil
+  }
   c.reject(c.Loc(), "invalid escape sequence in string literal")
   return nil, nil
+}
+
+// Single-quoted strings are verbatim: no escapes, no interpolation.
+TripleSingleQuoteString <- TripleSingleQuote lang:LangTagPart? content:ImmediateTripleSingleQuoteContent? TripleSingleQuote {
+  return c.verbatimTripleString(content, lang)
+}
+
+TripleSingleQuote <- "'''"
+
+// A quote or two may come before the closing quotes only on a line of their
+// own: there is no escaping them.
+ImmediateTripleSingleQuoteContent <- ( [^'] / '\'' '\''? !'\'' )+ {
+  return c.text, nil
+}
+
+SingleQuoteString <- '\'' content:ImmediateSingleQuoteContent? ImmediateSingleQuoteToken {
+  value := ""
+  if content != nil {
+    value = string(content.([]byte))
+  }
+  return &String{
+    Value:    value,
+    Quote:    '\'',
+    Verbatim: true,
+    Loc:      c.Loc(),
+  }, nil
+}
+
+ImmediateSingleQuoteToken <- '\''
+ImmediateSingleQuoteContent <- [^'\n]+ {
+  return c.text, nil
 }
 
 // Backtick-delimited template strings with optional ${...} interpolations.
@@ -1105,6 +1200,9 @@ MultiTemplate <- ticks:MultiTemplateOpenToken #{
   if lang != nil {
     l = lang.(string)
   }
+  if l == "" && !versionFromStore(c.globalStore).literalQuotes() && hasOpeningLineText(sliceOf[TemplatePart](parts)) {
+    c.rejectOpeningLineText("```")
+  }
   return makeTemplate(parts, len(ticks.([]byte)), l, c.Loc()), nil
 }
 
@@ -1124,7 +1222,9 @@ LangTagPart <- name:LangTagName LangTagTerminator {
 LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
   return string(c.text), nil
 }
-LangTagTerminator <- '\n'
+// Whitespace may trail a language tag, from Dang 2.5 (where nothing else
+// may follow it on the opening line).
+LangTagTerminator <- !LiteralQuotes [ \t\r]* '\n' / '\n'
 
 MultiTemplatePart <-
     "\\${" {
@@ -1147,10 +1247,21 @@ MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBacktic
   return string(c.text), nil
 }
 
-DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
+DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ decl:_declAhead? {
+  if decl != nil {
+    c.recordDocString()
+  }
   return normalizeTripleQuoteString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
+}
+
+// Whether what follows a docstring looks like the start of a declaration or
+// a parameter: a directive, or a word followed by another word or by one of
+// `: ( = [ {`. Only then is a docstring that fails to make one taken for a
+// failed declaration rather than a string (see inDocString).
+_declAhead <- &( '@' / '$'? [a-zA-Z_] [a-zA-Z0-9_]* ( [ \t]* [:(=[{] / [ \t]+ '$'? [a-zA-Z_] ) ) {
+  return true, nil
 }
 
 Boolean <- TrueToken {

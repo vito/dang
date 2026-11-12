@@ -1,4 +1,93 @@
 ===
+Unterminated strings recover at the end of the line
+===
+
+let x = "abc
+let y = 'abc
+let z = 1
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (literal
+          (string
+            (string_content)
+            (MISSING immediate_quote_token))))))
+  (form_sep)
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (literal
+          (single_quote_string
+            (string_content)
+            (MISSING immediate_single_quote_token))))))
+  (form_sep)
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (literal
+          (int
+            (non_zero_decimal_digit)))))))
+
+===
+Unclosed interpolation in a template ends at its closing fence
+===
+
+let bad = ```
+hi ${name
+```
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (literal
+          (template
+            (multi_template
+              (multi_template_open_token)
+              (multi_template_part)
+              (multi_template_part)
+              (multi_template_part)
+              (multi_template_part)
+              (multi_template_part
+                (symbol_or_call
+                  (auto_call_symbol
+                    (id
+                      (word_token))))
+                (MISSING "}"))
+              (multi_template_part)
+              (multi_template_close_token))))))))
+
+===
 Escaped slash
 ===
 
@@ -9,7 +98,447 @@ Escaped slash
 (dang
   last: (literal
     (string
-      (immediate_string_content)
-      (immediate_escape)
-      (immediate_string_content)
+      parts: (string_content)
+      parts: (immediate_escape)
+      parts: (string_content)
       (immediate_quote_token))))
+
+===
+Interpolation in double quotes
+===
+
+"hello ${name}!"
+"${a}${b}"
+
+---
+
+(dang
+  (literal
+    (string
+      (string_content)
+      (interpolation
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token)))))
+      (string_content)
+      (immediate_quote_token)))
+  (form_sep)
+  (literal
+    (string
+      (interpolation
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token)))))
+      (interpolation
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token)))))
+      (immediate_quote_token))))
+
+===
+Escapes in double quotes
+===
+
+"tab\tdollar\$u\u00e9"
+"\${x}"
+
+---
+
+(dang
+  (literal
+    (string
+      (string_content)
+      (immediate_escape)
+      (string_content)
+      (immediate_escape)
+      (string_content)
+      (immediate_escape)
+      (immediate_quote_token)))
+  (form_sep)
+  (literal
+    (string
+      (immediate_escape)
+      (string_content)
+      (immediate_quote_token))))
+
+===
+Dollar without a brace is text
+===
+
+"cost $5, or $"
+
+---
+
+(dang
+  (literal
+    (string
+      (string_content)
+      (immediate_quote_token))))
+
+===
+Hash in string content is not a comment
+===
+
+"${x}#1"
+'# x'
+"a\n# b"
+"""
+# heading
+"""
+'''
+# heading
+'''
+"a" # comment
+
+---
+
+(dang
+  (literal
+    (string
+      (interpolation
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token)))))
+      (string_content)
+      (immediate_quote_token)))
+  (form_sep)
+  (literal
+    (single_quote_string
+      (string_content)
+      (immediate_single_quote_token)))
+  (form_sep)
+  (literal
+    (string
+      (string_content)
+      (immediate_escape)
+      (string_content)
+      (immediate_quote_token)))
+  (form_sep)
+  (literal
+    (triple_quote_string
+      (triple_quote)
+      (string_content)
+      (triple_quote)))
+  (form_sep)
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (string_content)
+      (triple_single_quote)))
+  (form_sep)
+  (literal
+    (string
+      (string_content)
+      (immediate_quote_token)))
+  (comment_token))
+
+===
+Strings nested in interpolations
+===
+
+"a ${"b ${c}"} d"
+
+---
+
+(dang
+  (literal
+    (string
+      (string_content)
+      (interpolation
+        (literal
+          (string
+            (string_content)
+            (interpolation
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token)))))
+            (immediate_quote_token))))
+      (string_content)
+      (immediate_quote_token))))
+
+===
+Single-quoted strings are verbatim
+===
+
+'no ${interp} or \escapes'
+''
+
+---
+
+(dang
+  (literal
+    (single_quote_string
+      (string_content)
+      (immediate_single_quote_token)))
+  (form_sep)
+  (literal
+    (single_quote_string
+      (immediate_single_quote_token))))
+
+===
+Triple-quoted string with a language tag
+===
+
+"""sql
+SELECT * FROM t WHERE id = ${id} -- \"quoted\"
+"""
+
+---
+
+(dang
+  (literal
+    (triple_quote_string
+      (triple_quote)
+      (lang_tag_part
+        (lang_tag_name))
+      (string_content)
+      (interpolation
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token)))))
+      (string_content)
+      (immediate_escape)
+      (string_content)
+      (immediate_escape)
+      (string_content)
+      (triple_quote))))
+
+===
+Triple single-quoted string with a language tag
+===
+
+'''sh
+echo "$HOME" ${x} \n ''
+'''
+
+---
+
+(dang
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (lang_tag_part
+        (lang_tag_name))
+      (string_content)
+      (triple_single_quote))))
+
+===
+Whitespace may trail a language tag
+===
+
+'''sh   
+echo hi
+'''
+
+---
+
+(dang
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (lang_tag_part
+        (lang_tag_name))
+      (string_content)
+      (triple_single_quote))))
+
+===
+Backtick template with a language tag
+===
+
+```md
+# hi
+```
+
+---
+
+(dang
+  (literal
+    (template
+      (multi_template
+        (multi_template_open_token)
+        (lang_tag_part
+          (lang_tag_name))
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_close_token)))))
+
+===
+Inline triple-quoted strings
+===
+
+"""just one line"""
+'''just one line'''
+```a b```
+
+---
+
+(dang
+  (literal
+    (triple_quote_string
+      (triple_quote)
+      (string_content)
+      (triple_quote)))
+  (form_sep)
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (string_content)
+      (triple_single_quote)))
+  (form_sep)
+  (literal
+    (template
+      (multi_template
+        (multi_template_open_token)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_close_token)))))
+
+===
+A language tag is a lone word on the opening line
+===
+
+"""sql query
+"""
+'''sh -c
+'''
+```md here
+```
+
+---
+
+(dang
+  (literal
+    (triple_quote_string
+      (triple_quote)
+      (string_content)
+      (triple_quote)))
+  (form_sep)
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (string_content)
+      (triple_single_quote)))
+  (form_sep)
+  (literal
+    (template
+      (multi_template
+        (multi_template_open_token)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_part)
+        (multi_template_close_token)))))
+
+===
+Empty strings
+===
+
+""
+''
+""""""
+''''''
+
+---
+
+(dang
+  (literal
+    (string
+      (immediate_quote_token)))
+  (form_sep)
+  (literal
+    (single_quote_string
+      (immediate_single_quote_token)))
+  (form_sep)
+  (literal
+    (triple_quote_string
+      (triple_quote)
+      (triple_quote)))
+  (form_sep)
+  (literal
+    (triple_single_quote_string
+      (triple_single_quote)
+      (triple_single_quote))))
+
+===
+Escaped quotes before closing triple quotes
+===
+
+"""say \"hi\""""
+
+---
+
+(dang
+  (literal
+    (triple_quote_string
+      (triple_quote)
+      (string_content)
+      (immediate_escape)
+      (string_content)
+      (immediate_escape)
+      (triple_quote))))
+
+===
+Parameter docstring
+===
+
+f("""matches \d+ in ${x}""" x: Int!): Int! { x }
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (type_and_args_and_block_field
+        (symbol
+          (id
+            (word_token)))
+        (arg_types
+          (immediate_paren)
+          (arg_type
+            (doc_string
+              (triple_quote)
+              (string_content)
+              (interpolation
+                (symbol_or_call
+                  (auto_call_symbol
+                    (id
+                      (word_token)))))
+              (triple_quote))
+            (arg_with_type
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token))))))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (bang_token)))
+        (block
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token)))))))))

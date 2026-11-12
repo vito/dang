@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -260,7 +259,7 @@ func (d *describer) describe(v Value, depth int) describeDoc {
 				break
 			}
 			doc.items = append(doc.items, describeItem{
-				key: strconv.Quote(k) + ": ",
+				key: quoteString(k) + ": ",
 				doc: d.describe(v.Entries[k], depth+1),
 			})
 		}
@@ -632,9 +631,9 @@ func (d *describer) chain(g GraphQLValue) string {
 func quoteCapped(s string, max int) string {
 	head, tail, omitted := splitCapped(s, max)
 	if omitted == 0 {
-		return strconv.Quote(s)
+		return quoteString(s)
 	}
-	return fmt.Sprintf("%s…(%d chars omitted)…%s", strconv.Quote(head), omitted, strconv.Quote(tail))
+	return fmt.Sprintf("%s…(%d chars omitted)…%s", quoteString(head), omitted, quoteString(tail))
 }
 
 // capped is quoteCapped for text shown unquoted.

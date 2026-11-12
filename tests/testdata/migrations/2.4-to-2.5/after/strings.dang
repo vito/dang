@@ -1,0 +1,60 @@
+# Before Dang 2.5, `"..."` takes `${` literally, and `"""..."""` is raw:
+# no escapes, no interpolation, no language tag. Dang 2.5 gives both escapes
+# and interpolation, so migrating respells the strings whose value would
+# change.
+
+let home = "/home/ada"
+
+# Text for a shell becomes single-quoted.
+let path = '${GOBIN}:${PATH}'
+assert { path == '${GOBIN}:' + '${PATH}' }
+
+# A string single quotes can't hold gets `\${` instead.
+let quoted = "it's \${HOME}\n"
+assert { quoted.length == 13 }
+
+# Strings without `${` stay as they are.
+let plain = "tab\there"
+assert { plain.length == 8 }
+
+# A raw `"""` holding a backslash or `${` becomes `'''`.
+let regex = '''\d+ costs ${price}'''
+assert { regex.length == 18 }
+
+let script = '''
+  echo "${HOME}" \
+    --verbose
+'''
+assert { script == "echo \"" + "$" + "{HOME}\" \\\n  --verbose" }
+
+# Text on the opening line moves to the next.
+let summary = """
+Summary.
+  More detail.
+"""
+assert { summary == "Summary.\n  More detail." }
+
+# A word on the opening line would become a language tag.
+let word = """
+select
+  1
+"""
+assert { word == "select\n  1" }
+
+let fence = ```
+hello ${home}
+  more
+```
+assert { fence == "hello /home/ada\n  more" }
+
+# Docstrings stay verbatim.
+"""
+Doubles ${n}, with \n left alone.
+"""
+double(n: Int!): Int! { n * 2 }
+
+assert { double(2) == 4 }
+
+# Raw `"""` strings without a backslash or `${` mean the same in 2.5.
+let json = """{"name": "x"}"""
+assert { json.length == 13 }

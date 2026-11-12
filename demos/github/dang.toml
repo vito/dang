@@ -1,4 +1,4 @@
-dang = "2.4"
+dang = "2.5"
 
 [imports.GitHub]
 endpoint = "https://api.github.com/graphql"

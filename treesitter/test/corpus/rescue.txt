@@ -26,7 +26,7 @@ let x = risky rescue "fallback"
             (rescue_handler
               (literal
                 (string
-                  (immediate_string_content)
+                  (string_content)
                   (immediate_quote_token))))))))))
 
 ===
@@ -82,7 +82,7 @@ let x = risky rescue {
                   (arrow_token)
                   (literal
                     (string
-                      (immediate_string_content)
+                      (string_content)
                       (immediate_quote_token))))))))))))
 
 ===
@@ -162,7 +162,7 @@ let x = {
                 (raise_token)
                 (literal
                   (string
-                    (immediate_string_content)
+                    (string_content)
                     (immediate_quote_token)))))
             (rescue_token)
             (rescue_handler
@@ -202,5 +202,5 @@ let x = risky rescue null ?? "default"
           (double_interro_token)
           (literal
             (string
-              (immediate_string_content)
+              (string_content)
               (immediate_quote_token))))))))

@@ -1,0 +1,176 @@
+===
+double-quoted string interpolation
+===
+
+pub greeting = "hello ${name}!"
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "greeting")
+  " "
+  (@operator "=")
+  " "
+  (@string "\"hello ")
+  (@punctuation.special "${")
+  (@variable "name")
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "!\"")
+)
+
+===
+double-quoted string escapes
+===
+
+pub s = "tab\tdollar\${x}"
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "s")
+  " "
+  (@operator "=")
+  " "
+  (@string "\"tab")
+  (@string.escape "\\t")
+  (@string "dollar")
+  (@string.escape "\\$")
+  (@string "{x}\"")
+)
+
+===
+single-quoted string is verbatim
+===
+
+pub s = 'no ${x} or \n'
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "s")
+  " "
+  (@operator "=")
+  " "
+  (@string "'no ${x} or \\n'")
+)
+
+===
+hash in string content
+===
+
+pub s = "${x}#1" # comment
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "s")
+  " "
+  (@operator "=")
+  " "
+  (@string "\"")
+  (@punctuation.special "${")
+  (@variable "x")
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "#1\"")
+  " "
+  (@comment "# comment")
+)
+
+===
+triple-quoted string with language tag
+===
+
+pub q = """sql
+SELECT * FROM t WHERE id = ${id}
+"""
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "q")
+  " "
+  (@operator "=")
+  " "
+  (@string "\"\"\"")
+  (@label "sql")
+  "\n"
+  (@string "SELECT * FROM t WHERE id = ")
+  (@punctuation.special "${")
+  (@variable "id")
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "\n\"\"\"")
+)
+
+===
+triple single-quoted string with language tag
+===
+
+pub q = '''sh
+echo "$HOME"
+'''
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "q")
+  " "
+  (@operator "=")
+  " "
+  (@string "'''")
+  (@label "sh")
+  "\n"
+  (@string "echo \"$HOME\"\n'''")
+)
+
+===
+inline triple-quoted string
+===
+
+pub s = """just one line"""
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "s")
+  " "
+  (@operator "=")
+  " "
+  (@string "\"\"\"just one line\"\"\"")
+)
+
+===
+docstring
+===
+
+"""
+Says hi.
+"""
+pub hi = "hi"
+
+---
+
+(highlights
+  (@string "\"\"\"\nSays hi.\n\"\"\"")
+  "\n"
+  (@keyword "pub")
+  " "
+  (@variable @function.method "hi")
+  " "
+  (@operator "=")
+  " "
+  (@string "\"hi\"")
+)

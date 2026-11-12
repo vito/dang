@@ -134,7 +134,8 @@ clock.now
 
 ### Docstrings
 
-A `"""..."""` literal right before a declaration documents it. This works on
+A `"""..."""` literal right before a declaration documents it. A docstring is
+always verbatim, with no escapes or interpolation. This works on
 modules, types, fields, functions, function parameters, directives, and
 directive arguments:
 

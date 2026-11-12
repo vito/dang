@@ -410,21 +410,28 @@ func assertNodeString(node Node) (string, bool) {
 	case *NonNullAssert:
 		return assertSubNodeToString(n.Expr) + "!", true
 	case *String:
-		return strconv.Quote(n.Value), true
+		return quoteString(n.Value), true
 	case *Template:
+		delim := "`"
+		if n.Quote == '"' {
+			delim = `"`
+		}
 		if n.Fence != 1 {
-			return "`...`", true
+			return delim + "..." + delim, true
 		}
 		var b strings.Builder
-		b.WriteString("`")
+		b.WriteString(delim)
 		for _, part := range n.Parts {
 			if part.Expr != nil {
 				fmt.Fprintf(&b, "${%s}", assertSubNodeToString(part.Expr))
+			} else if n.Quote == '"' {
+				lit := quoteString(part.Lit)
+				b.WriteString(lit[1 : len(lit)-1])
 			} else {
 				b.WriteString(part.Lit)
 			}
 		}
-		b.WriteString("`")
+		b.WriteString(delim)
 		return b.String(), true
 	case *Int:
 		return fmt.Sprintf("%d", n.Value), true

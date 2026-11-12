@@ -13,13 +13,18 @@ import (
 // instead. References to these rules are redirected via tsRuleRefAliases.
 // InvalidEscape only exists to report an error, so tree-sitter leaves it out.
 var tsSkippedRules = map[string]bool{
-	"MultiTemplateOpenToken":    true,
-	"MultiTemplateCloseToken":   true,
-	"MultiTemplateContentChar":  true,
-	"SingleTemplateContentChar": true,
-	"LangTagTerminator":         true,
-	"CommentToken":              true,
-	"InvalidEscape":             true,
+	"MultiTemplateOpenToken":            true,
+	"MultiTemplateCloseToken":           true,
+	"MultiTemplateContentChar":          true,
+	"SingleTemplateContentChar":         true,
+	"LangTagName":                       true,
+	"LangTagTerminator":                 true,
+	"CommentToken":                      true,
+	"InvalidEscape":                     true,
+	"ImmediateQuoteContent":             true,
+	"ImmediateTripleQuoteContent":       true,
+	"ImmediateSingleQuoteContent":       true,
+	"ImmediateTripleSingleQuoteContent": true,
 }
 
 func skipTS(name string) bool {
@@ -38,25 +43,48 @@ var tsExternalRuleNames = []treesitter.RuleName{
 	"multi_template_open_token",
 	"multi_template_close_token",
 	"_template_content_char",
-	// Terminator for the optional language tag. External so the scanner can
-	// clear its "just opened" flag at the right moment — once we've consumed
-	// the newline after a lang tag, the next content letter is safe to treat
-	// as content rather than the start of another lang tag attempt.
+	// Newline ending a language tag.
 	"_lang_tag_terminator",
-	// Line comment. External so the scanner can refuse it inside a backtick
+	// Line comment. External so the scanner can refuse it inside a string or
 	// template, where `#` is content (Markdown headers, `issue #5`, etc.)
 	// rather than a comment start.
 	"comment_token",
+	// Language tag of a multi-line string (```sql, """sql, '''sql). External
+	// so it is only taken right after an opening fence, and only for a lone
+	// word ending its line: other text there is content.
+	"lang_tag_name",
+	// String content, one token per kind of delimiter, so the scanner knows
+	// from the valid symbols which delimiters, escapes and interpolations end
+	// the content, and refuses comments within it. Each is aliased to
+	// string_content (see tsExternalNodeAliases).
+	"string_content",
+	"triple_quote_content",
+	"single_quote_content",
+	"triple_single_quote_content",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
-	"_inlineSpace":              "_inline_space",
-	"MultiTemplateOpenToken":    "multi_template_open_token",
-	"MultiTemplateCloseToken":   "multi_template_close_token",
-	"MultiTemplateContentChar":  "_template_content_char",
-	"SingleTemplateContentChar": "_template_content_char",
-	"LangTagTerminator":         "_lang_tag_terminator",
-	"CommentToken":              "comment_token",
+	"_inlineSpace":                      "_inline_space",
+	"MultiTemplateOpenToken":            "multi_template_open_token",
+	"MultiTemplateCloseToken":           "multi_template_close_token",
+	"MultiTemplateContentChar":          "_template_content_char",
+	"SingleTemplateContentChar":         "_template_content_char",
+	"LangTagName":                       "lang_tag_name",
+	"LangTagTerminator":                 "_lang_tag_terminator",
+	"CommentToken":                      "comment_token",
+	"ImmediateQuoteContent":             "string_content",
+	"ImmediateTripleQuoteContent":       "triple_quote_content",
+	"ImmediateSingleQuoteContent":       "single_quote_content",
+	"ImmediateTripleSingleQuoteContent": "triple_single_quote_content",
+}
+
+// tsExternalNodeAliases names the nodes of external tokens that share a node
+// name with others: every kind of string content is a string_content node,
+// so queries color the text of any string alike.
+var tsExternalNodeAliases = map[treesitter.RuleName]treesitter.RuleName{
+	"triple_quote_content":        "string_content",
+	"single_quote_content":        "string_content",
+	"triple_single_quote_content": "string_content",
 }
 
 // tsVersion is the Dang version whose syntax the tree-sitter grammar
@@ -74,21 +102,31 @@ var tsPredicates = map[string]bool{
 	"ForLoops":             tsVersion.forLoops(),
 	"CommaFormSep":         tsVersion.commaFormSep(),
 	"RescueKeyword":        tsVersion.postfixRescue(),
+	"LiteralQuotes":        tsVersion.literalQuotes(),
 }
 
 // tsInlinedRules are PEG rules that only exist to switch syntax by version,
-// or to give the parser a value to act on (TypePattern locates a pattern).
+// or to give the parser a value to act on (TypePattern locates a pattern,
+// QuotePart turns a piece of a string into a TemplatePart).
 // Their bodies are inlined at each reference instead of becoming named nodes,
 // so the tree-sitter grammar keeps the shape it has for tsVersion alone.
 var tsInlinedRules = map[string]bool{
-	"SelectionOpen":  true,
-	"SelectionClose": true,
-	"FragmentOpen":   true,
-	"FragmentClose":  true,
-	"DotBlockArg":    true,
-	"ForLoop":        true,
-	"ForToken":       true,
-	"TypePattern":    true,
+	"SelectionOpen":           true,
+	"SelectionClose":          true,
+	"FragmentOpen":            true,
+	"FragmentClose":           true,
+	"DotBlockArg":             true,
+	"ForLoop":                 true,
+	"ForToken":                true,
+	"TypePattern":             true,
+	"LegacyTripleQuoteString": true,
+	"CookedTripleQuoteString": true,
+	"CookedTripleQuoteBody":   true,
+	"LegacyString":            true,
+	"CookedString":            true,
+	"ImmediateStringContent":  true,
+	"TripleQuotePart":         true,
+	"QuotePart":               true,
 }
 
 func tsGrammarRule(name string) *rule {
@@ -164,6 +202,41 @@ var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rul
 	treesitter.Name("DirectiveApplication"): patchDirectiveScopeAsId,
 	treesitter.Name("TypeAndBlockField"):        patchTypeParamsName,
 	treesitter.Name("TypeAndArgsAndBlockField"): patchTypeParamsName,
+	treesitter.Name("DocString"):                patchDocStringShape,
+	treesitter.Name("SingleQuoteString"):        patchRepeatContent,
+}
+
+// patchRepeatContent lets a `'...'` string's optional content repeat. The
+// scanner takes all of it in one token anyway, but the repetition keeps the
+// content token valid after it, so at a newline the scanner can tell it's in
+// an unterminated string (see the scanner's `unterminated`).
+func patchRepeatContent(rule treesitter.Rule) treesitter.Rule {
+	for i, member := range rule.Members {
+		if member.Type != treesitter.RuleTypeField || member.Name != "content" ||
+			member.Content == nil || member.Content.Type != treesitter.RuleTypeChoice {
+			continue
+		}
+		content := member.Content.Members[0]
+		rule.Members[i].Content = &treesitter.Rule{
+			Type:    treesitter.RuleTypeRepeat,
+			Content: &content,
+		}
+	}
+	return rule
+}
+
+// patchDocStringShape gives a docstring the shape of a triple-quoted string.
+// The two share an opening `"""`, and a `"""` after `(` or at the start of a
+// statement may be either (see the conflict in TreesitterGrammar): GLR can
+// only explore both while they are made of the same tokens, so tree-sitter
+// lexes a docstring's verbatim text like a string's (escapes, interpolations
+// and all). The PEG keeps docstrings verbatim. The scanner takes a backslash
+// starting no escape as text, so most docstrings still parse, but one whose
+// `${` starts no expression (`${HOME:-/root}`), or that ends in a backslash,
+// is an error to tree-sitter alone. (EnhanceParseError then reports the
+// error nearest where the PEG failed, rather than that one.)
+func patchDocStringShape(treesitter.Rule) treesitter.Rule {
+	return *tsInlineRule("CookedTripleQuoteString", 0)
 }
 
 // patchDirectiveScopeAsId rewrites a directive's optional qualifier so it lexes
@@ -448,6 +521,14 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 	case *ruleRefExpr:
 		if alias, ok := tsRuleRefAliases[t.name]; ok {
 			rule := tsExternalSymbol(alias)
+			if as, ok := tsExternalNodeAliases[alias]; ok {
+				return &treesitter.Rule{
+					Type:    treesitter.RuleTypeAlias,
+					Value:   as,
+					Named:   true,
+					Content: &rule,
+				}
+			}
 			return &rule
 		}
 		if _, ok := tsPredicates[t.name]; ok {

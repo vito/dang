@@ -37,7 +37,7 @@ self
 
 ## Docstrings
 
-- A **triple-quoted** `"""..."""` string placed immediately before a declaration attaches as documentation.
+- A **triple-quoted** `"""..."""` string placed immediately before a declaration attaches as documentation. Docstrings are always verbatim (no escapes, no interpolation, no language tag), and may start on the opening line.
 - Works on: modules, types, fields, functions, function parameters, directives, directive args.
 - This is the only docstring mechanism — there is no `///`.
 
@@ -61,11 +61,26 @@ greet(
 - `true`, `false`
 - `null` — only assignable to nullable type positions.
 
-### Strings (three flavors)
-- **Double-quoted** `"hello"` — single-line, escapes: `\a \b \f \n \r \t \v \" \\`, `\ooo` (octal), `\xNN`, `\uNNNN`, `\UNNNNNNNN`; `\/` yields `/`.
-- **Triple-quoted** `"""..."""` — multi-line, **raw** (no escape processing), dedents by minimum indent. A leading/trailing newline adjacent to the fences is stripped (`"""\nhello\n"""` == `"hello"`). Canonical docstring form.
-- **Backtick templates** `` `hello ${name}!` `` — single-line, `${...}` interpolation. The ONLY escape is `\${` → literal `${`; every other backslash is literal (`` `\d+` `` stays `\d+`). A lone `$` not followed by `{` is literal. Interpolated values auto-stringify like `toString` (non-strings render as Dang literals, nested strings quoted; `null` → `"null"`).
-  - Multi-line: ```` ```...``` ```` — same minimum-indent dedent; fences grow (4+ backticks) to wrap shorter backtick blocks, and the close fence must match the open fence length. Optional language tag (` ```go ... ``` `) is parsed but does not affect the value.
+### Strings
+The delimiter decides how the contents are read; tripling it makes the string multi-line, dedented by minimum indent, with an optional language tag:
+
+| | single-line | multi-line |
+|---|---|---|
+| `"` | escapes + `${...}` | `"""`: escapes + `${...}` |
+| `'` | verbatim | `'''`: verbatim |
+| `` ` `` | raw + `${...}` | ```` ``` ````: raw + `${...}` |
+
+Rule of thumb: **quotes are for text, backticks are for code; double quotes interpolate, single quotes don't.**
+
+- **Double-quoted** `"hello, ${name}"` — escapes: `\a \b \f \n \r \t \v \" \\ \/ \$`, `\ooo` (octal), `\xNN`, `\uNNNN`, `\UNNNNNNNN`; `\/` yields `/`. Any other backslash is a syntax error (so a regex like `\d+` can't go in `"..."`). Interpolates `${...}`; only `${` starts one, never a bare `$name`. `\$` is a literal `$`, so `\${` is a literal `${`. Interpolated values auto-stringify like `toString` (non-strings render as Dang literals, nested strings quoted; `null` → `"null"`).
+- **Single-quoted** `'${HOME}\bin'` — verbatim: no escapes, no interpolation. Can't hold a `'`: use `'''it's'''` (triple single quotes hold quotes, even inline) or `"it's"`. Use it for shell-ish text that must keep `${VAR}`: `.withEnvVariable("PATH", '${GOBIN}:${PATH}', expand: true)`; a shell script goes in `'''sh`.
+- **Backtick templates** `` `\d+ ${x}` `` — raw text with `${...}` interpolation, for code (regexes, snippets). The ONLY escape is `\${` → literal `${`; every other backslash is literal (`` `\d+` `` stays `\d+`). A lone `$` not followed by `{` is literal. `#` inside is a literal character.
+  - Fences grow (4+ backticks) to wrap shorter backtick blocks; the close fence must match the open fence length.
+- **Multi-line** (`"""`, `'''`, ```` ``` ````): the newline after the opening delimiter and the one before the closing delimiter are dropped (`"""\nhello\n"""` == `"hello"`), then the text is dedented by its minimum indent. A `"""` string is dedented **before** its escapes are decoded, so `\t` at the start of a line is text, not indentation, and an escape (`\x20`) keeps trailing whitespace. A `"` or `""` before the closing `"""` must be escaped.
+- **Opening line**: holds at most a language tag (`"""sql`, `'''sh`, ```` ```go ````), which doesn't affect the value (editors highlight with it). Other text there is a syntax error (`text on the opening line of a multi-line string`) unless the string closes on the same line (`"""inline ${x}"""`). Careful: a lone word there IS a tag, so `"""Summary` + newline drops `Summary` from the value.
+- **Docstrings** are triple-quoted but always verbatim (no escapes, no interpolation, no tag), and their text may start on the opening line.
+- **Before Dang 2.5** (`dang = "2.4"` or older in dang.toml): `"..."` takes `${` literally and `"""` is raw (no escapes, interpolation or tag). `dang migrate` keeps every value: a `"..."` holding `${` becomes `'...'` where it can (else `\${`), a raw `"""` holding `\` or `${` becomes `'''` (else gets escapes), and text on an opening line moves to the next line.
+- REPL output and `toString` of collections quote strings with `${` escaped (`["\${x}"]`), so they read back as the same value.
 
 ### Lists
 - `[1, 2, 3]`, `["a", "b"]`, `[]` (empty), nested `[[1, 2], [3]]`. A trailing comma is fine, in list literals and call arguments alike (`[1, 2,]`, `f(a, b,)`).
@@ -104,7 +119,8 @@ greet(
 ### Gotchas
 - **Untyped template bindings are `String!`**: `` let re = `\d+` `` is a String, not a `Regexp`; the literal-to-scalar coercion happens only where the literal meets a typed slot, so `s.containsMatch(re)` fails with `cannot use String! as Regexp!`. Annotate: `` let re: Regexp! = `\d+` `` (same for `Path!`, `URL!`, ...).
 - **Write `!x`, not `x == false`**, on a `Boolean!`. `!` rejects a nullable `Boolean` (narrow it, or `!(x ?? false)`); `x == false` on one is `false` for null.
-- **Prefer templates to `+` chains**: `` `${name} (${i})` `` over `name + " (" + toString(i) + ")"` — interpolation stringifies any value.
+- **Prefer interpolation to `+` chains**: `"${name} (${i})"` over `name + " (" + toString(i) + ")"` — interpolation stringifies any value.
+- **`${` in a `"..."` string interpolates**: shell variables, GitHub Actions expressions or `replaceMatches`' `${name}` backrefs belong in `'...'`/`'''...'''` (or escape them, `\${HOME}`). An unknown name is a compile error (`"HOME" not found; to write ${HOME} as text, single-quote the string or escape it as \${HOME}`), but a name that happens to be in scope interpolates silently.
 
 ### Arithmetic
 - `+ - * / %` on `Int`/`Float` (mixed promotes to `Float`), or on a type variable bounded `[a: Numeric]` (see types.md). Float `%` is Go's `math.Mod`: the remainder takes the dividend's sign (`-7.5 % 2 == -1.5`).

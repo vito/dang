@@ -66,7 +66,7 @@ func TestHighlightSpansSortedNonOverlapping(t *testing.T) {
 func TestHighlightUnicodeRuneOffsets(t *testing.T) {
 	// A multibyte rune before a keyword must not shift the keyword's span:
 	// offsets are in runes, not bytes.
-	src := `"café" let x = 1`
+	src := "\"café\"\nlet x = 1"
 	assert.Equal(t, ClassKeyword, classOf(t, src, "let"))
 	assert.Equal(t, ClassString, classOf(t, src, `"café"`))
 }

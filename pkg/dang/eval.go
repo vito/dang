@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -1761,7 +1760,7 @@ func (m MapValue) String() string {
 		if i > 0 {
 			result.WriteString(", ")
 		}
-		result.WriteString(strconv.Quote(k))
+		result.WriteString(quoteString(k))
 		result.WriteString(": ")
 		result.WriteString(m.Entries[k].String())
 	}

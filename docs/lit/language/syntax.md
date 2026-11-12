@@ -111,41 +111,106 @@ let nickname: String = null
 
 > See [#strings] for the full method reference.
 
-The three flavors, side by side:
+The delimiter decides how a string's contents are read, and tripling it
+makes the string multi-line:
 
-- **Double-quoted** — `"hello"`: single-line (no raw newline), with escapes: `\a \b \f \n \r \t \v \" \\ \/`, `\ooo` (octal), `\xNN`, `\uNNNN`, `\UNNNNNNNN`
-- **Triple-quoted** — `"""..."""`: multi-line, raw content (escape sequences are NOT processed), dedents by minimum indent; a leading and trailing newline adjacent to the `"""` fences is stripped (so `"""\nhello\n"""` == `"hello"`); the canonical form for docstrings (see Comments above)
-- **Backtick templates** — `` `hello ${name}!` ``: single-line, with `${...}` interpolation
+| Delimiter | Single-line | Multi-line, dedented, optional language tag |
+|---|---|---|
+| `"` | escapes and `${...}` | `"""`: escapes and `${...}` |
+| `'` | verbatim | `'''`: verbatim |
+| `` ` `` | raw, with `${...}` | ```` ``` ````: raw, with `${...}` |
 
-```dang
-"tab\there, \x41, \u00e9"
-```
+The rule of thumb: quotes are for text and backticks are for code. Double
+quotes interpolate; single quotes don't.
 
-`\/` is just `/`, as in JSON:
-
-```dang
-"https:\/\/danglang.org"
-```
-
-```dang
-"""
-  first
-    indented
-  last
-"""
-```
+**Double-quoted** strings process escapes:
+`\a \b \f \n \r \t \v \" \\ \/ \$`, `\ooo` (octal), `\xNN`, `\uNNNN`,
+`\UNNNNNNNN`. Any other backslash is a syntax error. `\/` is just `/`, as in
+JSON:
 
 ```dang
-"""no \n escapes here"""
+["tab\there, \x41, \u00e9", "https:\/\/danglang.org"]
 ```
+
+They interpolate `${...}`. Only `${` starts an interpolation, never a bare
+`$name`, and `\$` is a literal dollar sign, so `\${` is a literal `${`:
 
 ```dang
 let name = "Ada"
 
-`hello, ${name}!`
+"hello, ${name}! that's $5, not \${name}"
 ```
 
-Backtick templates in detail — backticks switch the lexer into template mode:
+Interpolated values are turned into text: strings as-is, `null` as
+`"null"`, and other values as they print:
+
+```dang
+"count: ${3}, missing: ${nickname}, list: ${[1, 2]}"
+```
+
+**Single-quoted** strings are verbatim: no escapes and no interpolation, so a
+backslash or a `${` is just text. A `'` would end one, so text holding a quote
+goes in `'''...'''`, which can hold quotes even on one line (`'''it's'''`), or
+in `"..."`. They're the natural fit for shell-ish text that must keep its
+`${VAR}`, like `.withEnvVariable("PATH", '${GOBIN}:${PATH}', expand: true)`:
+
+```dang
+'${HOME}\bin'
+```
+
+**Triple-quoted** strings, `"""..."""` and `'''...'''`, span lines. They
+follow the same rules as their single-line forms, and are dedented by their
+minimum indent. The newline after the opening quotes and the one before the
+closing quotes are dropped (so `"""\nhello\n"""` == `"hello"`):
+
+```dang
+"""
+  first
+    indented: ${name}
+  last
+"""
+```
+
+A `"""` string is dedented before its escapes are decoded, so `\t` at the
+start of a line is text, not indentation, and an escape keeps trailing
+whitespace that would otherwise be easy to lose:
+
+```dang
+"""
+  \tone tab
+  two spaces:\x20\x20
+"""
+```
+
+A `'''` string keeps everything as written, which suits shell scripts:
+
+```dang
+'''sh
+  echo "${HOME}" | tr -d '\n'
+'''
+```
+
+The opening line of a multi-line string holds at most a language tag, like
+`sh` above or `"""sql`. It doesn't change the value; editors use it to
+highlight the contents. Any other text there is an error, unless the string
+closes on the same line:
+
+```dang-failure
+"""Summary.
+more
+"""
+```
+
+```dang
+"""inline ${name}"""
+```
+
+Docstrings (see Comments above) are triple-quoted too, but they're always
+verbatim, with no escapes, interpolation or language tag, and their text may
+start on the opening line.
+
+**Backtick templates** are for code. Backticks switch the lexer into template
+mode:
 
 - inside backticks, `#` is NOT special — it's a literal character, not a comment
 - the only escape recognized is `\${`, which emits a literal `${`; every other backslash is literal (`` `\d+` `` stays `\d+`). A lone `$` not followed by `{` is literal.
@@ -154,21 +219,19 @@ Backtick templates in detail — backticks switch the lexer into template mode:
 `# ${name} owes $5 \${not interpolated} \d+`
 ```
 
-Interpolated values are turned into text: strings as-is, `null` as
-`"null"`, and other values as they print:
-
-```dang
-`count: ${3}, missing: ${nickname}, list: ${[1, 2]}`
-```
-
-- ```` ```...``` ```` — multi-line; same minimum-indent dedent as triple-quoted; fences grow (4, 5+ backticks) to wrap shorter backtick blocks, and the close fence must match the open fence length
-- optional language tag (parsed but does not affect the value): ` ```go ... ``` `
+- ```` ```...``` ```` — multi-line; same minimum-indent dedent as triple-quoted strings; fences grow (4, 5+ backticks) to wrap shorter backtick blocks, and the close fence must match the open fence length
+- optional language tag on the opening line: ` ```go ... ``` `
 
 ````dang
 ```go
   fmt.Println("hi, ${name}")
 ```
 ````
+
+> Before Dang 2.5 (a `dang.toml` pinning `dang = "2.4"` or older), `"..."`
+> takes `${` literally and `"""..."""` is raw: no escapes, no interpolation and
+> no language tag. `dang migrate` moves such code to 2.5 without changing any
+> string's value (see [#v2.5]).
 
 ### Lists
 

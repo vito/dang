@@ -11,6 +11,11 @@ enum {
   TEMPLATE_CONTENT_CHAR,
   LANG_TAG_TERMINATOR,
   COMMENT_TOKEN,
+  LANG_TAG_NAME,
+  STRING_CONTENT,
+  TRIPLE_QUOTE_CONTENT,
+  SINGLE_QUOTE_CONTENT,
+  TRIPLE_SINGLE_QUOTE_CONTENT,
 };
 
 // Maximum nesting depth for backtick templates. Each level stores the open
@@ -19,11 +24,6 @@ enum {
 
 typedef struct {
   unsigned char depth;
-  // After an open fence is consumed, the very next position might start a
-  // language tag. This flag tells the content scanner to refuse a leading
-  // letter once, so the internal lexer gets a chance to match the optional
-  // lang_tag_part. Reset after the first refusal or first successful match.
-  unsigned char just_opened;
   unsigned char fence_stack[TEMPLATE_MAX_DEPTH];
 } Scanner;
 
@@ -40,7 +40,6 @@ unsigned tree_sitter_dang_external_scanner_serialize(void *payload, char *buffer
   Scanner *s = (Scanner *)payload;
   unsigned n = 0;
   buffer[n++] = (char)s->depth;
-  buffer[n++] = (char)s->just_opened;
   for (unsigned i = 0; i < s->depth && i < TEMPLATE_MAX_DEPTH; i++) {
     buffer[n++] = (char)s->fence_stack[i];
   }
@@ -50,7 +49,6 @@ unsigned tree_sitter_dang_external_scanner_serialize(void *payload, char *buffer
 void tree_sitter_dang_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
   Scanner *s = (Scanner *)payload;
   s->depth = 0;
-  s->just_opened = 0;
   memset(s->fence_stack, 0, sizeof(s->fence_stack));
   if (length == 0) {
     return;
@@ -60,11 +58,8 @@ void tree_sitter_dang_external_scanner_deserialize(void *payload, const char *bu
     d = TEMPLATE_MAX_DEPTH;
   }
   s->depth = (unsigned char)d;
-  if (length >= 2) {
-    s->just_opened = (unsigned char)buffer[1];
-  }
-  for (unsigned i = 0; i < d && (i + 2) < length; i++) {
-    s->fence_stack[i] = (unsigned char)buffer[i + 2];
+  for (unsigned i = 0; i < d && (i + 1) < length; i++) {
+    s->fence_stack[i] = (unsigned char)buffer[i + 1];
   }
 }
 
@@ -72,6 +67,15 @@ void tree_sitter_dang_external_scanner_deserialize(void *payload, const char *bu
 static bool is_word_char(int32_t c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
          (c >= '0' && c <= '9') || c == '_';
+}
+
+static bool is_alpha(int32_t c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static bool is_hex_digit(int32_t c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+         (c >= 'A' && c <= 'F');
 }
 
 // Checks if the upcoming characters form the keyword `and` or `or` followed by
@@ -144,7 +148,6 @@ static bool scan_template_open(Scanner *s, TSLexer *lexer, bool at_newline) {
     return false;
   }
   s->fence_stack[s->depth++] = (unsigned char)(count > 255 ? 255 : count);
-  s->just_opened = 1;
   lexer->result_symbol = TEMPLATE_MULTI_OPEN;
   return true;
 }
@@ -168,15 +171,18 @@ static bool scan_template_close(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// Scan the newline that terminates a language tag. Consuming it clears the
-// "just opened" flag so the first byte of actual content (which may be a
-// letter) isn't mistaken for the start of another lang tag.
-static bool scan_lang_tag_terminator(Scanner *s, TSLexer *lexer) {
-  if (!s->just_opened || lexer->lookahead != '\n') {
+// Scan the end of the line a language tag sits on: trailing whitespace and
+// the newline. Only valid right after a lang_tag_name, which made sure the
+// newline is there.
+static bool scan_lang_tag_terminator(TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         lexer->lookahead == '\r') {
+    lexer->advance(lexer, false);
+  }
+  if (lexer->lookahead != '\n') {
     return false;
   }
   lexer->advance(lexer, false);
-  s->just_opened = 0;
   lexer->result_symbol = LANG_TAG_TERMINATOR;
   return true;
 }
@@ -200,17 +206,6 @@ static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
     return false;
   }
   if (s->depth > 0) {
-    // Right after a multi-line open fence, defer letters to the internal
-    // lexer so it can try the optional language tag. After one refusal we
-    // hand control back; if no lang tag matched, the letter will be picked
-    // up as content on the next scan.
-    if (s->just_opened) {
-      s->just_opened = 0;
-      if ((lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
-          (lexer->lookahead >= 'a' && lexer->lookahead <= 'z')) {
-        return false;
-      }
-    }
     if (lexer->lookahead == '`') {
       unsigned expected = s->fence_stack[s->depth - 1];
       unsigned count = 0;
@@ -254,13 +249,179 @@ static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// Scan a `# ...` comment. Refuses whenever the parser would also accept a
-// template content char (i.e., inside any single- or multi-line backtick
-// template), so `#` in template content (Markdown headers, `issue #5`,
-// etc.) is treated as string content rather than absorbed into a comment by
-// the extras lexer.
-static bool scan_comment_token(TSLexer *lexer, const bool *valid_symbols) {
+// Advance past the rest of a backslash escape (the backslash is already
+// consumed), reporting whether it's one the grammar's immediate_escape
+// accepts: \a \b \f \n \r \t \v \" \\ \/ \$, \xNN, \uNNNN, \UNNNNNNNN or \NNN
+// (octal). Only characters that can continue the escape are consumed, so none
+// of them ends string content.
+static bool scan_escape_rest(TSLexer *lexer) {
+  int32_t c = lexer->lookahead;
+  switch (c) {
+    case 'a': case 'b': case 'f': case 'n': case 'r': case 't': case 'v':
+    case '"': case '\\': case '/': case '$':
+      lexer->advance(lexer, false);
+      return true;
+  }
+  unsigned digits = 0;
+  if (c == 'x') {
+    digits = 2;
+  } else if (c == 'u') {
+    digits = 4;
+  } else if (c == 'U') {
+    digits = 8;
+  }
+  if (digits > 0) {
+    lexer->advance(lexer, false);
+    for (unsigned i = 0; i < digits; i++) {
+      if (!is_hex_digit(lexer->lookahead)) {
+        return false;
+      }
+      lexer->advance(lexer, false);
+    }
+    return true;
+  }
+  for (unsigned i = 0; i < 3; i++) {
+    if (lexer->lookahead < '0' || lexer->lookahead > '7') {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return true;
+}
+
+// Scan the text of a `"..."` string up to an escape, an interpolation, the
+// closing quote or the end of the line. `has_content` tells whether the
+// caller already consumed (and marked) content.
+static bool scan_string_content(TSLexer *lexer, bool has_content) {
+  while (!lexer->eof(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == '"' || c == '\\' || c == '\n') {
+      break;
+    }
+    lexer->advance(lexer, false);
+    if (c == '$' && lexer->lookahead == '{') {
+      break;
+    }
+    has_content = true;
+    lexer->mark_end(lexer);
+  }
+  if (!has_content) {
+    return false;
+  }
+  lexer->result_symbol = STRING_CONTENT;
+  return true;
+}
+
+// Scan the text of a triple-quoted string (`"""` or `'''`) up to its closing
+// quotes. One or two quotes are content; three end it. In a `"""` string
+// (cooked), escapes and interpolations end the content too. A backslash
+// starting no escape is taken as content rather than left as an error,
+// because docstrings share this token (see patchDocStringShape) and are
+// verbatim.
+static bool scan_triple_content(TSLexer *lexer, int32_t quote, bool cooked, bool has_content) {
+  while (!lexer->eof(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == quote) {
+      unsigned count = 0;
+      while (lexer->lookahead == quote && count < 3) {
+        lexer->advance(lexer, false);
+        count++;
+      }
+      if (count == 3) {
+        break;
+      }
+    } else if (cooked && c == '\\') {
+      lexer->advance(lexer, false);
+      if (scan_escape_rest(lexer)) {
+        break;
+      }
+    } else if (cooked && c == '$') {
+      lexer->advance(lexer, false);
+      if (lexer->lookahead == '{') {
+        break;
+      }
+    } else {
+      lexer->advance(lexer, false);
+    }
+    has_content = true;
+    lexer->mark_end(lexer);
+  }
+  if (!has_content) {
+    return false;
+  }
+  lexer->result_symbol = cooked ? TRIPLE_QUOTE_CONTENT : TRIPLE_SINGLE_QUOTE_CONTENT;
+  return true;
+}
+
+// Scan the text of a `'...'` string: anything up to the closing quote or the
+// end of the line.
+static bool scan_single_quote_content(TSLexer *lexer) {
+  bool has_content = false;
+  while (!lexer->eof(lexer) && lexer->lookahead != '\'' &&
+         lexer->lookahead != '\n') {
+    lexer->advance(lexer, false);
+    has_content = true;
+  }
+  if (!has_content) {
+    return false;
+  }
+  lexer->result_symbol = SINGLE_QUOTE_CONTENT;
+  return true;
+}
+
+// Scan the language tag of a multi-line string, right after its opening
+// fence: a word ([A-Za-z][A-Za-z0-9_-]*) alone on the opening line, but for
+// trailing whitespace. When the line holds anything else, the word is content
+// of the string instead: a template content char, or the start of the
+// triple-quoted string's content.
+static bool scan_lang_tag_name(TSLexer *lexer, const bool *valid_symbols) {
+  lexer->advance(lexer, false);
+  while (is_alpha(lexer->lookahead) ||
+         (lexer->lookahead >= '0' && lexer->lookahead <= '9') ||
+         lexer->lookahead == '_' || lexer->lookahead == '-') {
+    lexer->advance(lexer, false);
+  }
+  lexer->mark_end(lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         lexer->lookahead == '\r') {
+    lexer->advance(lexer, false);
+  }
+  if (lexer->lookahead == '\n') {
+    lexer->result_symbol = LANG_TAG_NAME;
+    return true;
+  }
   if (valid_symbols[TEMPLATE_CONTENT_CHAR]) {
+    // The word is template content; the whitespace after it is scanned next.
+    lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
+    return true;
+  }
+  // The whole word is content; carry on to the rest of it.
+  lexer->mark_end(lexer);
+  if (valid_symbols[TRIPLE_QUOTE_CONTENT]) {
+    return scan_triple_content(lexer, '"', true, true);
+  }
+  if (valid_symbols[TRIPLE_SINGLE_QUOTE_CONTENT]) {
+    return scan_triple_content(lexer, '\'', false, true);
+  }
+  return false;
+}
+
+// Whether the parser is inside string or template content, where `#` is text
+// rather than the start of a comment.
+static bool in_string_content(const bool *valid_symbols) {
+  return valid_symbols[TEMPLATE_CONTENT_CHAR] ||
+         valid_symbols[STRING_CONTENT] ||
+         valid_symbols[TRIPLE_QUOTE_CONTENT] ||
+         valid_symbols[SINGLE_QUOTE_CONTENT] ||
+         valid_symbols[TRIPLE_SINGLE_QUOTE_CONTENT];
+}
+
+// Scan a `# ...` comment. Refuses whenever the parser would also accept
+// string or template content, so `#` in a string (Markdown headers,
+// `issue #5`, etc.) is treated as string content rather than absorbed into a
+// comment by the extras lexer.
+static bool scan_comment_token(TSLexer *lexer, const bool *valid_symbols, bool recovering) {
+  if (!recovering && in_string_content(valid_symbols)) {
     return false;
   }
   if (lexer->lookahead != '#') {
@@ -291,9 +452,16 @@ bool tree_sitter_dang_external_scanner_scan(
 ) {
   Scanner *s = (Scanner *)payload;
 
-  // Template tokens are checked before the generic newline/space ones because
-  // their content scanner may consume whitespace inside templates.
-  if (valid_symbols[LANG_TAG_TERMINATOR] && scan_lang_tag_terminator(s, lexer)) {
+  // During error recovery every external token is valid at once; content
+  // of two kinds of string never is otherwise. Content tokens would swallow
+  // whatever follows (into hidden tokens no state can take, so the parser
+  // would never resynchronize), so leave recovery to the other tokens.
+  bool recovering = valid_symbols[STRING_CONTENT] && valid_symbols[SINGLE_QUOTE_CONTENT];
+
+  // Template and string tokens are checked before the generic newline/space
+  // ones because their content scanners may consume whitespace inside
+  // strings.
+  if (!recovering && valid_symbols[LANG_TAG_TERMINATOR] && scan_lang_tag_terminator(lexer)) {
     return true;
   }
   if (valid_symbols[TEMPLATE_MULTI_CLOSE] && scan_template_close(s, lexer)) {
@@ -307,7 +475,57 @@ bool tree_sitter_dang_external_scanner_scan(
       scan_template_open(s, lexer, !valid_symbols[AUTOMATIC_NEWLINE])) {
     return true;
   }
-  if (valid_symbols[TEMPLATE_CONTENT_CHAR] && scan_template_content_char(s, lexer)) {
+  // Inside a multi-line template, a fence where neither fence can come is
+  // most likely the template's close after an unclosed `${` (`${name` and
+  // then the closing fence). Offering the close anyway (invalid here) lets
+  // error recovery insert the missing `}` right after the expression;
+  // otherwise the lexer, sharing a lex state with the single backtick, would
+  // read the fence as a stray template. Only where no newline or inline space
+  // token could be taken instead, so skipping whitespace here is harmless.
+  if (!recovering && s->depth > 0 && !valid_symbols[TEMPLATE_MULTI_CLOSE] &&
+      !valid_symbols[TEMPLATE_MULTI_OPEN] &&
+      !valid_symbols[TEMPLATE_CONTENT_CHAR] &&
+      !valid_symbols[AUTOMATIC_NEWLINE] && !valid_symbols[INLINE_SPACE] &&
+      !in_string_content(valid_symbols)) {
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+           lexer->lookahead == '\r' || lexer->lookahead == '\n') {
+      lexer->advance(lexer, true);
+    }
+    if (scan_template_close(s, lexer)) {
+      return true;
+    }
+  }
+  // A newline in a single-line string means it's unterminated. Tree-sitter's
+  // lexer, sharing a lex state with tokens that may follow whitespace, would
+  // otherwise skip the newline and read on into the next line; offering the
+  // newline as a statement separator instead (invalid here) lets error
+  // recovery close the string with a missing quote and carry on.
+  bool unterminated = false;
+  if (!recovering) {
+    if (valid_symbols[LANG_TAG_NAME] && is_alpha(lexer->lookahead)) {
+      return scan_lang_tag_name(lexer, valid_symbols);
+    }
+    if (valid_symbols[STRING_CONTENT]) {
+      if (scan_string_content(lexer, false)) {
+        return true;
+      }
+      unterminated = lexer->lookahead == '\n';
+    } else if (valid_symbols[TRIPLE_QUOTE_CONTENT]) {
+      return scan_triple_content(lexer, '"', true, false);
+    } else if (valid_symbols[SINGLE_QUOTE_CONTENT]) {
+      if (scan_single_quote_content(lexer)) {
+        return true;
+      }
+      unterminated = lexer->lookahead == '\n';
+    } else if (valid_symbols[TRIPLE_SINGLE_QUOTE_CONTENT]) {
+      return scan_triple_content(lexer, '\'', false, false);
+    }
+    if (!unterminated && in_string_content(valid_symbols) &&
+        !valid_symbols[TEMPLATE_CONTENT_CHAR]) {
+      return false;
+    }
+  }
+  if (!recovering && valid_symbols[TEMPLATE_CONTENT_CHAR] && scan_template_content_char(s, lexer)) {
     return true;
   }
 
@@ -322,7 +540,7 @@ bool tree_sitter_dang_external_scanner_scan(
     saw_inline_space = true;
   }
 
-  if (valid_symbols[COMMENT_TOKEN] && scan_comment_token(lexer, valid_symbols)) {
+  if (valid_symbols[COMMENT_TOKEN] && scan_comment_token(lexer, valid_symbols, recovering)) {
     return true;
   }
 
@@ -342,7 +560,7 @@ bool tree_sitter_dang_external_scanner_scan(
     return true;
   }
 
-  if (!valid_symbols[AUTOMATIC_NEWLINE]) {
+  if (!valid_symbols[AUTOMATIC_NEWLINE] && !unterminated) {
     return false;
   }
 

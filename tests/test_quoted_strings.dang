@@ -1,0 +1,77 @@
+# Double-quoted strings process escapes and interpolate ${...}; single-quoted
+# strings are verbatim. Tripling a quote makes a multi-line, dedented string
+# that may take a language tag.
+
+let name = "Ada"
+let n = 2
+
+# ---------- "..." ----------
+
+assert { "hello ${name}!" == `hello ${name}!` }
+assert { "${n} + ${n} = ${n + n}" == "2 + 2 = 4" }
+assert { "tab\t${name}\n".length == 8 }
+
+# Interpolations nest strings of any kind.
+assert { "<${"[${name}]"}>" == "<[Ada]>" }
+assert { "${'${raw}'}" == '${raw}' }
+
+# \$ escapes a dollar sign; a $ not followed by { is just a dollar sign.
+assert { "\${name}" == '${name}' }
+assert { "cost $5" == 'cost $5' }
+assert { "\\${name}" == '\Ada' }
+
+# # is text inside a string, before and after an interpolation, and inside a
+# string nested in one.
+assert { "${n}#1" == '2#1' }
+assert { "# not a comment" == '# not a comment' }
+assert { "color: ${"#fff"}" == 'color: #fff' } # a comment
+
+# ---------- '...' ----------
+
+assert { '\d+ ${name} \n' == `\d+ \${name} \n` }
+assert { 'say "hi"' == "say \"hi\"" }
+assert { '' == "" }
+
+# ---------- """...""" ----------
+
+let greeting = """
+  Hello, ${name}!
+    It's ${n} o'clock.
+"""
+assert { greeting == "Hello, Ada!\n  It's 2 o'clock." }
+
+# Dedenting comes before escapes, so an escape is text, not indentation, and
+# keeps whitespace that dedenting would trim.
+let escaped = """
+  \tindented by a tab
+  trailing space:\x20
+"""
+assert { escaped == "\tindented by a tab\ntrailing space: " }
+
+# Quotes need no escape, unless they would close the string.
+let quotes = """
+  "quoted" and ""doubled""
+  \"""
+"""
+assert { quotes == "\"quoted\" and \"\"doubled\"\"\n\"\"\"" }
+
+# A language tag doesn't affect the value.
+let query = """sql
+  SELECT * FROM users WHERE name = '${name}'
+"""
+assert { query == "SELECT * FROM users WHERE name = 'Ada'" }
+
+assert { """inline ${name}""" == "inline Ada" }
+
+# ---------- '''...''' ----------
+
+let script = '''sh
+  export PATH="${GOBIN}:${PATH}"
+  echo it's \
+    done
+'''
+assert { script == "export PATH=\"\${GOBIN}:\${PATH}\"\necho it's \\\n  done" }
+
+assert { '''inline 'q' ''' == "inline 'q'" }
+
+print("Quoted string tests passed!")

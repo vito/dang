@@ -72,6 +72,11 @@ var (
 	// spell the non-null type an arm binds.
 	Version2_4 = Version{Major: 2, Minor: 4}
 
+	// Version2_5 made `"..."` and `"""..."""` strings interpolate `${...}`,
+	// and gave `"""..."""` escapes and language tags. Text on the opening
+	// line of a multi-line string became an error.
+	Version2_5 = Version{Major: 2, Minor: 5}
+
 	// CurrentVersion is the language version this build of Dang implements:
 	// the major.minor that main will release as. Bump it in the commit that
 	// adds the first gate for a new version (a gate on a version newer than
@@ -80,7 +85,7 @@ var (
 	// Source whose version nothing declares is written in it: source no
 	// dang.toml governs, and source governed by a dang.toml without a `dang`
 	// key (see VersionForDir). `dang init` stamps it into new projects.
-	CurrentVersion = Version2_4
+	CurrentVersion = Version2_5
 )
 
 // String returns the version as written in dang.toml: major.minor, e.g.
@@ -303,6 +308,16 @@ func (v Version) commaFormSep() bool {
 // an arm never binds null. See typePatternClause.
 func (v Version) barePatterns() bool {
 	return v.Before(Version2_4)
+}
+
+// literalQuotes reports whether double-quoted strings take `${` literally, as
+// before 2.5: `"..."` doesn't interpolate, and `"""..."""` is raw (no
+// escapes or interpolation) and takes no language tag. Text may also follow
+// the opening fence of a multi-line backtick template there. From 2.5 on,
+// `"..."` and `"""..."""` process escapes and interpolate, and the opening
+// line of every multi-line string holds at most a language tag.
+func (v Version) literalQuotes() bool {
+	return v.Before(Version2_5)
 }
 
 // typePatternClause builds the clause `binding: pattern => expr` of a case or

@@ -54,6 +54,12 @@ Four ideas the rest of the language hangs on:
   fields concurrently, so a field can't write state declared outside it.
 - **`#` comments, no `//`**; docstrings are real `"""..."""` strings before a
   declaration. Record literals use **double braces** `{{ ... }}`.
+- **Strings: the delimiter decides** — `"..."`/`"""..."""` process escapes and
+  interpolate `${...}`; `'...'`/`'''...'''` are verbatim; backticks are raw
+  with `${...}`. Quotes are for text, backticks for code. Shell-ish text that
+  keeps `${VAR}` goes in single quotes (`'${GOBIN}:${PATH}'`, `'''sh`). Before
+  Dang 2.5, `"..."` doesn't interpolate and `"""` is raw. See
+  `reference/syntax.md`.
 - **No `for`/`while` keyword** — iterate with `xs.each { x => ... }`; repeat-until-`break`
   is the `loop { ... }` builtin.
 - **Directives** (`@deprecated`) are typed declarations, not comment pragmas.
@@ -83,7 +89,7 @@ if (v != null) { v } else { "?" }   # v narrowed to T! in the then-branch
 - `xs.indexOf(x)` (nullable), `xs.flatMap { x => x.items }`, `s.toInt(base: 16)` — not hand-rolled index loops, `reduce([])` flattening or digit tables.
 - `m.values` / `m.keys` — not `m.keys.map { k => m[k] }`.
 - Bare `[]` / `[:]` — they infer from context (args, `??`, branches, `reduce`); no typed "empty" constants.
-- Templates `` `${a} (${i})` `` — not `a + " (" + toString(i) + ")"`.
+- Interpolation `"${a} (${i})"` — not `a + " (" + toString(i) + ")"`.
 - `!x` — not `x == false`.
 - Annotate scalar-typed bindings of literals: `` let re: Regexp! = `\d+` `` (an untyped one is `String!`).
 - Parenthesize an `if`/`case` used as an operand: `a + (if (c) { x } else { y })`.

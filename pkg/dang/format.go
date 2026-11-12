@@ -78,7 +78,7 @@ func formatSource(filename string, source []byte, from, to Version, migrating bo
 	}
 
 	// Also extract structured comments for nofmt/blank-line logic
-	comments := extractComments(source)
+	comments := extractComments(source, commentMap, result.(*FileBlock))
 
 	f := &Formatter{
 		comments:        comments,
@@ -197,98 +197,61 @@ func (f *Formatter) lineColumnToOffset(line, col int) int {
 	return offset
 }
 
-// extractComments extracts all comments from source with their line numbers
-func extractComments(source []byte) []Comment {
-	var comments []Comment
-
-	// Track if we're inside a triple-quoted string across lines
-	inTripleQuote := false
-	// Track open backtick-template fence length (0 = not in a template)
-	tickFence := 0
-	lines := bytes.Split(source, []byte("\n"))
-
-	for i, line := range lines {
-		lineNum := i + 1 // 1-indexed
-
-		// Process the line character by character to handle strings and comments
-		j := 0
-		lineStr := string(line)
-		inString := false
-
-		for j < len(lineStr) {
-			// Check for triple quotes
-			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` && tickFence == 0 {
-				inTripleQuote = !inTripleQuote
-				j += 3
-				continue
+// extractComments lists the comments the parser found in source (commentMap,
+// line number to comment text), in line order. The parser knows which `#`
+// starts a comment: inside a string, including one nested in an
+// interpolation, it is text. Comments within a multi-line string or template
+// of root, inside its ${...} interpolations, are left out: the literal is
+// written as it is in the source, comments and all.
+func extractComments(source []byte, commentMap map[int]string, root Node) []Comment {
+	inLiteral := map[int]bool{}
+	root.Walk(func(n Node) bool {
+		var loc *SourceLocation
+		switch n := n.(type) {
+		case *Template:
+			loc = n.Loc
+		case *String:
+			// Only a triple-quoted string spans lines. (A synthesized
+			// one, like the message of the else clause added to a case
+			// before 2.1, borrows the location of other code.)
+			if n.TripleQuoted {
+				loc = n.Loc
 			}
-
-			// Skip everything inside triple-quoted strings
-			if inTripleQuote {
-				j++
-				continue
+		}
+		// A comment runs to the end of its line, so one on the literal's
+		// last line follows it.
+		if loc != nil && loc.End != nil {
+			for line := loc.Line; line < loc.End.Line; line++ {
+				inLiteral[line] = true
 			}
-
-			// Backtick template fences. A run of backticks either opens or
-			// closes a template; only an exact-length match closes the open one.
-			if lineStr[j] == '`' && !inString {
-				k := j
-				for k < len(lineStr) && lineStr[k] == '`' {
-					k++
-				}
-				run := k - j
-				if tickFence == 0 {
-					if run >= 3 || run == 1 {
-						tickFence = run
-					}
-				} else if run == tickFence {
-					tickFence = 0
-				}
-				j = k
-				continue
-			}
-
-			// Skip everything inside backtick templates.
-			if tickFence > 0 {
-				j++
-				continue
-			}
-
-			// Check for regular string start/end
-			if lineStr[j] == '"' {
-				inString = !inString
-				j++
-				continue
-			}
-
-			// Skip everything inside regular strings
-			if inString {
-				// Handle escape sequences
-				if lineStr[j] == '\\' && j+1 < len(lineStr) {
-					j += 2
-					continue
-				}
-				j++
-				continue
-			}
-
-			// Found a comment outside of strings
-			if lineStr[j] == '#' {
-				commentText := lineStr[j:]
-				prefix := lineStr[:j]
-				hasCodeBefore := len(strings.TrimSpace(prefix)) > 0
-				comments = append(comments, Comment{
-					Line:       lineNum,
-					Text:       commentText,
-					IsTrailing: hasCodeBefore,
-				})
-				break
-			}
-
-			j++
+		}
+		return true
+	})
+	lineNums := make([]int, 0, len(commentMap))
+	for line := range commentMap {
+		if !inLiteral[line] {
+			lineNums = append(lineNums, line)
 		}
 	}
-
+	sort.Ints(lineNums)
+	lines := bytes.Split(source, []byte("\n"))
+	comments := make([]Comment, 0, len(lineNums))
+	for _, lineNum := range lineNums {
+		text := commentMap[lineNum]
+		hasCodeBefore := false
+		if lineNum >= 1 && lineNum <= len(lines) {
+			// A comment runs to the end of its line.
+			lineStr := string(lines[lineNum-1])
+			if prefix, ok := strings.CutSuffix(lineStr, text); ok {
+				hasCodeBefore = strings.TrimSpace(prefix) != ""
+			}
+		}
+		comments = append(comments, Comment{
+			Line:       lineNum,
+			Text:       text,
+			IsTrailing: hasCodeBefore,
+		})
+	}
 	return comments
 }
 
@@ -2596,7 +2559,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 	// the AST throws away — the dedent algorithm strips intentional
 	// indentation from multi-line content. Preserving source also keeps
 	// any comments living inside ${...} interpolations intact.
-	if orig := f.getOriginalSource(t); orig != "" {
+	if orig := f.getOriginalSource(t); orig != "" && !f.movesOpeningLineText(t, orig) {
 		if f.migrating {
 			orig = f.migrateInterpolations(t, orig)
 		}
@@ -2608,11 +2571,16 @@ func (f *Formatter) formatTemplate(t *Template) {
 		return
 	}
 
+	if t.Quote == '"' {
+		f.formatQuotedTemplate(t)
+		return
+	}
+
 	fence := strings.Repeat("`", t.Fence)
 	if t.Fence == 1 {
 		f.write(fence)
 		for _, p := range t.Parts {
-			f.formatTemplatePart(p)
+			f.formatTemplatePart(t, p)
 		}
 		f.write(fence)
 		return
@@ -2657,6 +2625,66 @@ func (f *Formatter) formatTemplate(t *Template) {
 	}
 	f.writeIndent()
 	f.write(fence)
+}
+
+// movesOpeningLineText reports whether template t, whose source is orig, has
+// text on the opening line of its multi-line fence, as before 2.5, and f's
+// version requires the text to start on the next line. It is then written
+// from its parts rather than echoed, which keeps its value.
+func (f *Formatter) movesOpeningLineText(t *Template, orig string) bool {
+	if t.Fence < 3 || t.Lang != "" || t.Quote == '"' || f.version.literalQuotes() {
+		return false
+	}
+	firstLine, _, multiline := strings.Cut(strings.TrimLeft(orig, "`"), "\n")
+	return multiline && strings.TrimSpace(firstLine) != ""
+}
+
+// formatQuotedTemplate writes a double-quoted string that interpolates,
+// for synthetic AST without source.
+func (f *Formatter) formatQuotedTemplate(t *Template) {
+	if t.Fence == 1 {
+		f.write(`"`)
+		for _, p := range t.Parts {
+			f.formatTemplatePart(t, p)
+		}
+		f.write(`"`)
+		return
+	}
+	f.write(`"""`)
+	f.write(t.Lang)
+	f.newline()
+	needIndent := true
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.formatTemplatePart(t, p)
+			continue
+		}
+		for i, line := range strings.Split(p.Lit, "\n") {
+			if i > 0 {
+				f.newline()
+				needIndent = true
+			}
+			if line == "" {
+				continue
+			}
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			line = strings.ReplaceAll(line, `\`, `\\`)
+			line = strings.ReplaceAll(line, "${", `\${`)
+			f.write(strings.ReplaceAll(line, `"""`, `\"""`))
+		}
+	}
+	if !needIndent {
+		f.newline()
+	}
+	f.writeIndent()
+	f.write(`"""`)
 }
 
 // migrateInterpolations returns orig, the source text of template t, with
@@ -2726,11 +2754,16 @@ func nodeExtent(node Node) (startLine, startCol, endLine, endCol int, ok bool) {
 	return
 }
 
-func (f *Formatter) formatTemplatePart(p TemplatePart) {
+func (f *Formatter) formatTemplatePart(t *Template, p TemplatePart) {
 	if p.Expr != nil {
 		f.write("${")
 		f.formatNodeInline(p.Expr)
 		f.write("}")
+		return
+	}
+	if t.Quote == '"' {
+		lit := quoteString(p.Lit)
+		f.write(lit[1 : len(lit)-1])
 		return
 	}
 	// Escape literal interpolation openers so source-less/synthetic templates
@@ -2845,43 +2878,164 @@ func leadingWSLen(s string) int {
 }
 
 func (f *Formatter) formatString(s *String) {
-	// Preserve triple-quoted strings as triple-quoted
 	if s.TripleQuoted {
-		wasInline := s.Loc != nil && (s.Loc.End == nil || s.Loc.End.Line == s.Loc.Line)
-		// Echo the original source so intentional indentation (which the
-		// dedent algorithm strips out of s.Value) survives. Matches the
-		// behavior of multi-line backtick templates.
-		if orig := f.getOriginalSource(s); orig != "" {
-			if wasInline {
-				f.write(orig)
-			} else {
-				f.write(f.normalizeMultilineLiteral(s, orig))
-			}
-			return
-		}
-		// Fallback for synthetic AST without source.
-		if wasInline {
-			f.write(`"""`)
-			f.write(s.Value)
-			f.write(`"""`)
-			return
-		}
-		f.write(`"""`)
-		f.newline()
-		lines := strings.SplitSeq(s.Value, "\n")
-		for line := range lines {
-			if line != "" {
-				f.writeIndent()
-				f.write(line)
-			}
-			f.newline()
-		}
-		f.writeIndent()
-		f.write(`"""`)
-	} else {
-		// Use regular quoted string
-		f.write(strconv.Quote(s.Value))
+		f.formatTripleQuotedString(s)
+		return
 	}
+	if s.Quote == '\'' {
+		f.write("'" + s.Value + "'")
+		return
+	}
+	// Migrating to a version where `"..."` interpolates, a string holding
+	// `${` reads best single-quoted, as it would in a shell, where it is
+	// likely headed: `'${HOME}/bin'` rather than `"\${HOME}/bin"`.
+	if f.migrating && !f.version.literalQuotes() && strings.Contains(s.Value, "${") && singleQuotable(s.Value) {
+		f.write("'" + s.Value + "'")
+		return
+	}
+	f.write(f.quoteString(s.Value))
+}
+
+// quoteString quotes value as a double-quoted string in f's version, which
+// escapes `${` where it would interpolate.
+func (f *Formatter) quoteString(value string) string {
+	if f.version.literalQuotes() {
+		return strconv.Quote(value)
+	}
+	return quoteString(value)
+}
+
+// singleQuotable reports whether value can be written as a `'...'` string,
+// which can't hold a quote, a newline or anything else that only an escape
+// can spell.
+func singleQuotable(value string) bool {
+	if !utf8.ValidString(value) {
+		return false
+	}
+	for _, r := range value {
+		if r == '\'' || !strconv.IsPrint(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func (f *Formatter) formatTripleQuotedString(s *String) {
+	wasInline := s.Loc != nil && (s.Loc.End == nil || s.Loc.End.Line == s.Loc.Line)
+	// Echo the original source so intentional indentation (which the
+	// dedent algorithm strips out of s.Value) survives. Matches the
+	// behavior of multi-line backtick templates.
+	if orig := f.getOriginalSource(s); orig != "" {
+		if s.Verbatim && s.Quote != '\'' && !f.version.literalQuotes() {
+			// A raw `"""` string from before 2.5, in a version where
+			// `"""` strings process escapes and interpolate.
+			if f.formatRawTripleQuotedString(s, orig, wasInline) {
+				return
+			}
+		}
+		if wasInline {
+			f.write(orig)
+		} else {
+			f.write(f.normalizeMultilineLiteral(s, orig))
+		}
+		return
+	}
+	// Fallback for synthetic AST without source.
+	delim, escape := `"""`, !f.version.literalQuotes()
+	if s.Quote == '\'' {
+		delim, escape = "'''", false
+	}
+	f.writeTripleQuoted(s.Value, delim, escape, s.Lang, wasInline)
+}
+
+// formatRawTripleQuotedString writes s, a raw `"""` string from before 2.5
+// whose source is orig, where `"""` strings process escapes and interpolate
+// and their opening line holds at most a language tag. It keeps s's value: a
+// string whose value holds `\` or `${` becomes a `'''` string where it can,
+// and escapes them otherwise, and text on its opening line moves to the
+// next. It reports false when orig means the same in f's version, to be
+// written as it is.
+func (f *Formatter) formatRawTripleQuotedString(s *String, orig string, inline bool) bool {
+	delim, escape := `"""`, false
+	if strings.Contains(s.Value, `\`) || strings.Contains(s.Value, "${") {
+		// Text right before the closing quotes, as on an inline string's
+		// one line, runs into them.
+		lastLine := orig[strings.LastIndexByte(orig, '\n')+1 : len(orig)-3]
+		if inline {
+			lastLine = orig[3 : len(orig)-3]
+		}
+		if tripleSingleQuotable(s.Value, strings.TrimSpace(lastLine) != "") {
+			delim = "'''"
+		} else {
+			escape = true
+		}
+	}
+	openingText := false
+	if !inline {
+		firstLine, _, _ := strings.Cut(orig[3:], "\n")
+		openingText = strings.TrimSpace(firstLine) != ""
+	}
+	if !escape && !openingText {
+		if delim == `"""` {
+			return false
+		}
+		orig = delim + orig[3:len(orig)-3] + delim
+		if inline {
+			f.write(orig)
+		} else {
+			f.write(f.normalizeMultilineLiteral(s, orig))
+		}
+		return true
+	}
+	f.writeTripleQuoted(s.Value, delim, escape, "", inline)
+	return true
+}
+
+// tripleSingleQuotable reports whether value can be written as a `'''`
+// string: one holding `'''` can't, nor, when its text runs into the closing
+// quotes (closesAfterText), one ending in a quote.
+func tripleSingleQuotable(value string, closesAfterText bool) bool {
+	if strings.Contains(value, "'''") {
+		return false
+	}
+	return !closesAfterText || !strings.HasSuffix(value, "'")
+}
+
+// writeTripleQuoted writes value as a triple-quoted string delimited by
+// delim, with the language tag lang, on one line if inline and value fits on
+// one. escape escapes the text that a `"""` string would otherwise process:
+// backslashes, `${`, and quotes that would close it.
+func (f *Formatter) writeTripleQuoted(value, delim string, escape bool, lang string, inline bool) {
+	esc := func(text string) string {
+		if !escape {
+			return text
+		}
+		text = strings.ReplaceAll(text, `\`, `\\`)
+		text = strings.ReplaceAll(text, "${", `\${`)
+		return strings.ReplaceAll(text, `"""`, `\"""`)
+	}
+	if inline && lang == "" && !strings.Contains(value, "\n") {
+		text := esc(value)
+		if escape && strings.HasSuffix(text, `"`) {
+			text = text[:len(text)-1] + `\"`
+		}
+		f.write(delim)
+		f.write(text)
+		f.write(delim)
+		return
+	}
+	f.write(delim)
+	f.write(lang)
+	f.newline()
+	for line := range strings.SplitSeq(value, "\n") {
+		if line != "" {
+			f.writeIndent()
+			f.write(esc(line))
+		}
+		f.newline()
+	}
+	f.writeIndent()
+	f.write(delim)
 }
 
 func (f *Formatter) formatInt(i *Int) {

@@ -60,7 +60,7 @@ print(test(bin(src)))
               (positional_value
                 (literal
                   (string
-                    (immediate_string_content)
+                    (string_content)
                     (immediate_quote_token)))))
             (sep)
             (argument
@@ -70,22 +70,22 @@ print(test(bin(src)))
                 (list
                   (literal
                     (string
-                      (immediate_string_content)
+                      (string_content)
                       (immediate_quote_token)))
                   (sep)
                   (literal
                     (string
-                      (immediate_string_content)
+                      (string_content)
                       (immediate_quote_token)))
                   (sep)
                   (literal
                     (string
-                      (immediate_string_content)
+                      (string_content)
                       (immediate_quote_token)))
                   (sep)
                   (literal
                     (string
-                      (immediate_string_content)
+                      (string_content)
                       (immediate_quote_token)))))))))))
   (form_sep)
   (decl
@@ -138,7 +138,7 @@ print(test(bin(src)))
                           (positional_value
                             (literal
                               (string
-                                (immediate_string_content)
+                                (string_content)
                                 (immediate_quote_token)))))))
                     (dot_token)
                     (field_id)
@@ -148,7 +148,7 @@ print(test(bin(src)))
                         (positional_value
                           (literal
                             (string
-                              (immediate_string_content)
+                              (string_content)
                               (immediate_quote_token)))))
                       (sep
                         (comma_token))
@@ -166,7 +166,7 @@ print(test(bin(src)))
                       (positional_value
                         (literal
                           (string
-                            (immediate_string_content)
+                            (string_content)
                             (immediate_quote_token)))))))
                 (dot_token)
                 (field_id)
@@ -176,7 +176,7 @@ print(test(bin(src)))
                     (positional_value
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))))
                   (sep
                     (comma_token))
@@ -184,7 +184,7 @@ print(test(bin(src)))
                     (positional_value
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))))))
               (dot_token)
               (field_id)
@@ -195,31 +195,31 @@ print(test(bin(src)))
                     (list
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))
                       (sep
                         (comma_token))
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))
                       (sep
                         (comma_token))
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))
                       (sep
                         (comma_token))
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))
                       (sep
                         (comma_token))
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token))))))))
             (dot_token)
             (field_id)
@@ -229,7 +229,7 @@ print(test(bin(src)))
                 (positional_value
                   (literal
                     (string
-                      (immediate_string_content)
+                      (string_content)
                       (immediate_quote_token)))))))))))
   (form_sep)
   (decl
@@ -280,7 +280,7 @@ print(test(bin(src)))
                       (positional_value
                         (literal
                           (string
-                            (immediate_string_content)
+                            (string_content)
                             (immediate_quote_token)))))))
                 (dot_token)
                 (field_id)
@@ -290,7 +290,7 @@ print(test(bin(src)))
                     (positional_value
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))))
                   (sep
                     (comma_token))
@@ -309,13 +309,13 @@ print(test(bin(src)))
                     (list
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token)))
                       (sep
                         (comma_token))
                       (literal
                         (string
-                          (immediate_string_content)
+                          (string_content)
                           (immediate_quote_token))))))))
             (dot_token)
             (field_id))))))

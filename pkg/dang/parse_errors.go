@@ -3,6 +3,7 @@
 package dang
 
 import (
+	stdErrors "errors"
 	"fmt"
 	"os"
 	"slices"
@@ -65,8 +66,21 @@ func EnhanceParseError(pegErr error, filename string, source []byte) error {
 		return pegErr
 	}
 
-	// Use the first (earliest) error to produce the diagnostic.
+	// Use the first (earliest) error to produce the diagnostic, unless the
+	// PEG got past it: tree-sitter lexes a docstring like a `"""` string (see
+	// patchDocStringShape), so it may see an error in a verbatim docstring
+	// the PEG accepted, like at a `${` that starts no expression. The last
+	// error before where the PEG failed is then the one to report.
 	first := errors[0]
+	var pe *parserError
+	if stdErrors.As(pegErr, &pe) {
+		pegLine, pegCol := uint(pe.pos.line-1), uint(pe.pos.col)
+		for _, e := range errors[1:] {
+			if e.line < pegLine || (e.line == pegLine && e.col <= pegCol) {
+				first = e
+			}
+		}
+	}
 
 	loc := &SourceLocation{
 		Filename: filename,

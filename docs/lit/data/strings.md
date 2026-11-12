@@ -14,15 +14,19 @@
 ## Construction
 
 Write strings as literals (see [#literals]), join them with `+`, and append
-with `+=`. A backtick template interpolates `${...}`:
+with `+=`. A double-quoted string interpolates `${...}`; a single-quoted one
+keeps its text as written:
 
 ```dang
 let name = "Ada"
 let greeting = "hello, " + name
 greeting += "!"
 
-[greeting, `${name} wrote the first program`]
+[greeting, "${name} wrote the first program", '${name} stays put']
 ```
+
+Backticks interpolate too, but take every backslash literally, so they're
+the form for code, like the regular expressions below.
 
 ## Conversion
 
@@ -150,11 +154,15 @@ version.match(`beta`)
 ```
 
 `replaceMatches` fills in `$1`, `$2`, or `$name` from the match's groups.
-`rewriteMatches` computes each replacement with a block:
+`${name}` works too, but a double-quoted string would interpolate it, so
+write that replacement in single quotes, or as `\${name}` in a replacement
+that also interpolates. `rewriteMatches` computes each replacement with a
+block:
 
 ```dang
 [
   "2024-01-15".replaceMatches(`(\d+)-(\d+)-(\d+)`, "$3/$2/$1"),
+  "2024-01-15".replaceMatches(`(?P<year>\d+)-\d+-\d+`, '${year}!'),
   "hello world".rewriteMatches(`\w+`) { m => m.string.toUpper },
 ]
 ```
@@ -163,6 +171,20 @@ version.match(`beta`)
 
 ```dang
 "a1b22c".splitMatches(`\d+`)
+```
+
+A backtick pattern can interpolate, and its backslashes still need no
+doubling. Interpolated text is spliced in as regex syntax, though, so a `.` in
+it matches any character. Wrap text that should match literally in
+`Regexp.escape`:
+
+```dang
+let sep = "."
+["a.b", "a-b"].map { s => s.containsMatch(`^a${sep}b$`) }
+```
+
+```dang
+["a.b", "a-b"].map { s => s.containsMatch(`^a${Regexp.escape(sep)}b$`) }
 ```
 
 Only a literal converts to a `Regexp!` on its own (see [#enums-scalars]). A
