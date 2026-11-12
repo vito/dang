@@ -1,6 +1,7 @@
 # Top-level initialization: declarations are hoisted and lazy, so they may
 # refer forward and be forced from {{ }} fields; their initializers write only
-# locals, and statement-written state is read only by statements.
+# locals, and statement-written state is read only by statements (and by
+# declarations snapshotting it before any write).
 
 # Initializers build their values from locals.
 let xs = [1, 2, 3]
@@ -73,8 +74,10 @@ let tree = Branch(leaves: [1, 2], children: [Branch(leaves: [3])]).tree
 assert { tree.size == 3 }
 
 # Statements may write top-level bindings, and statement code may read them;
-# functions get statement-written state as arguments.
+# functions get statement-written state as arguments. A declaration may read
+# one directly before every write, as a snapshot of its first value.
 let sum = 0
+let sumBefore = sum
 xs.each { x => sum += x }
 
 double(n: Int!): Int! {
@@ -82,5 +85,6 @@ double(n: Int!): Int! {
 }
 
 assert { double(sum) == 12 }
+assert { sumBefore == 0 }
 sum += 1
 print(double(sum))
