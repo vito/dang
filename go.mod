@@ -15,6 +15,7 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
+	github.com/odvcencio/gotreesitter v0.57.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
@@ -104,4 +105,5 @@ tool github.com/mna/pigeon
 tool (
 	github.com/99designs/gqlgen
 	github.com/dagger/otel-go/cmd/otelgotest
+	github.com/odvcencio/gotreesitter/cmd/ts2go
 )
