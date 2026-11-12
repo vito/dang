@@ -149,9 +149,10 @@ Interpolated values are turned into text: strings as-is, `null` as
 ```
 
 **Single-quoted** strings are verbatim: no escapes and no interpolation, so a
-backslash or a `${` is just text. They can't hold a `'`; use another form for
-that. They're the natural fit for shell-ish text that must keep its `${VAR}`,
-like `.withEnvVariable("PATH", '${GOBIN}:${PATH}', expand: true)`:
+backslash or a `${` is just text. A `'` would end one, so text holding a quote
+goes in `'''...'''`, which can hold quotes even on one line (`'''it's'''`), or
+in `"..."`. They're the natural fit for shell-ish text that must keep its
+`${VAR}`, like `.withEnvVariable("PATH", '${GOBIN}:${PATH}', expand: true)`:
 
 ```dang
 '${HOME}\bin'

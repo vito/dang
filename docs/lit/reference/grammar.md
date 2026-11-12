@@ -103,7 +103,7 @@ largest[a: Ordered](xs: [a!]!): a { xs.sort(descending: true)[0] }
 - comments: `#` to end of line
 - strings:
   - `"..."` and `"""..."""`: escapes and `${expr}` interpolation; `\$` escapes a dollar sign, so `\${` is a literal `${` (before Dang 2.5, `"..."` takes `${` literally and `"""` is raw)
-  - `'...'` and `'''...'''`: verbatim, with no escapes or interpolation; `'...'` can't hold a `'`
+  - `'...'` and `'''...'''`: verbatim, with no escapes or interpolation; `'...'` can't hold a `'` (`'''...'''` can, even inline: `'''it's'''`)
   - `` `...` `` backtick templates: raw text with `${expr}` interpolation; `\${` escapes a literal `${`. Longer backtick fences (` ``` `) nest
   - a tripled delimiter (`"""`, `'''`, ` ``` `) makes a multi-line, dedented string whose opening line holds at most a language tag (`"""sql`), unless it closes on the same line
   - docstrings are triple-quoted but always verbatim, and may start on the opening line. See [#literals] and [#strings].

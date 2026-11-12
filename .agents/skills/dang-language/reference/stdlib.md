@@ -37,7 +37,7 @@ Conversion: `toString(value)` (Dang-literal rendering of non-strings) or `value 
 ### `String!` regex methods
 Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `` `\d+` ``. Go `regexp/syntax` (RE2); named groups use `(?P<name>...)`.
 
-The coercion is the literal rule (types.md): it happens where a template meets a `Regexp!` slot. A template **bound without a type** is a `String!`, so `` let re = `\d+`; s.containsMatch(re) `` is `cannot use String! as Regexp!` — annotate the binding (`` let re: Regexp! = `\d+` ``) or build it with `Regexp(...)`. `Regexp.escape(s: String!) -> String!` quotes metacharacters so arbitrary text matches literally: `Regexp(Regexp.escape(userInput))`.
+The coercion is the literal rule (types.md): it happens where a template meets a `Regexp!` slot. A template **bound without a type** is a `String!`, so `` let re = `\d+`; s.containsMatch(re) `` is `cannot use String! as Regexp!` — annotate the binding (`` let re: Regexp! = `\d+` ``) or build it with `Regexp(...)`. `Regexp.escape(s: String!) -> String!` quotes metacharacters so arbitrary text matches literally: `Regexp(Regexp.escape(userInput))`. Text interpolated into a backtick pattern is spliced in as regex syntax, so escape it too: `` `^a${Regexp.escape(sep)}b$` ``.
 
 - `.containsMatch(pattern: Regexp!) -> Boolean!`
 - `.match(pattern: Regexp!) -> Match` — first match, or null

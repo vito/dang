@@ -155,8 +155,9 @@ version.match(`beta`)
 
 `replaceMatches` fills in `$1`, `$2`, or `$name` from the match's groups.
 `${name}` works too, but a double-quoted string would interpolate it, so
-write that replacement in single quotes. `rewriteMatches` computes each
-replacement with a block:
+write that replacement in single quotes, or as `\${name}` in a replacement
+that also interpolates. `rewriteMatches` computes each replacement with a
+block:
 
 ```dang
 [
@@ -170,6 +171,20 @@ replacement with a block:
 
 ```dang
 "a1b22c".splitMatches(`\d+`)
+```
+
+A backtick pattern can interpolate, and its backslashes still need no
+doubling. Interpolated text is spliced in as regex syntax, though, so a `.` in
+it matches any character. Wrap text that should match literally in
+`Regexp.escape`:
+
+```dang
+let sep = "."
+["a.b", "a-b"].map { s => s.containsMatch(`^a${sep}b$`) }
+```
+
+```dang
+["a.b", "a-b"].map { s => s.containsMatch(`^a${Regexp.escape(sep)}b$`) }
 ```
 
 Only a literal converts to a `Regexp!` on its own (see [#enums-scalars]). A
