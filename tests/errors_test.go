@@ -43,8 +43,17 @@ func (DangSuite) TestErrorMessages(ctx context.Context, t *testctx.T) {
 		t.Run(testName, func(ctx context.Context, t *testctx.T) {
 			output := runDangFile(ctx, t, client, dangFile)
 
-			// Compare with golden file
-			golden.Assert(t, output, testName+".golden")
+			// Compare with golden file. gotreesitter recovers some syntax
+			// errors differently from the C runtime; where its message
+			// differs, it has a golden file of its own.
+			goldenName := testName + ".golden"
+			if dang.SyntaxRecoveryRuntime == "gotreesitter" {
+				alt := testName + ".gotreesitter.golden"
+				if _, err := os.Stat(filepath.Join("testdata", alt)); err == nil {
+					goldenName = alt
+				}
+			}
+			golden.Assert(t, output, goldenName)
 		})
 	}
 }
