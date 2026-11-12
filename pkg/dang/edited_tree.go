@@ -24,6 +24,10 @@ func treeSitterTimeout(source []byte) time.Duration {
 // last one's tree where it can (tree-sitter's incremental reparsing). When
 // it's busy, a parse starts afresh rather than wait. Its instance keeps the
 // memory the largest source it parsed took, as wasm memory never shrinks.
+// Around a syntax error the recovered tree can depend on what was parsed
+// before (see tswasm.Document), so completion there can too: rarely (one
+// step in about 13,000 when typing into and deleting from the test sources
+// a byte at a time), and native tree-sitter reparses the same way.
 var (
 	editedDoc   = tswasm.NewDocument()
 	editedDocMu sync.Mutex

@@ -102,7 +102,9 @@ func TestParseConcurrently(t *testing.T) {
 
 // TestDocumentMatchesFreshParses types into, and deletes from, a source a
 // byte at a time, here and there, and requires each incremental reparse to
-// give the tree a fresh parse gives.
+// give the tree a fresh parse gives. (The edits here happen to recover
+// alike; around some syntax errors, incremental recovery can differ. See
+// Document.)
 func TestDocumentMatchesFreshParses(t *testing.T) {
 	base, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "test_comprehensive.dang"))
 	require.NoError(t, err)

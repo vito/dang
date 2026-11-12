@@ -12,6 +12,11 @@ import (
 // reusing what it can of the last one's tree: tree-sitter's incremental
 // reparsing. The edit between versions is worked out by comparing them.
 // A Document holds an instance of its own until it is closed.
+//
+// As with tree-sitter anywhere, where a source has syntax errors the tree
+// recovered from them can depend on the versions parsed before it, and so
+// differ from a fresh parse's; an error-free source parses the same either
+// way.
 type Document struct {
 	mu     sync.Mutex
 	inst   *instance
