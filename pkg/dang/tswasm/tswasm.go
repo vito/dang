@@ -6,7 +6,7 @@
 // runtime's, because it is the C runtime.
 //
 // The module is compiled once per process, on first use, and the compiled
-// code is cached on disk (see compilationCache), so later processes skip
+// code is cached on disk (see compilationCacheDir), so later processes skip
 // most of that. Instances are pooled: each parse or query takes one, so
 // concurrent calls are safe. A Document keeps one of its own, to reparse a
 // changing source incrementally.
@@ -101,49 +101,44 @@ const maxIdle = 4
 // much until it is closed: rather than holding it for good, it is closed.
 const maxIdleMemory = 16 << 20
 
-// compilationCache caches the compiled module across processes, under the
-// user's cache directory, or returns nil where there is none.
-func compilationCache() wazero.CompilationCache {
+// compilationCacheDir is where the compiled module is cached across
+// processes, or "" where there is nowhere.
+func compilationCacheDir() string {
 	dir, err := os.UserCacheDir()
 	if err != nil {
-		return nil
+		return ""
 	}
-	cache, err := wazero.NewCompilationCacheWithDir(filepath.Join(dir, "dang", "wazero"))
-	if err != nil {
-		return nil
-	}
-	return cache
+	return filepath.Join(dir, "dang", "wazero")
 }
 
 var loadEngine = sync.OnceValues(func() (*engine, error) {
+	return newEngine(compilationCacheDir())
+})
+
+// newEngine compiles the module, caching the compiled code in cacheDir
+// unless it's "".
+func newEngine(cacheDir string) (*engine, error) {
 	ctx := context.Background()
-	cfg := wazero.NewRuntimeConfig()
-	if cache := compilationCache(); cache != nil {
-		cfg = cfg.WithCompilationCache(cache)
-	}
-	rt := wazero.NewRuntimeWithConfig(ctx, cfg)
-	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
-		return nil, fmt.Errorf("tswasm: instantiate WASI: %w", err)
-	}
-	// dang_interrupted is how a parse or query learns that its context is
-	// done. (wazero's own WithCloseOnContextDone would do, but it makes
-	// every call several times slower.)
-	_, err := rt.NewHostModuleBuilder("env").
-		NewFunctionBuilder().
-		WithFunc(func(ctx context.Context) uint32 {
-			if ctx.Err() != nil {
-				return 1
+	var rt wazero.Runtime
+	var compiled wazero.CompiledModule
+	var err error
+	if cacheDir != "" {
+		if cache, cacheErr := wazero.NewCompilationCacheWithDir(cacheDir); cacheErr == nil {
+			rt, compiled, err = compile(ctx, wazero.NewRuntimeConfig().WithCompilationCache(cache))
+			if err != nil {
+				// A corrupt entry would fail every process after this one
+				// too; clear the way for the next to cache afresh.
+				os.RemoveAll(cacheDir) //nolint:errcheck
 			}
-			return 0
-		}).
-		Export("dang_interrupted").
-		Instantiate(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("tswasm: instantiate host module: %w", err)
+		}
 	}
-	compiled, err := rt.CompileModule(ctx, module)
+	if compiled == nil {
+		// No cache, or one that failed (unwritable, or a corrupt entry): the
+		// cache only saves time, so do without.
+		rt, compiled, err = compile(ctx, wazero.NewRuntimeConfig())
+	}
 	if err != nil {
-		return nil, fmt.Errorf("tswasm: compile: %w", err)
+		return nil, err
 	}
 	e := &engine{runtime: rt, compiled: compiled, idle: make(chan *instance, maxIdle)}
 	inst, err := e.instantiate()
@@ -159,7 +154,42 @@ var loadEngine = sync.OnceValues(func() (*engine, error) {
 	}
 	e.put(inst)
 	return e, nil
-})
+}
+
+// compile sets up a runtime with cfg and compiles the module in it, closing
+// the runtime if that fails.
+func compile(ctx context.Context, cfg wazero.RuntimeConfig) (_ wazero.Runtime, _ wazero.CompiledModule, err error) {
+	rt := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer func() {
+		if err != nil {
+			rt.Close(ctx)
+		}
+	}()
+	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
+		return nil, nil, fmt.Errorf("tswasm: instantiate WASI: %w", err)
+	}
+	// dang_interrupted is how a parse or query learns that its context is
+	// done. (wazero's own WithCloseOnContextDone would do, but it makes
+	// every call several times slower.)
+	_, err = rt.NewHostModuleBuilder("env").
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context) uint32 {
+			if ctx.Err() != nil {
+				return 1
+			}
+			return 0
+		}).
+		Export("dang_interrupted").
+		Instantiate(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tswasm: instantiate host module: %w", err)
+	}
+	compiled, err := rt.CompileModule(ctx, module)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tswasm: compile: %w", err)
+	}
+	return rt, compiled, nil
+}
 
 func (e *engine) get() (*instance, error) {
 	select {
