@@ -18,10 +18,12 @@ import (
 
 // TestParityWithC parses every .dang file in the repository, and every
 // tree-sitter corpus input, with both the C runtime (danglang) and
-// gotreesitter (tsgo), and requires the same concrete syntax tree: every
-// node, named or not, with its kind, span, and ERROR/MISSING flags. The
-// tests/errors fixtures are deliberately malformed, so this covers error
-// recovery too.
+// gotreesitter (tsgo), and requires the same concrete syntax tree for every
+// input C parses without errors: every node, named or not, with its kind,
+// span, and ERROR/MISSING flags. Recovered trees of inputs with syntax
+// errors (the tests/errors fixtures, among others) are only logged where
+// they differ: see tests/errors_test.go's gotreesitter goldens for what the
+// messages make of them.
 func TestParityWithC(t *testing.T) {
 	inputs := parityInputs(t)
 	if len(inputs) == 0 {
@@ -62,8 +64,7 @@ func TestParityWithC(t *testing.T) {
 			continue
 		}
 		if cHasError {
-			// Error recovery is allowed to diverge for now: see
-			// TestParseErrorParity for what the messages make of it.
+			// Error recovery is allowed to diverge (see above).
 			differWithErrors++
 			t.Logf("%s: recovered trees differ\n%s", in.name, firstDifference(want.String(), got.String()))
 			continue
