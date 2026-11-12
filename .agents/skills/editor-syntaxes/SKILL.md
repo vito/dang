@@ -84,6 +84,15 @@ highlight query failing to compile ("Invalid node type <new_token>") and the
 REPL silently rendering plain text (`TestHighlightCodeStylesAndPreservesText`
 fails). Re-run the treesitter `go generate` to fix it.
 
+## WebAssembly parser (builds without cgo)
+
+Builds without cgo (the Dagger engine's) diagnose parse errors with the same
+C runtime and grammar compiled to WebAssembly: `pkg/dang/tswasm/dang.wasm`,
+run by wazero. It is checked in and built by the `treesitter-wasm` Dagger
+generator (`pkg/dang/tswasm/build.sh`, with a pinned zig), whose stale check
+fails when `treesitter/src` changes without it. Regenerate it with
+`dagger generate treesitter-wasm` after `tree-sitter generate`.
+
 ## Checklist
 
 When a language keyword or token changes (and if old code used the old form,
@@ -94,7 +103,8 @@ follows its "adding a keyword" checklist for the grammar and tests):
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`
 3. [ ] Update `editors/vscode/syntaxes/dang.tmLanguage.json`
 4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`
-   (and `sources_digest.go`, so the cgo parser binding is rebuilt)
+   (and `sources_digest.go`, so the cgo parser binding is rebuilt), and the
+   `treesitter-wasm` generator for the no-cgo parser
 5. [ ] Add/refresh `treesitter/test/corpus/` and `editors/highlights/corpus/`
        cases for the new construct (`tree-sitter test --update`,
        `go test ./editors/ -run TestNeovimHighlights -update`)
