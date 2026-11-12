@@ -222,6 +222,11 @@ type GraphQLFunction struct {
 	// then reveals a null on its own, so probing for it here would be a
 	// wasted round trip. See withSelectedThrough.
 	selectedThrough bool
+
+	// receiverLoaded is set when the receiver was loaded from an ID it
+	// already knows, so running its chain ahead would only fetch that ID
+	// again. See reloadableReceiver.
+	receiverLoaded bool
 }
 
 // withSelectedThrough marks a GraphQL field function as being called for a
@@ -250,6 +255,23 @@ func (g GraphQLFunction) String() string {
 }
 
 func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	// Convert the Dang arguments to Go values for GraphQL, in the field's
+	// order.
+	type goArg struct {
+		name string
+		val  any
+	}
+	var goArgs []goArg
+	for _, arg := range g.Field.Args {
+		if val, ok := args[arg.Name]; ok {
+			goVal, err := dangValueToGo(val)
+			if err != nil {
+				return nil, fmt.Errorf("converting argument %s: %w", arg.Name, err)
+			}
+			goArgs = append(goArgs, goArg{arg.Name, goVal})
+		}
+	}
+
 	// Build the GraphQL query using querybuilder
 	var query *querybuilder.Selection
 
@@ -257,7 +279,13 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 		// Use existing query chain - extract the field name from the full name
 		parts := strings.Split(g.Name, ".")
 		fieldName := parts[len(parts)-1] // Get the last part as the field name
-		query = g.QueryChain.Select(fieldName)
+		recv := g.QueryChain
+		if slices.ContainsFunc(goArgs, func(a goArg) bool { return querybuilder.NeedsIDRequest(a.val) }) {
+			if load := g.reloadableReceiver(); load != nil {
+				recv = recv.Reloadable(load)
+			}
+		}
+		query = recv.Select(fieldName)
 	} else {
 		// Build from scratch for top-level functions
 		root := querybuilder.Query()
@@ -279,15 +307,8 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 	}
 
 	// Add arguments to the query
-	for _, arg := range g.Field.Args {
-		if val, ok := args[arg.Name]; ok {
-			// Convert Dang value to Go value for GraphQL
-			goVal, err := dangValueToGo(val)
-			if err != nil {
-				return nil, fmt.Errorf("converting argument %s: %w", arg.Name, err)
-			}
-			query = query.Arg(arg.Name, goVal)
-		}
+	for _, arg := range goArgs {
+		query = query.Arg(arg.name, arg.val)
 	}
 
 	// For functions that return scalar types, execute the query immediately
@@ -349,6 +370,31 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 		return val, nil
 	}
 	return val.resolveNull(ctx, g.TypeName+"."+g.Name)
+}
+
+// reloadableReceiver returns how to select this call's receiver again from
+// its ID, for a call with an argument whose ID needs a request: the
+// receiver's chain can then run while that argument gets its ID (see
+// querybuilder's Reloadable). It returns nil unless the receiver is an object
+// node(id:) can load, and for a receiver that may be null, which has no ID to
+// load, one reached through a mutation, which would run twice, or one loaded
+// from an ID it knows, whose chain has nothing to run.
+func (g GraphQLFunction) reloadableReceiver() func(id string) *querybuilder.Selection {
+	if g.IsMutation || g.MaybeNull || g.receiverLoaded {
+		return nil
+	}
+	t := g.Schema.Types.Get(g.TypeName)
+	if t == nil || t.Kind != introspection.TypeKindObject || loadableIDField(t) == nil {
+		return nil
+	}
+	loader := nodeLoaderFor(g.Schema, g.TypeName)
+	if loader == nil {
+		return nil
+	}
+	client, typeName := g.Client, g.TypeName
+	return func(id string) *querybuilder.Selection {
+		return nodeChain(client, loader, typeName, id)
+	}
 }
 
 func (g GraphQLFunction) ParameterNames() []string {
@@ -479,6 +525,8 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		QueryChain: g.QueryChain, // Pass the current query chain
 		IsMutation: g.IsMutation, // Propagate mutation flag
 		MaybeNull:  g.MaybeNull,  // Propagate unprobed nullable steps
+
+		receiverLoaded: g.KnownID != "",
 	}, nil
 }
 
@@ -945,7 +993,7 @@ func loadObjectFromID(id, typeName string, schema *introspection.Schema, typeSco
 	if !found {
 		return nil, fmt.Errorf("loading %s from ID: type not found", typeName)
 	}
-	chain := querybuilder.Query().Client(client).Select(loader.Name).Arg("id", id).InlineFragment(typeName)
+	chain := nodeChain(client, loader, typeName, id)
 	return GraphQLValue{
 		Name:     loader.Name,
 		TypeName: typeName,
@@ -960,6 +1008,12 @@ func loadObjectFromID(id, typeName string, schema *introspection.Schema, typeSco
 		QueryChain: chain,
 		KnownID:    id,
 	}, nil
+}
+
+// nodeChain selects the object of typeName with the given ID through
+// loader, the schema's node(id:) field.
+func nodeChain(client graphql.Client, loader *introspection.Field, typeName, id string) *querybuilder.Selection {
+	return querybuilder.Query().Client(client).Select(loader.Name).Arg("id", id).InlineFragment(typeName)
 }
 
 // concreteTypeField describes a field returning a non-null t, for handles
@@ -1496,6 +1550,12 @@ func (m gqlObjectMarshaller) XXX_GraphQLIDType() string {
 // XXX_GraphqlID is an internal function. It returns the underlying type ID
 func (m gqlObjectMarshaller) XXX_GraphQLID(ctx context.Context) (string, error) {
 	return m.val.ID(ctx)
+}
+
+// XXX_GraphQLIDKnown is an internal function. It reports whether the ID is
+// known without a request.
+func (m gqlObjectMarshaller) XXX_GraphQLIDKnown() bool {
+	return m.val.KnownID != ""
 }
 
 func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {

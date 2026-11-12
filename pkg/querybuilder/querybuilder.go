@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -44,6 +45,10 @@ type QueryBuilder struct {
 	inlineFragment string
 
 	prev *QueryBuilder
+
+	// load, when set, selects this step's result again from its ID: see
+	// Reloadable.
+	load func(id string) *QueryBuilder
 
 	client     graphql.Client
 	isMutation bool
@@ -201,6 +206,16 @@ func (q *QueryBuilder) Arg(name string, value any) *QueryBuilder {
 	sel.args[name] = &argument{
 		value: value,
 	}
+	return &sel
+}
+
+// Reloadable marks this step's result as one load can select again from its
+// ID, returning a chain that ends at the same object. Execute then runs the
+// chain up to here at the same time as the arguments of the steps after it
+// still resolve their IDs, rather than after them; see runAhead.
+func (q *QueryBuilder) Reloadable(load func(id string) *QueryBuilder) *QueryBuilder {
+	sel := *q
+	sel.load = load
 	return &sel
 }
 
@@ -464,6 +479,11 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 		return fmt.Errorf("no client configured for selection")
 	}
 
+	q, err := q.runAhead(ctx)
+	if err != nil {
+		return err
+	}
+
 	query, err := q.Build(ctx)
 	if err != nil {
 		return err
@@ -504,17 +524,119 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 	return q.unpack(response)
 }
 
+// runAhead returns the chain to send for q. A query can only be sent once
+// every object argument in it is an ID, and getting an ID can mean running
+// that object's own chain. When a step's arguments still need that, and the
+// step's receiver is Reloadable, the chain up to the receiver doesn't depend
+// on them: it runs at the same time, ending in its ID, and the chain returned
+// selects the rest from that ID. Otherwise q is sent whole, as it is.
+//
+// The step is the last such one, so that every receiver runs ahead of the
+// arguments after it: the chain up to it runs through Execute too, and so
+// splits again at the one before.
+//
+// The first failure stops the other side, and is the one returned.
+func (q *QueryBuilder) runAhead(ctx context.Context) (*QueryBuilder, error) {
+	if q.isMutation {
+		// Every query off a mutation re-sends it, so running ahead would run
+		// the mutation twice.
+		return q, nil
+	}
+	path := q.path()
+	split := 0
+	for i := len(path) - 1; i > 0; i-- {
+		if path[i-1].load != nil && path[i].waitsOnArgs() {
+			split = i
+			break
+		}
+	}
+	if split == 0 {
+		return q, nil
+	}
+	recv := path[split-1]
+
+	var id string
+	eg, gctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return recv.Select("id").Client(q.client).Bind(&id).Execute(gctx)
+	})
+	for _, sel := range path[split:] {
+		sel.scheduleOwnArgMarshalling(eg, gctx)
+	}
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	rest := recv.load(id)
+	for _, sel := range path[split:] {
+		step := *sel
+		step.prev = rest
+		rest = &step
+	}
+	return rest, nil
+}
+
+// waitsOnArgs reports whether marshalling this step's arguments, or those of
+// its nested fields, may have to ask the server for an object's ID: one that
+// hasn't been marshalled already holds an object whose ID isn't known.
+func (q *QueryBuilder) waitsOnArgs() bool {
+	for _, arg := range q.args {
+		if arg.waits() {
+			return true
+		}
+	}
+	for _, fsel := range q.selections {
+		if fsel.sub != nil && fsel.sub.waitsOnArgs() {
+			return true
+		}
+	}
+	return false
+}
+
+// scheduleOwnArgMarshalling queues marshalling for this step's arguments and
+// those of its nested fields, but not of the steps before it.
+func (q *QueryBuilder) scheduleOwnArgMarshalling(eg *errgroup.Group, ctx context.Context) {
+	for _, arg := range q.args {
+		eg.Go(func() error {
+			return arg.marshal(ctx)
+		})
+	}
+	for _, fsel := range q.selections {
+		if fsel.sub != nil {
+			fsel.sub.scheduleArgMarshalling(eg, ctx)
+		}
+	}
+}
+
 type argument struct {
 	value any
 
+	mu            sync.Mutex
+	done          bool
 	marshalled    string
 	marshalledErr error
-	once          sync.Once
 }
 
+// waits reports whether marshalling the argument may ask the server for an
+// object's ID: it hasn't been marshalled yet, and holds an object whose ID
+// isn't known.
+func (a *argument) waits() bool {
+	a.mu.Lock()
+	done := a.done
+	a.mu.Unlock()
+	return !done && needsIDRequest(reflect.ValueOf(a.value))
+}
+
+// marshal marshals the argument once. A marshal cut short by its context
+// says nothing about the argument, so it is not kept: the next marshal tries
+// again.
 func (a *argument) marshal(ctx context.Context) error {
-	a.once.Do(func() {
-		a.marshalled, a.marshalledErr = MarshalGQL(ctx, a.value)
-	})
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.done {
+		return a.marshalledErr
+	}
+	a.marshalled, a.marshalledErr = MarshalGQL(ctx, a.value)
+	a.done = a.marshalledErr == nil || ctx.Err() == nil
 	return a.marshalledErr
 }

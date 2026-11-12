@@ -25,6 +25,15 @@ type GraphQLMarshaller interface {
 	json.Marshaler
 }
 
+// GraphQLIDKnower is implemented by a GraphQLMarshaller that may already know
+// its ID, so marshalling it needs no request to the server. A marshaller
+// without it is taken to need one.
+type GraphQLIDKnower interface {
+	// XXX_GraphQLIDKnown is an internal function. It reports whether
+	// XXX_GraphQLID returns without a request.
+	XXX_GraphQLIDKnown() bool
+}
+
 const (
 	GraphQLMarshallerType   = "XXX_GraphQLType"
 	GraphQLMarshallerIDType = "XXX_GraphQLIDType"
@@ -158,6 +167,48 @@ func marshalValue(ctx context.Context, v reflect.Value) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported argument of kind %s", t.Kind())
 	}
+}
+
+// NeedsIDRequest reports whether marshalling v, an argument value, may ask
+// the server for an object's ID: v holds a GraphQLMarshaller that doesn't
+// know its ID already.
+func NeedsIDRequest(v any) bool {
+	return needsIDRequest(reflect.ValueOf(v))
+}
+
+func needsIDRequest(v reflect.Value) bool {
+	if !v.IsValid() {
+		return false
+	}
+	if v.Type().Implements(gqlMarshaller) {
+		if k, ok := v.Interface().(GraphQLIDKnower); ok && k.XXX_GraphQLIDKnown() {
+			return false
+		}
+		return true
+	}
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		return !v.IsNil() && needsIDRequest(v.Elem())
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if needsIDRequest(v.Index(i)) {
+				return true
+			}
+		}
+	case reflect.Map:
+		for _, key := range v.MapKeys() {
+			if needsIDRequest(v.MapIndex(key)) {
+				return true
+			}
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() && needsIDRequest(v.Field(i)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func marshalCustom(ctx context.Context, v reflect.Value) (string, error) {
