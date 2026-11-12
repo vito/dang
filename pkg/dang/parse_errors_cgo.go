@@ -3,11 +3,26 @@
 package dang
 
 import (
+	"sync"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/vito/dang/v2/pkg/dang/danglang"
 )
 
-// parseSyntaxTree parses source with the C tree-sitter runtime (tsParser,
-// shared with completion and highlighting). release frees the tree.
+var (
+	tsParser *tree_sitter.Parser
+	tsMu     sync.Mutex
+)
+
+func init() {
+	tsParser = tree_sitter.NewParser()
+	if err := tsParser.SetLanguage(danglang.Language()); err != nil {
+		panic("failed to set tree-sitter language: " + err.Error())
+	}
+}
+
+// parseSyntaxTree parses source with the C tree-sitter runtime. release
+// frees the tree.
 func parseSyntaxTree(source []byte) (syntaxNode, func()) {
 	tsMu.Lock()
 	tree := tsParser.Parse(source, nil)

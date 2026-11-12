@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build !js && !dang_nowasm
 
 package dang
 
@@ -6,23 +6,9 @@ import (
 	"context"
 	"log/slog"
 	"strings"
-	"sync"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/vito/dang/v2/pkg/dang/danglang"
+	"github.com/vito/dang/v2/pkg/dang/tswasm"
 )
-
-var (
-	tsParser *tree_sitter.Parser
-	tsMu     sync.Mutex
-)
-
-func init() {
-	tsParser = tree_sitter.NewParser()
-	if err := tsParser.SetLanguage(danglang.Language()); err != nil {
-		panic("failed to set tree-sitter language: " + err.Error())
-	}
-}
 
 // Complete returns completions for the given source text at the given cursor
 // position, using env for type resolution.
@@ -58,22 +44,24 @@ func Complete(ctx context.Context, env TypeScope, text string, line, col int) Co
 // inside a string literal.
 func CompletionContextAt(text string, line, col int) (cc *CompletionContext, replaceFrom int) {
 	source := []byte(text)
-
-	// tree-sitter parsers are not thread-safe; serialize access.
-	tsMu.Lock()
-	tree := tsParser.Parse(source, nil)
-	tsMu.Unlock()
-
-	if tree == nil {
-		return nil, 0
-	}
-	defer tree.Close()
-
-	cc = classifyCursorContext(tree.RootNode(), source, uint(line), uint(col))
-	if cc == nil {
+	ok := inspectEditedTree(source, func(root *tswasm.Node) {
+		cc = classifyCursorContext(root, source, uint(line), uint(col))
+	})
+	if !ok || cc == nil {
 		return nil, 0
 	}
 	return cc, computeReplaceFrom(text, line, col, cc)
+}
+
+// tsPoint is a 0-based row and byte column, as tree-sitter has them.
+type tsPoint struct{ Row, Column uint }
+
+func startPoint(n *tswasm.Node) tsPoint {
+	return tsPoint{uint(n.StartRow), uint(n.StartColumn)}
+}
+
+func endPoint(n *tswasm.Node) tsPoint {
+	return tsPoint{uint(n.EndRow), uint(n.EndColumn)}
 }
 
 // computeReplaceFrom calculates the byte offset in text where the partial
@@ -90,13 +78,13 @@ func computeReplaceFrom(text string, line, col int, cc *CompletionContext) int {
 // Interpolation (`${...}`) is unaffected: its expression isn't string content.
 // Every kind of string content is a string_content node, even loose in an
 // ERROR node; a multi-line string's language tag counts as content too.
-func cursorInStringContent(root *tree_sitter.Node, line, col uint) bool {
+func cursorInStringContent(root *tswasm.Node, line, col uint) bool {
 	found := false
-	walkTS(root, func(n *tree_sitter.Node) bool {
-		if !tsContains(n.StartPosition(), n.EndPosition(), line, col) {
+	walkTS(root, func(n *tswasm.Node) bool {
+		if !tsContains(startPoint(n), endPoint(n), line, col) {
 			return false
 		}
-		switch n.Kind() {
+		switch n.Kind {
 		case "string_content", "lang_tag_name":
 			found = true
 			return false
@@ -108,7 +96,7 @@ func cursorInStringContent(root *tree_sitter.Node, line, col uint) bool {
 
 // classifyCursorContext analyzes the tree-sitter CST to determine what kind
 // of completion the cursor needs.
-func classifyCursorContext(root *tree_sitter.Node, source []byte, line, col uint) *CompletionContext {
+func classifyCursorContext(root *tswasm.Node, source []byte, line, col uint) *CompletionContext {
 	// Inside a string literal there is nothing to complete.
 	if cursorInStringContent(root, line, col) {
 		return nil
@@ -154,7 +142,7 @@ func classifyCursorContext(root *tree_sitter.Node, source []byte, line, col uint
 // Pattern A: Well-formed arg_values node exists (e.g. "foo(" or "foo(x, ").
 // Pattern B: ERROR sibling of select_or_call (e.g. "container.from(addr").
 // Pattern C: Root ERROR containing func + immediate_paren + args (e.g. "foo(na").
-func findArgContextAtCursor(root *tree_sitter.Node, source []byte, line, col uint) *CompletionContext {
+func findArgContextAtCursor(root *tswasm.Node, source []byte, line, col uint) *CompletionContext {
 	// Pattern A: Walk up from deepest node looking for arg_values.
 	if cc := findArgInArgValues(root, source, line, col); cc != nil {
 		return cc
@@ -167,10 +155,10 @@ func findArgContextAtCursor(root *tree_sitter.Node, source []byte, line, col uin
 // findArgInArgValues handles Pattern A: cursor is inside an arg_values node
 // that tree-sitter successfully parsed (e.g. "foo(" with empty args, or
 // "foo(x, " with trailing comma).
-func findArgInArgValues(root *tree_sitter.Node, source []byte, line, col uint) *CompletionContext {
-	var deepest *tree_sitter.Node
-	walkTS(root, func(n *tree_sitter.Node) bool {
-		if !tsContains(n.StartPosition(), n.EndPosition(), line, col) {
+func findArgInArgValues(root *tswasm.Node, source []byte, line, col uint) *CompletionContext {
+	var deepest *tswasm.Node
+	walkTS(root, func(n *tswasm.Node) bool {
+		if !tsContains(startPoint(n), endPoint(n), line, col) {
 			return false
 		}
 		deepest = n
@@ -183,10 +171,10 @@ func findArgInArgValues(root *tree_sitter.Node, source []byte, line, col uint) *
 	// Walk up from the deepest node looking for arg_values.
 	node := deepest
 	for node != nil {
-		if node.Kind() == "arg_values" {
+		if node.Kind == "arg_values" {
 			return buildArgContextFromArgValues(node, source, line, col)
 		}
-		node = node.Parent()
+		node = node.Parent
 	}
 
 	// The cursor may be just past the end of an arg_values that has a
@@ -194,10 +182,18 @@ func findArgInArgValues(root *tree_sitter.Node, source []byte, line, col uint) *
 	// MISSING ')' so the arg_values range doesn't include the trailing
 	// whitespace after the comma. Check for this by looking for arg_values
 	// nodes that end just before the cursor.
-	var bestArgValues *tree_sitter.Node
-	walkTS(root, func(n *tree_sitter.Node) bool {
-		if n.Kind() == "arg_values" {
-			end := n.EndPosition()
+	if col == 0 {
+		return nil
+	}
+	var bestArgValues *tswasm.Node
+	walkTS(root, func(n *tswasm.Node) bool {
+		start, end := startPoint(n), endPoint(n)
+		// Only a node around the cursor or the byte before it can hold an
+		// arg_values ending there.
+		if !tsContains(start, end, line, col) && !tsContains(start, end, line, col-1) {
+			return false
+		}
+		if n.Kind == "arg_values" {
 			// The arg_values must end on the same line at or just before
 			// the cursor (the cursor is in trailing whitespace).
 			if end.Row == line && end.Column <= col && end.Column >= col-1 {
@@ -219,26 +215,23 @@ func findArgInArgValues(root *tree_sitter.Node, source []byte, line, col uint) *
 // hasTrailingSep checks if an arg_values node's last non-MISSING child is a
 // sep (comma), indicating the user typed "(" + args + "," and the cursor is
 // after the comma expecting the next argument.
-func hasTrailingSep(argValues *tree_sitter.Node) bool {
-	count := argValues.ChildCount()
-	for i := int(count) - 1; i >= 0; i-- {
-		child := argValues.Child(uint(i))
-		if child == nil {
-			continue
-		}
+func hasTrailingSep(argValues *tswasm.Node) bool {
+	count := len(argValues.Children())
+	for i := count - 1; i >= 0; i-- {
+		child := argValues.Children()[i]
 		// Skip the MISSING ')' that tree-sitter inserts.
-		if child.IsMissing() {
+		if child.Missing {
 			continue
 		}
-		return child.Kind() == "sep"
+		return child.Kind == "sep"
 	}
 	return false
 }
 
 // buildArgContextFromArgValues extracts completion context from a well-formed
 // arg_values node.
-func buildArgContextFromArgValues(argValues *tree_sitter.Node, source []byte, line, col uint) *CompletionContext {
-	callNode := argValues.Parent()
+func buildArgContextFromArgValues(argValues *tswasm.Node, source []byte, line, col uint) *CompletionContext {
+	callNode := argValues.Parent
 	if callNode == nil {
 		return nil
 	}
@@ -278,14 +271,14 @@ func buildArgContextFromArgValues(argValues *tree_sitter.Node, source []byte, li
 //
 // Pattern C: ERROR contains everything — function, paren, and args as flat
 // children (e.g. "foo(na" or "foo(name: x, addr").
-func findArgInError(root *tree_sitter.Node, source []byte, line, col uint) *CompletionContext {
+func findArgInError(root *tswasm.Node, source []byte, line, col uint) *CompletionContext {
 	// Find ERROR nodes containing the cursor that have immediate_paren children.
-	var bestError *tree_sitter.Node
-	walkTS(root, func(n *tree_sitter.Node) bool {
-		if !tsContains(n.StartPosition(), n.EndPosition(), line, col) {
+	var bestError *tswasm.Node
+	walkTS(root, func(n *tswasm.Node) bool {
+		if !tsContains(startPoint(n), endPoint(n), line, col) {
 			return false
 		}
-		if n.Kind() == "ERROR" && hasChildKind(n, "immediate_paren") {
+		if n.Kind == "ERROR" && hasChildKind(n, "immediate_paren") {
 			bestError = n
 		}
 		return true
@@ -306,7 +299,7 @@ func findArgInError(root *tree_sitter.Node, source []byte, line, col uint) *Comp
 	funcText := reconstructFuncFromError(bestError, parenIdx, source)
 	if funcText == "" {
 		// Pattern B: the ERROR's preceding sibling is the function.
-		parent := bestError.Parent()
+		parent := bestError.Parent
 		if parent != nil {
 			funcText = extractFuncFromPrecedingSibling(parent, bestError, source)
 		}
@@ -345,42 +338,40 @@ func findArgInError(root *tree_sitter.Node, source []byte, line, col uint) *Comp
 
 // extractFuncText extracts the function expression text from a call or
 // select_or_call node.
-func extractFuncText(callNode *tree_sitter.Node, source []byte) string {
-	switch callNode.Kind() {
+func extractFuncText(callNode *tswasm.Node, source []byte) string {
+	switch callNode.Kind {
 	case "select_or_call":
 		leftNode := callNode.ChildByFieldName("left")
 		nameNode := callNode.ChildByFieldName("name")
 		if leftNode != nil && nameNode != nil {
-			return collapseWhitespace(leftNode.Utf8Text(source)) + "." + nameNode.Utf8Text(source)
+			return collapseWhitespace(leftNode.Text(source)) + "." + nameNode.Text(source)
 		}
 		if nameNode != nil {
-			return nameNode.Utf8Text(source)
+			return nameNode.Text(source)
 		}
 		if leftNode != nil {
-			return collapseWhitespace(leftNode.Utf8Text(source))
+			return collapseWhitespace(leftNode.Text(source))
 		}
 	case "symbol_or_call":
 		// symbol_or_call wraps a call node.
-		for i := uint(0); i < callNode.ChildCount(); i++ {
-			child := callNode.Child(i)
-			if child != nil && child.Kind() == "call" {
+		for _, child := range callNode.Children() {
+			if child.Kind == "call" {
 				return extractFuncText(child, source)
 			}
 		}
 	case "call":
 		nameNode := callNode.ChildByFieldName("name")
 		if nameNode != nil {
-			return collapseWhitespace(nameNode.Utf8Text(source))
+			return collapseWhitespace(nameNode.Text(source))
 		}
 	}
 	return ""
 }
 
 // hasChildKind checks if a node has any child with the given kind.
-func hasChildKind(node *tree_sitter.Node, kind string) bool {
-	for i := uint(0); i < node.ChildCount(); i++ {
-		child := node.Child(i)
-		if child != nil && child.Kind() == kind {
+func hasChildKind(node *tswasm.Node, kind string) bool {
+	for _, child := range node.Children() {
+		if child.Kind == kind {
 			return true
 		}
 	}
@@ -390,19 +381,16 @@ func hasChildKind(node *tree_sitter.Node, kind string) bool {
 // findInnermostOpenParen scans the ERROR node's children right-to-left,
 // tracking paren depth, and returns the index of the innermost unmatched
 // immediate_paren that is before the cursor. Returns -1 if not found.
-func findInnermostOpenParen(errorNode *tree_sitter.Node, line, col uint) int {
+func findInnermostOpenParen(errorNode *tswasm.Node, line, col uint) int {
 	depth := 0
-	count := int(errorNode.ChildCount())
+	count := len(errorNode.Children())
 	for i := count - 1; i >= 0; i-- {
-		child := errorNode.Child(uint(i))
-		if child == nil {
-			continue
-		}
+		child := errorNode.Children()[i]
 		// Only consider children at or before the cursor.
-		if !tsPointBefore(child.StartPosition(), line, col) {
+		if !tsPointBefore(startPoint(child), line, col) {
 			continue
 		}
-		switch child.Kind() {
+		switch child.Kind {
 		case ")":
 			depth++
 		case "immediate_paren":
@@ -417,7 +405,7 @@ func findInnermostOpenParen(errorNode *tree_sitter.Node, line, col uint) int {
 }
 
 // tsPointBefore returns true if the point (row, col) is at or before (line, col).
-func tsPointBefore(p tree_sitter.Point, line, col uint) bool {
+func tsPointBefore(p tsPoint, line, col uint) bool {
 	if p.Row < line {
 		return true
 	}
@@ -433,30 +421,27 @@ func tsPointBefore(p tree_sitter.Point, line, col uint) bool {
 // It handles patterns like:
 //   - symbol + immediate_paren → "funcname"
 //   - symbol_or_call + dot_token + field_id + immediate_paren → "receiver.method"
-func reconstructFuncFromError(errorNode *tree_sitter.Node, parenIdx int, source []byte) string {
+func reconstructFuncFromError(errorNode *tswasm.Node, parenIdx int, source []byte) string {
 	// Collect non-trivial children before the paren.
 	var parts []string
 	for i := range parenIdx {
-		child := errorNode.Child(uint(i))
-		if child == nil {
-			continue
-		}
-		kind := child.Kind()
+		child := errorNode.Children()[i]
+		kind := child.Kind
 		// Skip separators and other non-expression children.
 		if kind == "sep" || kind == "immediate_paren" || kind == ")" {
 			continue
 		}
 		switch kind {
 		case "symbol", "symbol_or_call", "select_or_call":
-			parts = append(parts, collapseWhitespace(child.Utf8Text(source)))
+			parts = append(parts, collapseWhitespace(child.Text(source)))
 		case "dot_token":
 			parts = append(parts, ".")
 		case "field_id":
-			parts = append(parts, child.Utf8Text(source))
+			parts = append(parts, child.Text(source))
 		default:
 			// Unknown child type before paren — not a function expression
 			// we can reconstruct.
-			parts = append(parts, collapseWhitespace(child.Utf8Text(source)))
+			parts = append(parts, collapseWhitespace(child.Text(source)))
 		}
 	}
 	return strings.Join(parts, "")
@@ -464,14 +449,13 @@ func reconstructFuncFromError(errorNode *tree_sitter.Node, parenIdx int, source 
 
 // extractFuncFromPrecedingSibling finds the expression sibling just before
 // the ERROR node and returns its text as the function expression.
-func extractFuncFromPrecedingSibling(parent, errorNode *tree_sitter.Node, source []byte) string {
-	var prevExpr *tree_sitter.Node
-	for i := uint(0); i < parent.ChildCount(); i++ {
-		child := parent.Child(i)
-		if child != nil && tsNodeEquals(child, errorNode) {
+func extractFuncFromPrecedingSibling(parent, errorNode *tswasm.Node, source []byte) string {
+	var prevExpr *tswasm.Node
+	for _, child := range parent.Children() {
+		if tsNodeEquals(child, errorNode) {
 			break
 		}
-		if child != nil && child.Kind() != "sep" && child.Kind() != "ERROR" && !child.IsExtra() {
+		if child.Kind != "sep" && child.Kind != "ERROR" && !child.Extra {
 			prevExpr = child
 		}
 	}
@@ -485,19 +469,16 @@ func extractFuncFromPrecedingSibling(parent, errorNode *tree_sitter.Node, source
 
 // isInsideBrackets checks if the cursor is inside an unmatched '[' between
 // the open paren and the cursor position within the ERROR node.
-func isInsideBrackets(errorNode *tree_sitter.Node, parenIdx int, line, col uint) bool {
+func isInsideBrackets(errorNode *tswasm.Node, parenIdx int, line, col uint) bool {
 	bracketDepth := 0
-	count := int(errorNode.ChildCount())
+	count := len(errorNode.Children())
 	for i := parenIdx + 1; i < count; i++ {
-		child := errorNode.Child(uint(i))
-		if child == nil {
-			continue
-		}
+		child := errorNode.Children()[i]
 		// Stop scanning past the cursor.
-		if !tsPointBefore(child.StartPosition(), line, col) {
+		if !tsPointBefore(startPoint(child), line, col) {
 			break
 		}
-		switch child.Kind() {
+		switch child.Kind {
 		case "[":
 			bracketDepth++
 		case "]":
@@ -506,8 +487,8 @@ func isInsideBrackets(errorNode *tree_sitter.Node, parenIdx int, line, col uint)
 			}
 		default:
 			// Check inside child nodes for brackets.
-			walkTS(child, func(n *tree_sitter.Node) bool {
-				switch n.Kind() {
+			walkTS(child, func(n *tswasm.Node) bool {
+				switch n.Kind {
 				case "[":
 					bracketDepth++
 				case "]":
@@ -524,24 +505,24 @@ func isInsideBrackets(errorNode *tree_sitter.Node, parenIdx int, line, col uint)
 
 // isInValuePosition checks if the cursor is inside a key_value node's value
 // field within an arg_values node.
-func isInValuePosition(argValues *tree_sitter.Node, source []byte, line, col uint) bool {
+func isInValuePosition(argValues *tswasm.Node, source []byte, line, col uint) bool {
 	return isInKeyValueValuePosition(argValues, source, line, col)
 }
 
 // isInKeyValueValuePosition walks the subtree looking for key_value nodes
 // where the cursor is in the value field.
-func isInKeyValueValuePosition(node *tree_sitter.Node, source []byte, line, col uint) bool {
+func isInKeyValueValuePosition(node *tswasm.Node, source []byte, line, col uint) bool {
 	found := false
-	walkTS(node, func(n *tree_sitter.Node) bool {
+	walkTS(node, func(n *tswasm.Node) bool {
 		if found {
 			return false
 		}
-		if !tsContains(n.StartPosition(), n.EndPosition(), line, col) {
+		if !tsContains(startPoint(n), endPoint(n), line, col) {
 			return false
 		}
-		if n.Kind() == "key_value" {
+		if n.Kind == "key_value" {
 			valueNode := n.ChildByFieldName("value")
-			if valueNode != nil && tsContains(valueNode.StartPosition(), valueNode.EndPosition(), line, col) {
+			if valueNode != nil && tsContains(startPoint(valueNode), endPoint(valueNode), line, col) {
 				found = true
 				return false
 			}
@@ -568,13 +549,9 @@ func isAfterColon(source []byte, line, col uint, partial string) bool {
 
 // collectProvidedArgs extracts already-provided argument names from key_value
 // children of an arg_values node.
-func collectProvidedArgs(argValues *tree_sitter.Node, source []byte) []string {
+func collectProvidedArgs(argValues *tswasm.Node, source []byte) []string {
 	var names []string
-	for i := uint(0); i < argValues.ChildCount(); i++ {
-		child := argValues.Child(i)
-		if child == nil {
-			continue
-		}
+	for _, child := range argValues.Children() {
 		collectKeyValueNames(child, source, &names)
 	}
 	return names
@@ -582,14 +559,11 @@ func collectProvidedArgs(argValues *tree_sitter.Node, source []byte) []string {
 
 // collectProvidedArgsFromError extracts already-provided argument names from
 // key_value children that appear after the given paren index in an ERROR node.
-func collectProvidedArgsFromError(errorNode *tree_sitter.Node, parenIdx int, source []byte) []string {
+func collectProvidedArgsFromError(errorNode *tswasm.Node, parenIdx int, source []byte) []string {
 	var names []string
-	count := int(errorNode.ChildCount())
+	count := len(errorNode.Children())
 	for i := parenIdx + 1; i < count; i++ {
-		child := errorNode.Child(uint(i))
-		if child == nil {
-			continue
-		}
+		child := errorNode.Children()[i]
 		collectKeyValueNames(child, source, &names)
 	}
 	return names
@@ -597,19 +571,16 @@ func collectProvidedArgsFromError(errorNode *tree_sitter.Node, parenIdx int, sou
 
 // collectKeyValueNames recursively finds key_value nodes and appends their
 // key text to names.
-func collectKeyValueNames(node *tree_sitter.Node, source []byte, names *[]string) {
-	if node.Kind() == "key_value" {
+func collectKeyValueNames(node *tswasm.Node, source []byte, names *[]string) {
+	if node.Kind == "key_value" {
 		keyNode := node.ChildByFieldName("key")
 		if keyNode != nil {
-			*names = append(*names, keyNode.Utf8Text(source))
+			*names = append(*names, keyNode.Text(source))
 		}
 		return
 	}
-	for i := uint(0); i < node.ChildCount(); i++ {
-		child := node.Child(i)
-		if child != nil {
-			collectKeyValueNames(child, source, names)
-		}
+	for _, child := range node.Children() {
+		collectKeyValueNames(child, source, names)
 	}
 }
 
@@ -621,18 +592,18 @@ type tsReceiverResult struct {
 
 // findSelectAtCursor looks for a select_or_call node whose field_id contains
 // the cursor. Returns the receiver text (the "left" field) and partial.
-func findSelectAtCursor(node *tree_sitter.Node, source []byte, line, col uint) *tsReceiverResult {
-	var bestSelect *tree_sitter.Node
+func findSelectAtCursor(node *tswasm.Node, source []byte, line, col uint) *tsReceiverResult {
+	var bestSelect *tswasm.Node
 
-	walkTS(node, func(n *tree_sitter.Node) bool {
-		start := n.StartPosition()
-		end := n.EndPosition()
+	walkTS(node, func(n *tswasm.Node) bool {
+		start := startPoint(n)
+		end := endPoint(n)
 
 		if !tsContains(start, end, line, col) {
 			return false
 		}
 
-		if n.Kind() == "select_or_call" {
+		if n.Kind == "select_or_call" {
 			bestSelect = n
 		}
 		return true
@@ -650,8 +621,8 @@ func findSelectAtCursor(node *tree_sitter.Node, source []byte, line, col uint) *
 	nameNode := bestSelect.ChildByFieldName("name")
 	var partial string
 	if nameNode != nil {
-		nameStart := nameNode.StartPosition()
-		nameEnd := nameNode.EndPosition()
+		nameStart := startPoint(nameNode)
+		nameEnd := endPoint(nameNode)
 		if tsContains(nameStart, nameEnd, line, col) {
 			// Cursor is within the name node — use only the text up to the cursor.
 			nameOffset := lineColToOffset(source, nameStart.Row, nameStart.Column)
@@ -665,13 +636,13 @@ func findSelectAtCursor(node *tree_sitter.Node, source []byte, line, col uint) *
 		// all members.
 	}
 
-	receiverText := leftNode.Utf8Text(source)
+	receiverText := leftNode.Text(source)
 	receiverText = collapseWhitespace(receiverText)
 
 	slog.Debug("ts: found select_or_call",
 		"receiver", receiverText,
 		"partial", partial,
-		"select_range", []any{bestSelect.StartPosition(), bestSelect.EndPosition()},
+		"select_range", []any{startPoint(bestSelect), endPoint(bestSelect)},
 	)
 
 	return &tsReceiverResult{
@@ -683,21 +654,20 @@ func findSelectAtCursor(node *tree_sitter.Node, source []byte, line, col uint) *
 // findDotErrorAtCursor looks for an ERROR node at the cursor position that
 // contains a dot_token. The receiver is the expression node just before the
 // ERROR in the parent's children.
-func findDotErrorAtCursor(root *tree_sitter.Node, source []byte, line, col uint) *tsReceiverResult {
-	var errorNode *tree_sitter.Node
+func findDotErrorAtCursor(root *tswasm.Node, source []byte, line, col uint) *tsReceiverResult {
+	var errorNode *tswasm.Node
 
-	walkTS(root, func(n *tree_sitter.Node) bool {
-		start := n.StartPosition()
-		end := n.EndPosition()
+	walkTS(root, func(n *tswasm.Node) bool {
+		start := startPoint(n)
+		end := endPoint(n)
 
 		if !tsContains(start, end, line, col) {
 			return false
 		}
 
-		if n.Kind() == "ERROR" {
-			for i := uint(0); i < n.ChildCount(); i++ {
-				child := n.Child(i)
-				if child != nil && child.Kind() == "dot_token" {
+		if n.Kind == "ERROR" {
+			for _, child := range n.Children() {
+				if child.Kind == "dot_token" {
 					errorNode = n
 					break
 				}
@@ -710,18 +680,17 @@ func findDotErrorAtCursor(root *tree_sitter.Node, source []byte, line, col uint)
 		return nil
 	}
 
-	parent := errorNode.Parent()
+	parent := errorNode.Parent
 	if parent == nil {
 		return nil
 	}
 
-	var prevExpr *tree_sitter.Node
-	for i := uint(0); i < parent.ChildCount(); i++ {
-		child := parent.Child(i)
-		if child != nil && tsNodeEquals(child, errorNode) {
+	var prevExpr *tswasm.Node
+	for _, child := range parent.Children() {
+		if tsNodeEquals(child, errorNode) {
 			break
 		}
-		if child != nil && child.Kind() != "sep" && child.Kind() != "ERROR" && !child.IsExtra() {
+		if child.Kind != "sep" && child.Kind != "ERROR" && !child.Extra {
 			prevExpr = child
 		}
 	}
@@ -730,11 +699,11 @@ func findDotErrorAtCursor(root *tree_sitter.Node, source []byte, line, col uint)
 		return nil
 	}
 
-	receiverText := collapseWhitespace(prevExpr.Utf8Text(source))
+	receiverText := collapseWhitespace(prevExpr.Text(source))
 
 	slog.Debug("ts: found ERROR with dot",
 		"receiver", receiverText,
-		"error_range", []any{errorNode.StartPosition(), errorNode.EndPosition()},
+		"error_range", []any{startPoint(errorNode), endPoint(errorNode)},
 	)
 
 	return &tsReceiverResult{
@@ -776,7 +745,7 @@ func lineColToOffset(source []byte, line, col uint) int {
 
 // findBareIdentAtCursor checks if the cursor is on a bare identifier (not
 // inside a dot expression or argument list).
-func findBareIdentAtCursor(root *tree_sitter.Node, source []byte, line, col uint) string {
+func findBareIdentAtCursor(root *tswasm.Node, source []byte, line, col uint) string {
 	offset := lineColToOffset(source, line, col)
 	if offset <= 0 {
 		return ""
@@ -803,24 +772,21 @@ func findBareIdentAtCursor(root *tree_sitter.Node, source []byte, line, col uint
 
 // walkTS does a depth-first walk of the tree-sitter node, calling fn for each
 // node. If fn returns false, children are skipped.
-func walkTS(node *tree_sitter.Node, fn func(*tree_sitter.Node) bool) {
+func walkTS(node *tswasm.Node, fn func(*tswasm.Node) bool) {
 	if node == nil {
 		return
 	}
 	if !fn(node) {
 		return
 	}
-	for i := uint(0); i < node.ChildCount(); i++ {
-		child := node.Child(i)
-		if child != nil {
-			walkTS(child, fn)
-		}
+	for _, child := range node.Children() {
+		walkTS(child, fn)
 	}
 }
 
 // tsContains checks if a cursor position (line, col) is within [start, end).
 // Uses tree-sitter's 0-based coordinates (same as LSP).
-func tsContains(start, end tree_sitter.Point, line, col uint) bool {
+func tsContains(start, end tsPoint, line, col uint) bool {
 	if line < start.Row || line > end.Row {
 		return false
 	}
@@ -848,6 +814,6 @@ func collapseWhitespace(s string) string {
 }
 
 // tsNodeEquals checks if two tree-sitter nodes are the same node.
-func tsNodeEquals(a, b *tree_sitter.Node) bool {
-	return a.StartByte() == b.StartByte() && a.EndByte() == b.EndByte()
+func tsNodeEquals(a, b *tswasm.Node) bool {
+	return a.StartByte == b.StartByte && a.EndByte == b.EndByte
 }

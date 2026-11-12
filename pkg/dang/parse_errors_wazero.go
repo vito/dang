@@ -4,26 +4,17 @@ package dang
 
 import (
 	"context"
-	"time"
 
 	"github.com/vito/dang/v2/pkg/dang/tswasm"
 )
 
-// syntaxRecoveryTimeout bounds one recovery parse of source: a better message
-// is never worth hanging the caller, and past it the parse error names the
-// token the parser failed at instead. It's there to stop a runaway parse, not
-// to cut short a slow one, so it grows with the source: the wasm parser takes
-// about 4µs a byte (measured on a 96 KB file), and this allows five times
-// that, with a second's floor.
-func syntaxRecoveryTimeout(source []byte) time.Duration {
-	return max(time.Second, time.Duration(len(source))*20*time.Microsecond)
-}
-
 // parseSyntaxTree parses source with the C tree-sitter runtime compiled to
 // WebAssembly (see pkg/dang/tswasm). Error-free subtrees come back without
-// their children, which error reporting never reads.
+// their children, which error reporting never reads. A better message is
+// never worth hanging the caller: past treeSitterTimeout the parse error
+// names the token the parser failed at instead.
 func parseSyntaxTree(source []byte) (syntaxNode, func()) {
-	ctx, cancel := context.WithTimeout(context.Background(), syntaxRecoveryTimeout(source))
+	ctx, cancel := context.WithTimeout(context.Background(), treeSitterTimeout(source))
 	defer cancel()
 	root, err := tswasm.Parse(ctx, source, tswasm.PruneErrorFree)
 	if err != nil {

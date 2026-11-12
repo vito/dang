@@ -12,8 +12,8 @@ import (
 // code sees scope: the members of a receiver after a dot (as TypeMembers
 // lists them), a function's remaining arguments in a call, or the names in
 // scope matching a bare identifier. pos is 1-based, with Column counting
-// bytes. Classifying the cursor needs tree-sitter, so without cgo there are
-// never any completions.
+// bytes. Classifying the cursor needs tree-sitter, so where it's missing (see
+// dang.CompletionContextAt) there are never any completions.
 func Complete(ctx context.Context, scope dang.TypeScope, text string, pos Pos) dang.CompletionResult {
 	cc, replaceFrom := dang.CompletionContextAt(text, pos.Line-1, pos.Column-1)
 	if cc == nil || scope == nil {
