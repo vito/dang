@@ -9,8 +9,8 @@ import (
 
 // TestUnexpectedSyntaxError checks the diagnosis of last resort for a parse
 // failure: the token the parser failed at. It's what a parse error says
-// without cgo (no tree-sitter) when no pitfall matches, in place of the
-// parser's list of every token it would have taken.
+// without tree-sitter (GOOS=js, or -tags dang_nowasm) when no pitfall matches,
+// in place of the parser's list of every token it would have taken.
 func TestUnexpectedSyntaxError(t *testing.T) {
 	for _, tt := range []struct {
 		src  string

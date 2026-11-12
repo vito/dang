@@ -1,5 +1,3 @@
-//go:build cgo
-
 package dang
 
 import (
@@ -8,8 +6,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // ParseWithRecovery parses source using the PEG parser. On failure, it uses
@@ -44,6 +40,11 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 // Pitfall) if the failure is one, else tree-sitter's diagnosis, else the
 // token the parser failed at. If none applies, the original error is
 // returned.
+//
+// Tree-sitter is the C runtime with cgo, and the same runtime compiled to
+// WebAssembly without it (see parse_errors_wazero.go), so both builds say the
+// same. Only GOOS=js and builds tagged dang_nowasm go without, and say
+// which token the parser failed at instead.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
 	return enhanceParseError(pegErr, filename, source, CurrentVersion)
 }
@@ -65,23 +66,32 @@ func enhanceParseError(pegErr error, filename string, source []byte, v Version) 
 	return pegErr
 }
 
+// syntaxNode is the part of a tree-sitter node that error reporting reads,
+// whichever runtime parsed it (see parseSyntaxTree).
+type syntaxNode interface {
+	Kind() string
+	IsMissing() bool
+	IsError() bool
+	ChildCount() int
+	Child(i int) syntaxNode
+	Text() string
+	Start() (row, col uint)
+	End() (row, col uint)
+	ByteLen() int
+}
+
 // treeSitterSyntaxError diagnoses a syntax error the PEG parser failed with
 // (pegErr) with tree-sitter's error recovery, if it finds one.
 func treeSitterSyntaxError(pegErr error, filename string, source []byte) (*SourceError, bool) {
-	tsMu.Lock()
-	tree := tsParser.Parse(source, nil)
-	tsMu.Unlock()
-
-	if tree == nil {
+	root, release := parseSyntaxTree(source)
+	if root == nil {
 		return nil, false
 	}
-	defer tree.Close()
-
-	root := tree.RootNode()
+	defer release()
 
 	// Collect all ERROR and MISSING nodes from the CST.
 	var errors []tsError
-	collectTSErrors(root, source, &errors)
+	collectTSErrors(root, &errors)
 
 	if len(errors) == 0 {
 		return nil, false
@@ -122,16 +132,17 @@ type tsError struct {
 }
 
 // collectTSErrors walks the tree-sitter CST and collects error information.
-func collectTSErrors(node *tree_sitter.Node, source []byte, errors *[]tsError) {
+func collectTSErrors(node syntaxNode, errors *[]tsError) {
 	if node == nil {
 		return
 	}
 
 	if node.IsMissing() {
 		msg := describeMissing(node)
+		row, col := node.Start()
 		*errors = append(*errors, tsError{
-			line:    node.StartPosition().Row,
-			col:     node.StartPosition().Column,
+			line:    row,
+			col:     col,
 			length:  1,
 			message: msg,
 		})
@@ -139,19 +150,19 @@ func collectTSErrors(node *tree_sitter.Node, source []byte, errors *[]tsError) {
 	}
 
 	if node.IsError() {
-		msg := describeError(node, source)
-		start := node.StartPosition()
-		end := node.EndPosition()
-		length := int(node.EndByte() - node.StartByte())
-		if start.Row == end.Row {
-			length = int(end.Column - start.Column)
+		msg := describeError(node)
+		startRow, startCol := node.Start()
+		endRow, endCol := node.End()
+		length := node.ByteLen()
+		if startRow == endRow {
+			length = int(endCol - startCol)
 		}
 		if length < 1 {
 			length = 1
 		}
 		*errors = append(*errors, tsError{
-			line:    start.Row,
-			col:     start.Column,
+			line:    startRow,
+			col:     startCol,
 			length:  length,
 			message: msg,
 		})
@@ -160,17 +171,17 @@ func collectTSErrors(node *tree_sitter.Node, source []byte, errors *[]tsError) {
 	}
 
 	// Recurse into children to find nested ERROR/MISSING nodes.
-	for i := uint(0); i < node.ChildCount(); i++ {
+	for i := 0; i < node.ChildCount(); i++ {
 		child := node.Child(i)
 		if child != nil {
-			collectTSErrors(child, source, errors)
+			collectTSErrors(child, errors)
 		}
 	}
 }
 
 // describeMissing produces a message for a MISSING node (tree-sitter
 // expected a token but didn't find one).
-func describeMissing(node *tree_sitter.Node) string {
+func describeMissing(node syntaxNode) string {
 	kind := node.Kind()
 	// Tree-sitter MISSING nodes have the kind of the expected token.
 	switch kind {
@@ -191,10 +202,10 @@ func describeMissing(node *tree_sitter.Node) string {
 
 // describeError produces a message for an ERROR node by examining its
 // children and surrounding context to infer what went wrong.
-func describeError(node *tree_sitter.Node, source []byte) string {
+func describeError(node syntaxNode) string {
 	// Collect the kinds of children inside the ERROR to understand context.
 	var childKinds []string
-	for i := uint(0); i < node.ChildCount(); i++ {
+	for i := 0; i < node.ChildCount(); i++ {
 		child := node.Child(i)
 		if child != nil {
 			childKinds = append(childKinds, child.Kind())
@@ -213,11 +224,10 @@ func describeError(node *tree_sitter.Node, source []byte) string {
 	// Pattern: visibility + "fn" → function declaration syntax error
 	if contains(childKinds, "visibility") && containsAny(childKinds, "ERROR") {
 		// Check if nested ERROR is "fn"
-		for i := uint(0); i < node.ChildCount(); i++ {
+		for i := 0; i < node.ChildCount(); i++ {
 			child := node.Child(i)
 			if child != nil && child.IsError() {
-				text := child.Utf8Text(source)
-				if text == "fn" {
+				if child.Text() == "fn" {
 					return "invalid function declaration"
 				}
 			}
@@ -230,7 +240,7 @@ func describeError(node *tree_sitter.Node, source []byte) string {
 	}
 
 	// Pattern: ERROR contains just a closing delimiter
-	text := strings.TrimSpace(node.Utf8Text(source))
+	text := strings.TrimSpace(node.Text())
 	if text == ")" {
 		return "unexpected ')'"
 	}

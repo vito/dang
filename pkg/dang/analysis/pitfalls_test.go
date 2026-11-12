@@ -16,8 +16,9 @@ import (
 // marked invalid.
 //
 // It runs in both builds: with cgo, unmatched parse errors are diagnosed by
-// tree-sitter; without, by the token the parser failed at. A pitfall reads
-// the same either way, since it is detected from the parser's failure alone.
+// tree-sitter linked through cgo; without, by tree-sitter compiled to
+// WebAssembly. A pitfall reads the same either way, since it is detected from
+// the parser's failure alone.
 func TestPitfalls(t *testing.T) {
 	for _, tt := range []struct {
 		name    string

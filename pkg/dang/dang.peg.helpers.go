@@ -60,7 +60,7 @@ func parseFailureOffset(pegErr error) (int, bool) {
 // where it failed: `syntax error: unexpected 'x'` at the token there, in place
 // of the parser's own message, which lists every token it would have taken.
 // It's the diagnosis of last resort, when no pitfall matches and tree-sitter
-// (absent without cgo) has none.
+// (absent on GOOS=js and with -tags dang_nowasm) has none.
 func unexpectedSyntaxError(pegErr error, filename string, source []byte) (*SourceError, bool) {
 	at, ok := parseFailureOffset(pegErr)
 	if !ok || at > len(source) {

@@ -139,7 +139,8 @@ than none. To add one:
    valid or not, that must not match. `TestPitfallsAreDocumented` checks the
    docs link resolves to a heading in `docs/lit`.
 3. Run both builds: the engine embeds Dang with `CGO_ENABLED=0`, so run
-   `CGO_ENABLED=0 go test ./pkg/dang/analysis -run TestPitfalls` too.
+   `CGO_ENABLED=0 go test ./pkg/dang/analysis -run TestPitfalls` too. (The
+   `test/nocgo` check runs the parser, LSP and language tests that way.)
 
 A golden fixture under `tests/errors/` shows the CLI rendering, but one per
 kind is enough; the table is where cases go.

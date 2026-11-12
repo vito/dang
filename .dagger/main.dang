@@ -378,4 +378,22 @@ type Test {
 
     null
   }
+
+  """
+  Run the parser, LSP and language tests without cgo, as the Dagger engine
+  builds Dang: parse errors come from tree-sitter compiled to WebAssembly
+  rather than linked through cgo, and must read the same.
+  """
+  nocgo: Void @check {
+    dang
+      .generated
+      .withEnvVariable("CGO_ENABLED", "0")
+      .withExec(["go", "test", "./pkg/dang/...", "./tests"])
+      # -short skips the Neovim tests, which drive a dang binary (a cgo
+      # build) rather than the code under test.
+      .withExec(["go", "test", "-short", "./pkg/lsp"])
+      .sync
+
+    null
+  }
 }
