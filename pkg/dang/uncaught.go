@@ -34,11 +34,11 @@ const (
 func (u *uncaughtErrorReport) Error() string {
 	var out strings.Builder
 
-	u.annotate(&out, "Error:", fmt.Sprintf("uncaught %s", errorSummary(u.Raised.Value)), u.Raised.Location, "")
+	u.annotate(&out, "Error:", fmt.Sprintf("uncaught %s", errorSummary(u.Raised)), u.Raised.Location, "")
 	writeErrorFields(&out, u.Raised.Value)
 
 	for _, link := range causeChain(u.Raised) {
-		u.annotate(&out, "caused by:", errorSummary(link.Value), link.Location, "")
+		u.annotate(&out, "caused by:", errorSummary(link), link.Location, "")
 		writeErrorFields(&out, link.Value)
 	}
 
@@ -113,24 +113,20 @@ func errorLocation(err error) (*SourceLocation, string) {
 	return nil, ""
 }
 
-// errorSummary renders "TypeName: message" for an error value. BasicError —
+// errorSummary renders "TypeName: message" for a raised error. BasicError —
 // the type behind a bare string raise — keeps the plain "error:" wording so
 // simple raises read the way they always have.
-func errorSummary(val Value) string {
-	message := "unknown error"
+func errorSummary(raised *RaisedError) string {
 	typeName := "error"
-
-	obj, ok := val.(*Object)
-	if ok {
-		if msg, found := obj.lookupValue("message"); found {
-			message = msg.String()
-		}
-		if typ, ok := obj.Mod.(*Type); ok && typ != BasicErrorType {
+	switch v := raised.Value.(type) {
+	case *Object:
+		if typ, ok := v.Mod.(*Type); ok && typ != BasicErrorType {
 			typeName = typ.Named
 		}
+	case GraphQLValue:
+		typeName = v.TypeName
 	}
-
-	return fmt.Sprintf("%s: %s", typeName, message)
+	return fmt.Sprintf("%s: %s", typeName, raised.Error())
 }
 
 // writeErrorFields prints the error's public stored data fields (everything
@@ -165,19 +161,30 @@ func writeErrorFields(out *strings.Builder, val Value) {
 // causeChain walks the cause links reachable from an uncaught error,
 // preferring an explicit non-null `cause` field on the value over the
 // implicit record on the wrapper. Bounded and cycle-guarded: the chain is
-// user-constructible.
+// user-constructible, through the objects' `cause` fields.
 func causeChain(raised *RaisedError) []*RaisedError {
 	const maxDepth = 8
 
 	var chain []*RaisedError
-	seen := map[Value]bool{raised.Value: true}
+	seen := map[*Object]bool{}
+	visit := func(r *RaisedError) bool {
+		obj, ok := r.Value.(*Object)
+		if !ok {
+			return true
+		}
+		if seen[obj] {
+			return false
+		}
+		seen[obj] = true
+		return true
+	}
+	visit(raised)
 	current := raised
 	for len(chain) < maxDepth {
 		next := nextCause(current)
-		if next == nil || seen[next.Value] {
+		if next == nil || !visit(next) {
 			break
 		}
-		seen[next.Value] = true
 		chain = append(chain, next)
 		current = next
 	}
@@ -185,9 +192,13 @@ func causeChain(raised *RaisedError) []*RaisedError {
 }
 
 // nextCause resolves the next link: the value's own non-null `cause` field
-// wins; otherwise the implicit record from the rescue arm. Explicit causes
-// have no raise site of their own, so their Location is nil.
+// wins, as raised with its message read (see explicitCauses); otherwise the
+// implicit record from the rescue arm. Explicit causes have no raise site of
+// their own, so their Location is nil.
 func nextCause(raised *RaisedError) *RaisedError {
+	if raised.explicitCause != nil {
+		return raised.explicitCause
+	}
 	if obj, ok := raised.Value.(*Object); ok {
 		if cv, found := obj.lookupValue("cause"); found {
 			if causeObj, ok := cv.(*Object); ok {
@@ -203,7 +214,7 @@ func nextCause(raised *RaisedError) *RaisedError {
 func siblingSummary(err error) string {
 	var raised *RaisedError
 	if errors.As(err, &raised) {
-		return errorSummary(raised.Value)
+		return errorSummary(raised)
 	}
 	var sourceErr *SourceError
 	if errors.As(err, &sourceErr) {

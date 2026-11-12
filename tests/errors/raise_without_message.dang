@@ -1,0 +1,7 @@
+# Any value with an Error's shape can be raised, and only such a value: one
+# without a message can't.
+type Report {
+  summary: String!
+}
+
+raise Report("not an error")
