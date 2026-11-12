@@ -12,8 +12,8 @@ import (
 // Syntax highlighting for the REPL. Source is classified by tree-sitter in
 // pkg/dang (the same grammar and query the editors and docs use), and each
 // token class is colored from the ANSI 16-color palette so the theme follows
-// the user's terminal. Highlighting is best-effort: without CGo (or on a
-// parse failure) dang.Highlight returns no spans and code renders plain.
+// the user's terminal. Highlighting is best-effort: on a parse failure
+// dang.Highlight returns no spans and code renders plain.
 //
 // The class → color choices mirror the docs' Rosé Pine palette, collapsed
 // onto the 16 colors: the two blues (strings vs. functions) can't both be

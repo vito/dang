@@ -69,20 +69,18 @@ editing the Zed query. New capture names also need a case in `captureClass`
 in `pkg/dang/highlight_common.go` (kept in lockstep with
 `docs/go/highlight.go`).
 
-## Stale-parser guard (cgo build cache)
+## WebAssembly parser
 
-`pkg/dang/danglang` binds the generated parser by `#include`-ing
-`treesitter/src/parser.c` across package directories, and Go's build cache
-does **not** track that file. So the treesitter `go generate` step (run by
-`./hack/generate`) ends by writing `pkg/dang/danglang/sources_digest.go`, a
-hash of the included C sources: it changes the package, so Go rebuilds the
-binding. The treesitter generate/stale check fails if it's out of date.
-
-Running `tree-sitter generate` by hand skips the stamp, and cached builds
-then keep linking the *old* parser; the first symptom is the embedded
-highlight query failing to compile ("Invalid node type <new_token>") and the
-REPL silently rendering plain text (`TestHighlightCodeStylesAndPreservesText`
-fails). Re-run the treesitter `go generate` to fix it.
+Dang itself (error recovery, completion, REPL highlighting) and the docs
+site's Dang highlighting run the C tree-sitter runtime and grammar compiled
+to WebAssembly: `pkg/dang/tswasm/dang.wasm`, run by wazero, so nothing needs
+cgo. It is checked in and built by the `treesitter-wasm` Dagger generator
+(`pkg/dang/tswasm/build.sh`, with a pinned zig), whose stale check fails when
+`treesitter/src` changes without it. Regenerate it with
+`dagger generate treesitter-wasm` after `tree-sitter generate`. Until then,
+the embedded highlight query can fail to compile against the old grammar
+("node type" error) and the REPL silently renders plain text
+(`TestHighlightCodeStylesAndPreservesText` fails).
 
 ## Checklist
 
@@ -93,8 +91,8 @@ follows its "adding a keyword" checklist for the grammar and tests):
 1. [ ] Update `editors/zed/languages/dang/highlights.scm`
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`
 3. [ ] Update `editors/vscode/syntaxes/dang.tmLanguage.json`
-4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`
-   (and `sources_digest.go`, so the cgo parser binding is rebuilt)
+4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`,
+   and the `treesitter-wasm` generator for the parser Dang runs
 5. [ ] Add/refresh `treesitter/test/corpus/` and `editors/highlights/corpus/`
        cases for the new construct (`tree-sitter test --update`,
        `go test ./editors/ -run TestNeovimHighlights -update`)

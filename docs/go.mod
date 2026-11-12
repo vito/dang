@@ -3,19 +3,16 @@ module github.com/vito/dang/docs
 go 1.25.3
 
 require (
-	github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0
-	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2
-	github.com/tree-sitter/tree-sitter-bash v0.25.1
-	github.com/tree-sitter/tree-sitter-go v0.25.0
-	github.com/tree-sitter/tree-sitter-ruby v0.23.1
+	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73
 )
 
 require (
-	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/tetratelabs/wazero v1.11.0 // indirect
 )
 
 require (
@@ -25,19 +22,16 @@ require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/jessevdk/go-flags v1.6.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/segmentio/textio v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
-	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30 // indirect
 	github.com/vito/dang/v2 v2.0.0
 	github.com/yuin/goldmark v1.7.16 // indirect

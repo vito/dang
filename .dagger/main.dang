@@ -127,6 +127,50 @@ type Dang {
   }
 
   """
+  Build pkg/dang/tswasm/dang.wasm: the tree-sitter runtime and the Dang
+  grammar compiled to WebAssembly, which Dang parses with for error
+  recovery, completion and highlighting, so it builds without cgo. See
+  pkg/dang/tswasm/build.sh. zig is pinned, so the module is reproducible and
+  checked for staleness. It compiles the parser.c that ./hack/generate
+  produces, so one generate run covers a grammar change.
+  """
+  @generate
+  treesitterWasm: Changeset! {
+    let wasm = generated
+      .withDirectory("/opt/zig", zig)
+      .withEnvVariable("ZIG", "/opt/zig/zig")
+      .withExec(["sh", "pkg/dang/tswasm/build.sh"])
+      .file("pkg/dang/tswasm/dang.wasm")
+    source.withFile("pkg/dang/tswasm/dang.wasm", wasm).changes(source)
+  }
+
+  """
+  zig, which compiles the tree-sitter wasm module, at a pinned version and
+  checksum for the engine's architecture.
+  """
+  let zig: Directory! {
+    container
+      .from("alpine:3.22")
+      .withExec([
+        "sh", "-euc",
+        """
+        version=0.15.2
+        arch=$(uname -m)
+        case $arch in
+          x86_64) sum=02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239 ;;
+          aarch64) sum=958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f ;;
+          *) echo "no pinned zig for $arch" >&2; exit 1 ;;
+        esac
+        wget -qO /tmp/zig.tar.xz "https://ziglang.org/download/$version/zig-$arch-linux-$version.tar.xz"
+        echo "$sum  /tmp/zig.tar.xz" | sha256sum -c -
+        mkdir /zig
+        tar -xJf /tmp/zig.tar.xz -C /zig --strip-components=1
+        """,
+      ])
+      .directory("/zig")
+  }
+
+  """
   Run `go mod tidy` for each Go module in the repo.
   """
   tidy: Changeset! {
@@ -244,9 +288,10 @@ type Dang {
         "clang",
       ])
       .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
-      # cgo needs a C compiler: the docs build compiles the tree-sitter
-      # grammar (danglang) into its highlighter, and Wolfi ships clang, not
-      # gcc (Go's default CC).
+      # A C compiler for what still needs one: the race-enabled dang binary
+      # the LSP tests drive (-race needs cgo), and the tree-sitter CLI, which
+      # compiles the grammar to run its corpus tests. Dang itself and the docs
+      # build need none. Wolfi ships clang, not gcc (Go's default CC).
       .withEnvVariable("CC", "clang")
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")
       .withMountedCache("/go/build-cache", cacheVolume("go-build"))
@@ -330,6 +375,23 @@ type Test {
       .generated
       .withWorkdir("./treesitter")
       .withExec(["tree-sitter", "test"])
+      .sync
+
+    null
+  }
+
+  """
+  Vet everything without cgo, the docs module too, as the Dagger engine
+  builds Dang. Nothing needs cgo (tree-sitter runs as WebAssembly), so the
+  Go tests cover the engine's build already; this keeps a dependency that
+  needs cgo from creeping in.
+  """
+  nocgo: Void @check {
+    dang
+      .generated
+      .withEnvVariable("CGO_ENABLED", "0")
+      .withExec(["go", "vet", "./..."])
+      .withExec(["go", "-C", "docs", "vet", "./..."])
       .sync
 
     null

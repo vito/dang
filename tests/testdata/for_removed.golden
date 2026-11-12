@@ -7,4 +7,6 @@
  [2m  3 |   break[0m
  [2m  4 | }[0m
  [2m    |[0m
+ [2m    =[0m [1mhint:[0m iterate with `xs.each { x => ... }`, or repeat with `loop { ... }` and `break`
+ [2m    =[0m [1mdocs:[0m https://danglang.org/control-flow#loop
 

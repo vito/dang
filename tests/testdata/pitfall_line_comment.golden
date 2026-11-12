@@ -1,0 +1,12 @@
+[1m[31mError:[0m syntax error: `//` is not a comment
+  [2m[34m--> errors/pitfall_line_comment.dang:2:17[0m
+ [2m    |[0m
+ [2m  1 | # Dang comments start with `#`; `//` is a parse error that says so.[0m
+ [2m[34m[1m  2 | [0mlet retries = 3 // before giving up
+[2m                       [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | print(retries)[0m
+ [2m  4 | [0m
+ [2m    |[0m
+ [2m    =[0m [1mhint:[0m comments start with `#`
+ [2m    =[0m [1mdocs:[0m https://danglang.org/syntax#comments
+

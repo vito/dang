@@ -893,7 +893,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 		scheme, found := env.SchemeOf(s.Name)
 		if !found {
-			return nil, fmt.Errorf("%q not found", s.Name)
+			return nil, &nameNotFoundError{Name: s.Name}
 		}
 		if err := checkDefaultName(ctx, env, s.Name); err != nil {
 			return nil, err

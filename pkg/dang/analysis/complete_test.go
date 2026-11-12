@@ -29,9 +29,7 @@ func TestCompleteListsTheSameMembers(t *testing.T) {
 			pos := analysis.Pos{Line: 1, Column: len(input) + 1}
 			got := analysis.Complete(ctx, scope, input, pos)
 			want := dang.Complete(ctx, scope, input, 0, len(input))
-			if len(want.Items) == 0 {
-				t.Skip("no completions without cgo")
-			}
+			require.NotEmpty(t, want.Items)
 			require.Equal(t, want.ReplaceFrom, got.ReplaceFrom)
 			require.Equal(t, labels(want.Items), labels(got.Items))
 		})
@@ -43,9 +41,6 @@ func TestCompleteDocumentsBuiltins(t *testing.T) {
 	scope := testScope(t, membersSource)
 
 	got := analysis.Complete(ctx, scope, "Random.", analysis.Pos{Line: 1, Column: len("Random.") + 1})
-	if len(got.Items) == 0 {
-		t.Skip("no completions without cgo")
-	}
 	for _, item := range got.Items {
 		if item.Label == "int" {
 			require.NotEmpty(t, item.Documentation, "static builtins are documented from their definitions")
@@ -60,9 +55,6 @@ func TestCompleteNamespaceMembers(t *testing.T) {
 	scope := testScope(t, membersSource)
 
 	got := analysis.Complete(ctx, scope, "Test.", analysis.Pos{Line: 1, Column: len("Test.") + 1})
-	if len(got.Items) == 0 {
-		t.Skip("no completions without cgo")
-	}
 	require.Contains(t, labels(got.Items), "serverInfo")
 	// dang.Complete offered Test.Path, the prelude's Path.
 	require.NotContains(t, labels(got.Items), "Path", "the prelude an import sees isn't its members")
@@ -77,9 +69,6 @@ pub larger[k: Ordered](x: k!, y: k!): k! {
 `)
 
 	got := analysis.Complete(ctx, scope, "larg", analysis.Pos{Line: 1, Column: len("larg") + 1})
-	if len(got.Items) == 0 {
-		t.Skip("no completions without cgo")
-	}
 	for _, item := range got.Items {
 		if item.Label == "larger" {
 			require.Contains(t, item.Detail, "[k: Ordered]")

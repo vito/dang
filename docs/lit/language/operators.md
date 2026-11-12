@@ -229,10 +229,11 @@ import Demo
 [primaryUser == user(id: "User:1"), primaryUser.id == user(id: "User:1").id]
 ```
 
-## Logical
+## Logical {#logical}
 
 `and` and `or` short-circuit, so the right side runs only when it's needed.
-Both return `Boolean!`, and `!` negates a `Boolean!`:
+Both return `Boolean!`, and `!` negates a `Boolean!`. They're keywords: there
+is no `&&` or `||`.
 
 ```dang
 [false and 1 / 0 == 0, !true]

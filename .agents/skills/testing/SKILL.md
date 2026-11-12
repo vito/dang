@@ -1,6 +1,6 @@
 ---
 name: testing
-description: How to run tests, add error tests, update golden files, and report nice errors in Dang. Use when running or writing tests.
+description: How to run tests, add error tests, update golden files, report nice errors, and add pitfall diagnostics (hints for common mistakes) in Dang. Use when running or writing tests, or improving error messages.
 ---
 
 # Testing & Error Reporting
@@ -107,6 +107,40 @@ func (n *MyNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
     })
 }
 ```
+
+## Pitfalls
+
+A pitfall is a common mistake Dang recognizes (`//` comments, `&&`, `for`
+loops, truthiness, ...). Its diagnostic carries a one-line hint and a docs
+link, shown by the CLI (`= hint:` / `= docs:` under the snippet),
+`analysis.Diagnostic` (`Pitfall`, `Hint`, `Docs`; `Format` adds `hint:` /
+`docs:` lines) and the LSP (code, code description, hint in the message).
+
+The registry is `Pitfalls` in `pkg/dang/pitfalls.go`. Each `Pitfall` has an
+ID, `Hint`, `Docs` (`docsURL(page, tag)`: a `{#tag}` heading on the docs page
+tagged `{#page}`), and one way to be detected (or both):
+
+- `syntax`: called at a parse failure with the source and the PEG parser's
+  failure offset (both builds, before tree-sitter). It returns the message
+  that replaces the parser's, and the span to report. `codeMask` tells code
+  from comments and string text (interpolations count as code), so a `//` or
+  `&&` inside a string never matches.
+- `typeErr`: called by `NewInferError` with the inner error and node. Match on
+  a typed error (e.g. `notBooleanErr`, `nameNotFoundError`), not message text;
+  the message is kept and the hint added.
+
+Detection must be precise: a hint on the wrong code misleads, which is worse
+than none. To add one:
+
+1. Add the `Pitfall` to `pitfalls.go` and to `Pitfalls`, with its detector. Tag
+   the docs heading it links to if it has no `{#tag}` yet.
+2. Add rows to `TestPitfalls` (`pkg/dang/analysis/pitfalls_test.go`): source
+   in, rendered diagnostics out, plus negative rows — similar-looking code,
+   valid or not, that must not match. `TestPitfallsAreDocumented` checks the
+   docs link resolves to a heading in `docs/lit`.
+
+A golden fixture under `tests/errors/` shows the CLI rendering, but one per
+kind is enough; the table is where cases go.
 
 ## PEG Grammar
 

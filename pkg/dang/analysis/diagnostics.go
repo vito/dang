@@ -51,6 +51,23 @@ type Diagnostic struct {
 	// name names, or what could have been meant instead. Only found with
 	// Options.DiagnosticContext.
 	Context *DiagnosticContext `json:"context,omitempty"`
+
+	// Pitfall, when the diagnostic is a common mistake Dang recognizes
+	// (see dang.Pitfall), is its ID, e.g. "line-comment"; Hint says what to
+	// write instead, and Docs links the docs about it.
+	Pitfall string `json:"pitfall,omitempty"`
+	Hint    string `json:"hint,omitempty"`
+	Docs    string `json:"docs,omitempty"`
+}
+
+// setPitfall notes the pitfall p on d, if any.
+func (d *Diagnostic) setPitfall(p *dang.Pitfall) {
+	if p == nil {
+		return
+	}
+	d.Pitfall = p.ID
+	d.Hint = p.Hint
+	d.Docs = p.Docs
 }
 
 func (d Diagnostic) String() string {
@@ -116,6 +133,7 @@ func errorDiagnostics(err error, code Code, fallback string, pathOf func(filenam
 		// converted to a *dang.SourceError.
 		_ = errors.As(err, &inferErr)
 	}
+	d.setPitfall(dang.PitfallOf(err))
 
 	if loc != nil {
 		if loc.Filename != "" {

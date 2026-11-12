@@ -49,11 +49,11 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 	migrating := from.orCurrent() != to.orCurrent()
 	migrated, err := formatSource(filename, source, from, to, migrating)
 	if err != nil {
-		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, EnhanceParseError(err, filename, source))
+		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, enhanceParseError(err, filename, source, from))
 	}
 	got, err := Parse(filename, []byte(migrated), WithVersion(to))
 	if err != nil {
-		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, EnhanceParseError(err, filename, []byte(migrated)))
+		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, enhanceParseError(err, filename, []byte(migrated), to))
 	}
 	if migrating {
 		// Compare against the source formatted in its own version, so that

@@ -1,14 +1,12 @@
-//go:build cgo
-
 package dangdocs
 
 import (
+	"context"
 	"strings"
 	"testing"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/vito/dang/v2/pkg/dang"
-	"github.com/vito/dang/v2/pkg/dang/danglang"
+	"github.com/vito/dang/v2/pkg/dang/tswasm"
 )
 
 // classRun is a maximal run of bytes sharing one token class, as renderCode
@@ -134,23 +132,16 @@ func TestSignaturesAreValidDeclarations(t *testing.T) {
 		t.Fatal("no builtins registered")
 	}
 
-	parser := tree_sitter.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(danglang.Language()); err != nil {
-		t.Fatalf("set language: %v", err)
-	}
-
 	for _, d := range defs {
 		sig := signature(d, "")
 		src := []byte(signaturePrefix + sig + signatureSuffix)
-		tree := parser.Parse(src, nil)
-		if tree == nil {
-			t.Fatalf("parse %q: no tree", sig)
+		root, err := tswasm.Parse(context.Background(), src, tswasm.PruneErrorFree)
+		if err != nil {
+			t.Fatalf("parse %q: %v", sig, err)
 		}
-		if n := errorBytes(tree.RootNode(), 0, len(src)); n > 0 {
+		if n := errorBytes(root, 0, len(src)); n > 0 {
 			t.Errorf("signature %q is not a valid declaration (%d error bytes)", sig, n)
 		}
-		tree.Close()
 	}
 }
 
@@ -196,7 +187,9 @@ func TestProgramSnippet(t *testing.T) {
 	assertClass(t, runs, "String", "tok-type")
 }
 
-// ```sh fences highlight with the bash grammar (under any of its aliases).
+// ```sh fences highlight as shell (under any of its aliases), colored the way
+// the tree-sitter bash query colored them: commands as functions, flags in
+// the number color, variable names as properties.
 func TestBashHighlighting(t *testing.T) {
 	runs := classify(t, "sh", "export GITHUB_TOKEN=\"hunter2\" # so secret\n")
 	assertClass(t, runs, "export", "tok-keyword")
@@ -207,11 +200,20 @@ func TestBashHighlighting(t *testing.T) {
 	runs = classify(t, "shell", "dagger init --sdk=dang\n")
 	assertClass(t, runs, "dagger", "tok-function")
 	assertClass(t, runs, "--sdk=dang", "tok-number")
+
+	// A command after leading assignments is still a command; a keyword
+	// as an argument is just a word; a redirection's & is no operator.
+	runs = classify(t, "sh", "CGO_ENABLED=0 go build ./... 2>&1 && echo done\n")
+	assertClass(t, runs, "CGO_ENABLED", "tok-property")
+	assertClass(t, runs, "go", "tok-function")
+	assertClass(t, runs, "&&", "tok-operator")
+	assertClass(t, runs, "echo", "tok-function")
+	assertClass(t, runs, "done", "")
 }
 
 // ```sh fences holding terminal transcripts highlight each "$ "-prompted
 // command as bash and leave program output plain, rather than garbling the
-// whole transcript through one bash parse.
+// whole transcript as one script.
 func TestShellTranscriptHighlighting(t *testing.T) {
 	runs := classify(t, "sh", "$ export GITHUB_TOKEN=\"$(gh auth token)\"\n$ dang\nWelcome to Dang REPL v0.1.0\n")
 	assertClass(t, runs, "export", "tok-keyword")
@@ -224,8 +226,8 @@ func TestShellTranscriptHighlighting(t *testing.T) {
 	assertClass(t, runs, "dang", "tok-function")
 }
 
-// ```toml fences highlight with the toml grammar; keys stay in the property
-// color the site has always used for them.
+// ```toml fences highlight as TOML; keys stay in the property color the site
+// has always used for them.
 func TestTomlHighlighting(t *testing.T) {
 	runs := classify(t, "toml", "[imports.GitHub]\nendpoint = \"https://api.github.com/graphql\"\nretries = 3\ndagger = true\n")
 	assertClass(t, runs, "imports", "tok-property")
@@ -236,8 +238,8 @@ func TestTomlHighlighting(t *testing.T) {
 	assertClass(t, runs, "true", "tok-number")
 }
 
-// Languages with no registered grammar report nil, which renderCode renders
-// as plain code.
+// Languages that aren't highlighted report nil, which renderCode renders as
+// plain code.
 func TestUnknownLanguagePlain(t *testing.T) {
 	for _, language := range []string{"", "graphql", "console"} {
 		if classes := classifyCode(language, "anything at all"); classes != nil {

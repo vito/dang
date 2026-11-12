@@ -38,6 +38,83 @@ func (p *parserError) Unwrap() error {
 	return p.Inner
 }
 
+// parseFailureOffset returns the byte offset a parse failed at: the furthest
+// the parser got, where it found nothing it expected. ok is false for any
+// other error, like a rejectedSyntax.
+func parseFailureOffset(pegErr error) (int, bool) {
+	var list errList
+	if !errors.As(pegErr, &list) {
+		return 0, false
+	}
+	for _, err := range list {
+		var perr *parserError
+		if errors.As(err, &perr) && perr.Inner != nil &&
+			strings.HasPrefix(perr.Inner.Error(), "no match found") {
+			return perr.pos.offset, true
+		}
+	}
+	return 0, false
+}
+
+// unexpectedSyntaxError reports a parse failure as what the parser found
+// where it failed: `syntax error: unexpected 'x'` at the token there, in place
+// of the parser's own message, which lists every token it would have taken.
+// It's the diagnosis of last resort, when no pitfall matches and tree-sitter
+// (absent on GOOS=js and with -tags dang_nowasm) has none.
+func unexpectedSyntaxError(pegErr error, filename string, source []byte) (*SourceError, bool) {
+	at, ok := parseFailureOffset(pegErr)
+	if !ok || at > len(source) {
+		return nil, false
+	}
+	for at < len(source) && (source[at] == ' ' || source[at] == '\t') {
+		at++
+	}
+	// The parser can fail inside a word (`{ ok: true }` reads `t` as a type
+	// variable): report the whole word. Likewise `//`, at its second slash.
+	at = wordStart(source, at)
+	if at > 0 && at < len(source) && source[at-1] == '/' && source[at] == '/' {
+		at--
+	}
+	var msg string
+	end := at
+	switch {
+	case at == len(source):
+		msg = "unexpected end of file"
+	case source[at] == '\n' || source[at] == '\r':
+		msg = "unexpected end of line"
+	default:
+		end = at + unexpectedTokenLen(source[at:])
+		msg = fmt.Sprintf("unexpected '%s'", source[at:end])
+	}
+	return NewSourceError(fmt.Errorf("syntax error: %s", msg), spanLocation(filename, source, at, end), string(source)), true
+}
+
+// twoCharTokens are the tokens of two punctuation characters reported whole
+// by unexpectedSyntaxError, Dang's own and other languages'.
+var twoCharTokens = []string{
+	"&&", "||", "//", "=>", "->", "==", "!=", "<=", ">=", "??", "::",
+	"+=", "-=", "++", "--", "**", "{{", "}}", "${",
+}
+
+// unexpectedTokenLen is the length in bytes of the token src starts with: a
+// word, a two-character operator, or a character.
+func unexpectedTokenLen(src []byte) int {
+	if isIdentByte(src[0]) {
+		n := 1
+		for n < len(src) && isIdentByte(src[n]) {
+			n++
+		}
+		return n
+	}
+	for _, tok := range twoCharTokens {
+		if bytes.HasPrefix(src, []byte(tok)) {
+			return len(tok)
+		}
+	}
+	_, n := utf8.DecodeRune(src)
+	return n
+}
+
 // rejectedSyntax is source the grammar matched but that is still invalid,
 // like an integer too large for an Int or a second block parameter.
 type rejectedSyntax struct {

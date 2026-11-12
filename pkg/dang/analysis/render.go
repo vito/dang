@@ -42,16 +42,26 @@ func Render(diags []Diagnostic, opts RenderOptions) string {
 }
 
 // Format renders the diagnostic as `path:line:col: severity: message`, then
-// its Context, if any, on indented lines:
+// a pitfall's hint and docs link and its Context, if any, on indented lines:
 //
 //	main.dang:2:1: error: list does not have method "findFirst"
 //	  closest: find { item: a => Boolean! }: a  returns the first element ...
 //	  [String!]! has 25 members: all any contains dropFirst ...
 //
+//	main.dang:1:11: error: syntax error: `//` is not a comment
+//	  hint: comments start with `#`
+//	  docs: https://danglang.org/syntax#comments
+//
 // Names are listed only up to opts.MaxNames, and only their names.
 func (d Diagnostic) Format(opts RenderOptions) string {
 	var out strings.Builder
 	out.WriteString(d.String())
+	if d.Hint != "" {
+		out.WriteString("\n  hint: " + d.Hint)
+	}
+	if d.Docs != "" {
+		out.WriteString("\n  docs: " + d.Docs)
+	}
 	c := d.Context
 	if c == nil {
 		return out.String()

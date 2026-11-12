@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build !js && !dang_nowasm
 
 package dang
 
@@ -8,8 +8,7 @@ import (
 	"sort"
 	"sync"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/vito/dang/v2/pkg/dang/danglang"
+	"github.com/vito/dang/v2/pkg/dang/tswasm"
 )
 
 // highlights.scm is the same tree-sitter highlight query the editors and the
@@ -21,45 +20,27 @@ import (
 //go:embed highlights.scm
 var highlightsQuery string
 
-var (
-	highlightQuery     *tree_sitter.Query
-	highlightCaptures  []string
-	highlightQueryOnce sync.Once
-	highlightQueryErr  error
-)
-
-func compileHighlightQuery() {
-	q, err := tree_sitter.NewQuery(danglang.Language(), highlightsQuery)
-	if err != nil {
-		highlightQueryErr = err
-		return
-	}
-	highlightQuery = q
-	highlightCaptures = q.CaptureNames()
-}
+var compileHighlightQuery = sync.OnceValues(func() (*tswasm.Query, error) {
+	return tswasm.NewQuery(highlightsQuery)
+})
 
 // Highlight classifies source with tree-sitter and returns styling spans in
 // rune offsets, coalesced into maximal runs of one class. Bytes covered by no
 // capture (or by captures that map to no class) produce no span. It degrades
 // gracefully: a parse/query failure yields no spans, so callers render plain.
 func Highlight(source string) []HighlightSpan {
-	highlightQueryOnce.Do(compileHighlightQuery)
-	if highlightQueryErr != nil {
-		slog.Debug("highlight query failed to compile", "error", highlightQueryErr)
+	query, err := compileHighlightQuery()
+	if err != nil {
+		slog.Debug("highlight query failed to compile", "error", err)
 		return nil
 	}
 
 	src := []byte(source)
-
-	// tree-sitter parsers are not thread-safe; serialize access (shared with
-	// completion's parser).
-	tsMu.Lock()
-	tree := tsParser.Parse(src, nil)
-	tsMu.Unlock()
-	if tree == nil {
+	captures, err := queryEditedTree(query, src)
+	if err != nil {
+		slog.Debug("highlighting failed", "error", err)
 		return nil
 	}
-	defer tree.Close()
 
 	// Per-byte class, then narrower (and later) captures override wider ones,
 	// mirroring how the editors and docs resolve the same query.
@@ -68,23 +49,15 @@ func Highlight(source string) []HighlightSpan {
 		class      string
 	}
 	var spans []span
-
-	cursor := tree_sitter.NewQueryCursor()
-	defer cursor.Close()
-	captures := cursor.Captures(highlightQuery, tree.RootNode(), src)
-	for {
-		match, idx := captures.Next()
-		if match == nil {
-			break
-		}
-		c := match.Captures[idx]
-		class := captureClass(highlightCaptures[c.Index])
+	names := query.CaptureNames()
+	for _, c := range captures {
+		class := captureClass(names[c.Index])
 		if class == "" {
 			continue
 		}
 		spans = append(spans, span{
-			start: int(c.Node.StartByte()),
-			end:   int(c.Node.EndByte()),
+			start: int(c.StartByte),
+			end:   int(c.EndByte),
 			class: class,
 		})
 	}
