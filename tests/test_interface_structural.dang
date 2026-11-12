@@ -54,6 +54,7 @@ pick(c: Boolean!): String! {
     q: Person! => "person " + q.name
   }
 }
+
 assert { pick(true) == "pet Sam" }
 assert { pick(false) == "person Al" }
 
