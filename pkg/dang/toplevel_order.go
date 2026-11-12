@@ -28,14 +28,21 @@ import (
 //     too; `box.n = v` writes `box`). Only statement code may read W: a
 //     declaration ran before every statement, and a function's, method's or
 //     type's code may run while declarations are initialized, so either could
-//     see a value from before the write.
+//     see a value from before the write. One exception: a declaration's
+//     initializer may read a binding of W directly (not in a block argument,
+//     `{{ }}` field, or function or type body written in it) when the read
+//     comes before every write of the binding, all in its own file. It sees
+//     the value from before the writes, as its place in the source says,
+//     since initializers write no top-level binding (rule 1): a snapshot,
+//     `let before = ws; ws = ws.withFoo`.
 //
 // Both are syntactic. W lives on the effect solver, so it spans every file of
 // a directory module, and, since each REPL, literate-doc or playground entry
 // is inferred with a solver of its own, one entry. Those sessions evaluate
 // each entry's forms eagerly, in source order, so neither hazard arises
 // there; the rules still apply, so what a session accepts, a script accepts
-// too.
+// too, and runs to the same values: a snapshot reads before every write in
+// either order.
 
 // topForm is the top-level form being inferred: a declaration's initializer
 // (decl is its name) or a statement (decl == ""), of the module whose
@@ -43,25 +50,31 @@ import (
 type topForm struct {
 	decl string
 	top  TypeScope
+	// frame is the effect frame a declaration's initializer starts in: a
+	// read under no other frame is written directly in the initializer.
+	frame *effFrame
 }
 
 // topOrder holds what rule 2 needs once everything is inferred: function and
 // type bodies are inferred before statements.
 type topOrder struct {
 	// written is W: each binding some top-level statement writes, with its
-	// first write.
-	written map[effTarget]Node
+	// writes, first inferred first.
+	written map[effTarget][]Node
 	// reads are the reads of top-level bindings outside statement code.
 	reads []outsideRead
 }
 
 // outsideRead is a read (at node) of target from code other than top-level
-// statements: reader names that code, kind says what it is.
+// statements: reader names that code, kind says what it is. direct marks a
+// read written directly in a declaration's initializer, which runs where
+// the initializer does.
 type outsideRead struct {
 	target effTarget
 	node   Node
 	reader string
 	kind   readerKind
+	direct bool
 }
 
 type readerKind int
@@ -133,7 +146,7 @@ func withTopDecl(ctx context.Context, env hm.Env, form Node) context.Context {
 	if topOrderFrom(ctx) == nil || !ok || !topLevelEnv(ctx, env) {
 		return ctx
 	}
-	return context.WithValue(ctx, topFormKey{}, &topForm{decl: field.Name.Name, top: topLevelFrameFrom(ctx)})
+	return context.WithValue(ctx, topFormKey{}, &topForm{decl: field.Name.Name, top: topLevelFrameFrom(ctx), frame: effFrameFrom(ctx)})
 }
 
 // withTopStatement marks ctx as inferring a top-level statement (in env).
@@ -168,11 +181,9 @@ func noteStatementWrite(ctx context.Context, target effTarget, node Node) {
 	}
 	o := topOrderFrom(ctx)
 	if o.written == nil {
-		o.written = map[effTarget]Node{}
+		o.written = map[effTarget][]Node{}
 	}
-	if _, ok := o.written[target]; !ok {
-		o.written[target] = node
-	}
+	o.written[target] = append(o.written[target], node)
 }
 
 // noteTopRead records a read (at node) of name, resolved in env, from code
@@ -191,6 +202,7 @@ func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 	r := outsideRead{target: effTarget{frame: frame, name: name}, node: node}
 	if f != nil && !inFunctionBody(ctx) {
 		r.reader, r.kind = f.decl, readerDecl
+		r.direct = effFrameFrom(ctx) == f.frame
 	} else {
 		r.reader, r.kind = "this code", readerFunction
 		for fr := effFrameFrom(ctx); fr != nil; fr = fr.parent {
@@ -208,16 +220,24 @@ func noteTopRead(ctx context.Context, env hm.Env, name string, node Node) {
 }
 
 // check enforces rule 2: it reports reads of W outside statement code, once
-// per reader and binding.
+// per reader and binding, but for a declaration's direct reads before every
+// write.
 func (o *topOrder) check(errs *effErrors) {
 	if len(o.written) == 0 {
 		return
 	}
 	seen := map[string]bool{}
 	for _, r := range o.reads {
-		w, ok := o.written[r.target]
+		writes, ok := o.written[r.target]
 		if !ok {
 			continue
+		}
+		w := writes[0]
+		if r.direct {
+			w = firstWriteNotAfter(r.node, writes)
+			if w == nil {
+				continue
+			}
 		}
 		key := fmt.Sprintf("%d:%s:%s", r.kind, r.reader, r.target.name)
 		if seen[key] {
@@ -226,6 +246,20 @@ func (o *topOrder) check(errs *effErrors) {
 		seen[key] = true
 		errs.add(r.node, outsideReadMessage(r, w))
 	}
+}
+
+// firstWriteNotAfter returns the first of writes that doesn't come after
+// read in read's file, or nil when they all do.
+func firstWriteNotAfter(read Node, writes []Node) Node {
+	rl := read.GetSourceLocation()
+	for _, w := range writes {
+		wl := w.GetSourceLocation()
+		if rl == nil || wl == nil || wl.Filename != rl.Filename ||
+			wl.Line < rl.Line || (wl.Line == rl.Line && wl.Column <= rl.Column) {
+			return w
+		}
+	}
+	return nil
 }
 
 func outsideReadMessage(r outsideRead, write Node) string {

@@ -356,7 +356,13 @@ with "must be pure" reasons once discovered).
    `noteStatementWrite`; `box.n = v` writes `box`) may be read only by
    statement code — not by an initializer, nor by a function, method or type
    body, which may run during initialization (`noteTopRead` from
-   `Symbol.Infer`, checked by the solver once statements are inferred). A
+   `Symbol.Infer`, checked by the solver once statements are inferred). The
+   one exception is a snapshot: an initializer's *direct* read (under the
+   effect frame it started in — no block argument, `{{ }}` field or nested
+   function/type body; `topForm.frame`) that comes before every write of the
+   binding, all in its own file (`firstWriteNotAfter`). It sees the value
+   from before the writes whether declarations run first (scripts) or in
+   source order (REPL, `Session`), so the two still agree. A
    top-level form is marked a declaration or statement by
    `withTopDecl`/`withTopStatement`. W lives on the solver: one directory
    module, or one REPL/literate entry.

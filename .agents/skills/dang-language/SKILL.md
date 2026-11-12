@@ -31,7 +31,8 @@ Four ideas the rest of the language hangs on:
   where they were written. The compiler rejects any write that could leak out
   of the scope that owns it: functions, methods and top-level declarations'
   initializers can't write top-level bindings, only top-level statements read
-  what top-level statements write, nothing can write statics, closures that
+  what top-level statements write (bar a declaration's snapshot taken before
+  every write), nothing can write statics, closures that
   write their scope can't be stored or returned, `{{ }}` fields can't write
   outside themselves, and defaults (field defaults, `new()` param defaults)
   see only values, never `self` or methods. See `reference/objects.md`.

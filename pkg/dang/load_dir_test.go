@@ -178,6 +178,41 @@ func TestSessionAccumulatesAndLeavesModuleAlone(t *testing.T) {
 	require.ErrorContains(t, err, "already evaluated")
 }
 
+// A declaration may snapshot a binding statements write later, whether the
+// declarations run before every statement (a module's top level) or in
+// source order (a snippet), with the same values either way.
+func TestSnapshotBeforeWritesInScriptsAndSessions(t *testing.T) {
+	ctx := context.Background()
+	src := "let x = 1\nlet before = x\nx = 2\n"
+
+	// As a module's top level, run eagerly: declarations, then statements.
+	script, err := LoadDir(ctx, writeModule(t, map[string]string{"main.dang": src}), LoadOptions{Eager: true})
+	require.NoError(t, err)
+	defer script.Close()
+	val, _, err := script.Eval(ctx, "", "[before, x]")
+	require.NoError(t, err)
+	require.Equal(t, "[1, 2]", Repr(val))
+
+	// As a snippet, in source order.
+	m, err := LoadDir(ctx, writeModule(t, map[string]string{"ws.dang": "pub ws: Int! = 1\n"}), LoadOptions{})
+	require.NoError(t, err)
+	defer m.Close()
+	val, _, err = m.Eval(ctx, "", src+"[before, x]")
+	require.NoError(t, err)
+	require.Equal(t, "[1, 2]", Repr(val))
+
+	// Snapshotting a module binding a snippet reassigns.
+	val, _, err = m.Eval(ctx, "", "let before = ws\nws = ws + 1\nws = ws + 1\n[before, ws]")
+	require.NoError(t, err)
+	require.Equal(t, "[1, 3]", Repr(val))
+
+	// A read after a write is still rejected, in either.
+	_, err = m.Check(ctx, "", "let x = 1\nx = 2\nlet after = x\n")
+	require.ErrorContains(t, err, "`after`'s initializer reads `x`, which a top-level statement writes (line 2)")
+	_, err = LoadDir(ctx, writeModule(t, map[string]string{"main.dang": "let x = 1\nx = 2\nlet after = x\n"}), LoadOptions{})
+	require.ErrorContains(t, err, "`after`'s initializer reads `x`, which a top-level statement writes (line 2)")
+}
+
 func TestSessionFailedSnippetsLeaveNothing(t *testing.T) {
 	// Not auto-imported: snippets import it.
 	ctx, _ := fakeGraphQLContext(t, false)

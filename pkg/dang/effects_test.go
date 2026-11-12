@@ -379,6 +379,32 @@ func TestRunDirStatementStateAcrossFiles(t *testing.T) {
 	require.ErrorContains(t, err, "`avg`'s initializer reads `sum`, which a top-level statement writes (a.dang:2)")
 }
 
+// A declaration may read a binding of W before its writes only when they are
+// all in its own file: across files there is no source order to go by.
+func TestRunDirSnapshotAcrossFiles(t *testing.T) {
+	t.Run("writes in its own file", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte("pub sum: Int! = 0\npub before = sum\nsum = 5\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte("pub other: Int! = 1\n"), 0o600))
+		ctx := context.Background()
+		scope, err := RunDir(ctx, dir, false)
+		require.NoError(t, err)
+		before, _, err := scope.Lookup(ctx, "before")
+		require.NoError(t, err)
+		require.Equal(t, IntValue{Val: 0}, before)
+		sum, _, err := scope.Lookup(ctx, "sum")
+		require.NoError(t, err)
+		require.Equal(t, IntValue{Val: 5}, sum)
+	})
+	t.Run("a write in another file", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte("pub sum: Int! = 0\nlet before = sum\nsum = 5\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte("sum = 7\n"), 0o600))
+		_, err := RunDir(context.Background(), dir, false)
+		require.ErrorContains(t, err, "`before`'s initializer reads `sum`, which a top-level statement writes (b.dang:1)")
+	})
+}
+
 // An imported Dang module is checked the same wherever the import is: an
 // import written inside a top-level statement doesn't make the module's
 // functions statement code.
@@ -692,13 +718,89 @@ func TestTopLevelStatementState(t *testing.T) {
 			want: "`Box.get` reads `sum`, which a top-level statement writes (line 6)",
 		},
 		{
-			name: "W is a set: a statement's position doesn't matter",
+			name: "a snapshot: a direct read before every write",
 			src: `
-				let p = null
-				let s = p
-				p = 1
+				let x = 1
+				let before = x
+				x = 2
+				x += 1
+				[before, x]
 			`,
-			want: "`s`'s initializer reads `p`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "a snapshot on the line of a later write",
+			src: `
+				let x = 1
+				let before = x; x = 2
+			`,
+		},
+		{
+			name: "a read between writes",
+			src: `
+				let x = 1
+				x = 2
+				let mid = x
+				x = 3
+			`,
+			want: "`mid`'s initializer reads `x`, which a top-level statement writes (line 3)",
+		},
+		{
+			name: "a read after the write, though its declaration hoists",
+			src: `
+				let x = 1
+				let s = after
+				x = 2
+				let after = x
+			`,
+			want: "`after`'s initializer reads `x`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "a read before the write in a block argument",
+			src: `
+				let x = 1
+				let before = [1].map { y => x + y }
+				x = 2
+			`,
+			want: "`before`'s initializer reads `x`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "a read before the write in a {{ }} field",
+			src: `
+				let x = 1
+				let before = {{a: x}}
+				x = 2
+			`,
+			want: "`before`'s initializer reads `x`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "a read before the write in a function",
+			src: `
+				let x = 1
+				readX: Int! { x }
+				x = 2
+			`,
+			want: "`readX` reads `x`, which a top-level statement writes (line 4)",
+		},
+		{
+			name: "a read before the write in a nested function",
+			src: `
+				let x = 1
+				let before = {
+					readX: Int! { x }
+					readX
+				}
+				x = 2
+			`,
+			want: "reads `x`, which a top-level statement writes (line 7)",
+		},
+		{
+			name: "a read before the write in a field default",
+			src: `
+				let x = 1
+				type Box { v: Int! = x }
+				x = 2
+			`,
+			want: "the body of `Box` reads `x`",
 		},
 		{
 			name: "assignment after a top-level guard",

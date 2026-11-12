@@ -209,6 +209,29 @@ double(n: Int!): Int! { n * 2 }
 double(sum)
 ```
 
+A declaration can still take a snapshot: it may read a binding statements
+write when the read is written directly in its initializer, not in a block
+argument, `{{ }}` field or function, and comes before every write, in the same
+file. It sees the value from before the writes, just as its place in the source
+says:
+
+```dang
+let count = 1
+let first = count
+count += 1
+count += 1
+[first, count]
+```
+
+Read after a write, the same declaration would be misleading, so it is still
+an error:
+
+```dang-failure
+let total = 1
+total += 1
+let latest = total
+```
+
 Statics, the members of a type's `self { }` block (see [#static-members]), are
 immutable from everywhere. A static method's writes to its own `self` stay in
 its copy, like any method's.
