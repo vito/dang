@@ -71,27 +71,31 @@ in `pkg/dang/highlight_common.go` (kept in lockstep with
 
 ## Stale-parser guard (cgo build cache)
 
-`pkg/dang/danglang` binds the generated parser by `#include`-ing
-`treesitter/src/parser.c` across package directories, and Go's build cache
-does **not** track that file. So the treesitter `go generate` step (run by
-`./hack/generate`) ends by writing `pkg/dang/danglang/sources_digest.go`, a
-hash of the included C sources: it changes the package, so Go rebuilds the
-binding. The treesitter generate/stale check fails if it's out of date.
+The docs site's highlighter binds the generated parser through cgo:
+`docs/go/danglang` `#include`s `treesitter/src/parser.c` across package
+directories, and Go's build cache does **not** track that file. So the
+treesitter `go generate` step (run by `./hack/generate`) ends by writing
+`docs/go/danglang/sources_digest.go`, a hash of the included C sources: it
+changes the package, so Go rebuilds the binding. The treesitter
+generate/stale check fails if it's out of date.
 
-Running `tree-sitter generate` by hand skips the stamp, and cached builds
-then keep linking the *old* parser; the first symptom is the embedded
-highlight query failing to compile ("Invalid node type <new_token>") and the
-REPL silently rendering plain text (`TestHighlightCodeStylesAndPreservesText`
-fails). Re-run the treesitter `go generate` to fix it.
+Running `tree-sitter generate` by hand skips the stamp, and cached docs
+builds then keep linking the *old* parser. Re-run the treesitter
+`go generate` to fix it.
 
-## WebAssembly parser (builds without cgo)
+## WebAssembly parser
 
-Builds without cgo (the Dagger engine's) diagnose parse errors with the same
-C runtime and grammar compiled to WebAssembly: `pkg/dang/tswasm/dang.wasm`,
-run by wazero. It is checked in and built by the `treesitter-wasm` Dagger
-generator (`pkg/dang/tswasm/build.sh`, with a pinned zig), whose stale check
-fails when `treesitter/src` changes without it. Regenerate it with
-`dagger generate treesitter-wasm` after `tree-sitter generate`.
+Dang itself (error recovery, completion, REPL highlighting) runs the same C
+runtime and grammar compiled to WebAssembly: `pkg/dang/tswasm/dang.wasm`, run
+by wazero, so it needs no cgo. It is checked in and built by the
+`treesitter-wasm` Dagger generator (`pkg/dang/tswasm/build.sh`, with a pinned
+zig), whose stale check fails when `treesitter/src` changes without it.
+Regenerate it with `dagger generate treesitter-wasm` after
+`tree-sitter generate`. Until then, the embedded highlight query can fail to
+compile against the old grammar ("node type" error) and the REPL silently
+renders plain text (`TestHighlightCodeStylesAndPreservesText` fails).
+`docs/go/danglang`'s parity tests hold the cgo and wasm parsers to the same
+trees and highlights.
 
 ## Checklist
 
@@ -103,8 +107,8 @@ follows its "adding a keyword" checklist for the grammar and tests):
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`
 3. [ ] Update `editors/vscode/syntaxes/dang.tmLanguage.json`
 4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`
-   (and `sources_digest.go`, so the cgo parser binding is rebuilt), and the
-   `treesitter-wasm` generator for the no-cgo parser
+   (and `sources_digest.go`, so the docs' cgo parser binding is rebuilt), and
+   the `treesitter-wasm` generator for the parser Dang runs
 5. [ ] Add/refresh `treesitter/test/corpus/` and `editors/highlights/corpus/`
        cases for the new construct (`tree-sitter test --update`,
        `go test ./editors/ -run TestNeovimHighlights -update`)

@@ -1,6 +1,6 @@
 //go:build cgo
 
-package tswasm_test
+package danglang_test
 
 import (
 	"context"
@@ -12,14 +12,18 @@ import (
 	"testing"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/vito/dang/v2/pkg/dang/danglang"
+	"github.com/vito/dang/docs/go/danglang"
 	"github.com/vito/dang/v2/pkg/dang/tswasm"
 )
+
+// The docs site highlights with this binding, and Dang runs the same grammar
+// and C runtime compiled to WebAssembly (pkg/dang/tswasm). These tests hold
+// them to the same trees and highlights.
 
 // TestParityWithCgo parses every .dang file in the repository, and every
 // tree-sitter corpus input, with the cgo runtime (danglang) and the wasm one,
 // and requires identical trees: every node, named or not, with its kind,
-// span and flags. Malformed inputs (tests/errors, among others) are
+// field, span and flags. Malformed inputs (tests/errors, among others) are
 // included, so error recovery must match too.
 func TestParityWithCgo(t *testing.T) {
 	inputs := corpus(t)
@@ -61,7 +65,7 @@ func TestParityWithCgo(t *testing.T) {
 // TestQueryParityWithCgo runs the highlight query over every input with
 // both runtimes, and requires the same captures, predicates applied.
 func TestQueryParityWithCgo(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "highlights.scm"))
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "pkg", "dang", "highlights.scm"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/vito/dang/v2/pkg/dang"
-	"github.com/vito/dang/v2/pkg/dang/danglang"
+	"github.com/vito/dang/docs/go/danglang"
 )
 
 // classRun is a maximal run of bytes sharing one token class, as renderCode

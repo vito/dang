@@ -35,7 +35,7 @@ func main() {
 	enc.Encode(dang.TreesitterGrammar()) //nolint:errcheck
 }
 
-// danglangSources are the C files pkg/dang/danglang compiles by #include.
+// danglangSources are the C files docs/go/danglang compiles by #include.
 var danglangSources = []string{
 	"src/parser.c",
 	"src/scanner.c",
@@ -67,5 +67,5 @@ package danglang
 // makes Go rebuild the package when the grammar is regenerated.
 const sourcesDigest = %q
 `, fmt.Sprintf("%x", h.Sum(nil)))
-	return os.WriteFile(filepath.Join("..", "pkg", "dang", "danglang", "sources_digest.go"), []byte(src), 0o644)
+	return os.WriteFile(filepath.Join("..", "docs", "go", "danglang", "sources_digest.go"), []byte(src), 0o644)
 }

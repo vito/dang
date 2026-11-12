@@ -1,4 +1,6 @@
-// Package danglang provides Go bindings for the Dang tree-sitter grammar.
+// Package danglang provides cgo Go bindings for the Dang tree-sitter grammar,
+// for the docs site's highlighter. Dang itself runs the grammar compiled to
+// WebAssembly (pkg/dang/tswasm), without cgo.
 package danglang
 
 /*

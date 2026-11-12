@@ -128,11 +128,11 @@ type Dang {
 
   """
   Build pkg/dang/tswasm/dang.wasm: the tree-sitter runtime and the Dang
-  grammar compiled to WebAssembly, which builds without cgo (like the Dagger
-  engine's) parse errors with. See pkg/dang/tswasm/build.sh. zig is pinned,
-  so the module is reproducible and checked for staleness. It compiles the
-  parser.c that ./hack/generate produces, so one generate run covers a
-  grammar change.
+  grammar compiled to WebAssembly, which Dang parses with for error
+  recovery, completion and highlighting, so it builds without cgo. See
+  pkg/dang/tswasm/build.sh. zig is pinned, so the module is reproducible and
+  checked for staleness. It compiles the parser.c that ./hack/generate
+  produces, so one generate run covers a grammar change.
   """
   @generate
   treesitterWasm: Changeset! {
@@ -289,8 +289,9 @@ type Dang {
       ])
       .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
       # cgo needs a C compiler: the docs build compiles the tree-sitter
-      # grammar (danglang) into its highlighter, and Wolfi ships clang, not
-      # gcc (Go's default CC).
+      # grammars (docs/go/danglang among them) into its highlighter, and the
+      # race-enabled dang binary the LSP tests drive needs it too. Wolfi
+      # ships clang, not gcc (Go's default CC).
       .withEnvVariable("CC", "clang")
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")
       .withMountedCache("/go/build-cache", cacheVolume("go-build"))
@@ -380,18 +381,15 @@ type Test {
   }
 
   """
-  Run the parser, LSP and language tests without cgo, as the Dagger engine
-  builds Dang: parse errors come from tree-sitter compiled to WebAssembly
-  rather than linked through cgo, and must read the same.
+  Vet everything without cgo, as the Dagger engine builds Dang. Dang uses no
+  cgo (tree-sitter runs as WebAssembly), so the Go tests cover the engine's
+  build already; this keeps a dependency that needs cgo from creeping in.
   """
   nocgo: Void @check {
     dang
       .generated
       .withEnvVariable("CGO_ENABLED", "0")
-      .withExec(["go", "test", "./pkg/dang/...", "./tests"])
-      # -short skips the Neovim tests, which drive a dang binary (a cgo
-      # build) rather than the code under test.
-      .withExec(["go", "test", "-short", "./pkg/lsp"])
+      .withExec(["go", "vet", "./..."])
       .sync
 
     null

@@ -1,9 +1,9 @@
 //go:build !js
 
-// Package tswasm runs Dang's tree-sitter grammar without cgo: the C
-// tree-sitter runtime and the grammar, compiled to WebAssembly (dang.wasm,
-// see build.sh and csrc/shim.c), run by wazero. Its trees are the C runtime's,
-// because it is the C runtime.
+// Package tswasm runs Dang's tree-sitter grammar: the C tree-sitter runtime
+// and the grammar, compiled to WebAssembly (dang.wasm, see build.sh and
+// csrc/shim.c), run by wazero, so Dang needs no cgo. Its trees are the C
+// runtime's, because it is the C runtime.
 //
 // The module is compiled once per process, on first use, and the compiled
 // code is cached on disk (see compilationCache), so later processes skip

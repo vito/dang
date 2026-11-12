@@ -1,8 +1,9 @@
 #!/bin/sh
 # Build pkg/dang/tswasm/dang.wasm: the C tree-sitter runtime (the version
-# go-tree-sitter vendors, so the same one cgo builds link), the Dang grammar's
-# parser.c and scanner.c, and csrc/shim.c, compiled to wasm32-wasi with zig.
-# (shim.c lives apart from the Go files so cgo builds don't compile it.)
+# go-tree-sitter vendors, at the version the docs module's cgo highlighter
+# links), the Dang grammar's parser.c and scanner.c, and csrc/shim.c, compiled
+# to wasm32-wasi with zig. (shim.c lives apart from the Go files: Go refuses
+# C files in a package that doesn't use cgo.)
 #
 # Run from the repository root. The treesitter-wasm Dagger generator runs it
 # with a pinned zig, so the output is reproducible; `dagger generate` is the
@@ -11,7 +12,7 @@
 set -eu
 
 zig=${ZIG:-zig}
-ts=$(go mod download -json github.com/tree-sitter/go-tree-sitter | sed -n 's/.*"Dir": "\(.*\)".*/\1/p')
+ts=$(cd docs && go mod download -json github.com/tree-sitter/go-tree-sitter | sed -n 's/.*"Dir": "\(.*\)".*/\1/p')
 
 "$zig" cc -target wasm32-wasi -Oz -s -mexec-model=reactor \
   -DHAVE_ENDIAN_H -Wl,-z,stack-size=1048576 \

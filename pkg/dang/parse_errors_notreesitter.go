@@ -1,4 +1,4 @@
-//go:build !cgo && (js || dang_nowasm)
+//go:build js || dang_nowasm
 
 package dang
 

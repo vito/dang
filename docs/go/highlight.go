@@ -19,7 +19,7 @@ import (
 	tree_sitter_bash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	tree_sitter_ruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
-	"github.com/vito/dang/v2/pkg/dang/danglang"
+	"github.com/vito/dang/docs/go/danglang"
 )
 
 // Every code surface on the site is highlighted by tree-sitter: each language

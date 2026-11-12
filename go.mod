@@ -19,7 +19,6 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tetratelabs/wazero v1.11.0
-	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
 	github.com/vito/tuist v0.0.7-0.20260617202722-ed3f1d64aee6
 	golang.org/x/sync v0.20.0
@@ -28,7 +27,6 @@ require (
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/mattn/go-pointer v0.0.1 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )
 

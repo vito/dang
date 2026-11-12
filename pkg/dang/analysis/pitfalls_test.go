@@ -14,11 +14,6 @@ import (
 // is a negative case: code that looks like a pitfall that none of its
 // diagnostics may call one. It must have no diagnostics at all unless it's
 // marked invalid.
-//
-// It runs in both builds: with cgo, unmatched parse errors are diagnosed by
-// tree-sitter linked through cgo; without, by tree-sitter compiled to
-// WebAssembly. A pitfall reads the same either way, since it is detected from
-// the parser's failure alone.
 func TestPitfalls(t *testing.T) {
 	for _, tt := range []struct {
 		name    string

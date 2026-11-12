@@ -41,10 +41,9 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 // token the parser failed at. If none applies, the original error is
 // returned.
 //
-// Tree-sitter is the C runtime with cgo, and the same runtime compiled to
-// WebAssembly without it (see parse_errors_wazero.go), so both builds say the
-// same. Only GOOS=js and builds tagged dang_nowasm go without, and say
-// which token the parser failed at instead.
+// Tree-sitter is the C runtime compiled to WebAssembly (see
+// parse_errors_wazero.go). Only GOOS=js and builds tagged dang_nowasm go
+// without, and say which token the parser failed at instead.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
 	return enhanceParseError(pegErr, filename, source, CurrentVersion)
 }
