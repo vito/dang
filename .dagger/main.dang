@@ -334,4 +334,14 @@ type Test {
 
     null
   }
+
+  """
+  Run the parse error tests with gotreesitter recovering the errors, as
+  builds without cgo (like the Dagger engine's) do.
+  """
+  gotreesitter: Void @check {
+    go(["-tags", "dang_gotreesitter", "./pkg/dang/...", "./tests"]).sync
+
+    null
+  }
 }

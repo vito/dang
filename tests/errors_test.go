@@ -48,14 +48,37 @@ func (DangSuite) TestErrorMessages(ctx context.Context, t *testctx.T) {
 			// differs, it has a golden file of its own.
 			goldenName := testName + ".golden"
 			if dang.SyntaxRecoveryRuntime == "gotreesitter" {
-				alt := testName + ".gotreesitter.golden"
-				if _, err := os.Stat(filepath.Join("testdata", alt)); err == nil {
-					goldenName = alt
+				goldenName = gotreesitterGolden(testName, output)
+				if goldenName == "" {
+					return // updating, and the C golden already matches
 				}
 			}
 			golden.Assert(t, output, goldenName)
 		})
 	}
+}
+
+// gotreesitterGolden names the golden file a test compares against when
+// gotreesitter recovers parse errors: <name>.gotreesitter.golden where one
+// exists, otherwise the C runtime's. When updating, it names only the
+// gotreesitter file, so an update never rewrites the C expectations, and
+// nothing (removing the gotreesitter file) where the output matches the C
+// runtime's.
+func gotreesitterGolden(testName, output string) string {
+	cName := testName + ".golden"
+	altName := testName + ".gotreesitter.golden"
+	altPath := filepath.Join("testdata", altName)
+	if !golden.FlagUpdate() {
+		if _, err := os.Stat(altPath); err == nil {
+			return altName
+		}
+		return cName
+	}
+	if c, err := os.ReadFile(filepath.Join("testdata", cName)); err == nil && string(c) == output {
+		_ = os.Remove(altPath)
+		return ""
+	}
+	return altName
 }
 
 // runDangFile runs a Dang file and captures combined stdout/stderr
