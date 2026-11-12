@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"reflect"
 	"runtime/debug"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -532,6 +531,10 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 // on them: it runs at the same time, ending in its ID, and the chain returned
 // selects the rest from that ID. Otherwise q is sent whole, as it is.
 //
+// The step is the last such one, so that every receiver runs ahead of the
+// arguments after it: the chain up to it runs through Execute too, and so
+// splits again at the one before.
+//
 // The first failure stops the other side, and is the one returned.
 func (q *QueryBuilder) runAhead(ctx context.Context) (*QueryBuilder, error) {
 	if q.isMutation {
@@ -540,18 +543,24 @@ func (q *QueryBuilder) runAhead(ctx context.Context) (*QueryBuilder, error) {
 		return q, nil
 	}
 	path := q.path()
-	first := slices.IndexFunc(path, func(sel *QueryBuilder) bool { return sel.waitsOnArgs() })
-	if first < 1 || path[first-1].load == nil {
+	split := 0
+	for i := len(path) - 1; i > 0; i-- {
+		if path[i-1].load != nil && path[i].waitsOnArgs() {
+			split = i
+			break
+		}
+	}
+	if split == 0 {
 		return q, nil
 	}
-	recv := path[first-1]
+	recv := path[split-1]
 
 	var id string
 	eg, gctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		return recv.Select("id").Client(q.client).Bind(&id).Execute(gctx)
 	})
-	for _, sel := range path[first:] {
+	for _, sel := range path[split:] {
 		sel.scheduleOwnArgMarshalling(eg, gctx)
 	}
 	if err := eg.Wait(); err != nil {
@@ -559,7 +568,7 @@ func (q *QueryBuilder) runAhead(ctx context.Context) (*QueryBuilder, error) {
 	}
 
 	rest := recv.load(id)
-	for _, sel := range path[first:] {
+	for _, sel := range path[split:] {
 		step := *sel
 		step.prev = rest
 		rest = &step
@@ -568,10 +577,11 @@ func (q *QueryBuilder) runAhead(ctx context.Context) (*QueryBuilder, error) {
 }
 
 // waitsOnArgs reports whether marshalling this step's arguments, or those of
-// its nested fields, may have to ask the server for an object's ID.
+// its nested fields, may have to ask the server for an object's ID: one that
+// hasn't been marshalled already holds an object whose ID isn't known.
 func (q *QueryBuilder) waitsOnArgs() bool {
 	for _, arg := range q.args {
-		if needsIDRequest(reflect.ValueOf(arg.value)) {
+		if arg.waits() {
 			return true
 		}
 	}
@@ -605,6 +615,16 @@ type argument struct {
 	done          bool
 	marshalled    string
 	marshalledErr error
+}
+
+// waits reports whether marshalling the argument may ask the server for an
+// object's ID: it hasn't been marshalled yet, and holds an object whose ID
+// isn't known.
+func (a *argument) waits() bool {
+	a.mu.Lock()
+	done := a.done
+	a.mu.Unlock()
+	return !done && needsIDRequest(reflect.ValueOf(a.value))
 }
 
 // marshal marshals the argument once. A marshal cut short by its context
