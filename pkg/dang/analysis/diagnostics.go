@@ -46,6 +46,11 @@ type Diagnostic struct {
 	// problem mechanically: for a deprecated builtin, the callee that
 	// supersedes it (e.g. "JSON.encode" for toJSON).
 	Replacement string `json:"replacement,omitempty"`
+
+	// Context, for a type error on a selection or a name, is what that
+	// name names, or what could have been meant instead. Only found with
+	// Options.DiagnosticContext.
+	Context *DiagnosticContext `json:"context,omitempty"`
 }
 
 func (d Diagnostic) String() string {
@@ -64,13 +69,14 @@ func (d Diagnostic) String() string {
 // location to its Source path, or to "" for a file outside the Source whose
 // errors are still reported (with no path, naming the file in the message);
 // an error it doesn't want (ok false) is dropped. fallback is the path of an
-// error with no location.
-func errorDiagnostics(err error, code Code, fallback string, pathOf func(filename string) (string, bool)) []Diagnostic {
+// error with no location. contextOf, when set, finds the context of an
+// inference error in the file at a Source path ("" for a file outside it).
+func errorDiagnostics(err error, code Code, fallback string, pathOf func(filename string) (string, bool), contextOf func(*dang.InferError, string) *DiagnosticContext) []Diagnostic {
 	var inferErrs *dang.InferenceErrors
 	if errors.As(err, &inferErrs) {
 		var ds []Diagnostic
 		for _, e := range inferErrs.Errors {
-			ds = append(ds, errorDiagnostics(e, code, fallback, pathOf)...)
+			ds = append(ds, errorDiagnostics(e, code, fallback, pathOf, contextOf)...)
 		}
 		return ds
 	}
@@ -105,6 +111,11 @@ func errorDiagnostics(err error, code Code, fallback string, pathOf func(filenam
 	default:
 		d.Message = err.Error()
 	}
+	if inferErr == nil && contextOf != nil {
+		// Its context is found from the node it is on, also when it was
+		// converted to a *dang.SourceError.
+		_ = errors.As(err, &inferErr)
+	}
 
 	if loc != nil {
 		if loc.Filename != "" {
@@ -115,11 +126,22 @@ func errorDiagnostics(err error, code Code, fallback string, pathOf func(filenam
 			if path == "" {
 				// A file outside the Source, e.g. an imported Dang module's.
 				d.Message = foreignMessage(loc, d.Message)
+				if inferErr != nil && contextOf != nil {
+					d.Context = contextOf(inferErr, "")
+					if d.Context != nil {
+						// Not in the Source: there is nothing to edit.
+						d.Context.NameRange = nil
+					}
+				}
 				return []Diagnostic{d}
 			}
 			d.Path = path
 		}
 		d.Range = locRange(loc)
+	}
+
+	if inferErr != nil && contextOf != nil {
+		d.Context = contextOf(inferErr, d.Path)
 	}
 
 	return []Diagnostic{d}

@@ -82,6 +82,13 @@ type Options struct {
 
 	// Parses, when set, reuses parses of unchanged files across analyses.
 	Parses *ParseCache
+
+	// DiagnosticContext, when set, attaches a DiagnosticContext to each
+	// type error about a name: what it names, or the receiver's members and
+	// the closest names. It's for readers that can't ask a follow-up
+	// question (a model reading a tool's output); finding it can walk every
+	// type the source can reach, so editors leave it off.
+	DiagnosticContext bool
 }
 
 // File is one analyzed source file.
@@ -180,7 +187,7 @@ func Analyze(ctx context.Context, src Source, dir string, opts Options) (*Analys
 			if opts.Focus == "" || p == opts.Focus {
 				a.diagnostics = append(a.diagnostics, errorDiagnostics(perr.err, CodeSyntax, p, func(string) (string, bool) {
 					return p, true
-				})...)
+				}, nil)...)
 			}
 			a.Files = append(a.Files, &File{Path: p, Name: name, Text: text})
 			continue
@@ -224,7 +231,11 @@ func Analyze(ctx context.Context, src Source, dir string, opts Options) (*Analys
 	}
 	a.Scope = scope
 	if err != nil {
-		a.diagnostics = append(a.diagnostics, errorDiagnostics(err, CodeType, opts.Focus, pathOf)...)
+		var contextOf func(*dang.InferError, string) *DiagnosticContext
+		if opts.DiagnosticContext {
+			contextOf = a.errorContext
+		}
+		a.diagnostics = append(a.diagnostics, errorDiagnostics(err, CodeType, opts.Focus, pathOf, contextOf)...)
 	}
 	a.diagnostics = append(a.diagnostics, warningDiagnostics(warnings.Take(), opts.Focus, pathOf)...)
 
