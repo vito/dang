@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use Rock! as Named!:
+  - missing field "name"
+  [2m[34m--> errors/structural_interface_missing_field.dang:12:13[0m
+ [2m    |[0m
+ [2m 10 | greet(n: Named!): String! { n.name }[0m
+ [2m 11 | [0m
+ [2m[34m[1m 12 | [0mprint(greet(Rock(3)))
+[2m                   [31m^^^^^^^[0m
+ [2m 13 | [0m
+ [2m    |[0m
+

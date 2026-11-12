@@ -8,7 +8,8 @@
 Interfaces and unions work like their GraphQL counterparts, so a schema's
 interfaces and unions are ordinary Dang types. Both are taken apart with
 `case` (see [#control-flow]), and GraphQL values also with inline fragments
-(see [#interop]).
+(see [#interop]). One difference: an interface declared in Dang is
+satisfied by any type of its shape (see [#structural-interfaces]).
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
@@ -83,6 +84,56 @@ it:
 ```dang-failure
 greet(Named)
 ```
+
+### Structural: interfaces across schemas {#structural-interfaces}
+
+An interface declared in Dang is structural: a type with its fields is one
+of its values, whether or not it says `implements`. `Badge` declares
+nothing, and passes for a `Named` all the same:
+
+```dang
+type Badge {
+  name: String!
+  issued: Int!
+}
+
+greet(Badge("Grace", 1952))
+```
+
+That makes Dang's interfaces the way to write one interface over types
+from different places: Dang types, and the types of every imported GraphQL
+schema, none of which can name an interface of yours. The prelude's
+`Error` (see [#errors]) is one, so a schema's own error type with a
+`message: String!` raises and rescues like a Dang error.
+
+The rules are the ones `implements` checks below — the same fields,
+public, with types that fit — and a type pattern on the interface matches
+values of the shape too. A type lacking a field, or hiding it behind
+`let`, isn't one:
+
+```dang-failure
+type Pebble { weight: Int! }
+
+greet(Pebble(3))
+```
+
+What `implements` adds is a check where the type is declared, and a
+supertype for good: it pins the types of the fields it conforms with, and
+lets a list of different implementations merge to the interface.
+Structural conformance is a question asked where a value meets the
+interface, and pins nothing. A type that only has the shape doesn't merge
+with another to the interface (branches of the two widen to a union, as
+ever); to put them in one list, give one the interface's type:
+
+```dang
+type Plaque { name: String! }
+
+[(Badge("Ada", 1843) :: Named!), Plaque("Turing")].map { greet(_) }
+```
+
+Interfaces a GraphQL schema declares stay nominal, as GraphQL's are: the
+server decides which types implement them, and resolves fragments on them
+by that.
 
 ### Interface inheritance
 

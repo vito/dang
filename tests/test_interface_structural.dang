@@ -1,0 +1,161 @@
+# Interfaces declared in Dang are structural: a type with an interface's
+# fields is one of its values, whether or not it says `implements`.
+
+interface Named {
+  name: String!
+}
+
+type Person {
+  name: String!
+  age: Int!
+}
+
+# A method stands in for a field, as with `implements`.
+type Robot {
+  serial: Int!
+
+  name: String! { `unit-${serial}` }
+}
+
+greet(n: Named!): String! { `hello, ${n.name}` }
+
+assert { greet(Person("Ada", 36)) == "hello, Ada" }
+assert { greet(Robot(7)) == "hello, unit-7" }
+
+# In lists, fields and returns too.
+let everyone: [Named!]! = [Person("Bo", 1), Robot(2)]
+assert { everyone.map { _.name } == ["Bo", "unit-2"] }
+
+type Badge {
+  holder: Named! = Robot(3)
+}
+
+assert { Badge.holder.name == "unit-3" }
+
+# Declared implementations still work, and mix with structural ones.
+type Pet implements Named {
+  name: String!
+}
+
+let mixed: [Named!]! = [Pet("Rex"), (Person("Cy", 4) :: Named!)]
+assert { mixed.map { _.name } == ["Rex", "Cy"] }
+
+# A value of a type that only has the shape can be cast to the interface,
+# say to put it in a list with another such type.
+let cast = [(Person("Ed", 1) :: Named!), Robot(9)]
+assert { cast.map { _.name } == ["Ed", "unit-9"] }
+
+# Branches of other types still widen to a union, whatever interfaces their
+# types have the shape of, so a case on the result stays exhaustive.
+pick(c: Boolean!): String! {
+  let x = if (c) { Pet("Sam") } else { Person("Al", 2) }
+  case (x) {
+    p: Pet! => "pet " + p.name
+    q: Person! => "person " + q.name
+  }
+}
+
+assert { pick(true) == "pet Sam" }
+assert { pick(false) == "person Al" }
+
+# A union whose members all have the shape has it too.
+union Someone = Person | Robot
+
+let someone: Someone! = Robot(5)
+let named: Named! = someone
+assert { named.name == "unit-5" }
+
+# A type pattern on an interface matches values of its shape.
+let matched = case (someone) {
+  n: Named! => "named " + n.name
+}
+assert { matched == "named unit-5" }
+
+type Rock {
+  weight: Int!
+}
+
+union Thing = Person | Rock
+
+describe(t: Thing!): String! {
+  case (t) {
+    n: Named! => "named " + n.name
+    else => "unnamed"
+  }
+}
+
+assert { describe(Person("Di", 5)) == "named Di" }
+assert { describe(Rock(9)) == "unnamed" }
+
+# One interface stands in for another with its fields.
+interface Labeled {
+  name: String!
+  label: String!
+}
+
+type Tag {
+  name: String!
+
+  label: String! { "#" + name }
+}
+
+let labeled: Labeled! = Tag("x")
+let asNamed: Named! = labeled
+assert { asNamed.name == "x" }
+
+# Methods: arguments by name, an implementation may take more general
+# arguments and optional ones of its own, and return something narrower.
+interface Formatter {
+  format(input: String!): String
+}
+
+type Padded {
+  format(input: String, width: Int! = 4): String! { (input ?? "").padLeft(width) }
+}
+
+fmt(f: Formatter!): String! { f.format("hi") ?? "" }
+
+assert { fmt(Padded) == "  hi" }
+
+# Generic methods: the implementation must be as general as the interface.
+interface Picker {
+  pick(x: a!): a!
+}
+
+type Identity {
+  pick(x: b!): b! { x }
+}
+
+pickOne(p: Picker!): Int! { p.pick(1) }
+
+assert { pickOne(Identity) == 1 }
+
+# Recursive shapes.
+interface Tree {
+  children: [Tree!]!
+}
+
+type Dir {
+  children: [Dir!]! = []
+}
+
+let tree: Tree! = Dir([Dir, Dir([Dir])])
+assert { tree.children.length == 2 }
+assert { tree.children[1].children.length == 1 }
+
+# Any type with a message is an Error: it can be raised, and rescued as one.
+type Oops {
+  message: String!
+  code: Int!
+}
+
+let caught = { raise Oops("boom", 7) } rescue {
+  e: Error! => `error: ${e.message}`
+}
+assert { caught == "error: boom" }
+let specific = { raise Oops("bang", 8) } rescue {
+  o: Oops! => `oops ${o.code}: ${o.message}`
+}
+assert { specific == "oops 8: bang" }
+
+print("structural interface tests passed!")

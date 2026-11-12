@@ -145,7 +145,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				}
 				if clause.matchType != nil && !current {
 					if bad := unraisableMember(clause.matchType); bad != nil {
-						return nil, NewInferError(fmt.Errorf("rescue pattern %s includes %s, which doesn't implement Error, so it is never raised", clause.matchType, unwrapNonNull(bad)), clause.patternNode())
+						return nil, NewInferError(fmt.Errorf("rescue pattern %s includes %s, which isn't an Error, so it is never raised", clause.matchType, unwrapNonNull(bad)), clause.patternNode())
 					}
 				}
 				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil && !current {
@@ -231,7 +231,10 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 // the same wrapper pointer can resurface at multiple observation sites, so
 // mutating one after the fact would retroactively rewrite history.
 type RaisedError struct {
-	Value    Value // always an *Object implementing Error
+	// Value is the error raised: an *Object implementing Error, or a
+	// GraphQL object of a type that satisfies it, such as Dagger's Error
+	// (see structural.go).
+	Value    Value
 	Location *SourceLocation
 
 	// Cause is the error that was being rescued when this one was raised,
@@ -240,6 +243,23 @@ type RaisedError struct {
 	// error itself, and when the raised value carries its own non-null
 	// `cause` field — an explicit cause wins over the implicit record.
 	Cause *RaisedError
+
+	// message is the raised value's message, read when it was raised, where
+	// reading it takes a query (a GraphQL Value's) or a call (an object's
+	// computed message), which Error has no context to make. messageRead
+	// says whether it was.
+	message     string
+	messageRead bool
+
+	// origin is the Go error a rescued value was classified from (see
+	// extractErrorValue), such as the GraphQL error a GraphQLError was made
+	// of. A plain re-raise of the rescued value carries it on (see Origin).
+	origin error
+
+	// explicitCause is the value's explicit `cause` field, raised with its
+	// message read (see explicitCauses), for the uncaught report to show,
+	// though it can neither query nor call (see nextCause).
+	explicitCause *RaisedError
 }
 
 // Error returns just the message field. Keep it that way: this string is
@@ -247,6 +267,9 @@ type RaisedError struct {
 // which all render failures from Error() — richer uncaught output belongs
 // to the boundary printer, not here.
 func (r *RaisedError) Error() string {
+	if r.messageRead {
+		return r.message
+	}
 	if mv, ok := r.Value.(*Object); ok {
 		if msg, found := mv.lookupValue("message"); found {
 			return msg.String()
@@ -255,16 +278,28 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
+// Origin returns the Go error the raised value was made of, when it is a
+// rescued error raised again as it was: after `x rescue { e: GraphQLError!
+// => raise e }`, it is the GraphQL error x failed with, extensions and all,
+// for a host to report as it would have had nothing rescued it. A value
+// raised any other way has none.
+//
+// It is deliberately not Unwrap: the origin carries the failure's own
+// source location, which errors.As would then find in place of the raise.
+func (r *RaisedError) Origin() error {
+	return r.origin
+}
+
 // raisedErrorFor returns the *RaisedError wrapper for an error caught by a
 // rescue: the original wrapper when the error came from raise (preserving
 // its location and cause chain), or a fresh one around the classified
-// value otherwise.
+// value otherwise, which remembers the error it was classified from.
 func raisedErrorFor(err error, errVal Value) *RaisedError {
 	var raised *RaisedError
 	if errors.As(err, &raised) {
 		return raised
 	}
-	return &RaisedError{Value: errVal}
+	return &RaisedError{Value: errVal, origin: err}
 }
 
 func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) {
@@ -471,6 +506,16 @@ func (r *Raise) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			return hm.TypeVariable(fresh.Fresh()), nil
 		}
 
+		// An object of another shape says what it lacks to be an Error.
+		if mod, ok := unwrapNonNull(valType).(*Type); ok && mod.Named != "" && (mod.Kind == ObjectKind || mod.Kind == InterfaceKind) {
+			if reason := structuralMismatch(mod, ErrorType, hm.AssignableUncommitted); reason != "" {
+				return nil, NewInferError(
+					fmt.Errorf("raise requires a String! or Error!, got %s: %s", valType, reason),
+					r.Value,
+				)
+			}
+		}
+
 		return nil, NewInferError(
 			fmt.Errorf("raise requires a String! or Error!, got %s", valType),
 			r.Value,
@@ -495,19 +540,172 @@ func (r *Raise) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			Location: r.Loc,
 			Cause:    inFlight,
 		}
-	case *Object:
-		cause := inFlight
-		if inFlight != nil && v == inFlight.Value {
-			// Plain re-raise of the rescued error: no self-cause.
-			cause = nil
-		} else if hasExplicitCause(v) {
-			// The raised value carries its own cause; explicit wins.
-			cause = nil
+	case *Object, GraphQLValue:
+		if inFlight != nil && sameErrorValue(val, inFlight.Value) {
+			// Plain re-raise of the rescued error: the error itself,
+			// raised again here with all it had: its message, its causes
+			// and the Go error behind it (see Origin).
+			again := *inFlight
+			again.Location = r.Loc
+			return nil, &again
 		}
-		return nil, &RaisedError{Value: v, Location: r.Loc, Cause: cause}
+		raised, err := raisedValue(ctx, scope, val, r.Loc)
+		if err != nil {
+			return nil, err
+		}
+		if obj, ok := val.(*Object); ok && hasExplicitCause(obj) {
+			// The raised value carries its own cause; explicit wins.
+			raised.explicitCause, err = explicitCauses(ctx, scope, obj, inFlight)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			raised.Cause = inFlight
+		}
+		return nil, raised
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)
 	}
+}
+
+// maxCauseDepth bounds the explicit `cause` chain a raise records, which a
+// program can build.
+const maxCauseDepth = 8
+
+// raisedValue wraps val, an error object or a GraphQL object of a type
+// satisfying Error (see structural.go), as raised at loc. Its message is
+// read now where reading it takes a query or a call, which Error has no
+// context to make. A message that fails to read doesn't fail the raise,
+// which still raises val, so that a rescue can match it: the failure is
+// the message. Only a cancellation stops it.
+func raisedValue(ctx context.Context, scope ValueScope, val Value, loc *SourceLocation) (*RaisedError, error) {
+	raised := &RaisedError{Value: val, Location: loc}
+	var err error
+	switch v := val.(type) {
+	case *Object:
+		raised.message, raised.messageRead, err = computedErrorMessage(ctx, scope, v)
+	case GraphQLValue:
+		raised.message, err = graphQLErrorMessage(ctx, scope, v)
+		raised.messageRead = true
+	}
+	if err != nil {
+		if isCancelled(err) || evalCancelled(ctx) != nil {
+			return nil, err
+		}
+		raised.message, raised.messageRead = fmt.Sprintf("(its message failed: %s)", err), true
+	}
+	return raised, nil
+}
+
+// explicitCauses builds the chain of explicit `cause` fields from v, each
+// raised with its message read (see raisedValue), so that the report shows
+// every link though it can neither query nor call. A link that is the
+// error being rescued, inFlight, is that very error, whose own causes
+// follow it.
+func explicitCauses(ctx context.Context, scope ValueScope, v *Object, inFlight *RaisedError) (*RaisedError, error) {
+	var head, tail *RaisedError
+	seen := map[*Object]bool{v: true}
+	current := v
+	for depth := 0; depth < maxCauseDepth; depth++ {
+		cv, found := current.lookupValue("cause")
+		if !found {
+			break
+		}
+		obj, isObject := cv.(*Object)
+		_, isGraphQL := cv.(GraphQLValue)
+		if !isObject && !isGraphQL || isObject && seen[obj] {
+			break
+		}
+		var link *RaisedError
+		if inFlight != nil && sameErrorValue(cv, inFlight.Value) {
+			link = inFlight
+		} else {
+			var err error
+			link, err = raisedValue(ctx, scope, cv, nil)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if head == nil {
+			head = link
+		} else {
+			tail.explicitCause = link
+		}
+		tail = link
+		if link == inFlight || !isObject {
+			break
+		}
+		seen[obj] = true
+		current = obj
+	}
+	return head, nil
+}
+
+// sameErrorValue reports whether a and b are the same error: the same
+// object, or handles on the same GraphQL object.
+func sameErrorValue(a, b Value) bool {
+	switch v := a.(type) {
+	case *Object:
+		obj, ok := b.(*Object)
+		return ok && obj == v
+	case GraphQLValue:
+		return sameGraphQLObject(v, b)
+	}
+	return false
+}
+
+// computedErrorMessage reads the message of an error object whose message
+// is a method rather than a stored field, for Error to report: it can't
+// call one. read is false for a stored message.
+func computedErrorMessage(ctx context.Context, scope ValueScope, v *Object) (message string, read bool, err error) {
+	stored, found := v.lookupValue("message")
+	if !found {
+		return "", false, nil
+	}
+	fn, ok := stored.(FunctionValue)
+	if !ok {
+		return "", false, nil
+	}
+	called, err := autoCallFn(ctx, scope, BoundMethod{Method: fn, Receiver: v})
+	if err != nil {
+		return "", false, err
+	}
+	str, ok := called.(StringValue)
+	if !ok {
+		return "", false, fmt.Errorf("raise: the message of %s is %s, not a String", v.Mod, called)
+	}
+	return str.Val, true, nil
+}
+
+// graphQLErrorMessage reads the message of a GraphQL object raised as an
+// error.
+func graphQLErrorMessage(ctx context.Context, scope ValueScope, v GraphQLValue) (string, error) {
+	field, err := v.SelectField(ctx, "message")
+	if err != nil {
+		return "", fmt.Errorf("raise: reading the message of %s: %w", v.TypeName, err)
+	}
+	message, err := autoCallFn(ctx, scope, field)
+	if err != nil {
+		return "", fmt.Errorf("raise: reading the message of %s: %w", v.TypeName, err)
+	}
+	str, ok := message.(StringValue)
+	if !ok {
+		return "", fmt.Errorf("raise: the message of %s is %s, not a String", v.TypeName, message)
+	}
+	return str.Val, nil
+}
+
+// sameGraphQLObject reports whether a and b are handles on the same GraphQL
+// object: the same query, or the same ID.
+func sameGraphQLObject(a GraphQLValue, b Value) bool {
+	g, ok := b.(GraphQLValue)
+	if !ok || a.TypeName != g.TypeName {
+		return false
+	}
+	if a.KnownID != "" || g.KnownID != "" {
+		return a.KnownID == g.KnownID
+	}
+	return a.QueryChain == g.QueryChain
 }
 
 // hasExplicitCause reports whether an error object carries a non-null

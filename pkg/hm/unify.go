@@ -52,6 +52,61 @@ func AssignableWithCoercion(have, want Type) (Subs, error) {
 }
 
 func assignable(have, want Type, allowCoercion bool) (Subs, error) {
+	return assignableAssuming(have, want, allowCoercion, nil)
+}
+
+// StructuralType is a type that values of other types inhabit by their
+// shape, without the types declaring it among their Supertypes: Dang's own
+// interfaces, which a type satisfies by having their fields.
+type StructuralType interface {
+	Type
+
+	// SatisfiedBy reports whether every value of have is a value of this
+	// type, by have's shape. It asks about the parts of the two shapes
+	// through fits, which is assignability assuming the answer to this
+	// question is yes, so that a recursive shape (an interface whose field
+	// holds the interface) is judged coinductively. A substitution fits
+	// returns is hypothetical: SatisfiedBy must not keep it, and must not
+	// answer yes on the strength of one that binds a weak variable.
+	SatisfiedBy(have Type, fits func(have, want Type) (Subs, error)) bool
+}
+
+// assumptions are the pairs a structural check in progress assumes to hold
+// (see StructuralType). They live on the stack of one check, so concurrent
+// checks never see each other's.
+type assumptions struct {
+	pairs [][2]Type
+}
+
+func (a *assumptions) holds(have, want Type) bool {
+	if a == nil {
+		return false
+	}
+	for _, p := range a.pairs {
+		if p[0].Eq(have) && p[1].Eq(want) {
+			return true
+		}
+	}
+	return false
+}
+
+// satisfiedStructurally reports whether have satisfies want, a structural
+// type, assuming it does while the parts are checked.
+func satisfiedStructurally(have Type, want StructuralType, assumed *assumptions) bool {
+	if assumed.holds(have, want) {
+		return true
+	}
+	inner := &assumptions{}
+	if assumed != nil {
+		inner.pairs = append(inner.pairs, assumed.pairs...)
+	}
+	inner.pairs = append(inner.pairs, [2]Type{have, want})
+	return want.SatisfiedBy(have, func(h, w Type) (Subs, error) {
+		return assignableAssuming(h, w, false, inner)
+	})
+}
+
+func assignableAssuming(have, want Type, allowCoercion bool, assumed *assumptions) (Subs, error) {
 	have, want = prune(have), prune(want)
 
 	// Handle nullable type variables first (before regular TypeVariable,
@@ -105,14 +160,14 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 	// possible option to be assignable to the target. If the target is also a
 	// union, each option may match any of the target union's options.
 	if haveUnion, ok := have.(*UnionType); ok {
-		return assignableFromUnion(haveUnion, want, allowCoercion)
+		return assignableFromUnion(haveUnion, want, allowCoercion, assumed)
 	}
 
 	// Functions are contravariant in what they are given (arguments and
 	// block) and covariant in what they return.
 	if haveFn, ok := have.(*FunctionType); ok {
 		if wantFn, ok := want.(*FunctionType); ok {
-			return assignableFunction(haveFn, wantFn)
+			return assignableFunction(haveFn, wantFn, assumed)
 		}
 	}
 
@@ -145,7 +200,7 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 				// makes repeated type variables order-dependent (e.g. (Int!, null)
 				// against (a, a)); checked composition widens those constraints once
 				// all component evidence is available.
-				componentSubs, err := assignable(comp1, comp2, allowCoercion)
+				componentSubs, err := assignableAssuming(comp1, comp2, allowCoercion, assumed)
 				if err != nil {
 					return nil, unifyError(err, have, want)
 				}
@@ -161,9 +216,16 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 
 	// Fall back on checking supertypes
 	for _, supertype := range have.Supertypes() {
-		if subs, err := assignable(supertype, want, allowCoercion); err == nil {
+		if subs, err := assignableAssuming(supertype, want, allowCoercion, assumed); err == nil {
 			return subs, nil
 		}
+	}
+
+	// A structural type takes a value of any type with its shape. This is a
+	// question about have, never a constraint on it: whatever the check
+	// binds is dropped.
+	if structural, ok := want.(StructuralType); ok && satisfiedStructurally(have, structural, assumed) {
+		return NewSubs(), nil
 	}
 
 	// Check if want type accepts coercion from have type
@@ -179,7 +241,7 @@ func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 	// Assigning to a union succeeds if any option accepts the value. This runs
 	// after supertype checks so NonNull(T1 | T2) can still flow to T1 | T2.
 	if wantUnion, ok := want.(*UnionType); ok {
-		return assignableToUnion(have, wantUnion, allowCoercion)
+		return assignableToUnion(have, wantUnion, allowCoercion, assumed)
 	}
 
 	return nil, UnificationError{have, want}
@@ -199,7 +261,7 @@ type Labelled interface {
 // and expect want's result, which have must produce (covariance). Value-level
 // coercions never apply under a function type: nothing coerces the values
 // passing through a function at call time.
-func assignableFunction(have, want *FunctionType) (Subs, error) {
+func assignableFunction(have, want *FunctionType, assumed *assumptions) (Subs, error) {
 	type pair struct{ from, to Type }
 	pairs := []pair{
 		{want.arg, have.arg},
@@ -215,7 +277,7 @@ func assignableFunction(have, want *FunctionType) (Subs, error) {
 
 	subs := NewSubs()
 	for _, p := range pairs {
-		componentSubs, err := assignable(p.from, p.to, false)
+		componentSubs, err := assignableAssuming(p.from, p.to, false, assumed)
 		if err != nil {
 			return nil, unifyError(err, have, want)
 		}
@@ -232,7 +294,7 @@ func assignableFunction(have, want *FunctionType) (Subs, error) {
 		for _, p := range pairs {
 			from := p.from.Apply(subs).(Type)
 			to := p.to.Apply(subs).(Type)
-			if _, err := assignable(from, to, false); err != nil {
+			if _, err := assignableAssuming(from, to, false, assumed); err != nil {
 				return nil, unifyError(err, have, want)
 			}
 		}
@@ -240,21 +302,21 @@ func assignableFunction(have, want *FunctionType) (Subs, error) {
 	return subs, nil
 }
 
-func assignableToUnion(have Type, want *UnionType, allowCoercion bool) (Subs, error) {
+func assignableToUnion(have Type, want *UnionType, allowCoercion bool, assumed *assumptions) (Subs, error) {
 	for _, option := range want.Options {
-		if subs, err := assignable(have, option, allowCoercion); err == nil {
+		if subs, err := assignableAssuming(have, option, allowCoercion, assumed); err == nil {
 			return subs, nil
 		}
 	}
 	return nil, UnificationError{have, want}
 }
 
-func assignableFromUnion(have *UnionType, want Type, allowCoercion bool) (Subs, error) {
+func assignableFromUnion(have *UnionType, want Type, allowCoercion bool, assumed *assumptions) (Subs, error) {
 	subs := NewSubs()
 	for _, option := range have.Options {
 		optionType := option.Apply(subs).(Type)
 		wantType := want.Apply(subs).(Type)
-		optionSubs, err := assignable(optionType, wantType, allowCoercion)
+		optionSubs, err := assignableAssuming(optionType, wantType, allowCoercion, assumed)
 		if err != nil {
 			return nil, unifyError(err, have, want)
 		}

@@ -633,11 +633,15 @@ func resolveInterfaceTypePattern(iface *Type, memberMod *Type, patternName strin
 		return memberMod, nil
 	}
 
-	// Otherwise the type must implement the interface.
+	// Otherwise the type must implement the interface, or, for one declared
+	// in Dang, have its shape (see structural.go).
 	for _, super := range memberMod.Supertypes() {
 		if super == iface {
 			return memberMod, nil
 		}
+	}
+	if iface.isStructural() && satisfies(memberMod, iface) {
+		return memberMod, nil
 	}
 	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
@@ -872,9 +876,11 @@ func matchesType(val Value, pattern *Type) bool {
 	if valCanon == patCanon {
 		return true
 	}
-	// Interface: check if the value's type implements the pattern.
+	// Interface: check if the value's type implements the pattern, or, for
+	// an interface declared in Dang, has its shape (see structural.go).
 	if patCanon.Kind == InterfaceKind {
-		return valCanon.ImplementsInterface(patCanon)
+		return valCanon.ImplementsInterface(patCanon) ||
+			patCanon.isStructural() && satisfies(valMod, patCanon)
 	}
 	// Union: check if the value's type is one of its members, or (for a
 	// member union or interface) belongs to one.

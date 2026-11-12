@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use OnlyStrings! as Picker!: field "pick": type (x: String!): String! doesn't fit (x: a!): a!
+  [2m[34m--> errors/structural_interface_less_general.dang:13:11[0m
+ [2m    |[0m
+ [2m 11 | use(p: Picker!): Int! { p.pick(1) }[0m
+ [2m 12 | [0m
+ [2m[34m[1m 13 | [0mprint(use(OnlyStrings))
+[2m                 [31m^^^^^^^^^^^[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

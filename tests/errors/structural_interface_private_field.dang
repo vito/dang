@@ -1,0 +1,14 @@
+# A type has an interface's shape only through its public fields: a `let`
+# field isn't there where the interface is used.
+interface Named {
+  name: String!
+}
+
+type Secret {
+  let name: String! = "classified"
+  level: Int! = 1
+}
+
+greet(n: Named!): String! { n.name }
+
+print(greet(Secret))

@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Secret! as Named!: field "name" is private (`let`), so a value of Secret doesn't have it where Named is used
+  [2m[34m--> errors/structural_interface_private_field.dang:14:13[0m
+ [2m    |[0m
+ [2m 12 | greet(n: Named!): String! { n.name }[0m
+ [2m 13 | [0m
+ [2m[34m[1m 14 | [0mprint(greet(Secret))
+[2m                   [31m^^^^^^[0m
+ [2m 15 | [0m
+ [2m    |[0m
+
