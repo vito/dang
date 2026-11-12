@@ -1,4 +1,4 @@
-[1m[31mError:[0m syntax error: missing 'word_token'
+[1m[31mError:[0m syntax error: incomplete expression
   [2m[34m--> errors/syntax_template_invalid_interpolation.dang:1:23[0m
  [2m    |[0m
  [2m[34m[1m  1 | [0mlet bad = `hello ${1 +}`

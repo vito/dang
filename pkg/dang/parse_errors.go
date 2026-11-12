@@ -56,8 +56,15 @@ func EnhanceParseError(pegErr error, filename string, source []byte) error {
 		return pegErr
 	}
 
-	// Use the first (earliest) error to produce the diagnostic.
+	// Use the first (earliest) error to produce the diagnostic, unless it is
+	// only a guess and a firmer error follows.
 	first := errors[0]
+	for _, e := range errors {
+		if !e.guess {
+			first = e
+			break
+		}
+	}
 
 	loc := &SourceLocation{
 		Filename: filename,
@@ -90,6 +97,11 @@ type tsError struct {
 	col     uint
 	length  int
 	message string
+	// guess marks a MISSING token that error recovery invented to finish a
+	// rule (an operator, a name), as opposed to a closing delimiter or quote
+	// the source plainly lacks. The source's author rarely meant it:
+	// gotreesitter, for one, completes `1 +` with a missing `*`.
+	guess bool
 }
 
 // collectTSErrors walks the tree-sitter CST and collects error information.
@@ -99,13 +111,14 @@ func collectTSErrors(node syntaxNode, errors *[]tsError) {
 	}
 
 	if node.IsMissing() {
-		msg := describeMissing(node)
+		msg, guess := describeMissing(node)
 		row, col := node.Start()
 		*errors = append(*errors, tsError{
 			line:    row,
 			col:     col,
 			length:  1,
 			message: msg,
+			guess:   guess,
 		})
 		return
 	}
@@ -117,6 +130,9 @@ func collectTSErrors(node syntaxNode, errors *[]tsError) {
 		length := node.ByteLen()
 		if startRow == endRow {
 			length = int(endCol - startCol)
+		} else if line, _, ok := strings.Cut(node.Text(), "\n"); ok {
+			// Underline only the first line: the snippet shows no more.
+			length = len(line)
 		}
 		if length < 1 {
 			length = 1
@@ -141,23 +157,26 @@ func collectTSErrors(node syntaxNode, errors *[]tsError) {
 }
 
 // describeMissing produces a message for a MISSING node (tree-sitter
-// expected a token but didn't find one).
-func describeMissing(node syntaxNode) string {
+// expected a token but didn't find one), and whether the token is only
+// recovery's guess (see tsError.guess).
+func describeMissing(node syntaxNode) (string, bool) {
 	kind := node.Kind()
 	// Tree-sitter MISSING nodes have the kind of the expected token.
 	switch kind {
 	case ")":
-		return "missing closing ')'"
+		return "missing closing ')'", false
 	case "]":
-		return "missing closing ']'"
+		return "missing closing ']'", false
 	case "}":
-		return "missing closing '}'"
+		return "missing closing '}'", false
 	case "immediate_quote_token", "\"":
-		return "unterminated string literal"
+		return "unterminated string literal", false
 	case "'":
-		return "unterminated string literal"
+		return "unterminated string literal", false
+	case "`", "multi_template_close_token":
+		return "unterminated template", false
 	default:
-		return fmt.Sprintf("missing '%s'", kind)
+		return "incomplete expression", true
 	}
 }
 
