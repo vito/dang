@@ -33,7 +33,7 @@ The rest of this page covers `if`, `case`, and `loop`, plus the jumps —
 `break`, `continue`, `return` — that cut across them. `raise` and `rescue`
 have their own page: [#errors].
 
-## `if` / `else`
+## `if` / `else` {#if-else}
 
 Each branch of an `if` is a plain expression:
 
@@ -307,7 +307,7 @@ case {
 }
 ```
 
-## `loop`
+## `loop` {#loop}
 
 `loop { ... }` is Dang's only loop — and it's a stdlib builtin (see
 [#stdlib]), not a keyword: it calls its block over and over, forever, until

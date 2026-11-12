@@ -25,11 +25,11 @@ area: Int! { width * height }
 area
 ```
 
-## Comments
+## Comments {#comments}
 
-`#` starts a comment that runs to the end of the line. Comments can sit on
-their own line or trail code, and the formatter keeps them next to the code
-they're attached to:
+`#` starts a comment that runs to the end of the line; `//` is not a
+comment. Comments can sit on their own line or trail code, and the formatter
+keeps them next to the code they're attached to:
 
 ```dang
 # the number of retries before giving up
@@ -251,7 +251,7 @@ tags += ["a"]
 [tags == [], [1] == []]
 ```
 
-### Objects (record literals)
+### Objects (record literals) {#record-literals}
 
 A record literal is `{{ key: value, other: value }}`, and is always
 non-null. A bare name is **shorthand** for `name: name`, taking the value
