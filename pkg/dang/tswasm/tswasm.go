@@ -227,6 +227,7 @@ func (e *engine) instantiate() (*instance, error) {
 		capturesExec:      fn("dang_captures_exec"),
 		capturesNext:      fn("dang_captures_next"),
 		capturesRemove:    fn("dang_captures_remove"),
+		matchesNext:       fn("dang_matches_next"),
 		resultFn:          fn("dang_result"),
 		queries:           map[*Query]uint32{},
 	}, nil
@@ -257,7 +258,7 @@ type instance struct {
 	queryCaptureName, queryStringValue   api.Function
 	queryPredicates                      api.Function
 	capturesExec, capturesNext           api.Function
-	capturesRemove                       api.Function
+	capturesRemove, matchesNext          api.Function
 	resultFn                             api.Function
 
 	// resultPtr is the address of the shim's result words, once read.

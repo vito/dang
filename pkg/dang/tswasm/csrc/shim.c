@@ -381,3 +381,28 @@ EXPORT(dang_captures_next) uint32_t *dang_captures_next(void) {
 EXPORT(dang_captures_remove) void dang_captures_remove(uint32_t match_id) {
   ts_query_cursor_remove_match(qcursor, match_id);
 }
+
+// dang_matches_next returns the next match of the query dang_captures_exec
+// ran, in the layout dang_captures_next uses (with a capture index of 0), or
+// NULL when there are no more. Use it or dang_captures_next, not both.
+EXPORT(dang_matches_next) uint32_t *dang_matches_next(void) {
+  TSQueryMatch m;
+  if (!ts_query_cursor_next_match(qcursor, &m)) return NULL;
+  uint32_t need = 4 + 3 * (uint32_t)m.capture_count;
+  if (need > event_cap) {
+    uint32_t *grown = realloc(event, need * sizeof(uint32_t));
+    if (!grown) return NULL;
+    event = grown;
+    event_cap = need;
+  }
+  event[0] = m.id;
+  event[1] = m.pattern_index;
+  event[2] = 0;
+  event[3] = m.capture_count;
+  for (uint16_t c = 0; c < m.capture_count; c++) {
+    event[4 + 3 * c] = m.captures[c].index;
+    event[5 + 3 * c] = ts_node_start_byte(m.captures[c].node);
+    event[6 + 3 * c] = ts_node_end_byte(m.captures[c].node);
+  }
+  return event;
+}

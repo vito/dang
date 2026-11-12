@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+
+	"github.com/tetratelabs/wazero/api"
 )
 
 // Query is a compiled tree-sitter query, e.g. a highlights.scm.
@@ -334,62 +336,108 @@ func (tp *textPredicate) satisfied(captures []matchCapture, source []byte) bool 
 
 // captures runs q over the kept tree of source.
 func (inst *instance) captures(ctx context.Context, q *Query, source []byte) ([]Capture, error) {
+	var out []Capture
+	err := inst.run(ctx, q, source, inst.capturesNext, func(e event) error {
+		if !e.satisfied {
+			_, err := call(ctx, inst.capturesRemove, uint64(e.matchID))
+			return err
+		}
+		c := e.captures[e.index]
+		out = append(out, Capture{Index: c.index, StartByte: c.start, EndByte: c.end})
+		return nil
+	})
+	return out, err
+}
+
+// Match is one match of a query: a pattern's captures.
+type Match struct {
+	// Pattern is the index of the pattern matched, in the query's order.
+	Pattern  uint32
+	Captures []Capture
+}
+
+// Matches parses source and returns the query's matches in it, in order, as
+// ts_query_cursor_next_match gives them.
+func (q *Query) Matches(ctx context.Context, source []byte) ([]Match, error) {
+	var matches []Match
+	err := withInstance(ctx, func(inst *instance) error {
+		if err := inst.parse(ctx, source, false); err != nil {
+			return err
+		}
+		return inst.run(ctx, q, source, inst.matchesNext, func(e event) error {
+			if !e.satisfied {
+				return nil
+			}
+			m := Match{Pattern: e.pattern}
+			for _, c := range e.captures {
+				m.Captures = append(m.Captures, Capture{Index: c.index, StartByte: c.start, EndByte: c.end})
+			}
+			matches = append(matches, m)
+			return nil
+		})
+	})
+	return matches, err
+}
+
+// event is a capture or match a query run came to.
+type event struct {
+	matchID, pattern, index uint32
+	captures                []matchCapture
+	satisfied               bool // by the pattern's text predicates
+}
+
+// run runs q over the kept tree of source, calling f with each event next
+// gives (dang_captures_next or dang_matches_next).
+func (inst *instance) run(ctx context.Context, q *Query, source []byte, next api.Function, f func(event) error) error {
 	ptr, err := inst.query(ctx, q)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ok, err := call(ctx, inst.capturesExec, uint64(ptr))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if ok == 0 {
-		return nil, errFailed
+		return errFailed
 	}
-	var out []Capture
-	var match []matchCapture
+	var captures []matchCapture
 	for {
-		ev, err := call(ctx, inst.capturesNext)
+		ev, err := call(ctx, next)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if ev == 0 {
 			break
 		}
 		header, err := inst.words(ev, 4)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		matchID, pattern, idx, count := word(header, 0), word(header, 1), word(header, 2), word(header, 3)
+		e := event{matchID: word(header, 0), pattern: word(header, 1), index: word(header, 2)}
+		count := word(header, 3)
 		data, err := inst.words(ev+16, count*3)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		match = match[:0]
+		captures = captures[:0]
 		for i := range int(count) {
-			match = append(match, matchCapture{word(data, 3*i), word(data, 3*i+1), word(data, 3*i+2)})
+			captures = append(captures, matchCapture{word(data, 3*i), word(data, 3*i+1), word(data, 3*i+2)})
 		}
-		if idx >= count || int(pattern) >= len(q.predicates) {
-			return nil, errFailed
+		if (count > 0 && e.index >= count) || int(e.pattern) >= len(q.predicates) {
+			return errFailed
 		}
-		satisfied := true
-		for i := range q.predicates[pattern] {
-			if !q.predicates[pattern][i].satisfied(match, source) {
-				satisfied = false
+		e.captures = captures
+		e.satisfied = true
+		for i := range q.predicates[e.pattern] {
+			if !q.predicates[e.pattern][i].satisfied(captures, source) {
+				e.satisfied = false
 				break
 			}
 		}
-		if !satisfied {
-			if _, err := call(ctx, inst.capturesRemove, uint64(matchID)); err != nil {
-				return nil, err
-			}
-			continue
+		if err := f(e); err != nil {
+			return err
 		}
-		c := match[idx]
-		out = append(out, Capture{Index: c.index, StartByte: c.start, EndByte: c.end})
 	}
 	// An interrupted query ends early, like a finished one.
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return ctx.Err()
 }

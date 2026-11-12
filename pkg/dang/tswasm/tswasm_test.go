@@ -207,6 +207,22 @@ func TestQueryPredicates(t *testing.T) {
 	require.Contains(t, got["directive"], "y")
 }
 
+func TestQueryMatches(t *testing.T) {
+	q, err := tswasm.NewQuery(`((call (symbol) @name) @call (#not-eq? @name "skip"))`)
+	require.NoError(t, err)
+	src := []byte("print(x)\nskip(y)\nfoo(1)\n")
+	matches, err := q.Matches(context.Background(), src)
+	require.NoError(t, err)
+	var got []string
+	for _, m := range matches {
+		require.Len(t, m.Captures, 2)
+		for _, c := range m.Captures {
+			got = append(got, q.CaptureNames()[c.Index]+"="+string(src[c.StartByte:c.EndByte]))
+		}
+	}
+	require.Equal(t, []string{"call=print(x)", "name=print", "call=foo(1)", "name=foo"}, got)
+}
+
 func TestQueryErrors(t *testing.T) {
 	_, err := tswasm.NewQuery(`(no_such_node) @x`)
 	var qe *tswasm.QueryError
