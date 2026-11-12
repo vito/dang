@@ -204,10 +204,16 @@ type Diagnostic struct {
 	Range              Range                          `json:"range"`
 	Severity           int                            `json:"severity,omitempty"`
 	Code               *string                        `json:"code,omitempty"`
+	CodeDescription    *CodeDescription               `json:"codeDescription,omitempty"`
 	Source             *string                        `json:"source,omitempty"`
 	Message            string                         `json:"message"`
 	Tags               []DiagnosticTag                `json:"tags,omitempty"`
 	RelatedInformation []DiagnosticRelatedInformation `json:"relatedInformation,omitempty"`
+}
+
+// CodeDescription links the docs about a diagnostic's code.
+type CodeDescription struct {
+	Href string `json:"href"`
 }
 
 // PublishDiagnosticsParams is

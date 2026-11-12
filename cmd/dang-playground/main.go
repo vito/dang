@@ -219,7 +219,7 @@ func evalSource(source, token string) map[string]any {
 	// Type-check.
 	fresh := hm.NewSimpleFresher()
 	if _, err := dang.InferTopLevel(baseCtx, forms, typeScope, fresh); err != nil {
-		return result("", "", err.Error(), "type")
+		return result("", "", err.Error()+dang.PitfallNotes(err), "type")
 	}
 
 	// Evaluate, capturing anything written to stdout/stderr (e.g. log()).

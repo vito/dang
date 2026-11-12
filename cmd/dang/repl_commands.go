@@ -233,7 +233,7 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 	}
 	inferredType, err := dang.Infer(r.ctx, r.typeScope, node, false)
 	if err != nil {
-		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v%s", err, dang.PitfallNotes(err))))
 		return
 	}
 	e.writeLogLine(fmt.Sprintf("Expression: %s", expr))

@@ -60,7 +60,7 @@ func (u *uncaughtErrorReport) annotate(out *strings.Builder, label, message stri
 		if source == "" {
 			source = u.sourceFor(loc)
 		}
-		if annotated, ok := formatSourceAnnotation(loc, source, label, ansiRed, message); ok {
+		if annotated, ok := formatSourceAnnotation(loc, source, label, ansiRed, message, nil); ok {
 			out.WriteString(annotated)
 			return
 		}

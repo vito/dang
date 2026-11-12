@@ -373,10 +373,28 @@ func notBooleanError(what string, t hm.Type, operand Node) error {
 			// A check on a field or call result doesn't narrow it.
 			advice = "supply a default with ?? (e.g. `?? false`), or check its receiver for null first"
 		}
-		return fmt.Errorf("%s must be Boolean!, got %s, which may be null: %s", what, t, advice)
+		return &notBooleanErr{msg: fmt.Sprintf("%s must be Boolean!, got %s, which may be null: %s", what, t, advice)}
 	}
-	return fmt.Errorf("%s must be Boolean!, got %s", what, t)
+	// Decoded data needs a type, a type variable a bound and a function a
+	// call, rather than a test; anything else is a value used for its
+	// truthiness.
+	inner := unwrapNonNull(t)
+	_, decoded := inner.(DecodedType)
+	_, function := inner.(*hm.FunctionType)
+	return &notBooleanErr{
+		msg:        fmt.Sprintf("%s must be Boolean!, got %s", what, t),
+		truthiness: !decoded && !function && !isTypeVar(inner),
+	}
 }
+
+// notBooleanErr is the error notBooleanError returns. truthiness marks a
+// value of a type other than Boolean used as one: the truthiness pitfall.
+type notBooleanErr struct {
+	msg        string
+	truthiness bool
+}
+
+func (e *notBooleanErr) Error() string { return e.msg }
 
 // knownNullable reports whether t is certainly nullable: a nullable type
 // variable or concrete type, or a union with such a member. A NonNull type,
@@ -1532,6 +1550,16 @@ type FunctionRef struct {
 	nullable bool
 }
 
+// notAFunctionError is the error for `&` applied to something other than a
+// function.
+type notAFunctionError struct {
+	typ string
+}
+
+func (e *notAFunctionError) Error() string {
+	return fmt.Sprintf("& requires a function, got %s", e.typ)
+}
+
 var _ Node = (*FunctionRef)(nil)
 var _ Evaluator = (*FunctionRef)(nil)
 
@@ -1541,6 +1569,12 @@ func (f *FunctionRef) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		allowed := fnAllowedAt(ctx, f)
 		t, err := inferNodeWithoutAutoCall(withAllowedFn(ctx, f.Expr), env, fresh, f.Expr)
 		if err != nil {
+			var notFn *notAFunctionError
+			if _, doubled := f.Expr.(*FunctionRef); doubled && errors.As(err, &notFn) {
+				// `&&x` is most likely `&&` for `and`, on a continuation
+				// line: report it on the whole `&&x`.
+				return nil, NewInferError(notFn, f)
+			}
 			return nil, err
 		}
 
@@ -1548,7 +1582,7 @@ func (f *FunctionRef) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		// possibly-null function: the reference is null when t is.
 		_, f.nullable = t.(hm.NullableFunctionType)
 		if _, ok := t.(*hm.FunctionType); !ok && !f.nullable {
-			return nil, NewInferError(fmt.Errorf("& requires a function, got %s", t.Name()), f.Expr)
+			return nil, NewInferError(&notAFunctionError{typ: t.Name()}, f.Expr)
 		}
 		if !allowed {
 			if err := checkEscape(ctx, f, calleeNameOf(f.Expr), t); err != nil {

@@ -38,6 +38,24 @@ func (p *parserError) Unwrap() error {
 	return p.Inner
 }
 
+// parseFailureOffset returns the byte offset a parse failed at: the furthest
+// the parser got, where it found nothing it expected. ok is false for any
+// other error, like a rejectedSyntax.
+func parseFailureOffset(pegErr error) (int, bool) {
+	var list errList
+	if !errors.As(pegErr, &list) {
+		return 0, false
+	}
+	for _, err := range list {
+		var perr *parserError
+		if errors.As(err, &perr) && perr.Inner != nil &&
+			strings.HasPrefix(perr.Inner.Error(), "no match found") {
+			return perr.pos.offset, true
+		}
+	}
+	return 0, false
+}
+
 // rejectedSyntax is source the grammar matched but that is still invalid,
 // like an integer too large for an Int or a second block parameter.
 type rejectedSyntax struct {

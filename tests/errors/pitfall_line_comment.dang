@@ -1,0 +1,3 @@
+# Dang comments start with `#`; `//` is a parse error that says so.
+let retries = 3 // before giving up
+print(retries)

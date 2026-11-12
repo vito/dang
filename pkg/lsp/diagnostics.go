@@ -47,7 +47,8 @@ func inspect(f *File, pos Position) *analysis.Symbol {
 }
 
 // lspDiagnostic converts an analysis diagnostic to the LSP's. Deprecations
-// are tagged so editors strike them through.
+// are tagged so editors strike them through. A pitfall's hint follows the
+// message, and its ID and docs link are the code and code description.
 func lspDiagnostic(d analysis.Diagnostic) Diagnostic {
 	diag := Diagnostic{
 		Range:    lspRange(d.Range),
@@ -60,6 +61,15 @@ func lspDiagnostic(d analysis.Diagnostic) Diagnostic {
 	}
 	if d.Code == analysis.CodeDeprecated {
 		diag.Tags = []DiagnosticTag{DiagnosticTagDeprecated}
+	}
+	if d.Pitfall != "" {
+		diag.Code = stringPtr(d.Pitfall)
+		if d.Hint != "" {
+			diag.Message += "\nhint: " + d.Hint
+		}
+		if d.Docs != "" {
+			diag.CodeDescription = &CodeDescription{Href: d.Docs}
+		}
 	}
 	return diag
 }

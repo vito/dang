@@ -18,7 +18,7 @@ import (
 func ParseWithRecovery(filename string, source []byte, opts ...Option) (any, error) {
 	result, err := Parse(filename, source, opts...)
 	if err != nil {
-		return nil, EnhanceParseError(err, filename, source)
+		return nil, enhanceParseError(err, filename, source, optionsVersion(opts))
 	}
 	return result, nil
 }
@@ -34,17 +34,26 @@ func ParseFileWithRecovery(filename string, opts ...Option) (any, error) {
 		if readErr != nil {
 			return nil, err // can't enhance, return original
 		}
-		return nil, EnhanceParseError(err, filename, source)
+		return nil, enhanceParseError(err, filename, source, optionsVersion(opts))
 	}
 	return result, nil
 }
 
-// EnhanceParseError uses tree-sitter to produce a SourceError with precise
-// location and a human-readable message when the PEG parser fails. If
-// tree-sitter can't improve the error, the original error is returned.
+// EnhanceParseError produces a SourceError with a precise location and a
+// human-readable message when the PEG parser fails: a pitfall's (see
+// Pitfall) if the failure is one, else tree-sitter's diagnosis. If neither
+// can improve the error, the original error is returned.
 func EnhanceParseError(pegErr error, filename string, source []byte) error {
+	return enhanceParseError(pegErr, filename, source, CurrentVersion)
+}
+
+// enhanceParseError is EnhanceParseError for source parsed as Dang v.
+func enhanceParseError(pegErr error, filename string, source []byte, v Version) error {
 	if rejected, ok := rejectedSourceError(pegErr, filename, source); ok {
 		return rejected
+	}
+	if pitfall, ok := syntaxPitfallError(pegErr, filename, source, v); ok {
+		return pitfall
 	}
 
 	tsMu.Lock()

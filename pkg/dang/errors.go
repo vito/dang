@@ -72,6 +72,9 @@ type SourceError struct {
 	Inner    error
 	Location *SourceLocation
 	Source   string // The source code of the file
+
+	// Pitfall, when set, is the common mistake the error is (see Pitfall).
+	Pitfall *Pitfall
 }
 
 // NewSourceError creates a new SourceError
@@ -89,7 +92,7 @@ func (e *SourceError) Unwrap() error {
 
 func (e *SourceError) Error() string {
 	if e.Location == nil {
-		return e.Inner.Error()
+		return e.Inner.Error() + pitfallNotes(PitfallOf(e))
 	}
 
 	return e.FormatWithHighlighting()
@@ -97,8 +100,9 @@ func (e *SourceError) Error() string {
 
 // FormatWithHighlighting returns a nicely formatted error with syntax highlighting
 func (e *SourceError) FormatWithHighlighting() string {
+	pitfall := PitfallOf(e)
 	if e.Location == nil && e.Source == "" {
-		return e.Inner.Error()
+		return e.Inner.Error() + pitfallNotes(pitfall)
 	}
 
 	if e.Source == "" && e.Location.Filename != "" {
@@ -109,20 +113,41 @@ func (e *SourceError) FormatWithHighlighting() string {
 	}
 
 	const red = "\033[31m"
-	out, ok := formatSourceAnnotation(e.Location, e.Source, "Error:", red, e.Inner.Error())
+	out, ok := formatSourceAnnotation(e.Location, e.Source, "Error:", red, e.Inner.Error(), pitfall)
 	if !ok {
-		return e.Inner.Error()
+		return e.Inner.Error() + pitfallNotes(pitfall)
 	}
 	return out
+}
+
+// pitfallNotes is a pitfall's hint and docs link, as lines to append to a
+// plain message; empty for no pitfall.
+func pitfallNotes(p *Pitfall) string {
+	if p == nil {
+		return ""
+	}
+	return "\n  hint: " + p.Hint + "\n  docs: " + p.Docs
+}
+
+// PitfallNotes is the hint and docs link of the pitfall err is (see
+// PitfallOf), as lines to append to its message where it is shown plain,
+// like a type error's: a *SourceError shows them itself, so it has none.
+func PitfallNotes(err error) string {
+	var sourceErr *SourceError
+	if errors.As(err, &sourceErr) {
+		return ""
+	}
+	return pitfallNotes(PitfallOf(err))
 }
 
 // formatSourceAnnotation renders a source location as a labeled, highlighted
 // snippet — the shared rendering behind both error and warning output. label is
 // the bold colored prefix (e.g. "Error:" / "Warning:") and accent is the ANSI
-// color used for that prefix and the "^^^" underline. It returns ok=false when
-// the location can't be highlighted (no location, or line out of range) so the
-// caller can fall back to a plain message.
-func formatSourceAnnotation(loc *SourceLocation, source, label, accent, message string) (string, bool) {
+// color used for that prefix and the "^^^" underline. A pitfall's hint and
+// docs link follow the snippet. It returns ok=false when the location can't
+// be highlighted (no location, or line out of range) so the caller can fall
+// back to a plain message.
+func formatSourceAnnotation(loc *SourceLocation, source, label, accent, message string, pitfall *Pitfall) (string, bool) {
 	if loc == nil {
 		return "", false
 	}
@@ -176,6 +201,12 @@ func formatSourceAnnotation(loc *SourceLocation, source, label, accent, message 
 
 	// Bottom separator pipe (aligned with line numbers)
 	fmt.Fprintf(&result, " %s%s |%s\n", dim, padLeft("", 3), reset)
+
+	// A pitfall's guidance, rustc-style, under the pipe
+	if pitfall != nil {
+		fmt.Fprintf(&result, " %s%s =%s %shint:%s %s\n", dim, padLeft("", 3), reset, bold, reset, pitfall.Hint)
+		fmt.Fprintf(&result, " %s%s =%s %sdocs:%s %s\n", dim, padLeft("", 3), reset, bold, reset, pitfall.Docs)
+	}
 
 	return result.String(), true
 }
@@ -246,6 +277,9 @@ type InferError struct {
 	Inner    error
 	Location *SourceLocation
 	Node     any // Keep reference to the AST node for additional context
+
+	// Pitfall, when set, is the common mistake the error is (see Pitfall).
+	Pitfall *Pitfall
 }
 
 func (e *InferError) Error() string {
@@ -256,7 +290,8 @@ func (e *InferError) Unwrap() error {
 	return e.Inner
 }
 
-// NewInferError creates a new InferError with source location from an AST node
+// NewInferError creates a new InferError with source location from an AST
+// node, noting the pitfall it is, if any.
 func NewInferError(inner error, node SourceLocatable) *InferError {
 	var location *SourceLocation
 	if node != nil {
@@ -266,6 +301,7 @@ func NewInferError(inner error, node SourceLocatable) *InferError {
 		Inner:    inner,
 		Location: location,
 		Node:     node,
+		Pitfall:  typePitfall(inner, node),
 	}
 }
 
@@ -308,7 +344,7 @@ func WarnAtSource(ctx context.Context, loc *SourceLocation, message string) {
 	}
 
 	const yellow = "\033[33m"
-	if out, ok := formatSourceAnnotation(loc, source, "Warning:", yellow, message); ok {
+	if out, ok := formatSourceAnnotation(loc, source, "Warning:", yellow, message, nil); ok {
 		_, _ = fmt.Fprint(w, out)
 		return
 	}
