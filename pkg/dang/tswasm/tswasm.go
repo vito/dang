@@ -5,10 +5,13 @@
 // see build.sh and csrc/shim.c), run by wazero. Its trees are the C runtime's,
 // because it is the C runtime.
 //
-// The module is compiled once per process, on first use (tens of
-// milliseconds). Instances are pooled: each parse takes one, so concurrent
-// parses are safe, and an instance whose parse was cut short by its context
-// is thrown away rather than reused.
+// The module is compiled once per process, on first use, and the compiled
+// code is cached on disk (see compilationCache), so later processes skip
+// most of that. Instances are pooled: each parse or query takes one, so
+// concurrent calls are safe. A Document keeps one of its own, to reparse a
+// changing source incrementally.
+//
+// A call stops when its context is done: parsing and queries poll it.
 package tswasm
 
 import (
@@ -17,6 +20,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/tetratelabs/wazero"
@@ -27,55 +32,55 @@ import (
 //go:embed dang.wasm
 var module []byte
 
-// Node is a tree-sitter syntax node.
-type Node struct {
-	// Kind is the node's type, as tree-sitter names it (ts_node_type):
-	// "ERROR" for an error, the expected token for a missing one.
-	Kind string
-
-	Missing  bool // inserted by error recovery (ts_node_is_missing)
-	Error    bool // an ERROR node (ts_node_is_error)
-	HasError bool // an ERROR or missing node is at or beneath it
-	Extra    bool
-	Named    bool
-
-	StartByte, EndByte    uint32
-	StartRow, StartColumn uint32 // 0-based; columns count bytes
-	EndRow, EndColumn     uint32
-	Children              []*Node
+// Parse parses source and returns its tree, pruned as prune says.
+func Parse(ctx context.Context, source []byte, prune Prune) (*Node, error) {
+	var root *Node
+	err := withInstance(ctx, func(inst *instance) error {
+		if err := inst.parse(ctx, source, false); err != nil {
+			return err
+		}
+		var err error
+		root, err = inst.nodes(ctx, prune)
+		return err
+	})
+	return root, err
 }
 
-// Parse parses source. With prune, a node with no errors beneath it comes
-// back without its children, which is all error reporting needs.
-//
-// Parsing stops with ctx: past its deadline Parse returns ctx's error.
-func Parse(ctx context.Context, source []byte, prune bool) (*Node, error) {
+// Inspect parses source and calls f with its tree, whose nodes' children
+// are read from the parser as f asks for them (Node.Children): a caller
+// that looks at only part of a tree pays only for that part. The tree is
+// f's alone, and only until f returns; then its unread children read as
+// none. Inspect returns f's error, else any error reading the tree.
+func Inspect(ctx context.Context, source []byte, f func(root *Node) error) error {
+	return withInstance(ctx, func(inst *instance) error {
+		if err := inst.parse(ctx, source, false); err != nil {
+			return err
+		}
+		return inst.inspect(ctx, f)
+	})
+}
+
+// withInstance runs f with an instance from the pool.
+func withInstance(ctx context.Context, f func(*instance) error) error {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return err
 	}
 	e, err := loadEngine()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	inst, err := e.get()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	root, err := inst.parse(ctx, source, prune)
-	if err != nil || ctx.Err() != nil {
-		// wazero closes the instance when ctx ends, perhaps mid-parse, so
-		// it can't go back in the pool.
-		inst.mod.Close(context.Background())
-		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			return nil, err
-		}
-		return root, nil
+	if err := f(inst); err != nil {
+		// A trap leaves the instance in no state to reuse; an interrupted
+		// call leaves it fine, but it's rare enough not to matter.
+		inst.close()
+		return err
 	}
 	e.put(inst)
-	return root, nil
+	return nil
 }
 
 // engine is the compiled module and a pool of its instances.
@@ -83,6 +88,9 @@ type engine struct {
 	runtime  wazero.Runtime
 	compiled wazero.CompiledModule
 	idle     chan *instance
+
+	// symbols and fields name the grammar's symbols and fields, by id.
+	symbols, fields []string
 }
 
 // maxIdle bounds the instances kept for reuse; each holds its own memory.
@@ -93,18 +101,64 @@ const maxIdle = 4
 // much until it is closed: rather than holding it for good, it is closed.
 const maxIdleMemory = 16 << 20
 
+// compilationCache caches the compiled module across processes, under the
+// user's cache directory, or returns nil where there is none.
+func compilationCache() wazero.CompilationCache {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return nil
+	}
+	cache, err := wazero.NewCompilationCacheWithDir(filepath.Join(dir, "dang", "wazero"))
+	if err != nil {
+		return nil
+	}
+	return cache
+}
+
 var loadEngine = sync.OnceValues(func() (*engine, error) {
 	ctx := context.Background()
-	// Closing on context done is what lets a deadline stop a parse.
-	rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithCloseOnContextDone(true))
+	cfg := wazero.NewRuntimeConfig()
+	if cache := compilationCache(); cache != nil {
+		cfg = cfg.WithCompilationCache(cache)
+	}
+	rt := wazero.NewRuntimeWithConfig(ctx, cfg)
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
 		return nil, fmt.Errorf("tswasm: instantiate WASI: %w", err)
+	}
+	// dang_interrupted is how a parse or query learns that its context is
+	// done. (wazero's own WithCloseOnContextDone would do, but it makes
+	// every call several times slower.)
+	_, err := rt.NewHostModuleBuilder("env").
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context) uint32 {
+			if ctx.Err() != nil {
+				return 1
+			}
+			return 0
+		}).
+		Export("dang_interrupted").
+		Instantiate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("tswasm: instantiate host module: %w", err)
 	}
 	compiled, err := rt.CompileModule(ctx, module)
 	if err != nil {
 		return nil, fmt.Errorf("tswasm: compile: %w", err)
 	}
-	return &engine{runtime: rt, compiled: compiled, idle: make(chan *instance, maxIdle)}, nil
+	e := &engine{runtime: rt, compiled: compiled, idle: make(chan *instance, maxIdle)}
+	inst, err := e.instantiate()
+	if err != nil {
+		return nil, err
+	}
+	if e.symbols, err = inst.names(ctx, "dang_symbol_count", "dang_symbol_name", 0); err != nil {
+		return nil, err
+	}
+	// Field ids count from 1; 0 is none.
+	if e.fields, err = inst.names(ctx, "dang_field_count", "dang_field_name", 1); err != nil {
+		return nil, err
+	}
+	e.put(inst)
+	return e, nil
 })
 
 func (e *engine) get() (*instance, error) {
@@ -113,162 +167,158 @@ func (e *engine) get() (*instance, error) {
 		return inst, nil
 	default:
 	}
+	return e.instantiate()
+}
+
+func (e *engine) instantiate() (*instance, error) {
 	// An empty name lets any number of instances coexist.
 	cfg := wazero.NewModuleConfig().WithName("").WithStartFunctions("_initialize")
 	mod, err := e.runtime.InstantiateModule(context.Background(), e.compiled, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("tswasm: instantiate: %w", err)
 	}
+	fn := mod.ExportedFunction
 	return &instance{
-		mod:        mod,
-		alloc:      mod.ExportedFunction("dang_alloc"),
-		free:       mod.ExportedFunction("dang_free"),
-		parseFn:    mod.ExportedFunction("dang_parse"),
-		symbolName: mod.ExportedFunction("dang_symbol_name"),
+		engine:            e,
+		mod:               mod,
+		alloc:             fn("dang_alloc"),
+		free:              fn("dang_free"),
+		edit:              fn("dang_edit"),
+		parseFn:           fn("dang_parse"),
+		nodesFn:           fn("dang_nodes"),
+		rootFn:            fn("dang_root"),
+		childrenFn:        fn("dang_children"),
+		queryNew:          fn("dang_query_new"),
+		queryCaptureCount: fn("dang_query_capture_count"),
+		queryPatternCount: fn("dang_query_pattern_count"),
+		queryCaptureName:  fn("dang_query_capture_name"),
+		queryStringValue:  fn("dang_query_string_value"),
+		queryPredicates:   fn("dang_query_predicates"),
+		capturesExec:      fn("dang_captures_exec"),
+		capturesNext:      fn("dang_captures_next"),
+		capturesRemove:    fn("dang_captures_remove"),
+		resultFn:          fn("dang_result"),
+		queries:           map[*Query]uint32{},
 	}, nil
 }
 
 func (e *engine) put(inst *instance) {
 	if inst.mod.Memory().Size() > maxIdleMemory {
-		inst.mod.Close(context.Background())
+		inst.close()
 		return
 	}
 	select {
 	case e.idle <- inst:
 	default:
-		inst.mod.Close(context.Background())
+		inst.close()
 	}
 }
 
-// instance is one instantiation of the module, used by one parse at a time.
+// instance is one instantiation of the module, used by one call at a time.
 type instance struct {
-	mod        api.Module
-	alloc      api.Function
-	free       api.Function
-	parseFn    api.Function
-	symbolName api.Function
+	engine *engine
+	mod    api.Module
+
+	alloc, free                          api.Function
+	edit, parseFn                        api.Function
+	nodesFn, rootFn, childrenFn          api.Function
+	queryNew                             api.Function
+	queryCaptureCount, queryPatternCount api.Function
+	queryCaptureName, queryStringValue   api.Function
+	queryPredicates                      api.Function
+	capturesExec, capturesNext           api.Function
+	capturesRemove                       api.Function
+	resultFn                             api.Function
+
+	// resultPtr is the address of the shim's result words, once read.
+	resultPtr uint32
+
+	// queries holds the queries compiled in this instance.
+	queries map[*Query]uint32
 }
 
-// nodeWords is the size of csrc/shim.c's node struct, in uint32s.
-const nodeWords = 9
+func (inst *instance) close() {
+	inst.mod.Close(context.Background())
+}
 
-const (
-	flagMissing = 1 << iota
-	flagError
-	flagHasError
-	flagExtra
-	flagNamed
-)
+var errFailed = errors.New("tswasm: call failed")
 
-var errParse = errors.New("tswasm: parse failed")
-
-func (inst *instance) parse(ctx context.Context, source []byte, prune bool) (*Node, error) {
-	res, err := inst.alloc.Call(ctx, uint64(len(source)))
+// call calls f, returning its first result. Past ctx, it returns ctx's
+// error: a call stopped short returns nothing to trust.
+func call(ctx context.Context, f api.Function, args ...uint64) (uint32, error) {
+	res, err := f.Call(ctx, args...)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	src := uint32(res[0])
-	if src == 0 {
-		return nil, errParse
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
-	if !inst.mod.Memory().Write(src, source) {
-		return nil, errParse
+	if len(res) == 0 {
+		return 0, nil
 	}
-	var pruneArg uint64
-	if prune {
-		pruneArg = 1
-	}
-	res, err = inst.parseFn.Call(ctx, uint64(src), uint64(len(source)), pruneArg)
+	return uint32(res[0]), nil
+}
+
+// write copies data into a fresh allocation; the caller frees it.
+func (inst *instance) write(ctx context.Context, data []byte) (uint32, error) {
+	ptr, err := call(ctx, inst.alloc, uint64(len(data)))
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if _, err := inst.free.Call(ctx, uint64(src)); err != nil {
-		return nil, err
+	if ptr == 0 || !inst.mod.Memory().Write(ptr, data) {
+		return 0, errFailed
 	}
-	if res[0] == 0 {
-		return nil, errParse
-	}
-	header, ok := inst.mod.Memory().Read(uint32(res[0]), 8)
+	return ptr, nil
+}
+
+// words reads n uint32s at ptr.
+func (inst *instance) words(ptr, n uint32) ([]byte, error) {
+	data, ok := inst.mod.Memory().Read(ptr, n*4)
 	if !ok {
-		return nil, errParse
+		return nil, errFailed
 	}
-	count := binary.LittleEndian.Uint32(header)
-	data, ok := inst.mod.Memory().Read(binary.LittleEndian.Uint32(header[4:]), count*nodeWords*4)
-	if !ok || count == 0 {
-		return nil, errParse
-	}
-	d := decoder{inst: inst, ctx: ctx, data: data}
-	root := d.node()
-	if d.err != nil {
-		return nil, d.err
-	}
-	return root, nil
+	return data, nil
 }
 
-// decoder rebuilds the tree from the shim's preorder node array.
-type decoder struct {
-	inst *instance
-	ctx  context.Context
-	data []byte
-	next int
-	err  error
+func word(data []byte, i int) uint32 {
+	return binary.LittleEndian.Uint32(data[i*4:])
 }
 
-func (d *decoder) word(i int) uint32 {
-	return binary.LittleEndian.Uint32(d.data[(d.next*nodeWords+i)*4:])
+// result reads the shim's result words.
+func (inst *instance) result(ctx context.Context) ([2]uint32, error) {
+	if inst.resultPtr == 0 {
+		ptr, err := call(ctx, inst.resultFn)
+		if err != nil {
+			return [2]uint32{}, err
+		}
+		inst.resultPtr = ptr
+	}
+	data, err := inst.words(inst.resultPtr, 2)
+	if err != nil {
+		return [2]uint32{}, err
+	}
+	return [2]uint32{word(data, 0), word(data, 1)}, nil
 }
 
-func (d *decoder) node() *Node {
-	if d.err != nil {
-		return nil
+// names reads the names a count function and a name function give, of ids
+// from 0 to the count plus extra.
+func (inst *instance) names(ctx context.Context, countFn, nameFn string, extra uint32) ([]string, error) {
+	count, err := call(ctx, inst.mod.ExportedFunction(countFn))
+	if err != nil {
+		return nil, err
 	}
-	if (d.next+1)*nodeWords*4 > len(d.data) {
-		d.err = errParse
-		return nil
-	}
-	flags := d.word(1)
-	n := &Node{
-		Missing:     flags&flagMissing != 0,
-		Error:       flags&flagError != 0,
-		HasError:    flags&flagHasError != 0,
-		Extra:       flags&flagExtra != 0,
-		Named:       flags&flagNamed != 0,
-		StartByte:   d.word(2),
-		EndByte:     d.word(3),
-		StartRow:    d.word(4),
-		StartColumn: d.word(5),
-		EndRow:      d.word(6),
-		EndColumn:   d.word(7),
-	}
-	n.Kind, d.err = d.inst.kind(d.ctx, d.word(0))
-	children := int(d.word(8))
-	d.next++
-	if children > 0 {
-		n.Children = make([]*Node, children)
-		for i := range n.Children {
-			n.Children[i] = d.node()
+	f := inst.mod.ExportedFunction(nameFn)
+	names := make([]string, count+extra)
+	for i := range names {
+		ptr, err := call(ctx, f, uint64(i))
+		if err != nil {
+			return nil, err
+		}
+		if names[i], err = inst.cString(ptr); err != nil {
+			return nil, err
 		}
 	}
-	return n
-}
-
-// symbolNames caches symbol names, which are the same in every instance.
-var symbolNames sync.Map // uint32 → string
-
-func (inst *instance) kind(ctx context.Context, symbol uint32) (string, error) {
-	if name, ok := symbolNames.Load(symbol); ok {
-		return name.(string), nil
-	}
-	res, err := inst.symbolName.Call(ctx, uint64(symbol))
-	if err != nil {
-		return "", err
-	}
-	name, err := inst.cString(uint32(res[0]))
-	if err != nil {
-		return "", err
-	}
-	symbolNames.Store(symbol, name)
-	return name, nil
+	return names, nil
 }
 
 func (inst *instance) cString(ptr uint32) (string, error) {
@@ -279,11 +329,35 @@ func (inst *instance) cString(ptr uint32) (string, error) {
 	for n := uint32(0); ; n++ {
 		b, ok := mem.ReadByte(ptr + n)
 		if !ok {
-			return "", errParse
+			return "", errFailed
 		}
 		if b == 0 {
 			s, _ := mem.Read(ptr, n)
 			return string(s), nil
 		}
 	}
+}
+
+// parse parses source into the instance's kept tree, reusing the last one
+// (edited to match) if reuse is set.
+func (inst *instance) parse(ctx context.Context, source []byte, reuse bool) error {
+	src, err := inst.write(ctx, source)
+	if err != nil {
+		return err
+	}
+	var reuseArg uint64
+	if reuse {
+		reuseArg = 1
+	}
+	ok, err := call(ctx, inst.parseFn, uint64(src), uint64(len(source)), reuseArg)
+	if _, freeErr := inst.free.Call(ctx, uint64(src)); err == nil {
+		err = freeErr
+	}
+	if err != nil {
+		return err
+	}
+	if ok == 0 {
+		return errFailed
+	}
+	return nil
 }

@@ -37,13 +37,13 @@ func TestParityWithCgo(t *testing.T) {
 	for _, in := range inputs {
 		tree := parser.Parse(in.src, nil)
 		var want strings.Builder
-		dumpC(&want, tree.RootNode(), 0)
+		dumpC(&want, tree.RootNode(), "", 0)
 		if tree.RootNode().HasError() {
 			withErrors++
 		}
 		tree.Close()
 
-		root, err := tswasm.Parse(context.Background(), in.src, false)
+		root, err := tswasm.Parse(context.Background(), in.src, tswasm.PruneNone)
 		if err != nil {
 			t.Errorf("%s: %v", in.name, err)
 			continue
@@ -56,6 +56,65 @@ func TestParityWithCgo(t *testing.T) {
 		}
 	}
 	t.Logf("compared %d inputs, %d of them with syntax errors", len(inputs), withErrors)
+}
+
+// TestQueryParityWithCgo runs the highlight query over every input with
+// both runtimes, and requires the same captures, predicates applied.
+func TestQueryParityWithCgo(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "highlights.scm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cq, qerr := tree_sitter.NewQuery(danglang.Language(), string(src))
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
+	defer cq.Close()
+	wq, err := tswasm.NewQuery(string(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(cq.CaptureNames()) != fmt.Sprint(wq.CaptureNames()) {
+		t.Fatalf("capture names differ:\n  cgo:  %v\n  wasm: %v", cq.CaptureNames(), wq.CaptureNames())
+	}
+
+	parser := tree_sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(danglang.Language()); err != nil {
+		t.Fatal(err)
+	}
+	var total int
+	for _, in := range corpus(t) {
+		tree := parser.Parse(in.src, nil)
+		cursor := tree_sitter.NewQueryCursor()
+		var want strings.Builder
+		captures := cursor.Captures(cq, tree.RootNode(), in.src)
+		for {
+			m, idx := captures.Next()
+			if m == nil {
+				break
+			}
+			c := m.Captures[idx]
+			fmt.Fprintf(&want, "%d %d-%d\n", c.Index, c.Node.StartByte(), c.Node.EndByte())
+			total++
+		}
+		cursor.Close()
+		tree.Close()
+
+		got, err := wq.Captures(context.Background(), in.src)
+		if err != nil {
+			t.Errorf("%s: %v", in.name, err)
+			continue
+		}
+		var gotS strings.Builder
+		for _, c := range got {
+			fmt.Fprintf(&gotS, "%d %d-%d\n", c.Index, c.StartByte, c.EndByte)
+		}
+		if want.String() != gotS.String() {
+			t.Errorf("%s: captures differ\n%s", in.name, firstDifference(want.String(), gotS.String()))
+		}
+	}
+	t.Logf("compared %d captures", total)
 }
 
 type input struct {
@@ -124,26 +183,26 @@ func corpusInputs(corpus string) map[string]string {
 	return inputs
 }
 
-func dumpC(w *strings.Builder, n *tree_sitter.Node, depth int) {
+func dumpC(w *strings.Builder, n *tree_sitter.Node, field string, depth int) {
 	sp, ep := n.StartPosition(), n.EndPosition()
-	line(w, depth, n.Kind(), uint32(sp.Row), uint32(sp.Column), uint32(ep.Row), uint32(ep.Column),
+	line(w, depth, n.Kind(), field, uint32(sp.Row), uint32(sp.Column), uint32(ep.Row), uint32(ep.Column),
 		uint32(n.StartByte()), uint32(n.EndByte()), n.IsError(), n.IsMissing(), n.HasError(), n.IsNamed(), n.IsExtra())
 	for i := uint(0); i < n.ChildCount(); i++ {
-		dumpC(w, n.Child(i), depth+1)
+		dumpC(w, n.Child(i), n.FieldNameForChild(uint32(i)), depth+1)
 	}
 }
 
 func dumpWasm(w *strings.Builder, n *tswasm.Node, depth int) {
-	line(w, depth, n.Kind, n.StartRow, n.StartColumn, n.EndRow, n.EndColumn,
+	line(w, depth, n.Kind, n.Field, n.StartRow, n.StartColumn, n.EndRow, n.EndColumn,
 		n.StartByte, n.EndByte, n.Error, n.Missing, n.HasError, n.Named, n.Extra)
-	for _, c := range n.Children {
+	for _, c := range n.Children() {
 		dumpWasm(w, c, depth+1)
 	}
 }
 
-func line(w *strings.Builder, depth int, kind string, sr, sc, er, ec, sb, eb uint32, isError, missing, hasError, named, extra bool) {
-	fmt.Fprintf(w, "%s%q [%d:%d-%d:%d] %d-%d error=%t missing=%t has_error=%t named=%t extra=%t\n",
-		strings.Repeat("  ", depth), kind, sr, sc, er, ec, sb, eb, isError, missing, hasError, named, extra)
+func line(w *strings.Builder, depth int, kind, field string, sr, sc, er, ec, sb, eb uint32, isError, missing, hasError, named, extra bool) {
+	fmt.Fprintf(w, "%s%s%q [%d:%d-%d:%d] %d-%d error=%t missing=%t has_error=%t named=%t extra=%t\n",
+		strings.Repeat("  ", depth), field+":", kind, sr, sc, er, ec, sb, eb, isError, missing, hasError, named, extra)
 }
 
 func firstDifference(want, got string) string {

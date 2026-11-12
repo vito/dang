@@ -25,7 +25,7 @@ func syntaxRecoveryTimeout(source []byte) time.Duration {
 func parseSyntaxTree(source []byte) (syntaxNode, func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), syntaxRecoveryTimeout(source))
 	defer cancel()
-	root, err := tswasm.Parse(ctx, source, true)
+	root, err := tswasm.Parse(ctx, source, tswasm.PruneErrorFree)
 	if err != nil {
 		return nil, nil
 	}
@@ -41,15 +41,15 @@ type wasmNode struct {
 func (n wasmNode) Kind() string    { return n.n.Kind }
 func (n wasmNode) IsMissing() bool { return n.n.Missing }
 func (n wasmNode) IsError() bool   { return n.n.Error }
-func (n wasmNode) ChildCount() int { return len(n.n.Children) }
+func (n wasmNode) ChildCount() int { return len(n.n.Children()) }
 func (n wasmNode) Text() string    { return string(n.source[n.n.StartByte:n.n.EndByte]) }
 func (n wasmNode) ByteLen() int    { return int(n.n.EndByte - n.n.StartByte) }
 
 func (n wasmNode) Child(i int) syntaxNode {
-	if i < 0 || i >= len(n.n.Children) {
+	if i < 0 || i >= len(n.n.Children()) {
 		return nil
 	}
-	return wasmNode{n.n.Children[i], n.source}
+	return wasmNode{n.n.Children()[i], n.source}
 }
 
 func (n wasmNode) Start() (row, col uint) {

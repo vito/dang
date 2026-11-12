@@ -13,7 +13,7 @@ import (
 // memory would never shrink.
 func TestPoolDropsGrownInstances(t *testing.T) {
 	big := []byte(strings.Repeat("let x = [1, 2, (3 + 4)]\n", 20_000) + "let y = (1\n")
-	if _, err := Parse(context.Background(), big, true); err != nil {
+	if _, err := Parse(context.Background(), big, PruneErrorFree); err != nil {
 		t.Fatal(err)
 	}
 	e, err := loadEngine()
