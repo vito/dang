@@ -282,7 +282,7 @@ func TestSelectMixed(t *testing.T) {
 func TestSelectMixedNestedArgs(t *testing.T) {
 	// A nested field within a mixed selection carries its own arguments, which
 	// must be rendered on the field, not dropped: e.g.
-	// viewer.{ login, repositories(first: 3).{ name } }.
+	// viewer.{{ login, repositories(first: 3).{{ name }} }}.
 	repositories := Query().SelectFields("name", "stargazerCount").Arg("first", 3)
 
 	q, err := Query().

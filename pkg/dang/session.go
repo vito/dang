@@ -39,6 +39,11 @@ type sessionEntry struct {
 	rebinds map[*FieldDecl]*hm.Scheme
 	// types holds the redefined types, with the old ones.
 	types map[string]TypeScope
+	// fresh holds the names the entry declares that the frame didn't bind
+	// before it, as values and as types; old holds the values' schemes of
+	// those it did.
+	fresh, freshTypes map[string]bool
+	old               map[string]*hm.Scheme
 }
 
 // beginSessionEntry prepares forms, an entry of the session whose top-level
@@ -53,15 +58,26 @@ func beginSessionEntry(forms []Node, env hm.Env) (*sessionEntry, error) {
 		frame.session = &sessionState{users: map[string]map[string]bool{}}
 	}
 	e := &sessionEntry{
-		frame:    frame,
-		state:    frame.session,
-		declared: map[string]bool{},
-		rebinds:  map[*FieldDecl]*hm.Scheme{},
-		types:    map[string]TypeScope{},
+		frame:      frame,
+		state:      frame.session,
+		declared:   map[string]bool{},
+		rebinds:    map[*FieldDecl]*hm.Scheme{},
+		types:      map[string]TypeScope{},
+		fresh:      map[string]bool{},
+		freshTypes: map[string]bool{},
+		old:        map[string]*hm.Scheme{},
 	}
 	for _, form := range forms {
 		if name := sessionDeclName(form); name != "" {
 			e.declared[name] = true
+			if scheme, defined := frame.LocalSchemeOf(name); defined {
+				e.old[name] = scheme
+			} else {
+				e.fresh[name] = true
+			}
+			if _, defined := frame.LocalNamedType(name); !defined {
+				e.freshTypes[name] = true
+			}
 		}
 	}
 	for _, form := range forms {
@@ -152,16 +168,25 @@ func (e *sessionEntry) record(forms []Node) {
 }
 
 // rollback restores what the entry redefined, after it failed to check, so
-// the checker keeps agreeing with the values evaluation still holds.
+// the checker keeps agreeing with the values evaluation still holds, and
+// takes back what it newly declared: nothing evaluated it, and a declaration
+// that failed is bound to poisonType, which later entries mustn't read as a
+// failure already reported.
 func (e *sessionEntry) rollback() {
 	if e == nil {
 		return
 	}
-	for f, scheme := range e.rebinds {
-		e.frame.Add(f.Name.Name, scheme)
+	for name, scheme := range e.old {
+		e.frame.Add(name, scheme)
 	}
 	for name, old := range e.types {
 		e.frame.AddObject(name, old)
+	}
+	for name := range e.fresh {
+		e.frame.Remove(name)
+	}
+	for name := range e.freshTypes {
+		delete(e.frame.objects, name)
 	}
 }
 

@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m operator addition is not defined between types Int! and String!
+  [2m[34m--> errors/failed_declaration_does_not_cascade.dang:4:9[0m
+ [2m    |[0m
+ [2m  2 | # of its name, here or in a block, don't each report that it isn't found.[0m
+ [2m  3 | [0m
+ [2m[34m[1m  4 | [0mlet c = 1 + "x"
+[2m               [31m^^^^^^^[0m
+ [2m  5 | let d = c.length[0m
+ [2m  6 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m "undefinedThing" not found
+  [2m[34m--> errors/failed_declaration_does_not_cascade.dang:8:11[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | let total = {[0m
+ [2m[34m[1m  8 | [0m  let n = undefinedThing
+[2m                 [31m^^^^^^^^^^^^^^[0m
+ [2m  9 |   n + c[0m
+ [2m 10 | }[0m
+ [2m    |[0m
+

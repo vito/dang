@@ -1,0 +1,6 @@
+# Selecting a field directly on a list of GraphQL objects must surface a
+# helpful error pointing at the object-selection workaround.
+
+import Test
+
+let names = users.name

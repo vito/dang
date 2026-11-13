@@ -1,5 +1,5 @@
 # Test nested field arguments - the actual feature we implemented
-# Tests the syntax: foo.{bar(arg: 123).{deeper}}
+# Tests the syntax: foo.{{bar(arg: 123).{{deeper}}}}
 import Test
 
 # Test the actual pattern with nested field arguments

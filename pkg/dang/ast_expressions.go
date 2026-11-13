@@ -899,6 +899,10 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 		t, _ := scheme.Type()
+		if _, failed := t.(poisonType); failed {
+			// Its declaration failed, and said so.
+			return nil, &poisonedError{Name: s.Name}
+		}
 		// A refinement the read can't trust gives way to the declared type,
 		// which, for a mutable binding, is pinned to what it is now.
 		t = readNarrowed(ctx, env, s.Name, s, t)
@@ -1123,6 +1127,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							if !mono {
 								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
 							}
+							if _, failed := t.(poisonType); failed {
+								return nil, &poisonedError{Name: d.Field.Name}
+							}
 							if d.AutoCall {
 								var err error
 								t, _, err = autoCallInstantiated(t)
@@ -1240,7 +1247,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 
 		// GraphQL object lists are not directly iterable: callers must first
-		// select fields on the elements (e.g. value.{id}) to convert them
+		// select fields on the elements (e.g. value.{{id}}) to convert them
 		// into a regular list. Detect this case before falling through to
 		// the env path, which would surface a confusing internal error.
 		var gqlListReceiver bool
@@ -1251,9 +1258,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 		if gqlListReceiver {
 			if _, found := LookupMethod(ListTypeModule, d.Field.Name); found {
-				return nil, fmt.Errorf("cannot call list method %q directly on a GraphQL object list; select fields first, e.g. value.{id}.%s", d.Field.Name, d.Field.Name)
+				return nil, fmt.Errorf("cannot call list method %q directly on a GraphQL object list; select fields on its elements first, e.g. value.{{id}}.%s", d.Field.Name, d.Field.Name)
 			}
-			return nil, fmt.Errorf("cannot select %q from a GraphQL object list; select fields on its elements first, e.g. value.{id}", d.Field.Name)
+			return nil, fmt.Errorf("cannot select %q from a GraphQL object list; select fields on its elements first, e.g. value.{{id}}", d.Field.Name)
 		}
 
 		// Check if receiver is nullable or non-null
@@ -1328,6 +1335,10 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		t, mono := scheme.Type()
 		if !mono {
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
+		}
+		if _, failed := t.(poisonType); failed {
+			// A member whose declaration failed, and said so.
+			return nil, &poisonedError{Name: d.Field.Name}
 		}
 		if d.AutoCall {
 			var err error
@@ -1821,7 +1832,7 @@ type FieldSelection struct {
 	Alias     string           // GraphQL-style output name; "" means use Name
 	Name      string           // The field actually selected off the receiver
 	Args      Record           // For arguments like repositories(first: 100)
-	Selection *ObjectSelection // For nested selections like profile.{bio, avatar}
+	Selection *ObjectSelection // For nested selections like profile.{{bio, avatar}}
 	Loc       *SourceLocation
 }
 
@@ -1838,7 +1849,7 @@ func (f *FieldSelection) OutputKey() string {
 	return f.Name
 }
 
-// InlineFragment represents a type-conditional selection like ... on User { name, email }
+// InlineFragment represents a type-conditional selection like ... on User {{ name, email }}
 type InlineFragment struct {
 	TypeName  *Symbol
 	Qualifier string // Optional import/module qualifier (e.g. "Dagger" in ... on Dagger.Editor)
@@ -1851,8 +1862,8 @@ type InlineFragment struct {
 
 func (f *InlineFragment) GetSourceLocation() *SourceLocation { return f.Loc }
 
-// ObjectSelection represents multi-field selection like obj.{field1, field2}
-// or union selection like obj.{... on User { name }, ... on Post { title }}
+// ObjectSelection represents multi-field selection like obj.{{field1, field2}}
+// or union selection like obj.{{... on User {{ name }}, ... on Post {{ title }}}}
 type ObjectSelection struct {
 	InferredTypeHolder
 	Receiver        Node

@@ -153,6 +153,47 @@ func TestReplKeepsLinkedWeakVariables(t *testing.T) {
 	require.ErrorContains(t, err, "cannot use [String!]! as [Int!]!")
 }
 
+// An entry that fails to check leaves nothing it declared behind: later
+// entries don't see its names, failed or not, as declared.
+func TestReplFailedEntryDeclaresNothing(t *testing.T) {
+	s := newTestReplSession(t)
+	_, err := s.enter("let c = nope")
+	require.ErrorContains(t, err, `"nope" not found`)
+	_, err = s.enter("c + 1")
+	require.ErrorContains(t, err, `"c" not found`)
+
+	_, err = s.enter("let ok = 1\nlet bad = nope")
+	require.ErrorContains(t, err, `"nope" not found`)
+	_, err = s.enter("ok")
+	require.ErrorContains(t, err, `"ok" not found`)
+
+	_, err = s.enter("type Q { pub a: Int! = nope }")
+	require.ErrorContains(t, err, `"nope" not found`)
+	_, err = s.enter("Q")
+	require.ErrorContains(t, err, `"Q" not found`)
+
+	// A redefinition that fails keeps the old definition, though the rest of
+	// its entry sees the new one fail.
+	_, err = s.enter("let n = 1")
+	require.NoError(t, err)
+	_, err = s.enter("let n = nope\nlet m = n.foo")
+	require.ErrorContains(t, err, `"nope" not found`)
+	require.NotContains(t, err.Error(), `"foo"`)
+	v, err := s.enter("n + 1")
+	require.NoError(t, err)
+	require.Equal(t, "2", dang.Repr(v))
+
+	_, err = s.enter("type R { pub a: Int! = 1 }")
+	require.NoError(t, err)
+	_, err = s.enter("type R { pub a: Int! = nope\n pub b: String! = \"x\" }")
+	require.ErrorContains(t, err, `"nope" not found`)
+	_, err = s.enter("R.b")
+	require.ErrorContains(t, err, `field "b" not found`)
+	v, err = s.enter("R.a")
+	require.NoError(t, err)
+	require.Equal(t, "1", dang.Repr(v))
+}
+
 // Redefining a declaration in a later entry rebinds it: calls run the new
 // body, as the checker types them.
 func TestReplRedefinitions(t *testing.T) {

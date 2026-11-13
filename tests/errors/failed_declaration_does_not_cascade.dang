@@ -1,0 +1,10 @@
+# A declaration that fails to type-check reports its error once: later uses
+# of its name, here or in a block, don't each report that it isn't found.
+
+let c = 1 + "x"
+let d = c.length
+
+let total = {
+  let n = undefinedThing
+  n + c
+}

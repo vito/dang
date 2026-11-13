@@ -520,7 +520,7 @@ func withSourceText(err error, sources map[string]string) error {
 	}
 	var errs *InferenceErrors
 	if errors.As(err, &errs) {
-		converted := &InferenceErrors{Errors: make([]error, len(errs.Errors))}
+		converted := &InferenceErrors{Errors: make([]error, len(errs.Errors)), poisoned: errs.poisoned}
 		for i, e := range errs.Errors {
 			converted.Errors[i] = withSourceText(e, sources)
 		}

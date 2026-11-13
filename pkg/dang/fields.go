@@ -39,6 +39,10 @@ type FieldDecl struct {
 	// declaredType is the (weakened) type a declaration pass gave a field
 	// without an annotation, which Infer keeps.
 	declaredType hm.Type
+	// annotated is the type Infer resolved the field's annotation to, set
+	// before its value is inferred: what its name stays bound to if the
+	// value fails to type-check (assignFallbackType).
+	annotated hm.Type
 
 	// rebind is set during inference when the declaration replaces a binding
 	// already in its own frame: an unqualified import of the same name, or,
@@ -439,6 +443,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	ctx = withParamDecl(ctx, false)
 
 	var definedType hm.Type
+	s.annotated = nil
 	if s.Type_ != nil {
 		definedType, err = s.Type_.Infer(s.withTypeParams(ctx), env, fresh)
 		if err != nil {
@@ -450,6 +455,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		if !isParam {
 			definedType = s.weaken(ctx, definedType)
 		}
+		s.annotated = definedType
 	}
 
 	if s.ContextInferredType != nil {

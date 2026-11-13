@@ -93,7 +93,7 @@ func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
 //
 //	\dang-github-playground{{{
 //	import GitHub
-//	viewer.{ login, name }
+//	viewer.{{ login, name }}
 //	}}}
 func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
 	return booklit.Styled{
