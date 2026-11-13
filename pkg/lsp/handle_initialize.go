@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/creachadair/jrpc2"
+	"github.com/vito/dang/v2/pkg/dang"
 )
 
 func (h *langHandler) handleInitialize(ctx context.Context, req *jrpc2.Request) (any, error) {
@@ -27,6 +28,11 @@ func (h *langHandler) handleInitialize(ctx context.Context, req *jrpc2.Request) 
 	}
 	h.rootPath = filepath.Clean(rootPath)
 	h.addFolder(rootPath)
+
+	// Completion classifies the cursor with tree-sitter, whose module is
+	// compiled on first use; start compiling it now, alongside the first
+	// file's analysis (which waits for it; see updateFile).
+	go dang.LoadTreeSitter()
 
 	return InitializeResult{
 		Capabilities: ServerCapabilities{

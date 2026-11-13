@@ -3,8 +3,6 @@
 package dang
 
 import (
-	"context"
-
 	"github.com/vito/dang/v2/pkg/dang/tswasm"
 )
 
@@ -14,7 +12,10 @@ import (
 // never worth hanging the caller: past treeSitterTimeout the parse error
 // names the token the parser failed at instead.
 func parseSyntaxTree(source []byte) (syntaxNode, func()) {
-	ctx, cancel := context.WithTimeout(context.Background(), treeSitterTimeout(source))
+	ctx, cancel, err := treeSitterContext(source)
+	if err != nil {
+		return nil, nil
+	}
 	defer cancel()
 	root, err := tswasm.Parse(ctx, source, tswasm.PruneErrorFree)
 	if err != nil {

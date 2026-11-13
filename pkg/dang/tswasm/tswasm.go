@@ -115,6 +115,14 @@ var loadEngine = sync.OnceValues(func() (*engine, error) {
 	return newEngine(compilationCacheDir())
 })
 
+// Load compiles the module now rather than on first use, for a long-lived
+// caller that would rather not make its first parse wait for that. Calls
+// after the first, and parses already waiting on it, share its result.
+func Load() error {
+	_, err := loadEngine()
+	return err
+}
+
 // newEngine compiles the module, caching the compiled code in cacheDir
 // unless it's "".
 func newEngine(cacheDir string) (*engine, error) {

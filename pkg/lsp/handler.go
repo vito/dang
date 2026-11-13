@@ -204,6 +204,13 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
 	result, err := h.analyzeDirectory(ctx, uri, fp)
+
+	// Completion needs tree-sitter, whose module initialize started
+	// compiling alongside this analysis. Finish that before readers get the
+	// file, so the first completion doesn't spend the client's timeout on
+	// the compile. Once it's compiled, this returns at once.
+	dang.LoadTreeSitter()
+
 	if err != nil {
 		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
 		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
