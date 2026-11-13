@@ -11,6 +11,10 @@ func Complete(ctx context.Context, env TypeScope, text string, line, col int) Co
 	return CompletionResult{}
 }
 
+// LoadTreeSitter readies tree-sitter ahead of its first use. Without
+// WebAssembly there is nothing to ready.
+func LoadTreeSitter() {}
+
 // CompletionContextAt classifies the cursor for completion. Without
 // WebAssembly, tree-sitter is not available, so there is never anything to
 // complete.
