@@ -476,6 +476,9 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 				typ, err = inferer.Infer(ctx, newEnv, fresh)
 				if err != nil {
 					errs.Add(err)
+					// Later forms still see the name it declares, as a
+					// failure already reported (see poisonType).
+					assignFallbackType(form, newEnv)
 				}
 			}
 			// Propagate guard-clause narrowings to subsequent forms: if a
@@ -762,7 +765,7 @@ func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			errs.Add(err)
-			assignFallbackType(form, env, fresh)
+			assignFallbackType(form, env)
 			continue
 		}
 		lastT = t
@@ -832,7 +835,7 @@ func inferTypeBodiesPhaseResilient(ctx context.Context, types []Node, env hm.Env
 		if err != nil {
 			errs.Add(err)
 			if t == nil {
-				assignFallbackType(form, env, fresh)
+				assignFallbackType(form, env)
 			}
 			continue
 		}
@@ -869,7 +872,7 @@ func inferVariablesPhaseResilient(ctx context.Context, variables []Node, env hm.
 		t, err := form.Infer(withTopDecl(ctx, env, form), env, fresh)
 		if err != nil {
 			errs.Add(err)
-			assignFallbackType(form, env, fresh)
+			assignFallbackType(form, env)
 			continue
 		}
 		lastT = t

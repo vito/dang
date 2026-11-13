@@ -899,6 +899,10 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 		t, _ := scheme.Type()
+		if _, failed := t.(poisonType); failed {
+			// Its declaration failed, and said so.
+			return nil, &poisonedError{Name: s.Name}
+		}
 		// A refinement the read can't trust gives way to the declared type,
 		// which, for a mutable binding, is pinned to what it is now.
 		t = readNarrowed(ctx, env, s.Name, s, t)
@@ -1123,6 +1127,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							if !mono {
 								return nil, fmt.Errorf("Select.Infer: static %q of %s is not monomorphic", d.Field.Name, owner.Named)
 							}
+							if _, failed := t.(poisonType); failed {
+								return nil, &poisonedError{Name: d.Field.Name}
+							}
 							if d.AutoCall {
 								var err error
 								t, _, err = autoCallInstantiated(t)
@@ -1328,6 +1335,10 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		t, mono := scheme.Type()
 		if !mono {
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
+		}
+		if _, failed := t.(poisonType); failed {
+			// A member whose declaration failed, and said so.
+			return nil, &poisonedError{Name: d.Field.Name}
 		}
 		if d.AutoCall {
 			var err error

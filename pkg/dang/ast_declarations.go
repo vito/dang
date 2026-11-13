@@ -21,6 +21,10 @@ type FunctionBase struct {
 	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
+	// declared is the signature a function with a declared return type has
+	// before its body is inferred: what its name stays bound to if the body
+	// fails to type-check (assignFallbackType), so calls are still checked.
+	declared *hm.FunctionType
 	// generic is isGenericSignature(Inferred), worked out when Inferred is
 	// set rather than for every function value made from it.
 	generic bool
@@ -333,6 +337,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
+	f.declared = nil
 	f.enclosingVars = weakScope(ctx)
 	functionCtx := withFunctionBody(contextWithInferFunctionControlBoundary(outsideRescue(ctx)))
 
@@ -392,6 +397,14 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// Annotate parameter types with their effect variables before the body is
 	// checked (and before skolemization copies them below).
 	f.attachParamEffects(argsRec, blockType)
+
+	if definedRet != nil {
+		f.declared = hm.NewFnType(argsRec, definedRet)
+		if blockType != nil {
+			f.declared.SetBlock(blockType)
+		}
+		f.declared.SetEffect(f.fnEffects().latent)
+	}
 
 	// Skolemize the function's own signature type variables for the duration of
 	// the body check. Within the body these parameters are rigid: each stands

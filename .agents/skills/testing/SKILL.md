@@ -108,6 +108,23 @@ func (n *MyNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 }
 ```
 
+### Failed declarations don't cascade
+
+A declaration that fails to type-check binds its name to `poisonType`
+(`assignFallbackType`, at the top level and in `Block.Infer`), unless it gives
+the name a type itself: a function's declared signature
+(`FunctionBase.declared`), a field's annotation (`FieldDecl.annotated`), or a
+type's constructor, bound when it was hoisted.
+Reading a poisoned name (`Symbol.Infer`, `Select.infer`) fails with a
+`poisonedError`, which `InferenceErrors.Add` keeps as a failure without
+reporting it: the expression reading it fails quietly, a declaration doing so
+is poisoned in turn, and the original error is reported once. Code that
+collects errors must go through `InferenceErrors` to get this; a new
+collector that appends errors itself would report `"c" failed to type-check`
+at every use. A REPL entry that fails restores the names it redefined and
+takes back the ones it declared (`sessionEntry.rollback`), so no poisoned
+name outlives it.
+
 ## Pitfalls
 
 A pitfall is a common mistake Dang recognizes (`//` comments, `&&`, `for`
