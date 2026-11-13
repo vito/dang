@@ -437,6 +437,24 @@ type GraphQLValue struct {
 	// that escapes the chain is probed first. Values selected off this one
 	// inherit it; probing clears it.
 	MaybeNull bool
+
+	// Assigned marks the result of a snippet whose last form assigns a
+	// binding from before the snippet (`ws = ...`; see Snippet.Eval), as
+	// opposed to the binding it stored, which stays unmarked. Assigning the
+	// handle is the point of such a snippet, so Describe leaves out its
+	// "not evaluated" hint there. Nothing else reads it, and values
+	// selected off this one are built fresh, without it.
+	Assigned bool
+}
+
+// markAssigned marks v as the result of a snippet ending in an assignment
+// (see GraphQLValue.Assigned), if it is a GraphQL handle.
+func markAssigned(v Value) Value {
+	if g, ok := v.(GraphQLValue); ok {
+		g.Assigned = true
+		return g
+	}
+	return v
 }
 
 func (g GraphQLValue) Type() hm.Type {

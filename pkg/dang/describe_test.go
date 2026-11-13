@@ -132,6 +132,71 @@ func TestDescribeLazyGraphQL(t *testing.T) {
 	require.Equal(t, 2, client.count())
 }
 
+// TestDescribeAssignedGraphQL checks that a snippet ending in an assignment
+// to a binding from before it leaves out the "not evaluated" hint, since the
+// assignment was the point, while the binding it stored, handles selected
+// off it, assignments to the snippet's own locals, and assignments that
+// merely happen inside a function keep it.
+func TestDescribeAssignedGraphQL(t *testing.T) {
+	ctx, client := fakeGraphQLContext(t, true)
+	m, err := LoadDir(ctx, t.TempDir(), LoadOptions{})
+	require.NoError(t, err)
+	defer m.Close()
+
+	// describe runs setup as a snippet of a fresh session, as a caller
+	// binding names for the next snippet would, then describes source run
+	// as the next one.
+	describe := func(setup, source string) string {
+		t.Helper()
+		s, err := m.NewSession(ctx)
+		require.NoError(t, err)
+		run := func(source string) (Value, hm.Type) {
+			t.Helper()
+			snippet, err := s.Check(ctx, "", source)
+			require.NoError(t, err)
+			val, err := snippet.Eval(ctx)
+			require.NoError(t, err)
+			return val, snippet.Type
+		}
+		run(setup)
+		val, typ := run(source)
+		return Describe(ctx, val, typ, DescribeOptions{})
+	}
+	const decl = `let c = container.from(address: "alpine")`
+	const handle = `<Container: container.from(address: …).withEnv(name: …, value: …)>`
+	const hint = "\n(not evaluated; select a field such as .sync or .stdout to run it)"
+
+	// The assignment's result: no hint.
+	require.Equal(t, `Test.Container! = `+handle,
+		describe(decl, `c = c.withEnv(name: "A", value: "b")`))
+
+	// The variable read back afterwards still has it.
+	require.Equal(t, `Test.Container! = `+handle+hint,
+		describe(decl, `c = c.withEnv(name: "A", value: "b")
+c`))
+
+	// So does a handle selected off the assignment's result.
+	require.Equal(t, `Test.Container! = <Container: container.from(address: …).withEnv(name: …, value: …).withEnv(name: …, value: …)>`+hint,
+		describe(decl, `(if (true) { c = c.withEnv(name: "A", value: "b") } else { c }).withEnv(name: "B", value: "c")`))
+
+	// And an assignment to the snippet's own local, which runs nothing.
+	require.Equal(t, `Test.Container! = `+handle+hint,
+		describe(`1`, decl+`
+c = c.withEnv(name: "A", value: "b")`))
+
+	// And a call whose body ends in an assignment: the snippet assigns
+	// nothing.
+	require.Equal(t, `Test.Container! = `+handle+hint,
+		describe(`let f(c: Test.Container!): Test.Container! { c = c.withEnv(name: "A", value: "b") }`,
+			`f(container.from(address: "alpine"))`))
+
+	// List handles too.
+	require.Equal(t, `GraphQL[Test.Container!]! = <[Container]: containers>`,
+		describe(`let cs = containers`, `cs = containers`))
+
+	require.Zero(t, client.count())
+}
+
 func TestDescribeNeverForcesMutations(t *testing.T) {
 	ctx, client := fakeGraphQLContext(t, true)
 	m, err := LoadDir(ctx, t.TempDir(), LoadOptions{})
