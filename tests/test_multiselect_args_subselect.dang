@@ -1,5 +1,5 @@
 # Test the actual multi-select with arguments feature
-# This tests foo.{bar(arg: 123).{deeper}} pattern with object methods
+# This tests foo.{{bar(arg: 123).{{deeper}}}} pattern with object methods
 
 type TestService {
   name: String! = "TestService"
@@ -24,7 +24,7 @@ type TestData {
 
 let service = TestService
 
-# Test the actual pattern: foo.{bar(arg: 123).{deeper}}
+# Test the actual pattern: foo.{{bar(arg: 123).{{deeper}}}}
 let result = service.{{
   name,
   getData(limit: 5).{{

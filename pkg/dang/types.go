@@ -350,7 +350,7 @@ func (t DecodedType) Eq(other hm.Type) bool {
 
 // GraphQLListType represents a list returned from GraphQL that contains objects.
 // Unlike ListType, it cannot be directly iterated - it must first be converted
-// to a ListType via object selection (.{fields}) to avoid N+1 query problems.
+// to a ListType via object selection (.{{fields}}) to avoid N+1 query problems.
 type GraphQLListType struct {
 	hm.Type
 }

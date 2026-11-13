@@ -35,7 +35,7 @@ func TestGraphQLErrorFieldPath(t *testing.T) {
 }
 
 func TestLocateErrorField(t *testing.T) {
-	// viewer.{ login, repositories(first: 3).{ nodes.{ name, stargazerCount } } }
+	// viewer.{{ login, repositories(first: 3).{{ nodes.{{ name, stargazerCount }} }} }}
 	name := &FieldSelection{Name: "name", Loc: &SourceLocation{Line: 7}}
 	nodes := &FieldSelection{
 		Name:      "nodes",

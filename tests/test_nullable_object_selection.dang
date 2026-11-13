@@ -1,5 +1,5 @@
 # Test nullable propagation in ObjectSelection operations
-# If foo is nullable, then foo.{bar, baz} should also be nullable
+# If foo is nullable, then foo.{{bar, baz}} should also be nullable
 
 type TestRecord {
   name: String! = "test"

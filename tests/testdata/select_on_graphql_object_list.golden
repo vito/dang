@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot select "name" from a GraphQL object list; select fields on its elements first, e.g. value.{{id}}
+  [2m[34m--> errors/select_on_graphql_object_list.dang:6:13[0m
+ [2m    |[0m
+ [2m  4 | import Test[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mlet names = users.name
+[2m                   [31m^^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

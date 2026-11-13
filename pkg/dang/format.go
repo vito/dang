@@ -3740,7 +3740,7 @@ func (f *Formatter) formatIndex(i *Index) {
 }
 
 func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
-	// Receiver may be nil for nested selections (e.g., the inner {c, d} in a.{b.{c, d}})
+	// Receiver may be nil for nested selections (e.g., the inner {{c, d}} in a.{{b.{{c, d}}}})
 	if o.Receiver != nil {
 		f.formatNode(o.Receiver)
 		f.write(".")
