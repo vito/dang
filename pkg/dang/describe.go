@@ -106,7 +106,9 @@ func Describe(ctx context.Context, v Value, t hm.Type, opts DescribeOptions) str
 	}
 	col := utf8.RuneCountInString(out.String())
 	out.WriteString(d.layout(d.describe(v, 0), 0, col))
-	if g, ok := v.(GraphQLValue); ok && !d.opts.Force {
+	// A snippet ending in an assignment needs no hint: the assignment was
+	// the point.
+	if g, ok := v.(GraphQLValue); ok && !d.opts.Force && !g.Assigned {
 		out.WriteString("\n(not evaluated")
 		if g.Field != nil && isListTypeRef(g.Field.TypeRef) {
 			out.WriteString("; select fields with .{{…}} to run it")

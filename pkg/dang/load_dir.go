@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 
@@ -476,6 +477,13 @@ func (sn *Snippet) Eval(ctx context.Context) (Value, error) {
 		}
 		if i == len(sn.forms)-1 && len(form.DeclaredSymbols()) == 0 {
 			result = val
+			// A snippet ending in an assignment to a binding from before
+			// it (the module's, an earlier snippet's, or one its caller
+			// provides) did what it meant to by assigning; its result isn't
+			// something left to run.
+			if r, ok := form.(*Reassignment); ok && sn.assignsOutside(r) {
+				result = markAssigned(result)
+			}
 		}
 	}
 
@@ -483,6 +491,30 @@ func (sn *Snippet) Eval(ctx context.Context) (Value, error) {
 	s.values, s.importValues = values, importValues
 	s.sources[sn.filename] = sn.source
 	return result, nil
+}
+
+// assignsOutside reports whether r writes a binding the snippet didn't
+// declare itself. Assigning a handle to the snippet's own local runs
+// nothing, so its result keeps Describe's "not evaluated" hint.
+func (sn *Snippet) assignsOutside(r *Reassignment) bool {
+	node := pathLink(r.Target)
+	for {
+		sel, ok := node.(*Select)
+		if !ok {
+			break
+		}
+		node = pathLink(sel.Receiver)
+	}
+	sym, ok := node.(*Symbol)
+	if !ok {
+		return false
+	}
+	for _, form := range sn.forms {
+		if slices.Contains(form.DeclaredSymbols(), sym.Name) {
+			return false
+		}
+	}
+	return true
 }
 
 // Check type-checks source as a snippet in a fresh session of the module
