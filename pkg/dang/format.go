@@ -2800,6 +2800,12 @@ func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
 	openingLine := lines[0]
 	bodyLines := lines[1 : len(lines)-1]
 	closingLine := lines[len(lines)-1]
+	// Text before the closing fence, on its line, is the last line of the
+	// body, indented like the rest: dedenting counts its indent too.
+	closesAfterText := !isFence(strings.TrimSpace(closingLine))
+	if closesAfterText {
+		bodyLines = lines[1:]
+	}
 
 	// Min indent of non-empty body lines determines whether the user
 	// intended any extra indent.
@@ -2842,12 +2848,24 @@ func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
 		buf.WriteString(bodyPrefix)
 		buf.WriteString(stripped)
 	}
+	if closesAfterText {
+		return buf.String()
+	}
 	buf.WriteByte('\n')
 	// Closing fence always aligns with the opening fence's scope, never
 	// with the (possibly deeper) body indent.
 	buf.WriteString(scopePrefix)
 	buf.WriteString(strings.TrimLeft(closingLine, " \t"))
 	return buf.String()
+}
+
+// isFence reports whether s is the fence of a multi-line string or template
+// alone: a run of one kind of quote or of backticks.
+func isFence(s string) bool {
+	if s == "" || !strings.ContainsRune("'\"`", rune(s[0])) {
+		return false
+	}
+	return strings.Trim(s, s[:1]) == ""
 }
 
 // leadingWhitespace returns the run of spaces and tabs at the start of the
