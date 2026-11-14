@@ -2779,8 +2779,13 @@ func (f *Formatter) formatTemplatePart(t *Template, p TemplatePart) {
 //     current scope;
 //   - otherwise content and closing fence sit flush with the current scope.
 //
+// A closing fence alone on its line sits at the current scope instead; one
+// that follows text stays on that text's line.
+//
 // Single-line literals are returned unchanged; the AST throws away enough
-// layout for both forms that echoing the source is the right default.
+// layout for both forms that echoing the source is the right default. So
+// are literals with text on their opening line (before Dang 2.5), whose
+// body reindented would mean something else.
 func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
 	if !strings.Contains(orig, "\n") {
 		return orig
@@ -2798,6 +2803,12 @@ func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
 	// Anything before the first newline is the opening fence (+ lang for
 	// backtick templates) and is already correctly placed by the caller.
 	openingLine := lines[0]
+	if hasOpeningText(n, openingLine) {
+		// Text on the opening line, as before Dang 2.5, is unindented to
+		// the dedent, so reindenting the body would change the value: keep
+		// it as written.
+		return orig
+	}
 	bodyLines := lines[1 : len(lines)-1]
 	closingLine := lines[len(lines)-1]
 	// Text before the closing fence, on its line, is the last line of the
@@ -2866,6 +2877,26 @@ func isFence(s string) bool {
 		return false
 	}
 	return strings.Trim(s, s[:1]) == ""
+}
+
+// hasOpeningText reports whether openingLine, the first line of multi-line
+// literal n, holds text after its fence, rather than nothing or a language
+// tag.
+func hasOpeningText(n Node, openingLine string) bool {
+	if openingLine == "" {
+		return false
+	}
+	rest := strings.TrimSpace(strings.TrimLeft(openingLine, openingLine[:1]))
+	if rest == "" {
+		return false
+	}
+	switch n := n.(type) {
+	case *String:
+		return rest != n.Lang
+	case *Template:
+		return rest != n.Lang
+	}
+	return true
 }
 
 // leadingWhitespace returns the run of spaces and tabs at the start of the

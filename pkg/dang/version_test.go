@@ -625,6 +625,18 @@ func TestVersionQuotes(t *testing.T) {
 			assert.Equal(t, tc.want, migrated, tc.src)
 		}
 	})
+
+	t.Run("formatting at 2.4 keeps text on the opening line in place", func(t *testing.T) {
+		for _, src := range []string{
+			"let a = \"\"\"Summary.\n more\n\"\"\"\n",
+			"let a = \"\"\"Summary.\n more\"\"\"\n",
+			"f: String! {\n  \"\"\"Summary.\n more\n  \"\"\"\n}\n",
+		} {
+			formatted, err := FormatFileWithVersion([]byte(src), Version2_4)
+			require.NoError(t, err, src)
+			assert.Equal(t, src, formatted)
+		}
+	})
 }
 
 // versions lists every Dang version.
