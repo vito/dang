@@ -614,6 +614,7 @@ func TestVersionQuotes(t *testing.T) {
 			{"let a = \"\"\"\n  C:\\path ${x}\n\"\"\"\n", "let a = '''\n  C:\\path ${x}\n'''\n"},
 			{"let a = \"\"\"\n  C:\\path'\"\"\"\n", "let a = \"\"\"\nC:\\\\path'\n\"\"\"\n"},
 			{"let a = \"\"\"\n  ''' \\\n\"\"\"\n", "let a = \"\"\"\n''' \\\\\n\"\"\"\n"},
+			{"let a = \"\"\"\n x \\\n y\"\"\"\n", "let a = '''\n  x \\\n  y'''\n"},
 			{"let a = \"\"\"Summary.\n  more\n\"\"\"\n", "let a = \"\"\"\nSummary.\n  more\n\"\"\"\n"},
 			{"let a = \"\"\"sql\nselect\n\"\"\"\n", "let a = \"\"\"\nsql\nselect\n\"\"\"\n"},
 			{"let a = ```hello ${1}\n  more\n```\n", "let a = ```\nhello ${1}\n  more\n```\n"},
@@ -622,6 +623,18 @@ func TestVersionQuotes(t *testing.T) {
 			migrated, err := MigrateSource("version_test.dang", []byte(tc.src), Version2_4, Version2_5)
 			require.NoError(t, err, tc.src)
 			assert.Equal(t, tc.want, migrated, tc.src)
+		}
+	})
+
+	t.Run("formatting at 2.4 keeps text on the opening line in place", func(t *testing.T) {
+		for _, src := range []string{
+			"let a = \"\"\"Summary.\n more\n\"\"\"\n",
+			"let a = \"\"\"Summary.\n more\"\"\"\n",
+			"f: String! {\n  \"\"\"Summary.\n more\n  \"\"\"\n}\n",
+		} {
+			formatted, err := FormatFileWithVersion([]byte(src), Version2_4)
+			require.NoError(t, err, src)
+			assert.Equal(t, src, formatted)
 		}
 	})
 }
