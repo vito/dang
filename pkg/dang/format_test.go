@@ -636,6 +636,16 @@ world
 			input:    `pub x = """hello"""`,
 			expected: "pub x = \"\"\"hello\"\"\"\n",
 		},
+		{
+			name:     "text before the closing fence keeps its indent",
+			input:    "pub x = \"\"\"\n    first\n    last\"\"\"",
+			expected: "pub x = \"\"\"\n  first\n  last\"\"\"\n",
+		},
+		{
+			name:     "template text before the closing fence keeps its indent",
+			input:    "pub x = ```\n    first\n    ${1}```",
+			expected: "pub x = ```\n  first\n  ${1}```\n",
+		},
 	}
 
 	for _, tt := range tests {
