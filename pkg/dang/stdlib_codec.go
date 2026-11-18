@@ -473,7 +473,9 @@ func encodeTOML(val Value) (string, error) {
 		return "", err
 	}
 	var buf bytes.Buffer
-	if err := toml.NewEncoder(&buf).Encode(plain); err != nil {
+	encoder := toml.NewEncoder(&buf)
+	encoder.Indent = ""
+	if err := encoder.Encode(plain); err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(buf.String(), "\n"), nil

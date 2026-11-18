@@ -28,4 +28,12 @@ assert { cfg.count == 3 }
 assert { cfg.enabled == true }
 assert { TOML.encode({{count: 3, enabled: true}}) == "count = 3\nenabled = true" }
 
+# Nested tables and arrays of tables are emitted without indentation.
+assert {
+  TOML.encode({{
+    server: {{host: "localhost", tls: {{enabled: true}}}},
+    users: [{{name: "Ada"}}, {{name: "Bob"}}]
+  }}) == "[server]\nhost = \"localhost\"\n[server.tls]\nenabled = true\n\n[[users]]\nname = \"Ada\"\n\n[[users]]\nname = \"Bob\""
+}
+
 print("bare codec tests passed!")
