@@ -29,11 +29,12 @@ func parseURL(raw string) (*url.URL, error) {
 	return parsed, nil
 }
 
-// net/url does not track an explicitly empty fragment. Keep that bit beside
-// each private parsed value, never in shared scalar state.
+// net/url does not track explicitly empty authorities or fragments. Keep
+// their presence beside each private parsed value, never in scalar state.
 type urlReference struct {
 	*url.URL
-	fragmentPresent bool
+	fragmentPresent  bool
+	authorityPresent bool
 }
 
 func readURL(raw string) (*urlReference, error) {
@@ -41,13 +42,29 @@ func readURL(raw string) (*urlReference, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &urlReference{u, strings.Contains(raw, "#")}, nil
+	rest := raw
+	if u.Scheme != "" {
+		rest = raw[len(u.Scheme)+1:]
+	}
+	authority := strings.HasPrefix(rest, "//")
+	if authority && u.Scheme == "" {
+		// Go treats ///path as a path-only reference, unlike RFC 3986's
+		// empty authority plus /path. A temporary scheme selects its
+		// authority parser without changing the original scalar spelling.
+		u, err = parseURL("url:" + raw)
+		if err != nil {
+			return nil, err
+		}
+		u.Scheme = ""
+	}
+	u.OmitHost = !authority
+	return &urlReference{URL: u, fragmentPresent: strings.Contains(raw, "#"), authorityPresent: authority}, nil
 }
 
 func (u *urlReference) value() (Value, error) {
 	// URL.String protects a first-segment colon using ./, which changes Path.
 	// Escape delimiters instead, including // without an authority.
-	if u.Opaque == "" && (u.Scheme != "" || u.Host != "" || u.User != nil) {
+	if u.Opaque == "" && (u.Scheme != "" || u.authorityPresent) {
 		if u.Path != "" && !strings.HasPrefix(u.Path, "/") {
 			return nil, fmt.Errorf("URL with a scheme or authority requires an absolute path; set an absolute path first")
 		}
@@ -59,7 +76,7 @@ func (u *urlReference) value() (Value, error) {
 			u.RawPath = "/" + path[3:]
 		}
 	}
-	if u.Opaque == "" && u.Host == "" && u.User == nil {
+	if u.Opaque == "" && !u.authorityPresent {
 		path := u.EscapedPath()
 		if strings.HasPrefix(path, "//") {
 			path = "/%2F" + path[2:]
@@ -74,7 +91,18 @@ func (u *urlReference) value() (Value, error) {
 		}
 		u.RawPath = path
 	}
+	u.OmitHost = !u.authorityPresent
 	raw := u.URL.String()
+	if u.authorityPresent && u.Host == "" && u.User == nil {
+		// URL.String omits // with an empty authority when the scheme or
+		// path is empty. Serialize that explicit authority ourselves.
+		tail := *u.URL
+		tail.Scheme, tail.Path, tail.RawPath = "", "", ""
+		raw = "//" + u.EscapedPath() + tail.String()
+		if u.Scheme != "" {
+			raw = u.Scheme + ":" + raw
+		}
+	}
 	if u.fragmentPresent && u.Fragment == "" {
 		raw += "#"
 	}
@@ -224,7 +252,7 @@ func registerURLBuilders() {
 			if urlArgNull(a, "hostname") {
 				u.Host = ""
 				u.User = nil
-				u.OmitHost = true
+				u.authorityPresent = false
 				return nil
 			}
 			host := a.GetString("hostname")
@@ -244,7 +272,7 @@ func registerURLBuilders() {
 				host += ":" + port
 			}
 			u.Host = host
-			u.OmitHost = false
+			u.authorityPresent = true
 			return nil
 		}},
 		{"withPort", "return a URL with an explicit nonnegative Int port, or null to clear it; requires a hostname when adding a port and rejects opaque URLs", `URL("https://foo").withPort(8443)`, []any{"port", IntType}, func(u *urlReference, a Args) error {
@@ -274,7 +302,7 @@ func registerURLBuilders() {
 			}
 			u.Path = a.GetString("path")
 			u.RawPath = ""
-			if (u.Host != "" || u.User != nil) && u.Path != "" && !strings.HasPrefix(u.Path, "/") {
+			if u.authorityPresent && u.Path != "" && !strings.HasPrefix(u.Path, "/") {
 				return fmt.Errorf("URL authority path must start with /")
 			}
 			return nil
@@ -285,7 +313,7 @@ func registerURLBuilders() {
 			}
 			path := u.EscapedPath()
 			for i, v := range a.GetList("segments") {
-				if (i > 0 || path != "" || u.Host != "" || u.User != nil) && (i > 0 || !strings.HasSuffix(path, "/")) {
+				if (i > 0 || path != "" || u.authorityPresent) && (i > 0 || !strings.HasSuffix(path, "/")) {
 					path += "/"
 				}
 				s := v.(StringValue).Val
@@ -326,13 +354,31 @@ func registerURLBuilders() {
 			if err != nil {
 				return err
 			}
-			inherit := ref.Scheme == "" && ref.Host == "" && ref.User == nil && ref.Path == "" && ref.Opaque == "" && !ref.ForceQuery && ref.RawQuery == "" && !ref.fragmentPresent
-			result := u.ResolveReference(ref.URL)
-			if ref.fragmentPresent {
-				result.Fragment = ref.Fragment
-				result.RawFragment = ref.RawFragment
+			inheritQuery := ref.Scheme == "" && !ref.authorityPresent && ref.Path == "" && ref.Opaque == "" && !ref.ForceQuery && ref.RawQuery == ""
+			authority := ref.authorityPresent
+			if ref.Scheme == "" && !ref.authorityPresent {
+				authority = u.authorityPresent
 			}
-			u.fragmentPresent = ref.fragmentPresent || (inherit && u.fragmentPresent)
+			var result *url.URL
+			if ref.authorityPresent && ref.Scheme == "" {
+				// Force net/url's absolute-reference branch even when both the
+				// hostname and user information are empty, so no base authority,
+				// path, query or opaque payload can leak into a network reference.
+				absolute := *ref.URL
+				absolute.Scheme = "url"
+				result = u.ResolveReference(&absolute)
+				result.Scheme = u.Scheme
+			} else {
+				result = u.ResolveReference(ref.URL)
+			}
+			if inheritQuery {
+				result.ForceQuery = u.ForceQuery
+			}
+			// RFC 3986 always takes the reference fragment, including absence.
+			result.Fragment, result.RawFragment = ref.Fragment, ref.RawFragment
+			u.fragmentPresent = ref.fragmentPresent
+			u.authorityPresent = authority
+			result.OmitHost = !authority
 			u.URL = result
 			return nil
 		}},

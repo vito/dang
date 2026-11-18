@@ -175,8 +175,55 @@ func TestURLBuilders(t *testing.T) {
  assert { URL("mailto:a%zz").withQueryParam("x", "y").withFragment("").string == "mailto:a%zz?x=y#" }
  assert { URL("https://foo/a/b?old=1#old").resolve(URL("../c?")).string == "https://foo/c?" }
  assert { URL("https://foo/a?x=1#old").resolve(URL("#")).string == "https://foo/a?x=1#" }
- assert { URL("https://foo/a?x=1#").resolve(URL("")).string == "https://foo/a?x=1#" }
+ assert { URL("https://foo/a?x=1#").resolve(URL("")).string == "https://foo/a?x=1" }
  assert { URL("https://foo/a").resolve(URL("other").appendPath([".."]).withFragment("")).string == "https://foo/other/%2E%2E#" }
+ `))
+}
+
+func TestURLReferenceResolution(t *testing.T) {
+	for _, tc := range []struct{ base, ref, want string }{
+		{"file://server/share/file", "///local/file", "file:///local/file"},
+		{"https://user:pass@server/a?old=1#old", "///local/file", "https:///local/file"},
+		{"file://server/share/file", "//", "file://"},
+		{"file://server/share/file", "///a/../b?x=1#", "file:///b?x=1#"},
+		{"file://server/share/file", "////local/file", "file:////local/file"},
+		{"file://server/share/file", "file:///local/file", "file:///local/file"},
+		{"file://server/share/file", "file:/local/file", "file:/local/file"},
+		{"/base/path", "///local/file", "///local/file"},
+		{"mailto:opaque?old=1#old", "///local/file", "mailto:///local/file"},
+		{"https://server/a?", "", "https://server/a?"},
+		{"https://server/a?#old", "", "https://server/a?"},
+		{"https://server/a?", "#", "https://server/a?#"},
+		{"https://server/a?", "#new", "https://server/a?#new"},
+		{"https://server/a#old", "", "https://server/a"},
+		{"https://server/a#", "", "https://server/a"},
+		{"https://server/a?old=1#old", "?", "https://server/a?"},
+		{"file:/etc/a", "#new", "file:/etc/a#new"},
+		{"file:/etc/a", "b", "file:/etc/b"},
+		{"file:/etc/a?", "#", "file:/etc/a?#"},
+		{"file:/etc/a?", "", "file:/etc/a?"},
+		{"file:///etc/a", "b", "file:///etc/b"},
+		{"file:///etc/a", "#new", "file:///etc/a#new"},
+	} {
+		t.Run(tc.base+" -> "+tc.ref, func(t *testing.T) {
+			require.NoError(t, evalExample(fmt.Sprintf(`assert { URL(%q).resolve(URL(%q)).string == %q }`, tc.base, tc.ref, tc.want)))
+		})
+	}
+	require.NoError(t, evalExample(`
+ assert { URL("///local/file").string == "///local/file" }
+ assert { URL("///local/file").path == "/local/file" }
+ assert { URL("///local/file").escapedPath == "/local/file" }
+ assert { URL("///local/file").withFragment("new").string == "///local/file#new" }
+ assert { URL("//").withQuery([:]).string == "//?" }
+ assert { URL("//").appendPath(["a"]).string == "///a" }
+ assert { URL("file://").withFragment("").string == "file://#" }
+ assert { URL("/a").withScheme("file").string == "file:/a" }
+ assert { URL("file:/a").withScheme(null).string == "/a" }
+ assert { URL("file:///a").withScheme(null).string == "///a" }
+ assert { URL("").withPath("//foo").path == "//foo" }
+ assert { URL("").withPath("//foo").string == "/%2Ffoo" }
+ assert { URL("file://server/a").resolve(URL("").withPath("//foo")).host == "server" }
+ assert { URL("file://server/a").resolve(URL("").withPath("//foo")).path == "//foo" }
  `))
 }
 
