@@ -2,7 +2,9 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,154 @@ import (
 
 func TestMain(m *testing.M) {
 	os.Exit(oteltestctx.Main(m))
+}
+
+// Both repros from #198 need source-line-based layout to catch up with wrapping.
+var formatConvergenceCases = []struct{ name, source, want string }{
+	{
+		"method body with record and another form",
+		`type A {
+  total: Int! = 0
+
+  m2: Int! { {{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11}}; total }
+}
+`,
+		`type A {
+  total: Int! = 0
+
+  m2: Int! {
+    {{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11}}
+    total
+  }
+}
+`,
+	},
+	{
+		"list of long records",
+		`let cases = [
+  {{name: "first case with a long enough name", expected: "an error message that pushes the record past the width"}},
+  {{name: "second case with a long enough name", expected: "another error message that pushes the record past the width"}},
+]
+print(cases.length)
+`,
+		`let cases = [
+  {{
+    name: "first case with a long enough name",
+    expected: "an error message that pushes the record past the width"
+  }},
+
+  {{
+    name: "second case with a long enough name",
+    expected: "another error message that pushes the record past the width"
+  }},
+]
+print(cases.length)
+`,
+	},
+}
+
+func TestFormatConvergence(t *testing.T) {
+	for _, tc := range formatConvergenceCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, version := range []Version{Version2_1, Version2_5} {
+				got, err := FormatFileWithVersion([]byte(tc.source), version)
+				require.NoError(t, err)
+				require.Equal(t, tc.want, got)
+				again, err := FormatFileWithVersion([]byte(got), version)
+				require.NoError(t, err)
+				require.Equal(t, got, again)
+			}
+		})
+	}
+	t.Run("deeply nested bodies converge", func(t *testing.T) {
+		source := "let x = " + strings.Repeat("{ ", 20) +
+			"{{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11}}" +
+			strings.Repeat("; 1 }", 20) + "\n"
+		got, err := FormatFile([]byte(source))
+		require.NoError(t, err)
+		again, err := FormatFile([]byte(got))
+		require.NoError(t, err)
+		require.Equal(t, got, again)
+	})
+	t.Run("nofmt stays verbatim while other forms settle", func(t *testing.T) {
+		kept := "let kept   = {{a:1,b:2}} # nofmt\n"
+		got, err := FormatFile([]byte(kept + formatConvergenceCases[1].source))
+		require.NoError(t, err)
+		require.Equal(t, kept+formatConvergenceCases[1].want, got)
+	})
+}
+
+func TestFormatFixedPoint(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		outputs []string
+		want    string
+		err     string
+	}{
+		{"already stable", []string{"a"}, "a", ""},
+		{"settles", []string{"b", "c", "c"}, "c", ""},
+		{"cycle to input", []string{"b", "a"}, "", "cycle detected after 2 passes"},
+		{"cycle after prefix", []string{"b", "c", "b"}, "", "cycle detected after 3 passes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			got, err := formatFixedPoint("a", func(source string) (string, error) {
+				if calls == 0 {
+					require.Equal(t, "a", source)
+				} else {
+					require.Equal(t, tc.outputs[calls-1], source)
+				}
+				require.Less(t, calls, len(tc.outputs))
+				out := tc.outputs[calls]
+				calls++
+				return out, nil
+			})
+			if tc.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.err)
+			}
+			require.Equal(t, tc.want, got)
+			require.Equal(t, len(tc.outputs), calls)
+		})
+	}
+	t.Run("converges on last permitted pass", func(t *testing.T) {
+		calls := 0
+		got, err := formatFixedPoint("a", func(source string) (string, error) {
+			calls++
+			if calls == maxFormatPasses {
+				return source, nil
+			}
+			return source + "x", nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "a"+strings.Repeat("x", maxFormatPasses-1), got)
+		require.Equal(t, maxFormatPasses, calls)
+	})
+	t.Run("pass limit", func(t *testing.T) {
+		calls := 0
+		got, err := formatFixedPoint("a", func(source string) (string, error) {
+			calls++
+			return source + "x", nil
+		})
+		require.ErrorContains(t, err, "did not converge after")
+		require.Empty(t, got)
+		require.Equal(t, maxFormatPasses, calls)
+	})
+	t.Run("error on later pass", func(t *testing.T) {
+		failure := errors.New("cannot parse intermediate output")
+		calls := 0
+		got, err := formatFixedPoint("a", func(source string) (string, error) {
+			calls++
+			if calls == 1 {
+				return "b", nil
+			}
+			return "", failure
+		})
+		require.ErrorIs(t, err, failure)
+		require.Empty(t, got)
+		require.Equal(t, 2, calls)
+	})
 }
 
 type FormatSuite struct{}

@@ -73,7 +73,40 @@ func FormatFile(source []byte) (string, error) {
 // FormatFileWithVersion parses and formats a Dang source file written in the
 // given Dang version, emitting that version's syntax.
 func FormatFileWithVersion(source []byte, version Version) (string, error) {
-	return formatSource("format", source, version, version, false, false)
+	return stabilizeFormat("format", string(source), version, false)
+}
+
+// stabilizeFormat re-parses each rendering so layout decisions based on source
+// line breaks can catch up with wrapping introduced by the preceding pass.
+func stabilizeFormat(filename, source string, version Version, preserveImports bool) (string, error) {
+	return formatFixedPoint(source, func(source string) (string, error) {
+		return formatSource(filename, []byte(source), version, version, false, preserveImports)
+	})
+}
+
+// Bound both time and retained output when a formatter bug prevents convergence.
+// Exceeding the cap fails explicitly, even if more passes might eventually settle.
+const maxFormatPasses = 10
+
+// formatFixedPoint returns only stable output. A cycle or endlessly changing
+// output is a formatter bug, not a reason to return partially formatted source.
+func formatFixedPoint(source string, format func(string) (string, error)) (string, error) {
+	seen := map[string]bool{source: true}
+	for pass := 1; pass <= maxFormatPasses; pass++ {
+		next, err := format(source)
+		if err != nil {
+			return "", err
+		}
+		if next == source {
+			return next, nil
+		}
+		if seen[next] {
+			return "", fmt.Errorf("formatting did not converge: cycle detected after %d passes", pass)
+		}
+		seen[next] = true
+		source = next
+	}
+	return "", fmt.Errorf("formatting did not converge after %d passes", maxFormatPasses)
 }
 
 // formatSource parses source written in version from and formats it in

@@ -28,8 +28,8 @@ import (
 // source locations aside, as the source parsed as written in version from.
 // That catches formatter regressions as well as text echoed verbatim, like a
 // #nofmt region, whose meaning changed between versions. And it must
-// be stable: formatting it again as version to, preserving import order,
-// must reproduce it exactly. Import order is kept during migration because
+// be stable: formatting iterates to a fixed point as version to, preserving
+// import order, with a pass limit and cycle detection. Import order is kept because
 // imported modules may have effects or contribute overlapping names. A
 // same-version call remains ordinary formatting, including import sorting.
 //
@@ -53,6 +53,12 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 	migrated, err := formatSource(filename, source, from, to, migrating, migrating)
 	if err != nil {
 		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, enhanceParseError(err, filename, source, from))
+	}
+	// Only the first pass reads the old syntax. Later passes see target-version
+	// source, and must retain migration's import order rather than sorting it.
+	migrated, err = stabilizeFormat(filename, migrated, to, migrating)
+	if err != nil {
+		return "", fmt.Errorf("formatting migrated source as Dang %s: %w", to, err)
 	}
 	got, err := Parse(filename, []byte(migrated), WithVersion(to))
 	if err != nil {
@@ -86,16 +92,13 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		if err != nil {
 			return "", err
 		}
+		formatted, err = stabilizeFormat(filename, formatted, from, true)
+		if err != nil {
+			return "", err
+		}
 		if formatted == migrated && sameMeaning(filename, source, from, to) {
 			return string(source), nil
 		}
-	}
-	again, err := formatSource(filename, []byte(migrated), to, to, false, migrating)
-	if err != nil {
-		return "", err
-	}
-	if again != migrated {
-		return "", fmt.Errorf("migrated source is not stable when formatted as Dang %s", to)
 	}
 	return migrated, nil
 }

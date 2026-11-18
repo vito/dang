@@ -239,6 +239,42 @@ func TestMigrateSource(t *testing.T) {
 	})
 }
 
+func TestMigrateConvergence(t *testing.T) {
+	for _, tc := range formatConvergenceCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// A syntax change forces migration rather than the no-op path.
+			// The unsorted imports and nofmt line must survive every pass.
+			prefix := "import Zed\nimport Alpha\n\nlet kept   = 1 # nofmt\n\n"
+			source := prefix + tc.source + "\nlet text = \"${hello}\"\n"
+			want := prefix + tc.want + "\nlet text = '${hello}'\n"
+			got, err := MigrateSource("convergence.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			again, err := formatSource("convergence.dang", []byte(got), Version2_5, Version2_5, false, true)
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+
+			// Without a syntax change even a source needing multiple formatting
+			// passes must be returned byte-for-byte, not silently reformatted.
+			source = prefix + tc.source
+			got, err = MigrateSource("convergence.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, source, got)
+
+			got, err = MigrateSource("convergence.dang", []byte(tc.source), Version2_5, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+	t.Run("convergence must not hide changed string contents", func(t *testing.T) {
+		// The literal becomes an interpolation despite nofmt. Other forms
+		// converging must not bypass the original-source meaning check.
+		source := "let s = \"${value}\" # nofmt\n" + formatConvergenceCases[1].source
+		_, err := MigrateSource("meaning.dang", []byte(source), Version2_1, Version2_5)
+		require.ErrorContains(t, err, "would change the meaning of line 1")
+	})
+}
+
 func TestMigrationMeaningComparison(t *testing.T) {
 	for _, tc := range []struct {
 		name, original, migrated string
