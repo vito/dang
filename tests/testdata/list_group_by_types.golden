@@ -1,0 +1,129 @@
+10 inference errors:
+
+Error 1:
+[1m[31mError:[0m cannot use Map[[Int!]!]! as Map[[String!]!]!
+  [2m[34m--> errors/list_group_by_types.dang:11:37[0m
+ [2m    |[0m
+ [2m  9 | [0m
+ [2m 10 | # Result annotations cannot change the source element type or nullability.[0m
+ [2m[34m[1m 11 | [0mlet wrongResult: Map[[String!]!]! = [1].groupBy { item => "key" }
+[2m                                           [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 12 | let nullableElements: Map[[Int!]!]! = [1, null].groupBy { item => "key" }[0m
+ [2m 13 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m cannot use Map[[Int]!]! as Map[[Int!]!]!
+  [2m[34m--> errors/list_group_by_types.dang:12:39[0m
+ [2m    |[0m
+ [2m 10 | # Result annotations cannot change the source element type or nullability.[0m
+ [2m 11 | let wrongResult: Map[[String!]!]! = [1].groupBy { item => "key" }[0m
+ [2m[34m[1m 12 | [0mlet nullableElements: Map[[Int!]!]! = [1, null].groupBy { item => "key" }
+[2m                                             [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 13 | [0m
+ [2m 14 | # A bound reference retains the selector's result constraint.[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m block argument body has type Int! but expected type String!
+  [2m[34m--> errors/list_group_by_types.dang:2:13[0m
+ [2m    |[0m
+ [2m  1 | # Selectors must return a non-null String, not an implicit scalar key.[0m
+ [2m[34m[1m  2 | [0m[1].groupBy { item => item }
+[2m                   [31m^^^^^^^^^^^^^^^^[0m
+ [2m  3 | [1].groupBy { item => true }[0m
+ [2m  4 | [1].groupBy { item => ["a"] }[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m block argument body has type Boolean! but expected type String!
+  [2m[34m--> errors/list_group_by_types.dang:3:13[0m
+ [2m    |[0m
+ [2m  1 | # Selectors must return a non-null String, not an implicit scalar key.[0m
+ [2m  2 | [1].groupBy { item => item }[0m
+ [2m[34m[1m  3 | [0m[1].groupBy { item => true }
+[2m                   [31m^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [1].groupBy { item => ["a"] }[0m
+ [2m  5 | [1].groupBy { item => null }[0m
+ [2m    |[0m
+
+
+Error 5:
+[1m[31mError:[0m block argument body has type [String!]! but expected type String!
+  [2m[34m--> errors/list_group_by_types.dang:4:13[0m
+ [2m    |[0m
+ [2m  2 | [1].groupBy { item => item }[0m
+ [2m  3 | [1].groupBy { item => true }[0m
+ [2m[34m[1m  4 | [0m[1].groupBy { item => ["a"] }
+[2m                   [31m^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [1].groupBy { item => null }[0m
+ [2m  6 | ["a", null].groupBy { item => item }[0m
+ [2m    |[0m
+
+
+Error 6:
+[1m[31mError:[0m block argument body may be null (b?), but must not be: supply a default with ??
+  [2m[34m--> errors/list_group_by_types.dang:5:13[0m
+ [2m    |[0m
+ [2m  3 | [1].groupBy { item => true }[0m
+ [2m  4 | [1].groupBy { item => ["a"] }[0m
+ [2m[34m[1m  5 | [0m[1].groupBy { item => null }
+[2m                   [31m^^^^^^^^^^^^^^^^[0m
+ [2m  6 | ["a", null].groupBy { item => item }[0m
+ [2m  7 | [1].groupBy { item => Path("key") }[0m
+ [2m    |[0m
+
+
+Error 7:
+[1m[31mError:[0m block argument body may be null (String), but must not be: supply a default with ??
+  [2m[34m--> errors/list_group_by_types.dang:6:21[0m
+ [2m    |[0m
+ [2m  4 | [1].groupBy { item => ["a"] }[0m
+ [2m  5 | [1].groupBy { item => null }[0m
+ [2m[34m[1m  6 | [0m["a", null].groupBy { item => item }
+[2m                           [31m^^^^^^^^^^^^^^^^[0m
+ [2m  7 | [1].groupBy { item => Path("key") }[0m
+ [2m  8 | [1].groupBy[0m
+ [2m    |[0m
+
+
+Error 8:
+[1m[31mError:[0m block argument body has type Path! but expected type String!
+  [2m[34m--> errors/list_group_by_types.dang:7:13[0m
+ [2m    |[0m
+ [2m  5 | [1].groupBy { item => null }[0m
+ [2m  6 | ["a", null].groupBy { item => item }[0m
+ [2m[34m[1m  7 | [0m[1].groupBy { item => Path("key") }
+[2m                   [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 | [1].groupBy[0m
+ [2m  9 | [0m
+ [2m    |[0m
+
+
+Error 9:
+[1m[31mError:[0m function requires a block argument
+  [2m[34m--> errors/list_group_by_types.dang:8:1[0m
+ [2m    |[0m
+ [2m  6 | ["a", null].groupBy { item => item }[0m
+ [2m  7 | [1].groupBy { item => Path("key") }[0m
+ [2m[34m[1m  8 | [0m[1].groupBy
+[2m       [31m^^^^^^^^^^^[0m
+ [2m  9 | [0m
+ [2m 10 | # Result annotations cannot change the source element type or nullability.[0m
+ [2m    |[0m
+
+
+Error 10:
+[1m[31mError:[0m block argument body has type Int! but expected type String!
+  [2m[34m--> errors/list_group_by_types.dang:16:7[0m
+ [2m    |[0m
+ [2m 14 | # A bound reference retains the selector's result constraint.[0m
+ [2m 15 | let group = &[1].groupBy[0m
+ [2m[34m[1m 16 | [0mgroup { item => item }
+[2m             [31m^^^^^^^^^^^^^^^^[0m
+ [2m 17 | [0m
+ [2m    |[0m
+

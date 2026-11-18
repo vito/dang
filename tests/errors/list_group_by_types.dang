@@ -1,0 +1,16 @@
+# Selectors must return a non-null String, not an implicit scalar key.
+[1].groupBy { item => item }
+[1].groupBy { item => true }
+[1].groupBy { item => ["a"] }
+[1].groupBy { item => null }
+["a", null].groupBy { item => item }
+[1].groupBy { item => Path("key") }
+[1].groupBy
+
+# Result annotations cannot change the source element type or nullability.
+let wrongResult: Map[[String!]!]! = [1].groupBy { item => "key" }
+let nullableElements: Map[[Int!]!]! = [1, null].groupBy { item => "key" }
+
+# A bound reference retains the selector's result constraint.
+let group = &[1].groupBy
+group { item => item }
