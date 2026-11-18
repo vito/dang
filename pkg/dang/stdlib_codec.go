@@ -195,7 +195,7 @@ func registerCodecs() {
 	})
 	StaticMethod(TOMLModule, "encode").
 		Doc("serializes a value to a TOML string without indentation by default. " +
-			"indent adds one copy of it per nesting level (e.g. \"  \").").
+			"indent adds one copy of it per nesting level (e.g. \"  \") and must contain only spaces and tabs.").
 		Example(`TOML.encode({{server: {{port: 8080}}}}, indent: "  ")`).
 		Params(
 			"value", TypeVar('a'),
@@ -461,6 +461,9 @@ func validateYAML(data string) error {
 // --- TOML ---
 
 func encodeTOML(val Value, indent string) (string, error) {
+	if strings.Trim(indent, " \t") != "" {
+		return "", fmt.Errorf("indent must contain only spaces and tabs, got %q", indent)
+	}
 	tree, err := encodeValue(val, tomlNaming)
 	if err != nil {
 		return "", err

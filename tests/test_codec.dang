@@ -44,4 +44,18 @@ assert {
   TOML.encode(nested, indent: "\t") == "[server]\n\thost = \"localhost\"\n\t[server.tls]\n\t\tenabled = true\n\n[[users]]\n\tname = \"Ada\"\n\n[[users]]\n\tname = \"Bob\""
 }
 
+# Indentation must not comment out fields or change their names.
+let commentIndent = TOML.encode(nested, indent: "#") rescue {
+  e: Error! => e.message
+}
+assert {
+  commentIndent == "TOML.encode: indent must contain only spaces and tabs, got \"#\""
+}
+let nameIndent = TOML.encode(nested, indent: "_") rescue {
+  e: Error! => e.message
+}
+assert {
+  nameIndent == "TOML.encode: indent must contain only spaces and tabs, got \"_\""
+}
+
 print("bare codec tests passed!")
