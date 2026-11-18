@@ -24,10 +24,10 @@ import (
 // migrating.
 //
 // The result is checked twice. It must mean the same as the source: parsed
-// as version to, it must be the same AST, source locations aside, as the
-// source formatted and parsed as version from. That catches text the
-// formatter echoes verbatim, like a #nofmt region, whose meaning changed
-// between the versions; such a region has to be migrated by hand. And it must
+// as version to, it must be the same AST, known safe normalizations and
+// source locations aside, as the source parsed as written in version from.
+// That catches formatter regressions as well as text echoed verbatim, like a
+// #nofmt region, whose meaning changed between versions. And it must
 // be stable: formatting it again as version to must reproduce it exactly.
 //
 // Source that is spelled the same in both versions is returned as is, not
@@ -56,27 +56,21 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, enhanceParseError(err, filename, []byte(migrated), to))
 	}
 	if migrating {
-		// Compare against the source formatted in its own version, so that
-		// formatting's own normalizations (e.g. dropping empty parens) don't
-		// count as differences. Its interpolations are re-printed too, so
-		// that the two texts are comparable.
-		formatted, err := formatSource(filename, source, from, from, true)
+		// Compare against the source as written. Formatting it first would
+		// hide formatter bugs shared by the source and target versions.
+		want, err := Parse(filename, source, WithVersion(from))
 		if err != nil {
-			return "", err
-		}
-		want, err := Parse(filename, []byte(formatted), WithVersion(from))
-		if err != nil {
-			return "", fmt.Errorf("formatted source does not parse as Dang %s: %w", from, err)
+			return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, enhanceParseError(err, filename, source, from))
 		}
 		if loc, differs := firstASTDifference(want.(Node), got.(Node)); differs {
 			where := "it"
 			if loc != nil {
 				where = fmt.Sprintf("line %d", loc.Line)
 			}
-			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
+			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the original source; check for a formatter bug or a #nofmt region); migrate it by hand", to, where)
 		}
-		if parsed, err := Parse(filename, source, WithVersion(from)); err == nil && !to.forLoops() {
-			if loc := forLoopCollision(parsed.(*FileBlock), moduleBindsLoop); loc != nil {
+		if !to.forLoops() {
+			if loc := forLoopCollision(want.(*FileBlock), moduleBindsLoop); loc != nil {
 				return "", fmt.Errorf("migrating to Dang %s would change the meaning of line %d: its `for` loop becomes a call to `loop`, which names a binding of this program's own there rather than the builtin; rename that binding first", to, loc.Line)
 			}
 		}
@@ -85,6 +79,10 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		// is rather than reformatting it, provided it means the same as
 		// written. The formatted texts agreeing is not enough: formatting
 		// normalizes old spellings like 2.0's comma separators.
+		formatted, err := formatSource(filename, source, from, from, true)
+		if err != nil {
+			return "", err
+		}
 		if formatted == migrated && sameMeaning(filename, source, from, to) {
 			return string(source), nil
 		}

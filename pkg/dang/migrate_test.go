@@ -34,6 +34,15 @@ func TestMigrateSource(t *testing.T) {
 		require.ErrorContains(t, err, "would change the meaning of line 2")
 	})
 
+	t.Run("meaning errors point to the source as written", func(t *testing.T) {
+		// Formatting collapses the parentheses onto one line. The meaning
+		// check must use the original tree, not that formatted baseline.
+		src := "let x = (\n  1\n)\nlet y = user.{name} # nofmt\n"
+		_, err := migrate(src, Version1_0, Version2_0)
+		require.ErrorContains(t, err, "would change the meaning of line 4")
+		assert.Contains(t, err.Error(), "original source")
+	})
+
 	t.Run("template interpolations are migrated", func(t *testing.T) {
 		src := "let x = `v=${toJSON(u.{name})}  kept  `\n"
 		migrated, err := migrate(src, Version1_0, Version2_0)
@@ -150,6 +159,61 @@ func TestMigrateSource(t *testing.T) {
 		_, err := migrate("let x = 1\n", Version2_0, Version1_0)
 		require.ErrorContains(t, err, "cannot migrate")
 	})
+}
+
+func TestMigrationMeaningComparison(t *testing.T) {
+	for _, tc := range []struct {
+		name, original, migrated string
+		differs                  bool
+	}{
+		{
+			name:     "literal quote spelling",
+			original: "let s = \"\"\"waivers:\n  - kind: vulnerability\n    owner: platform\n\"\"\"\n",
+			migrated: "let s = '''\nwaivers:\n  - kind: vulnerability\n    owner: platform\n'''\n",
+		},
+		{
+			name:     "literal indentation is meaning",
+			original: "let s = \"\"\"waivers:\n  - kind: vulnerability\n    owner: platform\n\"\"\"\n",
+			migrated: "let s = '''\nwaivers:\n    - kind: vulnerability\n      owner: platform\n'''\n",
+			differs:  true,
+		},
+		{
+			name:     "constructor call is not a reference",
+			original: "let p = maybe ?? P()\n",
+			migrated: "let p = maybe ?? P\n",
+			differs:  true,
+		},
+		{
+			name:     "constructor alias call is not a reference",
+			original: "let p = make()\n",
+			migrated: "let p = make\n",
+			differs:  true,
+		},
+		{
+			name:     "selected constructor call is not a reference",
+			original: "let p = module.P()\n",
+			migrated: "let p = module.P\n",
+			differs:  true,
+		},
+		{
+			name:     "empty parens before a block argument",
+			original: "let p = xs.map() { x => x }\n",
+			migrated: "let p = xs.map { x => x }\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original, err := Parse("original.dang", []byte(tc.original), WithVersion(Version2_1))
+			require.NoError(t, err)
+			migrated, err := Parse("migrated.dang", []byte(tc.migrated), WithVersion(Version2_5))
+			require.NoError(t, err)
+			loc, differs := firstASTDifference(original.(Node), migrated.(Node))
+			assert.Equal(t, tc.differs, differs)
+			if tc.differs {
+				require.NotNil(t, loc)
+				assert.Equal(t, 1, loc.Line)
+			}
+		})
+	}
 }
 
 func TestSetConfigVersion(t *testing.T) {
