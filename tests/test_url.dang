@@ -162,6 +162,12 @@ assert { baseURL.resolve("//other.example/x") == "https://other.example/x" }
 assert { baseURL.resolve("?new=2").path == "/a/b" }
 assert { baseURL.resolve("#").fragment == "" }
 assert { baseURL.resolve("https://other.example/").hostname == "other.example" }
+assert { baseURL.resolve("").fragment == null }
+assert { URL("https://example.com/a?").resolve("#new").rawQuery == "" }
+assert { URL("https://example.com/a?").resolve("").rawQuery == "" }
+assert { URL("file:/etc/a").resolve("#new") == "file:/etc/a#new" }
+assert { URL("file://server/share/file").resolve("///local/file") == "file:///local/file" }
+assert { URL("https://user:pass@example.com/a").resolve("///other") == "https:///other" }
 
 # Invalid edits raise rather than inject delimiters or discard opaque data.
 assert { (u.withHostname("evil.example/path") rescue null) == null }
