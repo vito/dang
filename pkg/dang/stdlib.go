@@ -534,6 +534,52 @@ func registerStdlib() {
 			}, nil
 		})
 
+	Method(ListTypeModule, "groupBy").
+		Doc("groups original elements by the string key returned by the block; preserves first-seen key order and input order within each group, returning an empty map for an empty list").
+		Example(`["apple", "pear", "apricot"].groupBy { item => item.truncate(1) }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "index",
+				Value: hm.NewScheme(nil, NonNull(IntType)),
+			}),
+			NonNull(StringType),
+		)).
+		Returns(NonNull(MapOf(NonNull(ListOf(TypeVar('a')))))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			if args.Block == nil {
+				return nil, fmt.Errorf("groupBy requires a block argument")
+			}
+			fn := *args.Block
+
+			// These buffers stay private until all groups are complete: appending
+			// here avoids repeated immutable map/list copies for large groups.
+			var keys []string
+			groups := make(map[string][]Value)
+			for i, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item, IntValue{i})
+				if err != nil {
+					return nil, fmt.Errorf("groupBy function: %w", err)
+				}
+				key, ok := res.(StringValue)
+				if !ok {
+					return nil, fmt.Errorf("groupBy function must return String!, got %T", res)
+				}
+				if _, exists := groups[key.Val]; !exists {
+					keys = append(keys, key.Val)
+				}
+				groups[key.Val] = append(groups[key.Val], item)
+			}
+			entries := make(map[string]Value, len(keys))
+			for _, key := range keys {
+				entries[key] = ListValue{Elements: groups[key], ElemType: list.ElemType}
+			}
+			return MapValue{Keys: keys, Entries: entries, ValType: NonNull(ListOf(list.ElemType))}, nil
+		})
+
 	// List.uniq method: uniq -> [a]!
 	Method(ListTypeModule, "uniq").
 		Doc("returns a new list with duplicate elements removed, preserving first occurrence order").

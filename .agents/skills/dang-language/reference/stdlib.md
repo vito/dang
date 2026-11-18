@@ -193,6 +193,7 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 ### Transform / select / aggregate
 - `.map { x, i => ... } -> [U]!`
 - `.flatMap { x, i => [U]! } -> [U]!` — map, then concatenate the lists; replaces `.reduce([]) { all, x => all + x.items }`
+- `.groupBy { x, i => String! } -> Map[[T]!]!` — group original elements by the block's string key, keeping first-seen key order and input order within each group; empty input gives `[:]`. Efficiently replaces repeated map updates and list concatenation: `["apple", "pear", "apricot"].groupBy { x => x.truncate(1) }` yields `["a": ["apple", "apricot"], "p": ["pear"]]`
 - `.filter { x => Boolean! } -> [T]!`, `.reject { x => Boolean! } -> [T]!`
 - `.find { x => Boolean! } -> T` — first element the block accepts, or **null** when none does (stops at the first match); prefer it over `.filter { ... }[0]`
 - `.reduce(initial: U) { acc, x => ... } -> U` — `initial` positional or named `initial:`
