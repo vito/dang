@@ -22,6 +22,8 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 
 - `.length -> Int!` — number of characters (Unicode code points, not bytes): `"héllo".length == 5`; `.isEmpty -> Boolean!`
 - `.toUpper -> String!`, `.toLower -> String!`
+- `.bytes -> [Int!]!` — raw bytes from 0 to 255 (UTF-8 for valid text): `"é".bytes == [195, 169]`; unlike `.length` and `.split("")`, this operates on bytes, not characters
+- `String.fromBytes(bytes: [Int!]!) -> String!` — construct a string preserving every byte, including invalid UTF-8: `String.fromBytes([195, 169]) == "é"`; raises for integers outside 0–255; `String.fromBytes([]) == ""`
 - `.toBase64 -> String!` — standard padded base64 of the string's bytes; `.fromBase64 -> String!` — decode standard padded base64 (raises on invalid input)
 - `.contains(substring: String!) -> Boolean!`
 - `.hasPrefix(prefix: String!) -> Boolean!`, `.hasSuffix(suffix: String!) -> Boolean!`

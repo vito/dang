@@ -16,11 +16,13 @@
 
 ## `String!` methods
 
-> See [#strings]. `.length` counts characters (Unicode code points), not bytes.
+> See [#strings]. `.length` counts characters (Unicode code points), not bytes. `.bytes` returns raw bytes as integers from 0 to 255 (UTF-8 for valid text); `String.fromBytes(bytes: [Int!]!): String!` reverses it. Both preserve invalid UTF-8 exactly, like `.fromBase64`; `String.fromBytes` raises for integers outside 0–255. For example, `"é".bytes == [195, 169]` and `String.fromBytes([195, 169]) == "é"`.
 
 > Regex methods take a `Regexp!` pattern. Backtick template strings auto-coerce to the `Regexp` scalar, so a pattern is usually written as `` `\d+` `` (Go `regexp/syntax`).
 
 \stdlib-methods{String}
+
+\stdlib-statics{String}
 
 ## `Path!` methods
 
