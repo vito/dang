@@ -295,6 +295,31 @@ func TestMigrateNoFmtComments(t *testing.T) {
 	}
 }
 
+func TestMigrateNoFmtBoundaries(t *testing.T) {
+	for _, tc := range noFmtBoundaryCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MigrateSource("nofmt.dang", []byte(tc.source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+			source := tc.source + "\nlet text = \"${hello}\"\n"
+			want := tc.want + "\nlet text = '${hello}'\n"
+			got, err = MigrateSource("nofmt.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
+	t.Run("raw literal conversion keeps its closing directive", func(t *testing.T) {
+		source := "let x = \"\"\"\n ${literal}\n\"\"\" # nofmt\n"
+		want := "let x = '''\n  ${literal}\n''' # nofmt\n"
+		got, err := MigrateSource("nofmt.dang", []byte(source), Version2_1, Version2_5)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+		again, err := FormatFile([]byte(got))
+		require.NoError(t, err)
+		require.Equal(t, got, again)
+	})
+}
+
 func TestMigrationMeaningComparison(t *testing.T) {
 	for _, tc := range []struct {
 		name, original, migrated string

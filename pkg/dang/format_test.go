@@ -132,11 +132,63 @@ func TestFormatNoFmtExpressionComments(t *testing.T) {
 			require.True(t, f.emittedComments[3])
 			require.True(t, f.emittedComments[4])
 			require.False(t, f.emittedComments[1])
-			require.Equal(t, isNoFmtText(closing), f.emittedComments[5])
+			require.False(t, f.emittedComments[5])
 			f.emitRemainingComments()
 			for _, text := range comments {
 				require.Equal(t, 1, strings.Count(f.buf.String(), text), text)
 			}
+		})
+	}
+}
+
+var noFmtBoundaryCases = []struct{ name, source, want string }{
+	{
+		"chained argument",
+		"print(\n foo\n .bar(1)\n .baz(2) # nofmt\n)\n",
+		"print(\n  foo\n    .bar(1)\n    .baz(2), # nofmt\n)\n",
+	},
+	{
+		"chained record field",
+		"let x = {{\n a: foo\n .bar(1)\n .baz(2), # nofmt\n b: 1\n}}\n",
+		"let x = {{\n  a: foo\n    .bar(1)\n    .baz(2), # nofmt\n\n  b: 1\n}}\n",
+	},
+	{
+		"selected argument",
+		"print(\n foo\n .bar\n .baz # nofmt\n)\n",
+		"print(\n  foo\n    .bar\n    .baz, # nofmt\n)\n",
+	},
+	{
+		"literal list element",
+		"let xs = [\n  \"\"\"\n   abc\n  \"\"\" # nofmt\n]\n",
+		"let xs = [\n  \"\"\"\n    abc\n  \"\"\", # nofmt\n]\n",
+	},
+	{
+		"quoted literal",
+		"let x = \"\"\"\n abc\n\"\"\" # nofmt\n",
+		"let x = \"\"\"\n  abc\n\"\"\" # nofmt\n",
+	},
+	{
+		"backtick literal",
+		"let x = ```\n abc\n``` # nofmt\n",
+		"let x = ```\n  abc\n``` # nofmt\n",
+	},
+}
+
+func TestFormatNoFmtBoundaries(t *testing.T) {
+	for _, tc := range noFmtBoundaryCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatFile([]byte(tc.source))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+			original, err := Parse("original.dang", []byte(tc.source))
+			require.NoError(t, err)
+			formatted, err := Parse("formatted.dang", []byte(got))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(original.(Node), formatted.(Node))
+			require.False(t, differs, "formatting must keep the original meaning")
 		})
 	}
 }

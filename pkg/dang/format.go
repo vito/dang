@@ -185,8 +185,9 @@ func (f *Formatter) hasNoFmtComment(node Node) bool {
 	return false
 }
 
-// getOriginalSource extracts the original source text for a node's span
-// If the node has a trailing #nofmt comment, include it in the span
+// getOriginalSource extracts exactly the node's source span. Trailing comments
+// stay outside it: the enclosing expression may still need to write punctuation
+// before those comments, and literal rewriting expects its closing delimiter last.
 func (f *Formatter) getOriginalSource(node Node) string {
 	loc := node.GetSourceLocation()
 	if loc == nil || loc.End == nil {
@@ -197,18 +198,6 @@ func (f *Formatter) getOriginalSource(node Node) string {
 	endOffset := f.lineColumnToOffset(loc.End.Line, loc.End.Column)
 	if startOffset < 0 || endOffset < 0 || endOffset > len(f.source) {
 		return ""
-	}
-
-	// Check if there's a trailing #nofmt comment on the end line
-	// If so, extend the span to include the entire line
-	for _, c := range f.comments {
-		if c.Line == loc.End.Line && c.IsTrailing && isNoFmtText(c.Text) {
-			// Extend to end of line
-			for endOffset < len(f.source) && f.source[endOffset] != '\n' {
-				endOffset++
-			}
-			break
-		}
 	}
 
 	return string(f.source[startOffset:endOffset])
@@ -335,21 +324,17 @@ func (f *Formatter) emitTrailingComment(line int) {
 	}
 }
 
-// writeNoFmtSource accounts for comments copied with a verbatim node so later
-// comment emission does not print them again. Ordinary trailing comments on
-// the closing line are outside the node's span; getOriginalSource only extends
-// that span for a trailing nofmt directive.
-func (f *Formatter) writeNoFmtSource(node Node, source string) {
+// writeOriginalSource accounts for comments copied with a node's source so later
+// comment emission does not print them again. Comments on the closing line are
+// outside the AST span and are emitted by the enclosing form or expression.
+func (f *Formatter) writeOriginalSource(node Node, source string) {
 	f.write(source)
 	loc := node.GetSourceLocation()
 	if loc == nil || loc.End == nil {
 		return
 	}
-	for line, text := range f.commentMap {
-		if line < loc.Line || line > loc.End.Line {
-			continue
-		}
-		if line < loc.End.Line || strings.HasSuffix(source, text) {
+	for line := range f.commentMap {
+		if line >= loc.Line && line < loc.End.Line {
 			f.emittedComments[line] = true
 		}
 	}
@@ -593,6 +578,7 @@ func (f *Formatter) finishForm(form Node) {
 		f.emitTrailingComment(loc.Line)
 	}
 	if endLine := nodeEndLine(form); endLine > 0 {
+		f.emitTrailingComment(endLine)
 		f.lastLine = endLine
 	}
 }
@@ -610,7 +596,7 @@ func (f *Formatter) handleNoFmtForm(form Node) bool {
 	}
 	f.emitCommentsForNode(form)
 	f.writeIndent()
-	f.writeNoFmtSource(form, orig)
+	f.writeOriginalSource(form, orig)
 	fullLoc := form.GetSourceLocation()
 	if fullLoc != nil && fullLoc.End != nil {
 		f.emitTrailingComment(fullLoc.End.Line)
@@ -657,7 +643,7 @@ func (f *Formatter) formatNode(node Node) {
 	if f.hasNoFmtComment(node) {
 		orig := f.getOriginalSource(node)
 		if orig != "" {
-			f.writeNoFmtSource(node, orig)
+			f.writeOriginalSource(node, orig)
 			return
 		}
 	}
@@ -2223,7 +2209,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 
 	// Format chain elements with leading dots
 	f.indented(func() {
-		for _, elem := range chain {
+		for i, elem := range chain {
 			// Emit any standalone comments that precede this chain element
 			var elemLine int
 			switch e := elem.(type) {
@@ -2288,23 +2274,18 @@ func (f *Formatter) formatChainedCall(c Node) {
 					f.write(" ")
 					f.formatBlockArg(e.BlockArg)
 				}
-				// Emit trailing comment for this chain element
-				// Use the FunCall's Loc directly to get the actual span
-				if e.Loc != nil && e.Loc.End != nil {
-					f.emitTrailingComment(e.Loc.End.Line)
-				}
 			case *Select:
 				f.write(f.fieldName(e.Field.Name))
-				// Use the Select's Loc directly to get the actual span
-				if e.Loc != nil && e.Loc.End != nil {
-					f.emitTrailingComment(e.Loc.End.Line)
-				}
 			case *DotApply:
 				// The leading "." is already written; the block renders as
 				// `{ ... }` right after it.
 				f.formatBlockArg(e.Block)
-				if e.Loc != nil && e.Loc.End != nil {
-					f.emitTrailingComment(e.Loc.End.Line)
+			}
+			// The enclosing form or expression owns the final comment: it
+			// may need to print a comma before it (e.g. in a call argument).
+			if i < len(chain)-1 {
+				if loc := elem.GetSourceLocation(); loc != nil && loc.End != nil {
+					f.emitTrailingComment(loc.End.Line)
 				}
 			}
 		}
@@ -2502,7 +2483,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 
 	// Format each field on its own line with a leading dot, indented one level
 	f.indented(func() {
-		for _, sel := range selects {
+		for i, sel := range selects {
 			// Emit any standalone comments that precede this chain element
 			if sel.Field.Loc != nil && sel.Field.Loc.Line > 0 {
 				f.emitChainCommentsBefore(sel.Field.Loc.Line)
@@ -2512,8 +2493,9 @@ func (f *Formatter) formatSelectChain(s *Select) {
 			f.writeIndent()
 			f.write(".")
 			f.write(f.fieldName(sel.Field.Name))
-			// Emit trailing comment for this select
-			if sel.Loc != nil && sel.Loc.End != nil {
+			// Leave the final comment to the enclosing form or expression,
+			// which may still need to print punctuation before it.
+			if i < len(selects)-1 && sel.Loc != nil && sel.Loc.End != nil {
 				f.emitTrailingComment(sel.Loc.End.Line)
 			}
 		}
@@ -2628,10 +2610,9 @@ func (f *Formatter) formatTemplate(t *Template) {
 			orig = f.migrateInterpolations(t, orig)
 		}
 		if t.Fence >= 3 {
-			f.write(f.normalizeMultilineLiteral(t, orig))
-		} else {
-			f.write(orig)
+			orig = f.normalizeMultilineLiteral(t, orig)
 		}
+		f.writeOriginalSource(t, orig)
 		return
 	}
 
@@ -3047,11 +3028,10 @@ func (f *Formatter) formatTripleQuotedString(s *String) {
 				return
 			}
 		}
-		if wasInline {
-			f.write(orig)
-		} else {
-			f.write(f.normalizeMultilineLiteral(s, orig))
+		if !wasInline {
+			orig = f.normalizeMultilineLiteral(s, orig)
 		}
+		f.writeOriginalSource(s, orig)
 		return
 	}
 	// Fallback for synthetic AST without source.
@@ -3094,11 +3074,10 @@ func (f *Formatter) formatRawTripleQuotedString(s *String, orig string, inline b
 			return false
 		}
 		orig = delim + orig[3:len(orig)-3] + delim
-		if inline {
-			f.write(orig)
-		} else {
-			f.write(f.normalizeMultilineLiteral(s, orig))
+		if !inline {
+			orig = f.normalizeMultilineLiteral(s, orig)
 		}
+		f.writeOriginalSource(s, orig)
 		return true
 	}
 	f.writeTripleQuoted(s.Value, delim, escape, "", inline)
@@ -3303,6 +3282,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 			if elemLoc != nil {
 				f.emitTrailingComment(elemLoc.Line)
 			}
+			f.emitTrailingComment(nodeEndLine(l.Elements[i]))
 			f.newline()
 			i++
 		}
@@ -3410,6 +3390,7 @@ func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 			if loc := field.GetSourceLocation(); loc != nil {
 				f.emitTrailingComment(loc.Line)
 			}
+			f.emitTrailingComment(nodeEndLine(field.Value))
 			f.newline()
 		}
 	})
