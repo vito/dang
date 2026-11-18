@@ -12,8 +12,11 @@ model:
 
 resolver:
   package: gqlserver
-  layout: single-file
-  filename: resolvers.go
+  # Keep the stateful Resolver in data.go; single-file recreates an empty one.
+  layout: follow-schema
+  dir: .
+  filename: data.go
+  filename_template: resolvers.go
 
 directives:
   expectedType:
