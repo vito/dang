@@ -626,6 +626,48 @@ func TestVersionQuotes(t *testing.T) {
 		}
 	})
 
+	t.Run("formatting then migrating preserves opening-line string values", func(t *testing.T) {
+		const value = "waivers:\n  - kind: vulnerability\n    owner: platform"
+		literal := "\"\"\"" + value + "\n\"\"\""
+		for _, src := range []string{
+			"let s = " + literal + "\nprint(JSON.encode(s))\n",
+			"f: String! {\n    " + literal + "\n}\n",
+			"f: String! {\n  if (true) {\n    " + literal + "\n  } else {\n    " + literal + "\n  }\n}\n",
+		} {
+			values := func(source string, v Version) []string {
+				t.Helper()
+				parsed, err := Parse("version_test.dang", []byte(source), WithVersion(v))
+				require.NoError(t, err, source)
+				var result []string
+				parsed.(Node).Walk(func(n Node) bool {
+					if s, ok := n.(*String); ok {
+						result = append(result, s.Value)
+					}
+					return true
+				})
+				return result
+			}
+			for _, v := range []Version{Version2_1, Version2_4} {
+				want := values(src, v)
+				require.NotEmpty(t, want)
+				for _, got := range want {
+					require.Equal(t, value, got)
+				}
+				formatted, err := FormatFileWithVersion([]byte(src), v)
+				require.NoError(t, err)
+				assert.Equal(t, want, values(formatted, v))
+				again, err := FormatFileWithVersion([]byte(formatted), v)
+				require.NoError(t, err)
+				assert.Equal(t, formatted, again)
+				for _, original := range []string{src, formatted} {
+					migrated, err := MigrateSource("version_test.dang", []byte(original), v, Version2_5)
+					require.NoError(t, err)
+					assert.Equal(t, want, values(migrated, Version2_5))
+				}
+			}
+		}
+	})
+
 	t.Run("formatting at 2.4 keeps text on the opening line in place", func(t *testing.T) {
 		for _, src := range []string{
 			"let a = \"\"\"Summary.\n more\n\"\"\"\n",
