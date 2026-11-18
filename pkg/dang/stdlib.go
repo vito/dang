@@ -21,7 +21,6 @@ func registerStdlib() {
 	registerCodecs()
 	registerAssert()
 	registerRegexp()
-	registerURL()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").

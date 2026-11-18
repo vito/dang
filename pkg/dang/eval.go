@@ -896,11 +896,6 @@ func addBuiltinFunctions(scope ValueScope) {
 		FnType:     regexpConstructorType(),
 		ArgName:    regexpConstructorArg,
 	}, PublicVisibility)
-	scope.Bind("URL", ScalarConstructor{
-		ScalarType: URLType,
-		FnType:     urlConstructorType(),
-		ArgName:    urlConstructorArg,
-	}, PublicVisibility)
 }
 
 // applyDefaults fills in default values for arguments that are missing or
