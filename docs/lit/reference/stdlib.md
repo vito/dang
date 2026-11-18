@@ -32,6 +32,8 @@
 
 > `URL(raw: String!)` constructs a URL reference, preserving its original text rather than normalizing it: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`. String literals in `URL!`-typed slots and explicit `:: URL!` casts validate through the same hook. URL values degrade to `String!` at value-handoff boundaries, like `Path`.
 
+> URL is implemented in Dang itself, in the embedded prelude. Its `new()` hook validates at runtime at every materialization boundary, including literal coercion, explicit casts, and codec decoding. Invalid values raise recoverably; the type checker does not execute Dang-defined hooks.
+
 > Absolute, relative, empty, and opaque references are accepted. This is not a check that a URL is absolute or safe to fetch. A schema's same-named scalar remains a separate type (use `MyAPI.URL`), while unqualified `URL` refers to the builtin unless shadowed by a local declaration.
 
 ### Reading components

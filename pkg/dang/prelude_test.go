@@ -29,6 +29,12 @@ func TestPreludeConcurrentUse(t *testing.T) {
 				assert { Path("main.dang").matches("*.dang") }
 				let s: String! = p
 				assert { s == "src/app/main.go" }
+				let u = URL("https://example.com/a%2Fb?tag=one#")
+				let changed = u.appendPath(["c/d"]).withAddedQueryParam("tag", "two")
+				assert { changed.escapedPath == "/a%2Fb/c%2Fd" }
+				assert { changed.query["tag"] == ["one", "two"] }
+				assert { changed.fragment == "" }
+				assert { u.string == "https://example.com/a%2Fb?tag=one#" }
 			`)
 			if err != nil {
 				errs <- err

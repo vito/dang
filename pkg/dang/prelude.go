@@ -9,8 +9,8 @@ import (
 	"sync"
 )
 
-// The Dang-source prelude: stdlib pieces written in Dang itself (currently
-// the Path scalar). The files are parsed, inferred, and evaluated exactly
+// The Dang-source prelude: stdlib pieces written in Dang itself, including
+// the Path and URL scalars. The files are parsed, inferred, and evaluated exactly
 // once per process, and the resulting declarations are layered between the
 // Go-built Prelude and every program's own scope.
 //

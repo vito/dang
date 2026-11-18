@@ -9,6 +9,7 @@ The built-in surface of Dang itself (everything here is available without any
 - `assert(message: String! = null) { Boolean! } -> Null` — optional named `message`.
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
+- `URL(raw: String!) -> URL!` — validates a URL reference while preserving its original text; implemented in the Dang prelude (see the `URL!` section below).
 - `Regexp(pattern: String!) -> Regexp!` — compiles a pattern from any String expression; raises `invalid regexp "...": ...` when it doesn't compile (see `String!` regex methods below).
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; render everything else as the Dang literal it would be written as (`toString(["a", "b"])` → `["a", "b"]`, `toString({{a: 1}})` → `{{a: 1}}`, `toString(["k": 1])` → `["k": 1]`, Decoded data → the literal of its data, objects as map literals with sorted keys; floats always read as floats, `1.0`; an enum value inside a collection is `Color.RED`; a record shows its data fields, an object its public data fields (not methods or `let` fields; `{{}}` when all are `let`); a GraphQL object is the lazy query it is, `<Container: container.from(address: …)>` (a mutation's result `<Type: mutation.field(…)>`), sending nothing and showing argument names but never their values; select `.id` for the ID). String interpolation, `List.join` and `print` render values the same way. It is not an encoder: use `JSON.encode` for JSON.
@@ -100,8 +101,10 @@ Paths; use `.join` or interpolation.
 (including `//host/path`), empty, and opaque references are accepted; this is
 not a check that a URL is absolute or safe to fetch. Construction preserves
 original text: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
-Like other scalars, literals at `URL!` boundaries and explicit casts validate
-through the same hook; invalid literals are rejected during type checking.
+URL is implemented in the Dang-source prelude, like Path. Its `new()` hook
+validates at runtime whenever a string becomes a URL, including literals in
+`URL!`-typed slots, explicit casts, and codec decoding. Invalid values raise
+recoverably; Dang-defined hooks are not executed during type checking.
 String variables require `URL(s)` or a cast. Equality is textual, not semantic.
 A schema's same-named scalar remains distinct: qualify it as `MyAPI.URL`.
 
