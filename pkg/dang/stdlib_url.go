@@ -349,7 +349,7 @@ func registerURLBuilders() {
 			u.RawFragment = ""
 			return nil
 		}},
-		{"resolve", "resolve a URL reference against this URL using RFC 3986 reference resolution, including dot-segment removal", `URL("https://foo/a/b").resolve(URL("../c"))`, []any{"reference", NonNull(URLType)}, func(u *urlReference, a Args) error {
+		{"resolve", "resolve a reference using RFC 3986 rules; rootless relative bases stay rootless and retain unresolved parent segments; an empty reference path preserves the base path", `URL("https://foo/a/b").resolve(URL("../c"))`, []any{"reference", NonNull(URLType)}, func(u *urlReference, a Args) error {
 			ref, err := readURL(a.Require("reference").(ScalarValue).Val)
 			if err != nil {
 				return err
@@ -370,6 +370,20 @@ func registerURLBuilders() {
 				result.Scheme = u.Scheme
 			} else {
 				result = u.ResolveReference(ref.URL)
+			}
+			if ref.Scheme == "" && !ref.authorityPresent && ref.Opaque == "" && u.Opaque == "" {
+				if ref.Path == "" {
+					// An empty-path reference inherits the base path verbatim;
+					// net/url otherwise roots and normalizes relative base paths.
+					result.Path, result.RawPath = u.Path, u.RawPath
+				} else if u.Scheme == "" && !u.authorityPresent && !strings.HasPrefix(u.EscapedPath(), "/") && !strings.HasPrefix(ref.EscapedPath(), "/") {
+					path := resolveRootlessURLPath(u.EscapedPath(), ref.EscapedPath())
+					result.Path, err = url.PathUnescape(path)
+					if err != nil {
+						return err
+					}
+					result.RawPath = path
+				}
 			}
 			if inheritQuery {
 				result.ForceQuery = u.ForceQuery
@@ -397,6 +411,46 @@ func registerURLBuilders() {
 			return u.value()
 		})
 	}
+}
+
+// resolveRootlessURLPath extends reference resolution to relative bases.
+// RFC 3986 assumes an absolute base: net/url inserts a root and consequently
+// loses excess parent traversals. Keep those traversals so the result can
+// later be resolved against an absolute base without changing its meaning.
+// Work on escaped segments: %2E and %2F are data, not path operators.
+func resolveRootlessURLPath(base, ref string) string {
+	merged := base[:strings.LastIndex(base, "/")+1] + ref
+	parts := strings.Split(merged, "/")
+	var stack []string
+	for i, part := range parts {
+		switch part {
+		case ".":
+			if i == len(parts)-1 {
+				stack = append(stack, "")
+			}
+		case "..":
+			if len(stack) > 0 && stack[len(stack)-1] != ".." {
+				stack = stack[:len(stack)-1]
+			} else {
+				stack = append(stack, "..")
+			}
+			if i == len(parts)-1 {
+				stack = append(stack, "")
+			}
+		default:
+			stack = append(stack, part)
+		}
+	}
+	path := strings.Join(stack, "/")
+	if path == "" {
+		return "./"
+	}
+	// Dot removal can expose an empty segment. Retain its slash without
+	// turning a rootless result into an absolute path or network reference.
+	if strings.HasPrefix(path, "/") {
+		return "./" + path
+	}
+	return path
 }
 
 func urlArgNull(a Args, name string) bool {

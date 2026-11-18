@@ -227,6 +227,49 @@ func TestURLReferenceResolution(t *testing.T) {
  `))
 }
 
+func TestURLRootlessResolution(t *testing.T) {
+	for _, tc := range []struct{ base, ref, want string }{
+		{"docs/page", "#section", "docs/page#section"},
+		{"docs/page?old=1#old", "", "docs/page?old=1"},
+		{"docs/page", "?q=x", "docs/page?q=x"},
+		{"docs/page?", "#", "docs/page?#"},
+		{"docs/./a/../page%2fdata", "#new", "docs/./a/../page%2fdata#new"},
+		{"docs/page", "other", "docs/other"},
+		{"docs/page", "../other", "other"},
+		{"docs/page", "../../other", "../other"},
+		{"../docs/page", "../../other", "../../other"},
+		{"docs/page", ".", "docs/"},
+		{"docs/page", "..", "./"},
+		{"docs/page", "../..", "../"},
+		{"docs/page", "../../..", "../../"},
+		{"page", "other", "other"},
+		{"", "other", "other"},
+		{"", ".", "./"},
+		{"", "..", "../"},
+		{"docs//page", "other", "docs//other"},
+		{"docs//page", "../other", "docs/other"},
+		{"docs//page", "../../other", "other"},
+		{"docs/page", "..//other", ".//other"},
+		{"docs/page", "../a//", "a//"},
+		{"docs/page", "../a/..//..", "./"},
+		{"%2Fdocs/page", "other", "%2Fdocs/other"},
+		{"docs/page", "%2Fother", "docs/%2Fother"},
+		{"docs/page", "%2E%2E/other", "docs/%2E%2E/other"},
+		{"docs%2Fdata/page", "../other", "other"},
+	} {
+		t.Run(tc.base+" -> "+tc.ref, func(t *testing.T) {
+			require.NoError(t, evalExample(fmt.Sprintf(`
+let base = URL(%q)
+let ref = URL(%q)
+let relative = base.resolve(ref)
+assert { relative.string == %q }
+let origin = URL("https://example.com/project/?origin=1#old")
+assert { origin.resolve(relative) == origin.resolve(base).resolve(ref) }
+`, tc.base, tc.ref, tc.want)))
+		})
+	}
+}
+
 func TestURLBuilderValidation(t *testing.T) {
 	for _, script := range []string{
 		`URL("").withScheme("https://evil")`,
