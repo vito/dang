@@ -28,12 +28,20 @@ assert { cfg.count == 3 }
 assert { cfg.enabled == true }
 assert { TOML.encode({{count: 3, enabled: true}}) == "count = 3\nenabled = true" }
 
-# Nested tables and arrays of tables are emitted without indentation.
+# Nested tables and arrays of tables are emitted without indentation by default.
+let nested = {{
+  server: {{host: "localhost", tls: {{enabled: true}}}},
+  users: [{{name: "Ada"}}, {{name: "Bob"}}]
+}}
 assert {
-  TOML.encode({{
-    server: {{host: "localhost", tls: {{enabled: true}}}},
-    users: [{{name: "Ada"}}, {{name: "Bob"}}]
-  }}) == "[server]\nhost = \"localhost\"\n[server.tls]\nenabled = true\n\n[[users]]\nname = \"Ada\"\n\n[[users]]\nname = \"Bob\""
+  TOML.encode(nested) == "[server]\nhost = \"localhost\"\n[server.tls]\nenabled = true\n\n[[users]]\nname = \"Ada\"\n\n[[users]]\nname = \"Bob\""
+}
+assert { TOML.encode(nested, indent: "") == TOML.encode(nested) }
+assert {
+  TOML.encode(nested, indent: "  ") == "[server]\n  host = \"localhost\"\n  [server.tls]\n    enabled = true\n\n[[users]]\n  name = \"Ada\"\n\n[[users]]\n  name = \"Bob\""
+}
+assert {
+  TOML.encode(nested, indent: "\t") == "[server]\n\thost = \"localhost\"\n\t[server.tls]\n\t\tenabled = true\n\n[[users]]\n\tname = \"Ada\"\n\n[[users]]\n\tname = \"Bob\""
 }
 
 print("bare codec tests passed!")
