@@ -88,7 +88,9 @@ func autoCallFnType(t hm.Type) (hm.Type, bool, error) {
 			return ft.Ret(false), true, nil
 		}
 	}
-	return t, true, nil
+	// An abstract type may hold a callable at runtime, but inference did not
+	// call it: a generic identity function must return its argument unchanged.
+	return t, false, nil
 }
 
 // requiredCallArgument is shared by explicit-call validation and auto-calling.

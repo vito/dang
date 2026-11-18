@@ -324,6 +324,38 @@ assert { has(["a", null], "a") }
 	require.Empty(t, out)
 }
 
+func TestAutoCallDoesNotInvokeAbstractValues(t *testing.T) {
+	out, err := evalWithContext(t, t.Context(), `id[a](value: a): a { value }
+let encode = id(&JSON.encode)
+print(encode({{ x: 1 }}))
+
+type P { x: Int }
+let construct = id(&P)
+assert { construct().x == null }
+
+optional(x: Int): Int! { x ?? 7 }
+let function = id(&optional)
+assert { function() == 7 }
+assert { function(2) == 2 }
+
+let nullable: [Int]! = [1, null]
+let contains = id(&nullable.contains)
+let indexOf = id(&nullable.indexOf)
+let length = id(&nullable.length)
+assert { contains(1) }
+assert { indexOf(1) == 0 }
+assert { length() == 2 }
+
+let map = ["one": 1]
+let get = id(&map.get)
+let values = id(&map.values)
+assert { get("one") == 1 }
+assert { values() == [1] }
+`)
+	require.NoError(t, err)
+	require.Equal(t, "{\"x\":1}\n", out)
+}
+
 func TestAutoCallReturningCallable(t *testing.T) {
 	args := NewRecordType("", Keyed[*hm.Scheme]{Key: "x", Value: hm.NewScheme(nil, NonNull(IntType))})
 	target := BuiltinFunction{Name: "target", FnType: hm.NewFnType(args, NonNull(IntType))}
