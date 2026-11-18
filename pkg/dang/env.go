@@ -407,6 +407,10 @@ func init() {
 	Prelude.Add("Regexp", hm.NewScheme(nil, regexpConstructorType()))
 	RegexpType.AddObject("Match", MatchType)
 
+	// URL uses the same string-scalar constructor and materialization path.
+	Prelude.AddObject("URL", URLType)
+	Prelude.Add("URL", hm.NewScheme(nil, urlConstructorType()))
+
 	// Decoded, the type of decoded data not yet given a type, is not a
 	// module, so it is registered beside the Prelude's objects.
 	registerPreludeType(DecodedType{}, "decoded data not yet given a type: any shape, read at a type by a cast or a typed slot")

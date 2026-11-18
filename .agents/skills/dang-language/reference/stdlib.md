@@ -94,6 +94,29 @@ A String *variable* does not auto-coerce into a `Path!` slot (the literal-only
 rule applies to every scalar) — wrap it: `Path(dir)`. There is no `+` on
 Paths; use `.join` or interpolation.
 
+## `URL!` scalar
+
+`URL(raw: String!) -> URL!` parses a URL reference with Go's `net/url.Parse`.
+Absolute, relative (including `//host/path`), empty, and opaque references are
+accepted; this is not a check that a URL is absolute or safe to fetch. Invalid
+escapes, ports, and other parse errors raise `invalid URL: ...`. The original
+text is preserved, not normalized: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
+Like other scalars, literals at `URL!` boundaries and explicit casts validate
+through the same hook; invalid literals are rejected during type checking.
+String variables require `URL(s)` or a cast. Equality uses the original text,
+not semantic URL equivalence.
+
+- `.scheme -> String!` — lower-case scheme, without the colon
+- `.host -> String!` — host with any explicit port and IPv6 brackets, without user information
+- `.hostname -> String!` — host without its port or IPv6 brackets
+- `.port -> String!` — explicit numeric port as text; no default port is inferred
+- `.path -> String!` — percent-decoded path, excluding query and fragment; empty for opaque URLs such as `mailto:user@example.com`
+- `.string -> String!` — original text, including its spelling and escapes
+
+Absent components return `""`, not null. For example,
+`URL("https://foo:1234/bar").host` is `"foo:1234"`, `.hostname` is `"foo"`,
+`.port` is `"1234"`, and `.path` is `"/bar"`.
+
 ## `[T]!` methods (lists)
 
 Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods](#map-methods) below); there are no sets. Block params shown as `x`/`i`.
