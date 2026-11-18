@@ -1,0 +1,206 @@
+"""
+a strict Semantic Version 2.0.0, accepting and removing one leading lowercase v;
+equality includes build metadata, while compare and sortKey use version precedence
+"""
+@example(```dang
+SemVer("v1.2.3-rc.1+build.007")
+```)
+scalar SemVer {
+  new(raw: String!) {
+    let text = raw.trimPrefix("v")
+    if (!text.containsMatch(`\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?\z`)) {
+      raise "invalid SemVer: expected major.minor.patch with optional prerelease and build metadata"
+    }
+    let pre = text.split("+", limit: 2)[0]!.split("-", limit: 2)[1]
+    if (pre != null) {
+      pre.split(".").each { id =>
+        if (id.containsMatch(`\A0[0-9]+\z`)) {
+          raise "invalid SemVer: numeric prerelease identifiers must not have leading zeros"
+        }
+      }
+    }
+    text
+  }
+
+  """
+  the major version as an Int; raises when it exceeds Int's range
+  """
+  @example(```dang
+  SemVer("1.2.3").major
+  ```)
+  major: Int! { coreParts[0]!.toInt }
+
+  """
+  the minor version as an Int; raises when it exceeds Int's range
+  """
+  @example(```dang
+  SemVer("1.2.3").minor
+  ```)
+  minor: Int! { coreParts[1]!.toInt }
+
+  """
+  the patch version as an Int; raises when it exceeds Int's range
+  """
+  @example(```dang
+  SemVer("1.2.3").patch
+  ```)
+  patch: Int! { coreParts[2]!.toInt }
+
+  """
+  the version without prerelease or build metadata
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1+build.7").core
+  ```)
+  core: SemVer! { SemVer(coreParts.join(".")) }
+
+  """
+  prerelease identifiers without the leading hyphen, or null when absent
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1").prerelease
+  ```)
+  prerelease: String { string.split("+", limit: 2)[0]!.split("-", limit: 2)[1] }
+
+  """
+  build metadata without the leading plus, or null when absent
+  """
+  @example(```dang
+  SemVer("1.2.3+build.007").build
+  ```)
+  build: String { string.split("+", limit: 2)[1] }
+
+  """
+  whether the version has prerelease identifiers
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1").isPrerelease
+  ```)
+  isPrerelease: Boolean! { prerelease != null }
+
+  """
+  canonical version text, without a leading v and preserving identifier case
+  """
+  @example(```dang
+  SemVer("v1.2.3-RC.1+Build.007").string
+  ```)
+  string: String! { self :: String! }
+
+  """
+  compare version precedence, ignoring build metadata; returns -1, 0, or 1
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1").compare("1.2.3")
+  ```)
+  compare(other: SemVer!): Int! {
+    let left = sortKey
+    let right = other.sortKey
+    if (left < right) { -1 } else if (left > right) { 1 } else { 0 }
+  }
+
+  """
+  a list key for SemVer precedence with sortBy, ignoring build metadata;
+  ordinary scalar comparison and sort still order version text lexically
+  """
+  @example(```dang
+  [SemVer("1.10.0"), SemVer("1.2.0")].sortBy { v => v.sortKey }
+  ```)
+  sortKey: [String!]! {
+    let key = coreParts.map { digits => numericKey(digits) }
+    let pre = prerelease
+    if (pre == null) { return key + ["1"] }
+    key + ["0"] + pre.split(".").map { id =>
+      if (id.containsMatch(`\A[0-9]+\z`)) { "0" + numericKey(id) } else { "1" + id }
+    }
+  }
+
+  """
+  replace prerelease identifiers, preserving build metadata; null removes them,
+  while empty or invalid identifiers raise an error
+  """
+  @example(```dang
+  SemVer("1.2.3+build.7").withPrerelease("rc.1")
+  ```)
+  withPrerelease(prerelease: String): SemVer! {
+    if (prerelease != null and !validIdentifiers(prerelease)) {
+      raise "invalid SemVer prerelease identifiers"
+    }
+    let text = core.string
+    if (prerelease != null) { text += "-" + prerelease }
+    let metadata = build
+    if (metadata != null) { text += "+" + metadata }
+    SemVer(text)
+  }
+
+  """
+  replace build metadata, preserving prerelease identifiers; null removes it,
+  while empty or invalid identifiers raise an error
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1").withBuild("build.007")
+  ```)
+  withBuild(build: String): SemVer! {
+    if (build != null and !validIdentifiers(build)) {
+      raise "invalid SemVer build identifiers"
+    }
+    let text = string.split("+", limit: 2)[0]!
+    if (build != null) { text += "+" + build }
+    SemVer(text)
+  }
+
+  """
+  increment major, reset minor and patch to zero, and remove both suffixes
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1+build.7").bumpMajor
+  ```)
+  bumpMajor: SemVer! { SemVer(increment(coreParts[0]!) + ".0.0") }
+
+  """
+  increment minor, reset patch to zero, and remove both suffixes
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1+build.7").bumpMinor
+  ```)
+  bumpMinor: SemVer! {
+    let parts = coreParts
+    SemVer(parts[0]! + "." + increment(parts[1]!) + ".0")
+  }
+
+  """
+  increment patch and remove both suffixes
+  """
+  @example(```dang
+  SemVer("1.2.3-rc.1+build.7").bumpPatch
+  ```)
+  bumpPatch: SemVer! {
+    let parts = coreParts
+    SemVer(parts[0]! + "." + parts[1]! + "." + increment(parts[2]!))
+  }
+
+  let coreParts: [String!]! {
+    string.split("+", limit: 2)[0]!.split("-", limit: 2)[0]!.split(".")
+  }
+
+  let validIdentifiers(text: String!): Boolean! {
+    text.containsMatch(`\A[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*\z`)
+  }
+
+  # ':' sorts before '~', so numeric keys order by digit count before value.
+  let numericKey(digits: String!): String! {
+    digits.replaceMatches(`[0-9]`, "~") + ":" + digits
+  }
+
+  # Work on single ASCII digits so even versions beyond Int's range can bump.
+  let increment(digits: String!): String! {
+    let carry = true
+    let reversed = digits.bytes.reverse.map { digit =>
+      if (!carry) { continue digit }
+      if (digit == 57) { continue 48 }
+      carry = false
+      digit + 1
+    }
+    if (carry) { reversed += [49] }
+    String.fromBytes(reversed.reverse)
+  }
+}

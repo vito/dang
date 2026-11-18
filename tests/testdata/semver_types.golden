@@ -1,0 +1,51 @@
+4 inference errors:
+
+Error 1:
+[1m[31mError:[0m cannot use a? as String!
+  [2m[34m--> errors/semver_types.dang:2:8[0m
+ [2m    |[0m
+ [2m  1 | # Construction requires non-null String text, never a number or null.[0m
+ [2m[34m[1m  2 | [0mSemVer(null)
+[2m              [31m^^^^[0m
+ [2m  3 | SemVer(123)[0m
+ [2m  4 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m cannot use Int! as String!
+  [2m[34m--> errors/semver_types.dang:3:8[0m
+ [2m    |[0m
+ [2m  1 | # Construction requires non-null String text, never a number or null.[0m
+ [2m  2 | SemVer(null)[0m
+ [2m[34m[1m  3 | [0mSemVer(123)
+[2m              [31m^^^[0m
+ [2m  4 | [0m
+ [2m  5 | # Computed String arguments need an explicit scalar cast or constructor.[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m cannot use String! as SemVer!
+  [2m[34m--> errors/semver_types.dang:7:25[0m
+ [2m    |[0m
+ [2m  5 | # Computed String arguments need an explicit scalar cast or constructor.[0m
+ [2m  6 | let text = "1.2.3"[0m
+ [2m[34m[1m  7 | [0mSemVer("1.0.0").compare(text)
+[2m                               [31m^^^^[0m
+ [2m  8 | [0m
+ [2m  9 | # Helpers are implementation details, not public methods.[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m "coreParts" is a private member of SemVer and cannot be accessed from another module
+  [2m[34m--> errors/semver_types.dang:10:1[0m
+ [2m    |[0m
+ [2m  8 | [0m
+ [2m  9 | # Helpers are implementation details, not public methods.[0m
+ [2m[34m[1m 10 | [0mSemVer("1.2.3").coreParts
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 11 | [0m
+ [2m    |[0m
+

@@ -1,0 +1,10 @@
+# Construction requires non-null String text, never a number or null.
+SemVer(null)
+SemVer(123)
+
+# Computed String arguments need an explicit scalar cast or constructor.
+let text = "1.2.3"
+SemVer("1.0.0").compare(text)
+
+# Helpers are implementation details, not public methods.
+SemVer("1.2.3").coreParts
