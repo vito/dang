@@ -188,4 +188,9 @@ assert { (URL("relative").withPort(80) rescue null) == null }
 assert { (URL("mailto:user@example.com").withPath("/other") rescue null) == null }
 assert { URL("mailto:user@example.com").withFragment("part").fragment == "part" }
 
+# Like Path, the prelude's new() hook validates during materialization, not
+# type checking, so invalid literal coercions can be rescued too.
+assert { (("/%zz" :: URL!) rescue null) == null }
+assert { (urlHost("https://foo:abc/") rescue null) == null }
+
 print("All URL tests passed!")

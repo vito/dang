@@ -8,7 +8,7 @@ import (
 // The Dang-source prelude is evaluated once and shared process-wide; its
 // declarations must behave like the Go-built Prelude: frozen after load and
 // safe under concurrent use from independent programs. Each goroutine runs a
-// full parse→infer→eval of a snippet that constructs Paths, dispatches
+// full parse→infer→eval of a snippet that constructs Paths and URLs, dispatches
 // methods (including bare sibling calls through the shared closures), and
 // exercises the new() hook at several materialization boundaries.
 func TestPreludeConcurrentUse(t *testing.T) {
@@ -46,6 +46,25 @@ func TestPreludeConcurrentUse(t *testing.T) {
 
 	for err := range errs {
 		t.Fatalf("concurrent prelude use failed: %v", err)
+	}
+}
+
+// URL's behavior belongs to the source prelude, not a native URL parser
+// behind a thin Dang wrapper. It uses the same materialization hook as Path.
+func TestURLDefinedInPrelude(t *testing.T) {
+	typ, found := PreludeModule().NamedType("URL")
+	if !found {
+		t.Fatal("URL is not defined in the source prelude")
+	}
+	mod, ok := typ.(*Type)
+	if !ok || mod.Kind != ScalarKind {
+		t.Fatalf("URL is not a scalar: %T", typ)
+	}
+	if _, _, ok := mod.ScalarHook(); !ok {
+		t.Fatal("URL has no Dang constructor hook")
+	}
+	if mod.GoScalarHook() != nil {
+		t.Fatal("URL unexpectedly uses a native scalar hook")
 	}
 }
 
