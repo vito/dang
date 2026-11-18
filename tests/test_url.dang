@@ -1,0 +1,88 @@
+import Test
+
+# The issue's example, including equality against a string literal.
+let u = URL("https://foo:1234/bar")
+assert { u == "https://foo:1234/bar" }
+assert { u.scheme == "https" }
+assert { u.host == "foo:1234" }
+assert { u.hostname == "foo" }
+assert { u.port == "1234" }
+assert { u.path == "/bar" }
+
+# Parsing preserves the original text rather than normalizing it.
+let raw = "HTTPS://user:pass@Example.COM:443/a%2Fb//../c?x=1#frag"
+let escaped = URL(raw)
+assert { escaped.string == raw }
+assert { escaped.scheme == "https" }
+assert { escaped.host == "Example.COM:443" }
+assert { escaped.hostname == "Example.COM" }
+assert { escaped.port == "443" }
+assert { escaped.path == "/a/b//../c" }
+assert { (escaped :: String!) == raw }
+assert { toString(escaped) == raw }
+assert { `URL: ${u}` == "URL: https://foo:1234/bar" }
+
+# Missing components are empty strings; relative references are valid.
+let bare = URL("https://example.com")
+assert { bare.port == "" }
+assert { bare.path == "" }
+let relative = URL("../a%20b?next=/foo#section")
+assert { relative.scheme == "" }
+assert { relative.host == "" }
+assert { relative.hostname == "" }
+assert { relative.port == "" }
+assert { relative.path == "../a b" }
+assert { URL("").string == "" }
+assert { URL("//example.com/path").host == "example.com" }
+assert { URL("mailto:user@example.com").scheme == "mailto" }
+assert { URL("mailto:user@example.com").path == "" }
+
+# IPv6 brackets belong to host, not hostname.
+let ipv6 = URL("https://[2001:db8::1]:8443/path")
+assert { ipv6.host == "[2001:db8::1]:8443" }
+assert { ipv6.hostname == "2001:db8::1" }
+assert { ipv6.port == "8443" }
+assert { URL("http://[::1]/").port == "" }
+
+# Literal coercion, explicit casts, and String degradation follow Path.
+let annotated: URL! = "https://example.com/typed"
+assert { annotated.path == "/typed" }
+
+urlHost(candidate: URL! = "https://default.example"): String! { candidate.hostname }
+
+assert { urlHost == "default.example" }
+assert { urlHost("https://arg.example") == "arg.example" }
+
+makeURL: URL! { "https://return.example" }
+
+assert { makeURL.hostname == "return.example" }
+let cast = raw :: URL!
+assert { cast.host == "Example.COM:443" }
+let text: String! = u
+assert { text == "https://foo:1234/bar" }
+assert { hello(name: u) == "Hello, https://foo:1234/bar!" }
+
+# The builtin does not replace a schema's nominal URL scalar.
+let schemaURL: Test.URL! = homepage
+assert { (schemaURL :: URL!).hostname == "danglang.org" }
+assert { fetchURL(url: u :: Test.URL!) == "Fetched: https://foo:1234/bar" }
+
+# Codecs materialize URL fields and preserve their text on encoding.
+type Config {
+  endpoint: URL!
+}
+
+let config: Config! = JSON.decode('{"endpoint":"https://example.com/a%2Fb"}')
+assert { config.endpoint.path == "/a/b" }
+assert { JSON.encode(config.endpoint) == '"https://example.com/a%2Fb"' }
+
+# Invalid escapes, ports, and bracketed hosts fail recoverably.
+let invalids = ["https://example.com/%zz", "https://example.com:abc/", "http://[::1/"]
+invalids.each { invalid =>
+  assert { (URL(invalid) rescue null) == null }
+  assert { ((invalid :: URL!) rescue null) == null }
+}
+let invalidConfig = '{"endpoint":"https://example.com/%zz"}'
+assert { ((JSON.decode(invalidConfig) :: Config!) rescue null) == null }
+
+print("All URL tests passed!")
