@@ -750,27 +750,52 @@ func (FormatSuite) TestEmptyCallFormatting(ctx context.Context, t *testctx.T) {
 		{
 			name:     "constructor",
 			input:    `pub x = P()`,
-			expected: "pub x = P()\n",
+			expected: "pub x = P\n",
 		},
 		{
 			name:     "inline constructor calls",
 			input:    `pub x = [P(), constructors.p(), constructors[0]()]`,
-			expected: "pub x = [P(), constructors.p(), constructors[0]()]\n",
+			expected: "pub x = [P, constructors.p, constructors[0]]\n",
 		},
 		{
 			name:     "lowercase alias",
 			input:    `pub x = make()`,
-			expected: "pub x = make()\n",
+			expected: "pub x = make\n",
 		},
 		{
 			name:     "chain root",
 			input:    "pub x = P()\n  .runners\n  .length",
-			expected: "pub x = P()\n  .runners\n  .length\n",
+			expected: "pub x = P\n  .runners\n  .length\n",
 		},
 		{
 			name:     "chain element",
 			input:    "pub x = constructors\n  .p()\n  .runners.length",
-			expected: "pub x = constructors\n  .p()\n  .runners\n  .length\n",
+			expected: "pub x = constructors\n  .p\n  .runners\n  .length\n",
+		},
+		{
+			name:     "reference operand keeps its call",
+			input:    `pub x = &factory()`,
+			expected: "pub x = &factory()\n",
+		},
+		{
+			name:     "grouped reference operand keeps its call",
+			input:    `pub x = &(factory())`,
+			expected: "pub x = &(factory())\n",
+		},
+		{
+			name:     "reference still elides receiver calls",
+			input:    `pub x = &factory().f()`,
+			expected: "pub x = &factory.f()\n",
+		},
+		{
+			name:     "multiline reference keeps only its operand call",
+			input:    "pub x = &factory()\n  .f()",
+			expected: "pub x = &factory\n  .f()\n",
+		},
+		{
+			name:     "asserted callee keeps its operand call",
+			input:    `pub x = factory()!()`,
+			expected: "pub x = factory()!()\n",
 		},
 		{
 			name:     "bare autocall stays bare",
@@ -796,8 +821,8 @@ func (FormatSuite) TestEmptyCallFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
-// Nullable fields without defaults allow P() but do not make P auto-callable.
-// Check actual evaluation as well as spelling, including fallback-only paths.
+// Nullable fields without defaults are optional for both explicit calls and
+// auto-calling. Check that eliding () keeps evaluation, including fallback paths.
 func TestFormatConstructorCalls(t *testing.T) {
 	const source = `type Q {
   n: Int! = 1
@@ -821,13 +846,23 @@ print(P()
 	require.NoError(t, err)
 	require.Equal(t, "0\n0\n0\n0\n", original)
 
-	for _, version := range []Version{{Major: 2, Minor: 1}, CurrentVersion} {
+	for _, version := range []Version{Version2_1, CurrentVersion} {
 		formatted, err := FormatFileWithVersion([]byte(source), version)
 		require.NoError(t, err)
+		require.NotContains(t, formatted, "P()")
+		require.NotContains(t, formatted, "make()")
 		actual, err := evalWithContext(t, t.Context(), formatted)
 		require.NoError(t, err)
 		require.Equal(t, original, actual)
 	}
+
+	// Force a syntax-changing migration so it cannot just return the input.
+	migrated, err := MigrateSource("constructor.dang", []byte(source+"let text = \"${HOME}\"\n"), Version2_1, Version2_5)
+	require.NoError(t, err)
+	require.NotContains(t, migrated, "P()")
+	actual, err := evalWithContext(t, t.Context(), migrated)
+	require.NoError(t, err)
+	require.Equal(t, original, actual)
 }
 
 // `f!()` calls the asserted function; `f!` asserts what auto-calling `f`
@@ -1721,14 +1756,14 @@ func (FormatSuite) TestGroupedExpressions(ctx context.Context, t *testctx.T) {
 			expected: "let x = (foo.bar).baz\n",
 		},
 		{
-			name:     "zero-arg calls preserved",
+			name:     "zero-arg calls still elided",
 			input:    `let x = foo.bar()`,
-			expected: "let x = foo.bar()\n",
+			expected: "let x = foo.bar\n",
 		},
 		{
-			name:     "zero-arg chain calls preserved",
+			name:     "zero-arg chain calls still elided",
 			input:    `let x = foo().bar().baz`,
-			expected: "let x = foo().bar().baz\n",
+			expected: "let x = foo.bar.baz\n",
 		},
 		{
 			name:     "nested grouped preserved",

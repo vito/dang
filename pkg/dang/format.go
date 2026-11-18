@@ -50,6 +50,10 @@ type Formatter struct {
 	// and imports can contribute overlapping unqualified names.
 	preserveImports bool
 
+	// explicitCall is the call at a reference-only operand, where dropping
+	// its parentheses would suppress invocation instead of auto-calling.
+	explicitCall *FunCall
+
 	// inTrial is set on formatters that only trial-render (see renderInline).
 	inTrial bool
 }
@@ -1863,6 +1867,7 @@ func (f *Formatter) trial(node Node, col int) *Formatter {
 		version:         f.version,
 		migrating:       f.migrating,
 		preserveImports: f.preserveImports,
+		explicitCall:    f.explicitCall,
 		indent:          f.indent,
 		col:             col,
 		inTrial:         true,
@@ -2035,7 +2040,7 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 		}
 		f.formatCallArgs(c.Args, multiline, closingLine)
 		f.write(")")
-	} else if emptyCallParens(c) {
+	} else if f.emptyCallParens(c) {
 		f.write("()")
 	}
 
@@ -2046,13 +2051,22 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 	}
 }
 
-// emptyCallParens preserves explicit calls: without type information we cannot
-// know whether the callee auto-calls. In particular, a constructor with nullable
-// fields but no defaults accepts () without being auto-callable. It may also be
-// reached through an alias or a selection, so its name cannot tell us either.
-// A block argument already makes the call explicit and needs no parentheses.
-func emptyCallParens(c *FunCall) bool {
-	return c.BlockArg == nil
+// emptyCallParens keeps parentheses only where a bare expression cannot
+// auto-call. Symbols, selections and indexes auto-call when no arguments are
+// required, for functions and constructors alike. A block makes any call explicit.
+func (f *Formatter) emptyCallParens(c *FunCall) bool {
+	if c.BlockArg != nil {
+		return false
+	}
+	if c == f.explicitCall {
+		return true
+	}
+	switch c.Fun.(type) {
+	case *Symbol, *Select, *Index:
+		return false
+	default:
+		return true
+	}
 }
 
 func (f *Formatter) formatFunCallInline(c *FunCall) {
@@ -2064,7 +2078,7 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 		f.write("(")
 		f.formatCallArgs(c.Args, false, 0)
 		f.write(")")
-	} else if emptyCallParens(c) {
+	} else if f.emptyCallParens(c) {
 		f.write("()")
 	}
 	if c.BlockArg != nil {
@@ -2225,7 +2239,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 					}
 					f.formatCallArgs(e.Args, multiline, closingLine)
 					f.write(")")
-				} else if emptyCallParens(e) {
+				} else if f.emptyCallParens(e) {
 					f.write("()")
 				}
 				if e.BlockArg != nil {
@@ -4038,11 +4052,32 @@ func (f *Formatter) formatUnaryMinus(u *UnaryMinus) {
 
 func (f *Formatter) formatFunctionRef(r *FunctionRef) {
 	f.write("&")
-	f.formatNode(r.Expr)
+	f.formatWithoutAutoCall(r.Expr)
+}
+
+// References and asserted callees suppress auto-calling at their operand,
+// through grouping but not in its children. Keep an explicit call there.
+func (f *Formatter) formatWithoutAutoCall(n Node) {
+	operand := n
+	for {
+		group, ok := operand.(*Grouped)
+		if !ok {
+			break
+		}
+		operand = group.Expr
+	}
+	previous := f.explicitCall
+	f.explicitCall, _ = operand.(*FunCall)
+	defer func() { f.explicitCall = previous }()
+	f.formatNode(n)
 }
 
 func (f *Formatter) formatNonNullAssert(n *NonNullAssert) {
-	f.formatNode(n.Expr)
+	if n.Callee {
+		f.formatWithoutAutoCall(n.Expr)
+	} else {
+		f.formatNode(n.Expr)
+	}
 	f.write("!")
 }
 
