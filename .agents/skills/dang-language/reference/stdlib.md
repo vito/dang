@@ -98,9 +98,11 @@ Paths; use `.join` or interpolation.
 
 `URL(raw: String!) -> URL!` parses a URL reference with Go's `net/url.Parse`.
 Absolute, relative (including `//host/path`), empty, and opaque references are
-accepted; this is not a check that a URL is absolute or safe to fetch. Invalid
-escapes, ports, and other parse errors raise `invalid URL: ...`. The original
-text is preserved, not normalized: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
+accepted; this is not a check that a URL is absolute or safe to fetch. Errors
+detected by `net/url.Parse` (such as invalid path escapes or non-numeric ports)
+raise `invalid URL: ...`; query strings and opaque components are not checked
+for valid percent escapes. The original text is preserved, not normalized:
+`URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
 Like other scalars, literals at `URL!` boundaries and explicit casts validate
 through the same hook; invalid literals are rejected during type checking.
 String variables require `URL(s)` or a cast. Equality uses the original text,

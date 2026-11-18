@@ -27,6 +27,9 @@ func TestURLComponents(t *testing.T) {
 		{name: "network reference", raw: "//foo:80/a", host: "foo:80", hostname: "foo", port: "80", path: "/a"},
 		{name: "absolute path", raw: "/a/b", path: "/a/b"},
 		{name: "opaque", raw: "mailto:user@example.com", scheme: "mailto"},
+		// net/url leaves query strings and opaque components uninterpreted.
+		{name: "raw query", raw: "https://foo/?q=%zz", scheme: "https", host: "foo", hostname: "foo", path: "/"},
+		{name: "raw opaque", raw: "mailto:user%zz@example.com", scheme: "mailto"},
 		{name: "empty", raw: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
