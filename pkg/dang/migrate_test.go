@@ -100,6 +100,28 @@ func TestMigrateSource(t *testing.T) {
 		assert.Equal(t, "let x = if (true) { 1 } else if (false) { 2 } else { 3 }\nlet y = user.{{name}}\n", migrated)
 	})
 
+	t.Run("empty catch normalizes before implicit calls", func(t *testing.T) {
+		for _, tc := range []struct{ source, want string }{
+			{"let x = try { f() } catch {}\n", "let x = f\n"},
+			{"let x = try { obj.f() } catch {}\n", "let x = obj.f\n"},
+			{"let x = try { fs[0]() } catch {}\n", "let x = fs[0]\n"},
+			{"let x = try { try { f() } catch {} } catch {}\n", "let x = { f }\n"},
+		} {
+			original, err := Parse("original.dang", []byte(tc.source), WithVersion(Version2_0))
+			require.NoError(t, err)
+			want, err := Parse("expected.dang", []byte(tc.want), WithVersion(Version2_1))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(original.(Node), want.(Node))
+			assert.False(t, differs, "normalizing %s", tc.source)
+			migrated, err := migrate(tc.source, Version2_0, Version2_1)
+			require.NoError(t, err)
+			got, err := Parse("migrated.dang", []byte(migrated), WithVersion(Version2_1))
+			require.NoError(t, err)
+			_, differs = firstASTDifference(want.(Node), got.(Node))
+			assert.False(t, differs, "migrating %s", tc.source)
+		}
+	})
+
 	t.Run("same version is formatting", func(t *testing.T) {
 		migrated, err := migrate("let x   = 1\n", Version2_0, Version2_0)
 		require.NoError(t, err)

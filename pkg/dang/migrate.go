@@ -354,10 +354,13 @@ func compareAST(a, b reflect.Value, loc *SourceLocation, reference bool) (*Sourc
 				if nodeLoc := an.GetSourceLocation(); nodeLoc != nil {
 					loc = nodeLoc
 				}
+				// A zero-clause try/catch can unwrap directly to a call.
+				// Normalize that wrapper before recognizing its auto-call.
+				an, bn = migrationCanonical(an), migrationCanonical(bn)
 				if !reference {
 					an, bn = migrationAutoCall(an), migrationAutoCall(bn)
 				}
-				a, b = reflect.ValueOf(migrationCanonical(an)), reflect.ValueOf(migrationCanonical(bn))
+				a, b = reflect.ValueOf(an), reflect.ValueOf(bn)
 				if a.Type() != b.Type() {
 					return loc, true
 				}
