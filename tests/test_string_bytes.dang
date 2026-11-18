@@ -1,0 +1,58 @@
+# UTF-8 byte values, including decomposed Unicode and control characters.
+let examples = [
+  {{text: "hello", bytes: [104, 101, 108, 108, 111]}},
+  {{text: "café", bytes: [99, 97, 102, 195, 169]}},
+  {{
+    text: "日本語 🌍",
+    bytes: [230, 151, 165, 230, 156, 172, 232, 170, 158, 32, 240, 159, 140, 141]
+  }},
+
+  {{text: "é", bytes: [101, 204, 129]}},
+  {{text: "\x00\r\n", bytes: [0, 13, 10]}},
+]
+examples.each { example =>
+  let text: String! = example.text
+  let bytes: [Int!]! = text.bytes
+  assert { bytes == example.bytes }
+  let restored: String! = String.fromBytes(bytes: bytes)
+  assert { restored == text }
+}
+assert { "".bytes == [] }
+assert { String.fromBytes([]) == "" }
+let construct = &String.fromBytes
+assert { construct([65]) == "A" }
+let read = &"é".bytes
+assert { read == [195, 169] }
+
+# All 256 byte values, including NUL and invalid UTF-8. The fixed base64
+# oracle is independent of both byte conversion primitives.
+let bytes: [Int!]! = {
+  let values: [Int!]! = []
+  loop {
+    if (values.length == 256) { break }
+    values += [values.length]
+  }
+  values
+}
+
+let encoded = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w=="
+let text = String.fromBytes(bytes)
+assert { text.bytes == bytes }
+assert { text.toBase64 == encoded }
+assert { encoded.fromBase64.bytes == bytes }
+assert { String.fromBytes(encoded.fromBase64.bytes) == encoded.fromBase64 }
+assert { String.fromBytes([255, 192, 128, 237, 160, 128]).bytes == [255, 192, 128, 237, 160, 128] }
+
+# Range failures preserve the offending index and value in the diagnostic.
+[-1, 256, -1000, 1000].each { n =>
+  let message = String.fromBytes([65, n]) rescue {
+    err: Error! => err.message
+  }
+  assert { message == "fromBytes: byte at index 1 must be between 0 and 255, got ${n}" }
+}
+assert { (String.fromBytes([256]) rescue "bad byte") == "bad byte" }
+
+# Nullable receivers follow ordinary member-selection null propagation.
+let absent: String = null
+let absentBytes: [Int!] = absent.bytes
+assert { absentBytes == null }

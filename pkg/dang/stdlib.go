@@ -127,6 +127,37 @@ func registerStdlib() {
 			return ToValue(strings.ToLower(str))
 		})
 
+	Method(StringType, "bytes").
+		Doc("returns the string's raw bytes as integers from 0 to 255; valid text uses UTF-8, and invalid UTF-8 bytes are preserved").
+		Example(`"café".bytes`).
+		Returns(NonNull(ListOf(NonNull(IntType)))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			bytes := make([]int, len(str))
+			for i := range len(str) {
+				bytes[i] = int(str[i])
+			}
+			return ToValue(bytes)
+		})
+
+	StaticMethod(StringType, "fromBytes").
+		Doc("constructs a string from raw bytes, preserving them exactly, including invalid UTF-8; raises if any integer is outside 0 to 255").
+		Example(`String.fromBytes([99, 97, 102, 195, 169])`).
+		Params("bytes", NonNull(ListOf(NonNull(IntType)))).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			values := args.GetList("bytes")
+			bytes := make([]byte, len(values))
+			for i, value := range values {
+				n := value.(IntValue).Val
+				if n < 0 || n > 255 {
+					return nil, fmt.Errorf("fromBytes: byte at index %d must be between 0 and 255, got %d", i, n)
+				}
+				bytes[i] = byte(n)
+			}
+			return ToValue(string(bytes))
+		})
+
 	// String.toBase64 method: toBase64() -> String!
 	Method(StringType, "toBase64").
 		Doc("encodes the string's bytes as a standard (padded) base64 string").
@@ -501,6 +532,52 @@ func registerStdlib() {
 				Elements: result,
 				ElemType: resultElemType,
 			}, nil
+		})
+
+	Method(ListTypeModule, "groupBy").
+		Doc("groups original elements by the string key returned by the block; preserves first-seen key order and input order within each group, returning an empty map for an empty list").
+		Example(`["apple", "pear", "apricot"].groupBy { item => item.truncate(1) }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "index",
+				Value: hm.NewScheme(nil, NonNull(IntType)),
+			}),
+			NonNull(StringType),
+		)).
+		Returns(NonNull(MapOf(NonNull(ListOf(TypeVar('a')))))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			if args.Block == nil {
+				return nil, fmt.Errorf("groupBy requires a block argument")
+			}
+			fn := *args.Block
+
+			// These buffers stay private until all groups are complete: appending
+			// here avoids repeated immutable map/list copies for large groups.
+			var keys []string
+			groups := make(map[string][]Value)
+			for i, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item, IntValue{i})
+				if err != nil {
+					return nil, fmt.Errorf("groupBy function: %w", err)
+				}
+				key, ok := res.(StringValue)
+				if !ok {
+					return nil, fmt.Errorf("groupBy function must return String!, got %T", res)
+				}
+				if _, exists := groups[key.Val]; !exists {
+					keys = append(keys, key.Val)
+				}
+				groups[key.Val] = append(groups[key.Val], item)
+			}
+			entries := make(map[string]Value, len(keys))
+			for _, key := range keys {
+				entries[key] = ListValue{Elements: groups[key], ElemType: list.ElemType}
+			}
+			return MapValue{Keys: keys, Entries: entries, ValType: NonNull(ListOf(list.ElemType))}, nil
 		})
 
 	// List.uniq method: uniq -> [a]!

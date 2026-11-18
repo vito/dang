@@ -1,0 +1,656 @@
+"""
+a URL reference, preserving its original spelling
+"""
+@example(```dang
+URL("https://example.com/a%20b?x=1#part")
+```)
+scalar URL {
+  new(raw: String!) {
+    urlRead(raw)
+    raw
+  }
+
+  """
+  the lower-case scheme without its colon, or null when absent
+  """
+  @example(```dang
+  URL("https://foo").scheme
+  ```)
+  scheme: String { urlRead(self)["scheme"] }
+
+  """
+  the host with explicit port and IPv6 brackets, excluding user information; null when empty
+  """
+  @example(```dang
+  URL("https://foo:1234").host
+  ```)
+  host: String { urlNonempty(urlRead(self)["host"] ?? "") }
+
+  """
+  the hostname without port or IPv6 brackets; null when empty
+  """
+  @example(```dang
+  URL("https://foo:1234").hostname
+  ```)
+  hostname: String { urlNonempty(urlHostname(urlRead(self)["host"] ?? "")) }
+
+  """
+  the explicit port number, or null when absent; no default port is inferred
+  """
+  @example(```dang
+  URL("https://foo:1234").port
+  ```)
+  port: Int {
+    let p = urlPort(urlRead(self)["host"] ?? "")
+    if (p == "") { return null }
+    p.toInt rescue {
+      err: Error! => raise "invalid URL port: ${err.message}"
+    }
+  }
+
+  """
+  the decoded path; empty when absent or opaque
+  """
+  @example(```dang
+  URL("/a%20b").path
+  ```)
+  path: String! { urlUnescape(urlRead(self)["path"] ?? "") }
+
+  """
+  the escaped path, preserving valid original escapes
+  """
+  @example(```dang
+  URL("/a%2Fb").escapedPath
+  ```)
+  escapedPath: String! { urlRead(self)["path"] ?? "" }
+
+  """
+  the undecoded query without ?, null when absent and empty for an explicit ?; malformed query escapes are retained
+  """
+  @example(```dang
+  URL("/?q=%zz").rawQuery
+  ```)
+  rawQuery: String { urlRead(self)["query"] }
+
+  """
+  decoded query parameters, preserving repeated values; empty when absent;
+  + decodes to a space, and invalid percent escapes raise an error
+  """
+  @example(```dang
+  URL("/?q=one&q=two").query
+  ```)
+  query: Map[[String!]!]! { urlReadQuery(urlRead(self)["query"] ?? "") }
+
+  """
+  the decoded fragment without #, null when absent and empty for an explicit #
+  """
+  @example(```dang
+  URL("/#a%20b").fragment
+  ```)
+  fragment: String {
+    let f = urlRead(self)["fragment"]
+    if (f == null) { return null }
+    urlUnescape(f)
+  }
+
+  """
+  whether a scheme is present, including opaque URLs
+  """
+  @example(```dang
+  URL("mailto:a@example.com").isAbsolute
+  ```)
+  isAbsolute: Boolean! { urlRead(self)["scheme"] != null }
+
+  """
+  the URL as text; construction preserves spelling, while edits may re-escape components
+  """
+  @example(```dang
+  URL("https://foo/a%20b").string
+  ```)
+  string: String! { self :: String! }
+
+  """
+  return a URL with a valid scheme, or null to clear it; rejects opaque URLs and nonempty relative paths
+  """
+  @example(```dang
+  URL("https://foo/a").withScheme("http")
+  ```)
+  withScheme(scheme: String): URL! {
+    let u = urlHierarchical(urlRead(self))
+    if (scheme == null) {
+      u = u.without("scheme")
+    } else {
+      if (!urlValidScheme(scheme)) { raise "invalid URL scheme" }
+      u = u.with("scheme", scheme.toLower)
+    }
+    URL(urlWrite(u))
+  }
+
+  """
+  replace the hostname, preserving the port and credentials; accepts bare IPv6;
+  null removes the hostname, port and credentials
+  """
+  @example(```dang
+  URL("https://foo:80/a").withHostname("example.com")
+  ```)
+  withHostname(hostname: String): URL! {
+    let u = urlHierarchical(urlRead(self))
+    if (hostname == null) {
+      u = u.without("host").without("user").without("authority")
+    } else {
+      if (hostname == "" or hostname.containsMatch(`[/\x3f#@\[\]\\]`)) {
+        raise "invalid URL hostname"
+      }
+      let h = hostname
+      if (h.contains(":")) {
+        if (!urlIPv6(h.split("%")[0] ?? "")) { raise "invalid IPv6 hostname" }
+        h = "[" + h + "]"
+      } else if (h.contains("%")) {
+        raise "invalid URL hostname"
+      }
+      let p = urlPort(u["host"] ?? "")
+      if (p != "") { h += ":" + p }
+      u = u.with("host", h).with("authority", "")
+    }
+    URL(urlWrite(u))
+  }
+
+  """
+  return a URL with an explicit nonnegative Int port, or null to clear it; requires a hostname when adding a port and rejects opaque URLs
+  """
+  @example(```dang
+  URL("https://foo").withPort(8443)
+  ```)
+  withPort(port: Int): URL! {
+    let u = urlHierarchical(urlRead(self))
+    let h = urlHostname(u["host"] ?? "")
+    if (h.contains(":")) { h = "[" + h + "]" }
+    if (port != null) {
+      if (port < 0) { raise "URL port must be nonnegative" }
+      if (h == "") { raise "URL port requires a hostname" }
+      h += ":${port}"
+    }
+    URL(urlWrite(u.with("host", h)))
+  }
+
+  """
+  replace the decoded path without normalization; a URL with an authority
+  requires an empty path or one starting with /
+  """
+  @example(```dang
+  URL("https://example.com").withPath(Path("/users/alice smith"))
+  ```)
+  withPath(path: String!): URL! {
+    let u = urlHierarchical(urlRead(self))
+    URL(urlWrite(u.with("path", urlEscape(path, "path"))))
+  }
+
+  """
+  append decoded path segments as data, escaping embedded slashes and literal
+  . or .. segments rather than treating them as navigation
+  """
+  @example(```dang
+  URL("https://example.com").appendPath(Path("users/alice smith").parts)
+  ```)
+  appendPath(segments: [String!]!): URL! {
+    let u = urlHierarchical(urlRead(self))
+    if (segments.isEmpty) { return self }
+    let path = u["path"] ?? ""
+    if ((path != "" or u["authority"] != null) and !path.hasSuffix("/")) {
+      path += "/"
+    }
+    let appended = segments.map { s =>
+      if (s == "." or s == "..") { s.replace(".", "%2E") } else {
+        urlEscape(s, "segment")
+      }
+    }.join("/")
+    URL(urlWrite(u.with("path", path + appended)))
+  }
+
+  """
+  replace query parameters; null removes the query, while an empty map adds a trailing ?
+  """
+  @example(```dang
+  URL("/search").withQuery(["q": ["hello world"]])
+  ```)
+  withQuery(query: Map[[String!]!]): URL! {
+    let u = urlRead(self)
+    if (query == null) {
+      u = u.without("query")
+    } else {
+      u = u.with("query", urlWriteQuery(query))
+    }
+    URL(urlWrite(u))
+  }
+
+  """
+  replace all values of a decoded query key with one value; validates existing query escapes
+  """
+  @example(```dang
+  URL("/?q=old").withQueryParam("q", "new")
+  ```)
+  withQueryParam(name: String!, value: String!): URL! {
+    self.withQuery(self.query.with(name, [value]))
+  }
+
+  """
+  append a value to a decoded query key, preserving its previous values; validates existing query escapes
+  """
+  @example(```dang
+  URL("/?q=one").withAddedQueryParam("q", "two")
+  ```)
+  withAddedQueryParam(name: String!, value: String!): URL! {
+    let q = self.query
+    self.withQuery(q.with(name, (q[name] ?? []) + [value]))
+  }
+
+  """
+  remove a decoded query key and all its values; removes ? when no keys remain; validates existing query escapes
+  """
+  @example(```dang
+  URL("/?q=one").withoutQueryParam("q")
+  ```)
+  withoutQueryParam(name: String!): URL! {
+    let q = self.query.without(name)
+    if (q.keys.isEmpty) { self.withQuery(null) } else { self.withQuery(q) }
+  }
+
+  """
+  replace the decoded fragment; null removes #, while an empty string adds #
+  """
+  @example(```dang
+  URL("/a").withFragment("section one")
+  ```)
+  withFragment(fragment: String): URL! {
+    let u = urlRead(self)
+    if (fragment == null) {
+      u = u.without("fragment")
+    } else {
+      u = u.with("fragment", urlEscape(fragment, "fragment"))
+    }
+    URL(urlWrite(u))
+  }
+
+  """
+  resolve a reference against this URL, interpreting . and .. as navigation;
+  the reference may replace the host or scheme
+  """
+  @example(```dang
+  URL("https://foo/a/b").resolve(URL("../c"))
+  ```)
+  resolve(reference: URL!): URL! {
+    URL(urlWrite(urlResolve(urlRead(self), urlRead(reference))))
+  }
+
+  # Private helpers belong to the scalar, not the public prelude namespace.
+  # The representation stores escaped path/fragment and decoded host. Presence of
+  # keys (not their text) distinguishes absent and explicitly empty delimiters.
+  let urlNonempty(s: String!): String { if (s == "") { null } else { s } }
+
+  let urlValidScheme(s: String!): Boolean! {
+    s.containsMatch(`^[A-Za-z][A-Za-z0-9+.-]*$`)
+  }
+
+  let urlHex(b: Int!): Int {
+    if (b >= 48 and b <= 57) { return b - 48 }
+    if (b >= 65 and b <= 70) { return b - 55 }
+    if (b >= 97 and b <= 102) { return b - 87 }
+    null
+  }
+
+  # Percent encoding acts on bytes, not Unicode code points. In particular a
+  # decoded %FF remains that exact byte and can be escaped back losslessly.
+  let urlUnescape(s: String!, query: Boolean! = false): String! {
+    if (!s.contains("%")) { return if (query) { s.replace("+", " ") } else { s } }
+    # Decode chunks rather than repeatedly copying a growing byte list. Replace
+    # literal pluses before decoding so an escaped %2B remains a literal plus.
+    let raw = if (query) { s.replace("+", " ") } else { s }
+    raw.split("%").map { chunk, i =>
+      if (i == 0) {
+        chunk
+      } else {
+        let bytes = chunk.bytes
+        let hi = urlHex(bytes[0] ?? -1)
+        let lo = urlHex(bytes[1] ?? -1)
+        if (hi == null or lo == null) { raise "invalid URL percent escape" }
+        String.fromBytes([hi * 16 + lo]) + chunk.trimPrefix(
+          String.fromBytes(bytes.takeFirst(2)),
+        )
+      }
+    }.join("")
+  }
+
+  let urlSafe(b: Int!, mode: String!): Boolean! {
+    if ((b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57)) { return true }
+    if ("-_.~".bytes.contains(b)) { return true }
+    if (mode == "path") { return "$&+,/:;=@".bytes.contains(b) }
+    if (mode == "segment") { return "$&+:=@".bytes.contains(b) }
+    if (mode == "fragment") { return "!$&()*+,/:;=?@".bytes.contains(b) }
+    if (mode == "user") { return "$&+,;=".bytes.contains(b) }
+    if (mode == "host") { return "!$&'()*+,;=:[]<>\"".bytes.contains(b) }
+    false
+  }
+
+  let urlEscape(s: String!, mode: String!): String! {
+    # Most component text needs no escaping; keep that path out of byte loops.
+    if (s.containsMatch(`^[A-Za-z0-9._~-]*$`)) { return s }
+    let pattern = case (mode) {
+      "path" => `[^A-Za-z0-9._~$&+,/:;=@-]+`
+      "segment" => `[^A-Za-z0-9._~$&+:=@-]+`
+      "fragment" => `[^A-Za-z0-9._~!$&()*+,/:;=?@-]+`
+      "user" => `[^A-Za-z0-9._~$&+,;=-]+`
+      "host" => `[^A-Za-z0-9._~!$&'()*+,;=:\x5b\x5d<>"-]+`
+      else => `[^A-Za-z0-9._~-]+`
+    }
+    let hex = "0123456789ABCDEF".bytes
+    # Leave safe runs untouched. Match.string preserves the original bytes even
+    # for invalid UTF-8, and flatMap accumulates without copying every prefix.
+    s.rewriteMatches(pattern :: Regexp!) { match =>
+      let out: [Int!]! = match.string.bytes.flatMap { b =>
+        if (mode == "query" and b == 32) {
+          [43]
+        } else {
+          [37, hex[b / 16] ?? 48, hex[b % 16] ?? 48]
+        }
+      }
+      String.fromBytes(out)
+    }
+  }
+
+  let urlEscaped(raw: String!, mode: String!): String! {
+    let decoded = urlUnescape(raw)
+    # Valid original escapes and the RFC's sub-delimiters retain their spelling.
+    if (raw.containsMatch(`^[A-Za-z0-9._~!$&'()*+,;=:@\[\]%/-]*$`) or (mode == "fragment" and raw.containsMatch(`^[A-Za-z0-9._~!$&'()*+,;=:@\[\]%/?-]*$`))) {
+      raw
+    } else {
+      urlEscape(decoded, mode)
+    }
+  }
+
+  let urlHostname(host: String!): String! {
+    if (host.hasPrefix("[")) { return host.trimPrefix("[").split("]")[0] ?? "" }
+    let parts = host.split(":")
+    if (parts.length > 1) { parts.dropLast(1).join(":") } else { host }
+  }
+
+  let urlPort(host: String!): String! {
+    if (host.hasSuffix("]")) { return "" }
+    if (!host.contains(":")) { return "" }
+    host.split(":").takeLast(1)[0] ?? ""
+  }
+
+  let urlReadHost(raw: String!): String! {
+    let suffix = raw
+    if (raw.hasPrefix("[")) {
+      if (!raw.contains("]")) { raise "invalid URL: missing ] in host" }
+      suffix = raw.split("]").dropFirst(1).join("]")
+      if (!suffix.containsMatch(`^(:[0-9]*)?$`)) { raise "invalid URL port" }
+    }
+    if (suffix.contains(":")) {
+      let port = suffix.split(":").takeLast(1)[0] ?? ""
+      if (port != "" and !port.containsMatch(`^[0-9]+$`)) { raise "invalid URL port" }
+    }
+    if (raw.containsMatch(`^[A-Za-z0-9._~!$&'()*+,;=:\[\]<>"-]*$`)) { return raw }
+    let bytes = raw.bytes
+    let i = 0
+    let zone = false
+    loop {
+      if (i >= bytes.length) { break }
+      let b = bytes[i] ?? 0
+      if (b == 37) {
+        let hi = urlHex(bytes[i + 1] ?? -1)
+        let lo = urlHex(bytes[i + 2] ?? -1)
+        if (hi == null or lo == null) { raise "invalid URL host escape" }
+        let decoded = hi * 16 + lo
+        if (raw.hasPrefix("[") and decoded == 37) { zone = true }
+        if (decoded < 128 and decoded != 37 and !(zone and (urlSafe(decoded, "host") or decoded == 32))) {
+          raise "invalid URL host escape"
+        }
+        i += 3
+      } else {
+        if (b < 128 and !urlSafe(b, "host")) { raise "invalid URL host character" }
+        i += 1
+      }
+    }
+    urlUnescape(raw)
+  }
+
+  let urlRead(raw: String!): Map[String!]! {
+    let u: Map[String!]! = [:]
+    let rest = raw
+    let fragments = rest.split("#")
+    if (fragments.length > 1) {
+      u = u.with("fragment", urlEscaped(fragments.dropFirst(1).join("#"), "fragment"))
+      rest = fragments[0] ?? ""
+    }
+    if (rest.containsMatch(`[\x00-\x1f\x7f]`)) { raise "invalid URL: control character" }
+    let queries = rest.split("?")
+    if (queries.length > 1) {
+      u = u.with("query", queries.dropFirst(1).join("?"))
+      rest = queries[0] ?? ""
+    }
+    let first = rest.split("/")[0] ?? ""
+    if (first.contains(":")) {
+      let scheme = first.split(":")[0] ?? ""
+      if (!urlValidScheme(scheme)) { raise "invalid URL scheme" }
+      u = u.with("scheme", scheme.toLower)
+      rest = rest.trimPrefix(scheme + ":")
+    }
+    if (u["scheme"] != null and rest != "" and !rest.hasPrefix("/")) {
+      return u.with("opaque", rest)
+    }
+    if (rest.hasPrefix("//")) {
+      rest = rest.trimPrefix("//")
+      let authority = rest.split("/")[0] ?? ""
+      rest = rest.trimPrefix(authority)
+      let host = authority
+      if (authority.contains("@")) {
+        let parts = authority.split("@")
+        let user = parts.dropLast(1).join("@")
+        if (!user.bytes.all { b => urlSafe(b, "user") or "!'()*:@%".bytes.contains(b) }) {
+          raise "invalid URL userinfo"
+        }
+        let credentials = user.split(":")
+        let encoded = urlEscape(urlUnescape(credentials[0] ?? ""), "user")
+        if (credentials.length > 1) {
+          encoded += ":" + urlEscape(
+            urlUnescape(credentials.dropFirst(1).join(":")),
+            "user",
+          )
+        }
+        u = u.with("user", encoded)
+        host = parts.takeLast(1)[0] ?? ""
+      }
+      u = u.with("authority", "").with("host", urlReadHost(host))
+    }
+    u.with("path", urlEscaped(rest, "path"))
+  }
+
+  let urlHierarchical(u: Map[String!]!): Map[String!]! {
+    if (u["opaque"] != null) { raise "cannot edit the path or authority of an opaque URL" }
+    u
+  }
+
+  let urlWrite(u: Map[String!]!): String! {
+    let out = ""
+    let scheme = u["scheme"]
+    if (scheme != null) { out += scheme + ":" }
+    let opaque = u["opaque"]
+    if (opaque != null) {
+      out += opaque
+    } else {
+      let path = u["path"] ?? ""
+      if (scheme != null or u["authority"] != null) {
+        let decoded = urlUnescape(path)
+        if (decoded != "" and !decoded.hasPrefix("/")) {
+          raise "URL with a scheme or authority requires an absolute path; set an absolute path first"
+        }
+        if (decoded.hasPrefix("/") and !path.hasPrefix("/")) {
+          path = "/" + String.fromBytes(path.bytes.dropFirst(3))
+        }
+      }
+      if (u["authority"] != null) {
+        out += "//"
+        let user = u["user"]
+        if (user != null) { out += user + "@" }
+        out += urlEscape(u["host"] ?? "", "host")
+      } else {
+        if (path.hasPrefix("//")) { path = "/%2F" + path.trimPrefix("//") }
+        if (scheme == null) {
+          let parts = path.split("/")
+          path = ((parts[0] ?? "").replace(":", "%3A") :: String!)
+          if (parts.length > 1) { path += "/" + parts.dropFirst(1).join("/") }
+        }
+      }
+      out += path
+    }
+    let query = u["query"]
+    if (query != null) { out += "?" + query }
+    let fragment = u["fragment"]
+    if (fragment != null) { out += "#" + fragment }
+    out
+  }
+
+  let urlReadQuery(raw: String!): Map[[String!]!]! {
+    raw.split("&").flatMap { pair =>
+      if (pair == "") {
+        []
+      } else {
+        let parts = pair.split("=", limit: 2)
+        let key = urlUnescape(parts[0] ?? "", true) rescue {
+          err: Error! => raise "invalid URL query: ${err.message}"
+        }
+        let value = urlUnescape(parts[1] ?? "", true) rescue {
+          err: Error! => raise "invalid URL query: ${err.message}"
+        }
+        [[key, value]]
+      }
+    }.groupBy { pair => pair[0] ?? "" }.map { key, pairs =>
+      pairs.map { pair => pair[1] ?? "" }
+    }
+  }
+
+  let urlWriteQuery(query: Map[[String!]!]!): String! {
+    query.keys.flatMap { key =>
+      let encodedKey = urlEscape(key, "query")
+      (query[key] ?? []).map { value =>
+        encodedKey + "=" + urlEscape(value, "query")
+      }
+    }.join("&")
+  }
+
+  # Rootless composition retains unresolved parents, repeated slashes, and escaped
+  # dots/slashes as data. A final dot operator denotes a directory, not a file.
+  let urlNormalize(path: String!, rooted: Boolean!): String! {
+    let parts = path.split("/")
+    # Walk backwards to cancel parents without copying a growing stack.
+    let parents = 0
+    let kept: [String!]! = parts.reverse.flatMap { part =>
+      if (part == ".") {
+        []
+      } else if (part == "..") {
+        parents += 1
+        []
+      } else if (parents > 0) {
+        parents = parents - 1
+        []
+      } else {
+        [part]
+      }
+    }
+    let stack = kept.reverse
+    if (!rooted and parents > 0) {
+      stack = parts.takeFirst(parents).map { part => ".." } + stack
+    }
+    let last = parts.takeLast(1)[0]
+    if (last == "." or last == "..") { stack += [""] }
+    let out = stack.join("/")
+    if (rooted) { return "/" + out }
+    if (out == "") { return "./" }
+    if (out.hasPrefix("/")) { return "./" + out }
+    out
+  }
+
+  let urlResolve(base: Map[String!]!, ref: Map[String!]!): Map[String!]! {
+    let u = ref
+    let path = ref["path"] ?? ""
+    if (ref["scheme"] != null or ref["authority"] != null) {
+      if (ref["scheme"] == null) {
+        let scheme = base["scheme"]
+        if (scheme != null) { u = u.with("scheme", scheme) }
+      }
+      if (ref["opaque"] == null and path != "") {
+        u = u.with("path", urlNormalize(path.trimPrefix("/"), true))
+      }
+      return u
+    }
+    let scheme = base["scheme"]
+    if (scheme != null) { u = u.with("scheme", scheme) }
+    if (path == "") {
+      ["path", "opaque", "authority", "host", "user"].each { key =>
+        let value = base[key]
+        if (value != null) { u = u.with(key, value) }
+      }
+      if (u["query"] == null) {
+        let query = base["query"]
+        if (query != null) { u = u.with("query", query) }
+      }
+      return u
+    }
+    ["authority", "host", "user"].each { key =>
+      let value = base[key]
+      if (value != null) { u = u.with(key, value) }
+    }
+    let basePath = base["path"] ?? ""
+    if (path.hasPrefix("/")) {
+      path = urlNormalize(path.trimPrefix("/"), true)
+    } else if (scheme == null and base["authority"] == null and !basePath.hasPrefix("/") and base["opaque"] == null) {
+      let normalized = urlNormalize(basePath, false)
+      let directory = normalized.split("/").dropLast(1).join("/")
+      if (normalized.contains("/")) { directory += "/" }
+      path = urlNormalize(directory + path, false)
+    } else {
+      let directory = basePath.split("/").dropLast(1).join("/")
+      if (basePath.contains("/")) { directory += "/" }
+      path = urlNormalize((directory + path).trimPrefix("/"), true)
+    }
+    u.with("path", path)
+  }
+
+  # IPv6 validation is needed only by withHostname: parsing existing bracketed
+  # hosts intentionally permits the same non-IP names as ordinary URL syntax.
+  let urlIPv6(ip: String!): Boolean! {
+    if (!ip.contains(":")) { return false }
+    let compressed = ip.contains("::")
+    if (ip.split("::").length > 2) { return false }
+    let parts = ip.split(":")
+    let count = 0
+    let valid = true
+    let i = 0
+    parts.each { part =>
+      if (part == "") {
+        if (!compressed) { valid = false }
+      } else if (part.contains(".")) {
+        if (i != parts.length - 1) { valid = false }
+        let octets = part.split(".")
+        if (octets.length != 4) { valid = false }
+        octets.each { octet =>
+          if (!octet.containsMatch(`^[0-9]{1,3}$`) or (octet.length > 1 and octet.hasPrefix("0"))) {
+            valid = false
+          } else if ((octet.toInt rescue -1) > 255) {
+            valid = false
+          }
+        }
+        count += 2
+      } else {
+        if (!part.containsMatch(`^[0-9A-Fa-f]{1,4}$`)) { valid = false }
+        count += 1
+      }
+      i += 1
+    }
+    if (ip.contains(":::")) { return false }
+    if (ip.hasPrefix(":") and !ip.hasPrefix("::")) { return false }
+    if (ip.hasSuffix(":") and !ip.hasSuffix("::")) { return false }
+    valid and (if (compressed) { count < 8 } else { count == 8 })
+  }
+}

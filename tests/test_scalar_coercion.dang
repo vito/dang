@@ -45,7 +45,7 @@ assert { multiResult[2] == "Fetched[2]: https://c.com" }
 # =============================================================================
 
 let urlValue = homepage
-assert { urlValue == ("https://danglang.org" :: URL!) }
+assert { urlValue == ("https://danglang.org" :: Test.URL!) }
 
 let fetchedHomepage = fetchURL(url: urlValue)
 assert { fetchedHomepage == "Fetched: https://danglang.org" }
@@ -63,12 +63,12 @@ assert { templateResult == "Fetched: https://templated.com/path" }
 # =============================================================================
 
 let myUrl = "https://variable.com"
-let varResult = fetchURL(url: myUrl :: URL!)
+let varResult = fetchURL(url: myUrl :: Test.URL!)
 assert { varResult == "Fetched: https://variable.com" }
 
 let base = "https://"
 let domain = "concat.com"
-let concatResult = fetchURL(url: (base + domain) :: URL!)
+let concatResult = fetchURL(url: (base + domain) :: Test.URL!)
 assert { concatResult == "Fetched: https://concat.com" }
 
 # =============================================================================

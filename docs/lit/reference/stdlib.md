@@ -16,17 +16,55 @@
 
 ## `String!` methods
 
-> See [#strings]. `.length` counts characters (Unicode code points), not bytes.
+> See [#strings]. `.length` counts characters (Unicode code points), not bytes. `.bytes` returns raw bytes as integers from 0 to 255 (UTF-8 for valid text); `String.fromBytes(bytes: [Int!]!): String!` reverses it. Both preserve invalid UTF-8 exactly, like `.fromBase64`; `String.fromBytes` raises for integers outside 0–255. For example, `"é".bytes == [195, 169]` and `String.fromBytes([195, 169]) == "é"`.
 
 > Regex methods take a `Regexp!` pattern. Backtick template strings auto-coerce to the `Regexp` scalar, so a pattern is usually written as `` `\d+` `` (Go `regexp/syntax`).
 
 \stdlib-methods{String}
+
+\stdlib-statics{String}
 
 ## `Path!` methods
 
 > `Path` is a slash-separated path scalar, **normalized on construction** — `Path("a//b/../c")` *is* `Path("a/c")`, so there is no `clean`. Construct with the `Path(...)` function (any String), a string literal in a `Path!`-typed slot, or `:: Path!`. A `Path` value **degrades back to `String!`** at value-handoff boundaries (call args, typed slots, returns), so it can be passed anywhere a plain path string is expected. Path is defined in Dang itself — the interpreter's embedded prelude — as a `scalar` with a body of methods and a `new()` normalization hook.
 
 \stdlib-methods{Path}
+
+## `URL!` methods
+
+`URL(raw: String!)` accepts absolute URLs and relative references, preserving
+the original text. `.path` and `.fragment` expose decoded text; `.escapedPath`
+and `.rawQuery` retain escaping. `.query` groups repeated parameters into lists
+and returns an empty map when there is no query.
+
+URL paths are strings, not filesystem paths: repeated and trailing slashes can
+matter. An existing `Path` works with `.withPath`, and its `.parts` work with
+`.appendPath`. Use `Path(url.path)` when you explicitly want path normalization.
+
+### Building URLs
+
+\literate-fences
+
+Start from a base URL or build one from components. Helpers return a new URL
+and escape **decoded data** for you. `.appendPath` adds segments as data;
+`.resolve` follows references such as `../other` instead.
+
+```dang
+let endpoint = URL("")
+  .withScheme("https")
+  .withHostname("api.example.com")
+  .withPort(8443)
+  .withPath(Path("/api"))
+  .appendPath(["users", "name/with/slashes"])
+  .withQuery(["tag": ["a", "b"]])
+  .withAddedQueryParam("tag", "c")
+  .withFragment("details")
+endpoint.string
+```
+
+### Methods
+
+\stdlib-methods{URL}
 
 ## `[T]!` methods
 

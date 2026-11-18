@@ -123,4 +123,7 @@ Supported: `nil`, any `Value`, `string`, all int kinds (float truncates),
 ## Workflow
 
 1. Edit `pkg/dang/stdlib.go` inside `registerStdlib()`.
-2. Run tests: `go test ./tests/ -run "TestDang/TestLanguage/your_test" -v`.
+2. Cover public behavior in `tests/test_*.dang`, with type errors in
+   `tests/errors/*.dang`. Do not add `_test.go` wrappers around Dang snippets
+   unless the test genuinely needs Go facilities (see the testing skill).
+3. Run tests: `go test ./tests/ -run "TestDang/TestLanguage/your_test" -v`.

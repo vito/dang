@@ -1,0 +1,155 @@
+12 inference errors:
+
+Error 1:
+[1m[31mError:[0m cannot use [Int!]! as [String!]!
+  [2m[34m--> errors/string_bytes_types.dang:15:25[0m
+ [2m    |[0m
+ [2m 13 | "".fromBytes([65])[0m
+ [2m 14 | String.bytes[0m
+ [2m[34m[1m 15 | [0mlet bytes: [String!]! = "A".bytes
+[2m                               [31m^^^^^^^^^[0m
+ [2m 16 | let text: [Int!]! = String.fromBytes([65])[0m
+ [2m 17 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m cannot use String! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:16:21[0m
+ [2m    |[0m
+ [2m 14 | String.bytes[0m
+ [2m 15 | let bytes: [String!]! = "A".bytes[0m
+ [2m[34m[1m 16 | [0mlet text: [Int!]! = String.fromBytes([65])
+[2m                           [31m^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 17 | [0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m cannot use a? as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:2:18[0m
+ [2m    |[0m
+ [2m  1 | # Argument nullability and element types.[0m
+ [2m[34m[1m  2 | [0mString.fromBytes(null)
+[2m                        [31m^^^^[0m
+ [2m  3 | String.fromBytes([null])[0m
+ [2m  4 | String.fromBytes([65, null])[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m cannot use [b?]! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:3:18[0m
+ [2m    |[0m
+ [2m  1 | # Argument nullability and element types.[0m
+ [2m  2 | String.fromBytes(null)[0m
+ [2m[34m[1m  3 | [0mString.fromBytes([null])
+[2m                        [31m^^^^^^[0m
+ [2m  4 | String.fromBytes([65, null])[0m
+ [2m  5 | String.fromBytes(["65"])[0m
+ [2m    |[0m
+
+
+Error 5:
+[1m[31mError:[0m cannot use [Int]! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:4:18[0m
+ [2m    |[0m
+ [2m  2 | String.fromBytes(null)[0m
+ [2m  3 | String.fromBytes([null])[0m
+ [2m[34m[1m  4 | [0mString.fromBytes([65, null])
+[2m                        [31m^^^^^^^^^^[0m
+ [2m  5 | String.fromBytes(["65"])[0m
+ [2m  6 | String.fromBytes([65.0])[0m
+ [2m    |[0m
+
+
+Error 6:
+[1m[31mError:[0m cannot use [String!]! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:5:18[0m
+ [2m    |[0m
+ [2m  3 | String.fromBytes([null])[0m
+ [2m  4 | String.fromBytes([65, null])[0m
+ [2m[34m[1m  5 | [0mString.fromBytes(["65"])
+[2m                        [31m^^^^^^[0m
+ [2m  6 | String.fromBytes([65.0])[0m
+ [2m  7 | String.fromBytes([true])[0m
+ [2m    |[0m
+
+
+Error 7:
+[1m[31mError:[0m cannot use [Float!]! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:6:18[0m
+ [2m    |[0m
+ [2m  4 | String.fromBytes([65, null])[0m
+ [2m  5 | String.fromBytes(["65"])[0m
+ [2m[34m[1m  6 | [0mString.fromBytes([65.0])
+[2m                        [31m^^^^^^[0m
+ [2m  7 | String.fromBytes([true])[0m
+ [2m  8 | String.fromBytes(65)[0m
+ [2m    |[0m
+
+
+Error 8:
+[1m[31mError:[0m cannot use [Boolean!]! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:7:18[0m
+ [2m    |[0m
+ [2m  5 | String.fromBytes(["65"])[0m
+ [2m  6 | String.fromBytes([65.0])[0m
+ [2m[34m[1m  7 | [0mString.fromBytes([true])
+[2m                        [31m^^^^^^[0m
+ [2m  8 | String.fromBytes(65)[0m
+ [2m  9 | # Assert the function so formatting preserves the explicit empty call.[0m
+ [2m    |[0m
+
+
+Error 9:
+[1m[31mError:[0m cannot use Int! as [Int!]!
+  [2m[34m--> errors/string_bytes_types.dang:8:18[0m
+ [2m    |[0m
+ [2m  6 | String.fromBytes([65.0])[0m
+ [2m  7 | String.fromBytes([true])[0m
+ [2m[34m[1m  8 | [0mString.fromBytes(65)
+[2m                        [31m^^[0m
+ [2m  9 | # Assert the function so formatting preserves the explicit empty call.[0m
+ [2m 10 | String.fromBytes!()[0m
+ [2m    |[0m
+
+
+Error 10:
+[1m[31mError:[0m missing required argument: "bytes"
+  [2m[34m--> errors/string_bytes_types.dang:10:1[0m
+ [2m    |[0m
+ [2m  8 | String.fromBytes(65)[0m
+ [2m  9 | # Assert the function so formatting preserves the explicit empty call.[0m
+ [2m[34m[1m 10 | [0mString.fromBytes!()
+[2m       [31m^^^^^^^^^^^^^^^^^^^[0m
+ [2m 11 | [0m
+ [2m 12 | # Static versus instance members and return types.[0m
+ [2m    |[0m
+
+
+Error 11:
+[1m[31mError:[0m field "fromBytes" not found in String
+  [2m[34m--> errors/string_bytes_types.dang:13:1[0m
+ [2m    |[0m
+ [2m 11 | [0m
+ [2m 12 | # Static versus instance members and return types.[0m
+ [2m[34m[1m 13 | [0m"".fromBytes([65])
+[2m       [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m 14 | String.bytes[0m
+ [2m 15 | let bytes: [String!]! = "A".bytes[0m
+ [2m    |[0m
+
+
+Error 12:
+[1m[31mError:[0m field "bytes" belongs to values of String, not to String itself
+  [2m[34m--> errors/string_bytes_types.dang:14:1[0m
+ [2m    |[0m
+ [2m 12 | # Static versus instance members and return types.[0m
+ [2m 13 | "".fromBytes([65])[0m
+ [2m[34m[1m 14 | [0mString.bytes
+[2m       [31m^^^^^^^^^^^^[0m
+ [2m 15 | let bytes: [String!]! = "A".bytes[0m
+ [2m 16 | let text: [Int!]! = String.fromBytes([65])[0m
+ [2m    |[0m
+

@@ -5,6 +5,16 @@ description: How to run tests, add error tests, update golden files, report nice
 
 # Testing & Error Reporting
 
+## Where tests belong
+
+Test standard-library behavior in `tests/test_*.dang`, not Go tests wrapping
+Dang snippets. Use `tests/errors/*.dang` and golden files for compile-time
+failures; use `rescue` assertions for recoverable runtime errors. These fixtures
+exercise both execution and formatter round-tripping. Keep Go tests only for
+things that genuinely require Go, such as benchmarks, runtime/concurrency
+internals, or differential checks against an independent Go implementation;
+state that reason beside the test.
+
 ## Running Tests
 
 All language and error tests live in `tests/` and run via the `TestDang` suite:

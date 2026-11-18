@@ -1469,16 +1469,19 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				return nil, fmt.Errorf("string value does not have method %q", d.Field.Name)
 
 			case ScalarValue:
-				// Methods on custom scalar values (e.g. Path) dispatch through
-				// the builtin registry, keyed by the scalar's named type, then
-				// through the scalar's Dang-defined methods (scalar bodies).
+				// Methods on custom scalar values dispatch through the builtin
+				// registry, then the scalar's Dang-defined methods. Check type
+				// identity before using a name-based environment key: a local
+				// scalar can have the same name as a builtin (e.g. URL).
 				if mod, ok := rec.ScalarType.(*Type); ok {
-					methodKey := GetMethodKey(mod, d.Field.Name)
-					if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
-						return nil, err
-					} else if found {
-						if builtinFn, ok := method.(BuiltinFunction); ok {
-							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					if _, registered := LookupMethod(mod, d.Field.Name); registered {
+						methodKey := GetMethodKey(mod, d.Field.Name)
+						if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
+							return nil, err
+						} else if found {
+							if builtinFn, ok := method.(BuiltinFunction); ok {
+								return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+							}
 						}
 					}
 					if methods := mod.ScalarMethods(); methods != nil {

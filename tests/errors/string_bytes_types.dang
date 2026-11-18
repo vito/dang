@@ -1,0 +1,16 @@
+# Argument nullability and element types.
+String.fromBytes(null)
+String.fromBytes([null])
+String.fromBytes([65, null])
+String.fromBytes(["65"])
+String.fromBytes([65.0])
+String.fromBytes([true])
+String.fromBytes(65)
+# Assert the function so formatting preserves the explicit empty call.
+String.fromBytes!()
+
+# Static versus instance members and return types.
+"".fromBytes([65])
+String.bytes
+let bytes: [String!]! = "A".bytes
+let text: [Int!]! = String.fromBytes([65])

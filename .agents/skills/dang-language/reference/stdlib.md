@@ -9,6 +9,7 @@ The built-in surface of Dang itself (everything here is available without any
 - `assert(message: String! = null) { Boolean! } -> Null` — optional named `message`.
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
+- `URL(raw: String!) -> URL!` — validates a URL reference while preserving its original text; implemented in the Dang prelude (see the `URL!` section below).
 - `Regexp(pattern: String!) -> Regexp!` — compiles a pattern from any String expression; raises `invalid regexp "...": ...` when it doesn't compile (see `String!` regex methods below).
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; render everything else as the Dang literal it would be written as (`toString(["a", "b"])` → `["a", "b"]`, `toString({{a: 1}})` → `{{a: 1}}`, `toString(["k": 1])` → `["k": 1]`, Decoded data → the literal of its data, objects as map literals with sorted keys; floats always read as floats, `1.0`; an enum value inside a collection is `Color.RED`; a record shows its data fields, an object its public data fields (not methods or `let` fields; `{{}}` when all are `let`); a GraphQL object is the lazy query it is, `<Container: container.from(address: …)>` (a mutation's result `<Type: mutation.field(…)>`), sending nothing and showing argument names but never their values; select `.id` for the ID). String interpolation, `List.join` and `print` render values the same way. It is not an encoder: use `JSON.encode` for JSON.
@@ -21,6 +22,8 @@ JSON/YAML/TOML conversions are **not** top-level functions — they live in the 
 
 - `.length -> Int!` — number of characters (Unicode code points, not bytes): `"héllo".length == 5`; `.isEmpty -> Boolean!`
 - `.toUpper -> String!`, `.toLower -> String!`
+- `.bytes -> [Int!]!` — raw bytes from 0 to 255 (UTF-8 for valid text): `"é".bytes == [195, 169]`; unlike `.length` and `.split("")`, this operates on bytes, not characters
+- `String.fromBytes(bytes: [Int!]!) -> String!` — construct a string preserving every byte, including invalid UTF-8: `String.fromBytes([195, 169]) == "é"`; raises for integers outside 0–255; `String.fromBytes([]) == ""`
 - `.toBase64 -> String!` — standard padded base64 of the string's bytes; `.fromBase64 -> String!` — decode standard padded base64 (raises on invalid input)
 - `.contains(substring: String!) -> Boolean!`
 - `.hasPrefix(prefix: String!) -> Boolean!`, `.hasSuffix(suffix: String!) -> Boolean!`
@@ -94,6 +97,88 @@ A String *variable* does not auto-coerce into a `Path!` slot (the literal-only
 rule applies to every scalar) — wrap it: `Path(dir)`. There is no `+` on
 Paths; use `.join` or interpolation.
 
+## `URL!` scalar
+
+`URL(raw: String!) -> URL!` constructs a URL reference. Absolute, relative
+(including `//host/path`), empty, and opaque references are accepted; this is
+not a check that a URL is absolute or safe to fetch. Construction preserves
+original text: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
+URL is implemented in the Dang-source prelude, like Path. Its `new()` hook
+validates at runtime whenever a string becomes a URL, including literals in
+`URL!`-typed slots, explicit casts, and codec decoding. Invalid values raise
+recoverably; Dang-defined hooks are not executed during type checking.
+String variables require `URL(s)` or a cast. Equality is textual, not semantic.
+A schema's same-named scalar remains distinct: qualify it as `MyAPI.URL`.
+
+### Components
+
+- `.scheme -> String` — lowercase scheme without `:`, or null
+- `.host -> String` — host with explicit port and IPv6 brackets, excluding credentials, or null
+- `.hostname -> String` — host without port or IPv6 brackets, or null
+- `.port -> Int` — explicit port as a number, or null; no default port is inferred
+- `.path -> String!` — decoded path, excluding query and fragment; empty for opaque URLs such as `mailto:user@example.com`
+- `.escapedPath -> String!` — escaped path, retaining distinctions such as `/a%2Fb` versus `/a/b`
+- `.query -> Map[[String!]!]!` — decoded parameters, empty map when absent; repeated values retained in occurrence order
+- `.rawQuery -> String` — query text without `?`; null when absent, `""` for a trailing `?`
+- `.fragment -> String` — decoded fragment without `#`; null when absent, `""` for a trailing `#`
+- `.isAbsolute -> Boolean!` — whether a scheme is present (not necessarily HTTP or a URL with a host)
+- `.string -> String!` — original text, including spelling and escapes
+
+For example, `URL("https://foo:1234/bar?tag=a&tag=b#part").port` is `1234`,
+`.query["tag"]` is `["a", "b"]`, and `.fragment` is `"part"`.
+Query parameters use form encoding: `+` means space, `%2B` means `+`, bare
+`flag` means an empty value, and semicolons are ordinary data. Decoding errors
+raise rather than returning a partial map. Use `.rawQuery` for non-form query
+syntaxes. Construction checks URL syntax, not query parameter encoding;
+malformed query escapes raise when reading `.query` or editing individual
+parameters. Replacing the entire query with `.withQuery` does not decode the
+old query, so it can replace malformed query text.
+Ports must fit an Int when read; no network-port ceiling of 65535 is imposed.
+Paths are strings, not filesystem `Path` values: repeated and trailing slashes
+and encoded slashes can be significant.
+
+### Building and editing
+
+All helpers return a new `URL!`; the receiver is unchanged. Values are decoded
+component data, not pre-escaped strings. Edits may reserialize spelling, but
+preserve unrelated components; query edits may regroup repeated keys and
+normalize query escaping.
+
+- `.withScheme(scheme: String)` — set a scheme or clear with null
+- `.withHostname(hostname: String)` — set a hostname (bare IPv6 accepted), preserving port and credentials; null clears the authority, including port and credentials
+- `.withPort(port: Int)` — set a nonnegative explicit port on an existing host, or clear with null
+- `.withPath(path: String!)` — replace a decoded path, escaping delimiters without filesystem normalization; with an authority, a nonempty path must start with `/`
+- `.appendPath(segments: [String!]!)` — append decoded segments; `/` inside a segment is escaped, `.` and `..` are data rather than navigation; no path cleaning
+- `.withQuery(query: Map[[String!]!])` — replace all parameters; null removes `?`, an empty map emits `?`; empty value lists emit no pairs
+- `.withQueryParam(name: String!, value: String!)` — replace a parameter's values with one value
+- `.withAddedQueryParam(name: String!, value: String!)` — append another value for a parameter
+- `.withoutQueryParam(name: String!)` — remove all values for a parameter; removing the last parameter removes `?`
+- `.withFragment(fragment: String)` — replace the decoded fragment; null removes `#`, `""` emits `#`
+- `.resolve(reference: URL!)` — resolve a URL reference, including dot-segment navigation; a leading `/` replaces the path, `//host` replaces the authority, and an absolute URL replaces the base
+
+```dang
+let endpoint = URL("https://api.example.com")
+  .appendPath(["users", "name/with/slashes"])
+  .withQuery(["tag": ["a", "b"]])
+  .withAddedQueryParam("tag", "c")
+  .withFragment("details")
+assert { endpoint.escapedPath == "/users/name%2Fwith%2Fslashes" }
+assert { endpoint.query["tag"] == ["a", "b", "c"] }
+```
+
+To build entirely from components, start with `URL("").withScheme("https")`
+and then `.withHostname(...)`. Invalid schemes/hostnames and negative ports
+raise rather than injecting delimiters. Hierarchical path/authority edits on
+opaque URLs raise rather than discarding their payload. Adding a scheme to a
+nonempty relative path without a host also raises: root the path first with
+`.withPath("/...")`, or rebuild from `URL("")` with scheme and hostname before
+appending segments, so the path cannot silently become an opaque payload.
+With a rootless relative base such as `docs/page`, relative resolution stays
+rootless and retains excess leading `..` segments, so the result can later be
+resolved against an origin. Reference resolution is not a containment or
+same-origin check; do not use it to constrain an untrusted reference to a base
+URL.
+
 ## `[T]!` methods (lists)
 
 Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods](#map-methods) below); there are no sets. Block params shown as `x`/`i`.
@@ -108,6 +193,7 @@ Dang's collection types are lists and string-keyed maps (see [`Map[T]!` methods]
 ### Transform / select / aggregate
 - `.map { x, i => ... } -> [U]!`
 - `.flatMap { x, i => [U]! } -> [U]!` — map, then concatenate the lists; replaces `.reduce([]) { all, x => all + x.items }`
+- `.groupBy { x, i => String! } -> Map[[T]!]!` — group original elements by the block's string key, keeping first-seen key order and input order within each group; empty input gives `[:]`. Efficiently replaces repeated map updates and list concatenation: `["apple", "pear", "apricot"].groupBy { x => x.truncate(1) }` yields `["a": ["apple", "apricot"], "p": ["pear"]]`
 - `.filter { x => Boolean! } -> [T]!`, `.reject { x => Boolean! } -> [T]!`
 - `.find { x => Boolean! } -> T` — first element the block accepts, or **null** when none does (stops at the first match); prefer it over `.filter { ... }[0]`
 - `.reduce(initial: U) { acc, x => ... } -> U` — `initial` positional or named `initial:`
