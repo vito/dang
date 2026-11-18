@@ -4264,6 +4264,7 @@ func (f *Formatter) formatBinaryOp(left, right Node, op string) {
 	leftEnd := nodeEndLine(left)
 	rightLoc := right.GetSourceLocation()
 	if leftEnd > 0 && rightLoc != nil && rightLoc.Line > leftEnd {
+		f.emitTrailingComment(leftEnd)
 		f.indented(func() {
 			f.newline()
 			f.writeIndent()

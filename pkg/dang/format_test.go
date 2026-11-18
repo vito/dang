@@ -228,6 +228,15 @@ func chainCommentParentCases() []struct{ name, source, following string } {
 			parent.following,
 		})
 	}
+	for _, fence := range []string{"\"\"\"", "'''", "```"} {
+		for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+			cases = append(cases, struct{ name, source, following string }{
+				"binary left literal/" + fence + "/" + comment,
+				"let x = " + fence + "\n abc\n" + fence + " " + comment + "\n + \"def\"\nprint(x)\n",
+				"+ \"def\"",
+			})
+		}
+	}
 	cases = append(cases, struct{ name, source, following string }{
 		"nested same-line comma owners",
 		"print(\n foo(\n  bar\n .baz(1)) # KEEP\n)\nprint(2)\n",
