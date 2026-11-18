@@ -28,6 +28,14 @@
 
 \stdlib-methods{Path}
 
+## `URL!` methods
+
+> `URL(raw: String!)` constructs a URL reference, preserving its original text rather than normalizing it: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`. String literals in `URL!`-typed slots and explicit `:: URL!` casts validate through the same hook. URL values degrade to `String!` at value-handoff boundaries, like `Path`.
+
+> Parsing follows Go's `net/url.Parse`: absolute, relative, empty, and opaque references are accepted. Parse errors (such as invalid path escapes or non-numeric ports) raise `invalid URL: ...`; query strings and opaque components are not checked for valid percent escapes. This is not a check that a URL is absolute or safe to fetch. Missing components return `""`; `.path` is percent-decoded. A schema's same-named scalar remains a separate type (use `MyAPI.URL`), while unqualified `URL` refers to the builtin unless shadowed by a local declaration.
+
+\stdlib-methods{URL}
+
 ## `[T]!` methods
 
 > See [#collections]. List methods are registered on the `List` module, so signatures show the element type as the type variable `a` (and block result types as `b`). Block params are named `item`/`index` — and `acc` for `.reduce`.
