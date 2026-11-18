@@ -100,7 +100,8 @@ func paginatePosts(posts []*Post, first *int, after *string, last *int, before *
 	}, nil
 }
 
-func findUserByID(id string) (*User, error) {
+func (r *queryResolver) findUserByID(id string) (*User, error) {
+	users := r.snapshot().users
 	for _, user := range users {
 		if user.ID == id {
 			return user, nil
@@ -113,6 +114,8 @@ func findUserByID(id string) (*User, error) {
 // (and no error) for an unknown ID. IDs are unique across types, so at most
 // one matches.
 func (r *queryResolver) findNodeByID(id string) (Node, error) {
+	data := r.snapshot()
+	users, posts := data.users, data.posts
 	// Try to find a user first
 	for _, user := range users {
 		if user.ID == id {
@@ -130,6 +133,8 @@ func (r *queryResolver) findNodeByID(id string) (Node, error) {
 
 // getAllNodes returns all nodes (Users and Posts)
 func (r *queryResolver) getAllNodes() []Node {
+	data := r.snapshot()
+	users, posts := data.users, data.posts
 	var nodes []Node
 	for _, user := range users {
 		nodes = append(nodes, user)
@@ -146,6 +151,7 @@ func containsIgnoreCase(s, substr string) bool {
 
 // getAllTimestamped returns all timestamped objects (Posts)
 func (r *queryResolver) getAllTimestamped() []Timestamped {
+	posts := r.snapshot().posts
 	var timestamped []Timestamped
 	for _, post := range posts {
 		timestamped = append(timestamped, post)

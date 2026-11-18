@@ -7,32 +7,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
-type Resolver struct{}
-
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput) (*User, error) {
-	newID := "User:" + strconv.Itoa(len(users)+1)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	data := *r.dataLocked()
+	newID := "User:" + strconv.Itoa(data.nextUserID)
 	user := &User{
 		ID:     newID,
 		Name:   input.Name,
 		Emails: []string{input.Email},
-		Age:    input.Age,
+		Age:    copyAge(input.Age),
 		Status: StatusActive,
 	}
-	users = append(users, user)
+	data.nextUserID++
+	data.users = append(slices.Clone(data.users), user)
+	r.data = &data
 	return user, nil
 }
 
 // UpdateUser is the resolver for the updateUser field.
 func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input UpdateUserInput) (*User, error) {
-	for _, user := range users {
-		if user.ID == id {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	data := *r.dataLocked()
+	for i, oldUser := range data.users {
+		if oldUser.ID == id {
+			user := *oldUser
 			if input.Name != nil {
 				user.Name = *input.Name
 			}
@@ -40,9 +48,20 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input Upda
 				user.Emails = []string{*input.Email}
 			}
 			if input.Age != nil {
-				user.Age = input.Age
+				user.Age = copyAge(input.Age)
 			}
-			return user, nil
+			data.users = slices.Clone(data.users)
+			data.users[i] = &user
+			data.posts = slices.Clone(data.posts)
+			for j, oldPost := range data.posts {
+				if oldPost.Author.ID == id {
+					post := *oldPost
+					post.Author = &user
+					data.posts[j] = &post
+				}
+			}
+			r.data = &data
+			return &user, nil
 		}
 	}
 	return nil, fmt.Errorf("user not found")
@@ -50,9 +69,13 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input Upda
 
 // DeleteUser is the resolver for the deleteUser field.
 func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, error) {
-	for i, user := range users {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	data := *r.dataLocked()
+	for i, user := range data.users {
 		if user.ID == id {
-			users = append(users[:i], users[i+1:]...)
+			data.users = slices.Delete(slices.Clone(data.users), i, i+1)
+			r.data = &data
 			return true, nil
 		}
 	}
@@ -91,11 +114,13 @@ func (r *queryResolver) Hello(ctx context.Context, name string) (string, error) 
 
 // Users is the resolver for the users field.
 func (r *queryResolver) Users(ctx context.Context) ([]*User, error) {
+	users := r.snapshot().users
 	return users, nil
 }
 
 // User is the resolver for the user field.
 func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
+	users := r.snapshot().users
 	for _, user := range users {
 		if user.ID == id {
 			return user, nil
@@ -106,6 +131,7 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
 
 // MaybeUser is the resolver for the maybeUser field.
 func (r *queryResolver) MaybeUser(ctx context.Context, id string) (*User, error) {
+	users := r.snapshot().users
 	for _, user := range users {
 		if user.ID == id {
 			return user, nil
@@ -117,6 +143,7 @@ func (r *queryResolver) MaybeUser(ctx context.Context, id string) (*User, error)
 
 // PrimaryUser is the resolver for the primaryUser field.
 func (r *queryResolver) PrimaryUser(ctx context.Context) (*User, error) {
+	users := r.snapshot().users
 	if len(users) == 0 {
 		return nil, fmt.Errorf("no users available")
 	}
@@ -125,6 +152,7 @@ func (r *queryResolver) PrimaryUser(ctx context.Context) (*User, error) {
 
 // SecondaryUser is the resolver for the secondaryUser field.
 func (r *queryResolver) SecondaryUser(ctx context.Context) (*User, error) {
+	users := r.snapshot().users
 	if len(users) < 2 {
 		return nil, fmt.Errorf("secondary user not available")
 	}
@@ -133,7 +161,7 @@ func (r *queryResolver) SecondaryUser(ctx context.Context) (*User, error) {
 
 // UserName is the resolver for the userName field.
 func (r *queryResolver) UserName(ctx context.Context, user string) (string, error) {
-	found, err := findUserByID(user)
+	found, err := r.findUserByID(user)
 	if err != nil {
 		return "", err
 	}
@@ -144,7 +172,7 @@ func (r *queryResolver) UserName(ctx context.Context, user string) (string, erro
 func (r *queryResolver) UserNames(ctx context.Context, users []string) ([]string, error) {
 	names := make([]string, 0, len(users))
 	for _, id := range users {
-		user, err := findUserByID(id)
+		user, err := r.findUserByID(id)
 		if err != nil {
 			return nil, err
 		}
@@ -171,6 +199,7 @@ func (r *queryResolver) NodeLabel(ctx context.Context, node string) (string, err
 
 // FavoriteUserID is the resolver for the favoriteUserID field.
 func (r *queryResolver) FavoriteUserID(ctx context.Context) (string, error) {
+	users := r.snapshot().users
 	if len(users) == 0 {
 		return "", fmt.Errorf("no users available")
 	}
@@ -179,6 +208,7 @@ func (r *queryResolver) FavoriteUserID(ctx context.Context) (string, error) {
 
 // FavoriteUserIDs is the resolver for the favoriteUserIDs field.
 func (r *queryResolver) FavoriteUserIDs(ctx context.Context) ([]string, error) {
+	users := r.snapshot().users
 	ids := make([]string, 0, len(users))
 	for _, user := range users {
 		ids = append(ids, user.ID)
@@ -193,7 +223,9 @@ func (r *queryResolver) FavoriteNodeID(ctx context.Context) (string, error) {
 
 // ServerInfo is the resolver for the serverInfo field.
 func (r *queryResolver) ServerInfo(ctx context.Context) (*ServerInfo, error) {
-	uptime := time.Since(serverStartTime)
+	data := r.snapshot()
+	users, posts := data.users, data.posts
+	uptime := time.Since(data.startTime)
 	return &ServerInfo{
 		Version:    "1.0.0",
 		Platform:   runtime.GOOS + "/" + runtime.GOARCH,
@@ -205,6 +237,7 @@ func (r *queryResolver) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 
 // Posts is the resolver for the posts field.
 func (r *queryResolver) Posts(ctx context.Context, authorID *string, limit *int) ([]*Post, error) {
+	posts := r.snapshot().posts
 	result := posts
 
 	// Filter by author ID if provided
@@ -228,6 +261,8 @@ func (r *queryResolver) Posts(ctx context.Context, authorID *string, limit *int)
 
 // UserProfile is the resolver for the userProfile field.
 func (r *queryResolver) UserProfile(ctx context.Context, userID *string, includeStats *bool) (*UserProfile, error) {
+	data := r.snapshot()
+	users, posts := data.users, data.posts
 	var targetUser *User
 
 	// If userID is provided, find that specific user
@@ -281,6 +316,7 @@ func (r *queryResolver) UserProfile(ctx context.Context, userID *string, include
 
 // PostTitles is the resolver for the postTitles field.
 func (r *queryResolver) PostTitles(ctx context.Context) ([]string, error) {
+	posts := r.snapshot().posts
 	var titles []string
 	for _, post := range posts {
 		titles = append(titles, post.Title)
@@ -320,11 +356,13 @@ func (r *queryResolver) Nodes(ctx context.Context) ([]Node, error) {
 
 // FavoriteNode is the resolver for the favoriteNode field.
 func (r *queryResolver) FavoriteNode(ctx context.Context) (Node, error) {
+	posts := r.snapshot().posts
 	return posts[1], nil
 }
 
 // Featured is the resolver for the featured field.
 func (r *queryResolver) Featured(ctx context.Context) (SearchResult, error) {
+	users := r.snapshot().users
 	return users[1], nil
 }
 
@@ -404,6 +442,8 @@ func (r *queryResolver) FetchMultipleURLs(ctx context.Context, urls []string) ([
 
 // Search is the resolver for the search field.
 func (r *queryResolver) Search(ctx context.Context, query string) ([]SearchResult, error) {
+	data := r.snapshot()
+	users, posts := data.users, data.posts
 	var results []SearchResult
 	for _, user := range users {
 		if containsIgnoreCase(user.Name, query) {
@@ -436,6 +476,7 @@ func (r *queryResolver) SearchConnection(ctx context.Context, query string) (*Se
 
 // UsersByStatus is the resolver for the usersByStatus field.
 func (r *queryResolver) UsersByStatus(ctx context.Context, status Status) ([]*User, error) {
+	users := r.snapshot().users
 	var result []*User
 	for _, user := range users {
 		if user.Status == status {
@@ -447,6 +488,7 @@ func (r *queryResolver) UsersByStatus(ctx context.Context, status Status) ([]*Us
 
 // SortedUsers is the resolver for the sortedUsers field.
 func (r *queryResolver) SortedUsers(ctx context.Context, sort UserSort) ([]*User, error) {
+	users := r.snapshot().users
 	result := make([]*User, len(users))
 	copy(result, users)
 	if sort.Direction == SortDirectionDesc {
@@ -475,6 +517,7 @@ func (r *queryResolver) ToString(ctx context.Context, value int) (string, error)
 
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
+	posts := r.snapshot().posts
 	// Get all posts for this user
 	var userPosts []*Post
 	for _, post := range posts {
@@ -505,6 +548,7 @@ func (r *userResolver) AlwaysFails(ctx context.Context, obj *User) (string, erro
 
 // Manager is the resolver for the manager field.
 func (r *userResolver) Manager(ctx context.Context, obj *User) (*User, error) {
+	users := r.snapshot().users
 	// User "User:1" sits at the top and has no manager; everyone else
 	// reports to user "User:1".
 	if obj.ID == "User:1" {
