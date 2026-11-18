@@ -301,24 +301,22 @@ scalar URL {
   # decoded %FF remains that exact byte and can be escaped back losslessly.
   let urlUnescape(s: String!, query: Boolean! = false): String! {
     if (!s.contains("%")) { return if (query) { s.replace("+", " ") } else { s } }
-    let bytes = s.bytes
-    let out: [Int!]! = []
-    let i = 0
-    loop {
-      if (i >= bytes.length) { break }
-      let b = bytes[i] ?? 0
-      if (b == 37) {
-        let hi = urlHex(bytes[i + 1] ?? -1)
-        let lo = urlHex(bytes[i + 2] ?? -1)
-        if (hi == null or lo == null) { raise "invalid URL percent escape" }
-        out += [hi * 16 + lo]
-        i += 3
+    # Decode chunks rather than repeatedly copying a growing byte list. Replace
+    # literal pluses before decoding so an escaped %2B remains a literal plus.
+    let raw = if (query) { s.replace("+", " ") } else { s }
+    raw.split("%").map { chunk, i =>
+      if (i == 0) {
+        chunk
       } else {
-        out += [if (query and b == 43) { 32 } else { b }]
-        i += 1
+        let bytes = chunk.bytes
+        let hi = urlHex(bytes[0] ?? -1)
+        let lo = urlHex(bytes[1] ?? -1)
+        if (hi == null or lo == null) { raise "invalid URL percent escape" }
+        String.fromBytes([hi * 16 + lo]) + chunk.trimPrefix(
+          String.fromBytes(bytes.takeFirst(2)),
+        )
       }
-    }
-    String.fromBytes(out)
+    }.join("")
   }
 
   let urlSafe(b: Int!, mode: String!): Boolean! {
@@ -335,18 +333,27 @@ scalar URL {
   let urlEscape(s: String!, mode: String!): String! {
     # Most component text needs no escaping; keep that path out of byte loops.
     if (s.containsMatch(`^[A-Za-z0-9._~-]*$`)) { return s }
-    let out: [Int!]! = []
-    let hex = "0123456789ABCDEF".bytes
-    s.bytes.each { b =>
-      if (urlSafe(b, mode)) {
-        out += [b]
-      } else if (mode == "query" and b == 32) {
-        out += [43]
-      } else {
-        out += [37, hex[b / 16] ?? 48, hex[b % 16] ?? 48]
-      }
+    let pattern = case (mode) {
+      "path" => `[^A-Za-z0-9._~$&+,/:;=@-]+`
+      "segment" => `[^A-Za-z0-9._~$&+:=@-]+`
+      "fragment" => `[^A-Za-z0-9._~!$&()*+,/:;=?@-]+`
+      "user" => `[^A-Za-z0-9._~$&+,;=-]+`
+      "host" => `[^A-Za-z0-9._~!$&'()*+,;=:\x5b\x5d<>"-]+`
+      else => `[^A-Za-z0-9._~-]+`
     }
-    String.fromBytes(out)
+    let hex = "0123456789ABCDEF".bytes
+    # Leave safe runs untouched. Match.string preserves the original bytes even
+    # for invalid UTF-8, and flatMap accumulates without copying every prefix.
+    s.rewriteMatches(pattern :: Regexp!) { match =>
+      let out: [Int!]! = match.string.bytes.flatMap { b =>
+        if (mode == "query" and b == 32) {
+          [43]
+        } else {
+          [37, hex[b / 16] ?? 48, hex[b % 16] ?? 48]
+        }
+      }
+      String.fromBytes(out)
+    }
   }
 
   let urlEscaped(raw: String!, mode: String!): String! {
@@ -376,7 +383,7 @@ scalar URL {
     if (raw.hasPrefix("[")) {
       if (!raw.contains("]")) { raise "invalid URL: missing ] in host" }
       suffix = raw.split("]").dropFirst(1).join("]")
-      if (suffix != "" and !suffix.hasPrefix(":")) { raise "invalid URL port" }
+      if (!suffix.containsMatch(`^(:[0-9]*)?$`)) { raise "invalid URL port" }
     }
     if (suffix.contains(":")) {
       let port = suffix.split(":").takeLast(1)[0] ?? ""

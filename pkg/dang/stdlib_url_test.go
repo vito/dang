@@ -375,6 +375,34 @@ func BenchmarkURLResolve(b *testing.B) {
 	}
 }
 
+func BenchmarkURLByteScaling(b *testing.B) {
+	for _, operation := range []struct{ name, body string }{
+		{"decode", `URL(raw).path`},
+		{"encode", `URL("").withPath(raw).string`},
+	} {
+		for _, size := range []int{1024, 4096, 16384} {
+			b.Run(fmt.Sprintf("%s/%d", operation.name, size), func(b *testing.B) {
+				probe := urlPublicProbe(b, "convert", `convert(raw: String!): String! { `+operation.body+` }`)
+				raw := "/" + strings.Repeat("a", size)
+				if operation.name == "decode" {
+					raw += "%20"
+				} else {
+					raw += " "
+				}
+				args := map[string]Value{"raw": StringValue{Val: raw}}
+				b.SetBytes(int64(len(raw)))
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					if _, err := probe(args); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestURLBuilderValidation(t *testing.T) {
 	for _, script := range []string{
 		`URL("").withScheme("https://evil")`,
@@ -458,6 +486,7 @@ checkBytes(raw: String!, segment: String!, path: String!, query: String!, fragme
 		"empty": "", "dot-dot": "..", "Unicode": "café/東京/🙂 e\u0301",
 		"invalid UTF-8": string([]byte{0xff, 0xc0, 0xaf, 0xed, 0xa0, 0x80, 0xe2, 0x82}),
 		"delimiters":    "a/b?c#d%+ &;=:@!$'(),[]",
+		"long ASCII":    strings.Repeat("a", 16384) + " /?#%+",
 	} {
 		t.Run(name, func(t *testing.T) { check(t, raw) })
 	}
@@ -523,7 +552,7 @@ func TestURLMalformedEscapes(t *testing.T) {
 			}
 		})
 	}
-	for _, raw := range []string{"http://[::1", "http://[::1]:abc/", "http://[fe80::1%eth0]/", "http://[fe80::1%25eth%GG]/", "http://user name@example.com/", "1http://example.com/", ":relative"} {
+	for _, raw := range []string{"http://[::1", "http://[::1]:abc/", "http://[::1]:80:90/", "http://[::1]::/", "http://[::1]:abc:90/", "http://[fe80::1%eth0]/", "http://[fe80::1%25eth%GG]/", "http://user name@example.com/", "1http://example.com/", ":relative"} {
 		t.Run(raw, func(t *testing.T) {
 			require.ErrorContains(t, evalExample(fmt.Sprintf(`URL(%q)`, raw)), "invalid URL")
 		})
