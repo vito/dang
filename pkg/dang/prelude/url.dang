@@ -194,17 +194,15 @@ scalar URL {
     let u = urlHierarchical(urlRead(self))
     if (segments.isEmpty) { return self }
     let path = u["path"] ?? ""
-    let i = 0
-    segments.each { s =>
-      if ((i > 0 or path != "" or u["authority"] != null) and (i > 0 or !path.hasSuffix("/"))) {
-        path += "/"
-      }
-      path += if (s == "." or s == "..") { s.replace(".", "%2E") } else {
+    if ((path != "" or u["authority"] != null) and !path.hasSuffix("/")) {
+      path += "/"
+    }
+    let appended = segments.map { s =>
+      if (s == "." or s == "..") { s.replace(".", "%2E") } else {
         urlEscape(s, "segment")
       }
-      i += 1
-    }
-    URL(urlWrite(u.with("path", path)))
+    }.join("/")
+    URL(urlWrite(u.with("path", path + appended)))
   }
 
   """
@@ -511,52 +509,58 @@ scalar URL {
   }
 
   let urlReadQuery(raw: String!): Map[[String!]!]! {
-    let out: Map[[String!]!]! = [:]
-    raw.split("&").each { pair =>
-      if (pair == "") { continue }
-      let parts = pair.split("=")
-      let key = urlUnescape(parts[0] ?? "", true) rescue {
-        err: Error! => raise "invalid URL query: ${err.message}"
+    raw.split("&").flatMap { pair =>
+      if (pair == "") {
+        []
+      } else {
+        let parts = pair.split("=", limit: 2)
+        let key = urlUnescape(parts[0] ?? "", true) rescue {
+          err: Error! => raise "invalid URL query: ${err.message}"
+        }
+        let value = urlUnescape(parts[1] ?? "", true) rescue {
+          err: Error! => raise "invalid URL query: ${err.message}"
+        }
+        [[key, value]]
       }
-      let value = urlUnescape(parts.dropFirst(1).join("="), true) rescue {
-        err: Error! => raise "invalid URL query: ${err.message}"
-      }
-      out = out.with(key, (out[key] ?? []) + [value])
+    }.groupBy { pair => pair[0] ?? "" }.map { key, pairs =>
+      pairs.map { pair => pair[1] ?? "" }
     }
-    out
   }
 
   let urlWriteQuery(query: Map[[String!]!]!): String! {
-    let pairs: [String!]! = []
-    query.keys.each { key =>
-      (query[key] ?? []).each { value =>
-        pairs += [urlEscape(key, "query") + "=" + urlEscape(value, "query")]
+    query.keys.flatMap { key =>
+      let encodedKey = urlEscape(key, "query")
+      (query[key] ?? []).map { value =>
+        encodedKey + "=" + urlEscape(value, "query")
       }
-    }
-    pairs.join("&")
+    }.join("&")
   }
 
   # Rootless composition retains unresolved parents, repeated slashes, and escaped
   # dots/slashes as data. A final dot operator denotes a directory, not a file.
   let urlNormalize(path: String!, rooted: Boolean!): String! {
     let parts = path.split("/")
-    let stack: [String!]! = []
-    let i = 0
-    parts.each { part =>
+    # Walk backwards to cancel parents without copying a growing stack.
+    let parents = 0
+    let kept: [String!]! = parts.reverse.flatMap { part =>
       if (part == ".") {
-        if (i == parts.length - 1) { stack += [""] }
+        []
       } else if (part == "..") {
-        if (!stack.isEmpty and stack.takeLast(1)[0] != "..") {
-          stack = stack.dropLast(1)
-        } else if (!rooted) {
-          stack += [".."]
-        }
-        if (i == parts.length - 1) { stack += [""] }
+        parents += 1
+        []
+      } else if (parents > 0) {
+        parents = parents - 1
+        []
       } else {
-        stack += [part]
+        [part]
       }
-      i += 1
     }
+    let stack = kept.reverse
+    if (!rooted and parents > 0) {
+      stack = parts.takeFirst(parents).map { part => ".." } + stack
+    }
+    let last = parts.takeLast(1)[0]
+    if (last == "." or last == "..") { stack += [""] }
     let out = stack.join("/")
     if (rooted) { return "/" + out }
     if (out == "") { return "./" }

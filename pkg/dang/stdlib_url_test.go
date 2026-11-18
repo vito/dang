@@ -403,6 +403,73 @@ func BenchmarkURLByteScaling(b *testing.B) {
 	}
 }
 
+func urlQueryFixture(count int, distinct bool) string {
+	var out strings.Builder
+	out.WriteByte('?')
+	for i := range count {
+		if i > 0 {
+			out.WriteByte('&')
+		}
+		key := "x"
+		if distinct {
+			key += strconv.Itoa(i)
+		}
+		fmt.Fprintf(&out, "%s=%d", key, i)
+	}
+	return out.String()
+}
+
+func TestURLLargeQueries(t *testing.T) {
+	probe := urlPublicProbe(t, "checkQuery", `
+checkQuery(raw: String!, count: Int!, keys: Int!): Boolean! {
+  let q = URL(raw).query
+  assert { q.length == keys }
+  assert { q.values.map { values => values.length }.sum == count }
+  assert { URL("").withQuery(q).query == q }
+  if (keys == 1) {
+    assert { q["x"][0] == "0" }
+    assert { q["x"][count - 1] == toString(count - 1) }
+  }
+  true
+}
+`)
+	for _, distinct := range []bool{false, true} {
+		keys := 1
+		if distinct {
+			keys = 4096
+		}
+		_, err := probe(map[string]Value{
+			"raw":   StringValue{Val: urlQueryFixture(4096, distinct)},
+			"count": IntValue{Val: 4096}, "keys": IntValue{Val: keys},
+		})
+		require.NoError(t, err)
+	}
+}
+
+func BenchmarkURLQueryScaling(b *testing.B) {
+	for _, distinct := range []bool{false, true} {
+		name := "duplicate"
+		if distinct {
+			name = "distinct"
+		}
+		for _, count := range []int{256, 1024, 4096} {
+			b.Run(fmt.Sprintf("%s/%d", name, count), func(b *testing.B) {
+				probe := urlPublicProbe(b, "readQuery", `readQuery(raw: String!): Int! { URL(raw).query.length }`)
+				raw := urlQueryFixture(count, distinct)
+				args := map[string]Value{"raw": StringValue{Val: raw}}
+				b.SetBytes(int64(len(raw)))
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					if _, err := probe(args); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestURLBuilderValidation(t *testing.T) {
 	for _, script := range []string{
 		`URL("").withScheme("https://evil")`,
