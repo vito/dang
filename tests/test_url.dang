@@ -169,6 +169,17 @@ assert { URL("file:/etc/a").resolve("#new") == "file:/etc/a#new" }
 assert { URL("file://server/share/file").resolve("///local/file") == "file:///local/file" }
 assert { URL("https://user:pass@example.com/a").resolve("///other") == "https:///other" }
 
+# Rootless references stay relative when composed before choosing an origin.
+let origin = URL("https://example.com/project/")
+let page = URL("docs/page")
+assert { page.resolve("#section").path == "docs/page" }
+assert { page.resolve("?q=x").path == "docs/page" }
+assert { page.resolve("").path == "docs/page" }
+assert { page.resolve("other").path == "docs/other" }
+assert { page.resolve("../../other").path == "../other" }
+assert { origin.resolve(page.resolve("#section")) == origin.resolve(page).resolve("#section") }
+assert { origin.resolve(page.resolve("other")) == origin.resolve(page).resolve("other") }
+
 # Invalid edits raise rather than inject delimiters or discard opaque data.
 assert { (u.withHostname("evil.example/path") rescue null) == null }
 assert { (u.withScheme("http://") rescue null) == null }

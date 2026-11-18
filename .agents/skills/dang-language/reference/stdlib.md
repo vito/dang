@@ -165,10 +165,14 @@ To build entirely from components, start with `URL("").withScheme("https")`
 and then `.withHostname(...)`. Invalid schemes/hostnames and negative ports
 raise rather than injecting delimiters. Hierarchical path/authority edits on
 opaque URLs raise rather than discarding their payload. Adding a scheme to a
-nonempty relative path without a host also raises: set the hostname or use a
-rooted path first, so the path cannot silently become an opaque payload.
-Reference resolution is not a containment or same-origin check; do not use it
-to constrain an untrusted reference to a base URL.
+nonempty relative path without a host also raises: root the path first with
+`.withPath("/...")`, or rebuild from `URL("")` with scheme and hostname before
+appending segments, so the path cannot silently become an opaque payload.
+With a rootless relative base such as `docs/page`, relative resolution stays
+rootless and retains excess leading `..` segments, so the result can later be
+resolved against an origin. Reference resolution is not a containment or
+same-origin check; do not use it to constrain an untrusted reference to a base
+URL.
 
 ## `[T]!` methods (lists)
 

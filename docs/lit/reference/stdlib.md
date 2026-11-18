@@ -61,9 +61,9 @@ assert { endpoint.query["tag"] == ["a", "b", "c"] }
 
 `.withQueryParam` replaces a key's values; `.withAddedQueryParam` appends; `.withoutQueryParam` removes them. `.withQuery(null)` removes the query, while `.withQuery([:])` emits a trailing `?`. Empty value lists emit no pairs. `.withFragment(null)` removes the fragment; an empty string emits a trailing `#`. `.withHostname(null)` clears the entire authority, including credentials and port. Query edits may regroup keys and normalize escaping; use the original `.string` when exact spelling matters.
 
-`.withPath` replaces a decoded path without cleaning it; with an authority, a nonempty path must start with `/`. `.appendPath` treats every supplied segment as data, escaping embedded slashes and literal `.`/`..` segments. By contrast, `.resolve("../other")` applies URL reference rules, including dot-segment navigation and replacement by absolute references. Resolution is **not** a same-origin or containment check for untrusted input.
+`.withPath` replaces a decoded path without cleaning it; with an authority, a nonempty path must start with `/`. `.appendPath` treats every supplied segment as data, escaping embedded slashes and literal `.`/`..` segments. By contrast, `.resolve("../other")` applies URL reference rules, including dot-segment navigation and replacement by absolute references. With a rootless relative base such as `docs/page`, relative resolution stays rootless and retains excess leading `..` segments, so the result can subsequently be resolved against an origin. Resolution is **not** a same-origin or containment check for untrusted input.
 
-Invalid schemes/hostnames and negative ports raise. Path/authority edits on opaque URLs raise rather than discarding their payload. Adding a scheme to a nonempty relative path without a host also raises: set a hostname or use a rooted path first, so the path cannot silently become opaque.
+Invalid schemes/hostnames and negative ports raise. Path/authority edits on opaque URLs raise rather than discarding their payload. Adding a scheme or hostname to an existing nonempty relative path also raises: root the path first with `.withPath("/...")`, or rebuild from `URL("")` with scheme and hostname before appending segments. This prevents the path from silently becoming opaque or gaining a leading slash.
 
 ### Methods
 
