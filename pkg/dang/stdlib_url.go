@@ -419,8 +419,14 @@ func registerURLBuilders() {
 // later be resolved against an absolute base without changing its meaning.
 // Work on escaped segments: %2E and %2F are data, not path operators.
 func resolveRootlessURLPath(base, ref string) string {
-	merged := base[:strings.LastIndex(base, "/")+1] + ref
-	parts := strings.Split(merged, "/")
+	// A terminal dot segment denotes a directory, not a filename. Normalize
+	// before selecting the base directory so ".." retains its parent step.
+	base = normalizeRootlessURLPath(base)
+	return normalizeRootlessURLPath(base[:strings.LastIndex(base, "/")+1] + ref)
+}
+
+func normalizeRootlessURLPath(path string) string {
+	parts := strings.Split(path, "/")
 	var stack []string
 	for i, part := range parts {
 		switch part {
@@ -441,7 +447,7 @@ func resolveRootlessURLPath(base, ref string) string {
 			stack = append(stack, part)
 		}
 	}
-	path := strings.Join(stack, "/")
+	path = strings.Join(stack, "/")
 	if path == "" {
 		return "./"
 	}

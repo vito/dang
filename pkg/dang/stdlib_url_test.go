@@ -2,7 +2,9 @@ package dang
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -229,6 +231,13 @@ func TestURLReferenceResolution(t *testing.T) {
 
 func TestURLRootlessResolution(t *testing.T) {
 	for _, tc := range []struct{ base, ref, want string }{
+		{"..", "image.png", "../image.png"},
+		{"docs/..", "image.png", "image.png"},
+		{"docs/../..", "image.png", "../image.png"},
+		{".", "image.png", "image.png"},
+		{"docs/.", "image.png", "docs/image.png"},
+		{"docs//..", "image.png", "docs/image.png"},
+		{"..", "../image.png", "../../image.png"},
 		{"docs/page", "#section", "docs/page#section"},
 		{"docs/page?old=1#old", "", "docs/page?old=1"},
 		{"docs/page", "?q=x", "docs/page?q=x"},
@@ -267,6 +276,46 @@ let origin = URL("https://example.com/project/?origin=1#old")
 assert { origin.resolve(relative) == origin.resolve(base).resolve(ref) }
 `, tc.base, tc.ref, tc.want)))
 		})
+	}
+}
+
+func TestURLRootlessPathComposition(t *testing.T) {
+	// Exercise combinations of dot, empty and escaped segments, not just
+	// individual examples. Resolving before selecting an origin must agree
+	// with selecting it first. Keep the origin deep enough not to saturate
+	// at its root when the two references contain excess parent segments.
+	origin, err := url.Parse("https://example.com/a/b/c/d/e/f/g/h/")
+	require.NoError(t, err)
+	paths := []string{""}
+	level := []string{""}
+	for range 3 {
+		var next []string
+		for _, prefix := range level {
+			for _, segment := range []string{"a", "", ".", "..", "%2E", "%2F"} {
+				path := prefix + segment
+				if path != "" && !strings.HasPrefix(path, "/") {
+					paths = append(paths, path)
+				}
+				next = append(next, path+"/")
+			}
+		}
+		level = next
+	}
+	for _, base := range paths {
+		baseURL, err := url.Parse(base)
+		require.NoError(t, err)
+		for _, ref := range paths {
+			if ref == "" {
+				continue // Empty-path references inherit verbatim, without merging.
+			}
+			refURL, err := url.Parse(ref)
+			require.NoError(t, err)
+			merged, err := url.Parse(resolveRootlessURLPath(base, ref))
+			require.NoError(t, err)
+			want := origin.ResolveReference(baseURL).ResolveReference(refURL).String()
+			got := origin.ResolveReference(merged).String()
+			require.Equal(t, want, got, "base %q, reference %q", base, ref)
+		}
 	}
 }
 
