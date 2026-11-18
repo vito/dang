@@ -1,6 +1,7 @@
 package dang
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 func TestURLComponents(t *testing.T) {
@@ -132,9 +134,7 @@ func TestURLQueriesAndFragments(t *testing.T) {
 		require.ErrorContains(t, evalExample(fmt.Sprintf(`URL(%q).query`, raw)), "invalid URL query")
 	}
 	require.ErrorContains(t, evalExample(`URL("https://foo:99999999999999999999999999").port`), "invalid URL port")
-	m, err := readURLQuery("z=1&x=2&z=3&y=4")
-	require.NoError(t, err)
-	require.Equal(t, []string{"z", "x", "y"}, m.Keys)
+	require.NoError(t, evalExample(`assert { URL("?z=1&x=2&z=3&y=4").query.keys == ["z", "x", "y"] }`))
 }
 
 func TestURLBuilders(t *testing.T) {
@@ -301,6 +301,7 @@ func TestURLRootlessPathComposition(t *testing.T) {
 		}
 		level = next
 	}
+	resolve := urlResolutionProbe(t)
 	for _, base := range paths {
 		baseURL, err := url.Parse(base)
 		require.NoError(t, err)
@@ -310,11 +311,58 @@ func TestURLRootlessPathComposition(t *testing.T) {
 			}
 			refURL, err := url.Parse(ref)
 			require.NoError(t, err)
-			merged, err := url.Parse(resolveRootlessURLPath(base, ref))
+			mergedText, err := resolve(base, ref)
+			require.NoError(t, err, "base %q, reference %q", base, ref)
+			merged, err := url.Parse(mergedText)
 			require.NoError(t, err)
 			want := origin.ResolveReference(baseURL).ResolveReference(refURL).String()
 			got := origin.ResolveReference(merged).String()
 			require.Equal(t, want, got, "base %q, reference %q", base, ref)
+		}
+	}
+}
+
+// Compile once, but exercise only the public URL API. This stays useful when
+// URL moves between native builtins and the self-hosted prelude, and keeps the
+// composition matrix from measuring the parser and type checker per case.
+func urlResolutionProbe(t testing.TB) func(string, string) (string, error) {
+	t.Helper()
+	parsed, err := ParseWithRecovery("url-probe", []byte(`
+resolveURL(base: String!, reference: String!): String! {
+  URL(base).resolve(URL(reference)).string
+}
+`))
+	require.NoError(t, err)
+	file := parsed.(*FileBlock)
+	types, values := BuildScopesFromImports("", nil)
+	ctx := context.Background()
+	_, err = InferFormsWithPhases(ctx, file.Forms, types, hm.NewSimpleFresher())
+	require.NoError(t, err)
+	for _, node := range file.Forms {
+		_, err = EvalNode(ctx, values, node)
+		require.NoError(t, err)
+	}
+	fn, found, err := values.Lookup(ctx, "resolveURL")
+	require.NoError(t, err)
+	require.True(t, found)
+	call := fn.(Callable)
+	return func(base, reference string) (string, error) {
+		result, err := call.Call(ctx, values, map[string]Value{
+			"base": StringValue{Val: base}, "reference": StringValue{Val: reference},
+		})
+		if err != nil {
+			return "", err
+		}
+		return result.(StringValue).Val, nil
+	}
+}
+
+func BenchmarkURLResolve(b *testing.B) {
+	resolve := urlResolutionProbe(b)
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := resolve("https://example.com/a/b?old=1#old", "../c?tag=a&tag=b#new"); err != nil {
+			b.Fatal(err)
 		}
 	}
 }
