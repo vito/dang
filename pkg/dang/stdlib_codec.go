@@ -194,13 +194,17 @@ func registerCodecs() {
 		return raw, nil
 	})
 	StaticMethod(TOMLModule, "encode").
-		Doc("serializes a value to a TOML string").
-		Example(`TOML.encode({{enabled: true, count: 3}})`).
-		Params("value", TypeVar('a')).
+		Doc("serializes a value to a TOML string without indentation by default. " +
+			"indent adds one copy of it per nesting level (e.g. \"  \") and must contain only spaces and tabs.").
+		Example(`TOML.encode({{server: {{port: 8080}}}}, indent: "  ")`).
+		Params(
+			"value", TypeVar('a'),
+			"indent", NonNull(StringType), StringValue{Val: ""},
+		).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-			out, err := encodeTOML(val)
+			out, err := encodeTOML(val, args.GetString("indent"))
 			if err != nil {
 				return nil, fmt.Errorf("TOML.encode: %w", err)
 			}
@@ -456,7 +460,10 @@ func validateYAML(data string) error {
 
 // --- TOML ---
 
-func encodeTOML(val Value) (string, error) {
+func encodeTOML(val Value, indent string) (string, error) {
+	if strings.Trim(indent, " \t") != "" {
+		return "", fmt.Errorf("indent must contain only spaces and tabs, got %q", indent)
+	}
 	tree, err := encodeValue(val, tomlNaming)
 	if err != nil {
 		return "", err
@@ -473,7 +480,9 @@ func encodeTOML(val Value) (string, error) {
 		return "", err
 	}
 	var buf bytes.Buffer
-	if err := toml.NewEncoder(&buf).Encode(plain); err != nil {
+	encoder := toml.NewEncoder(&buf)
+	encoder.Indent = indent
+	if err := encoder.Encode(plain); err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(buf.String(), "\n"), nil
