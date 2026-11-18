@@ -18,6 +18,7 @@ import (
 	"github.com/dagger/testctx"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/ioctx"
+	"github.com/vito/dang/v2/tests/gqlserver"
 )
 
 func TestMain(m *testing.M) {
@@ -29,6 +30,7 @@ type DangSuite struct {
 
 func TestDang(tT *testing.T) {
 	testctx.New(tT,
+		testctx.WithParallel(),
 		oteltestctx.WithTracing[*testing.T](),
 	).RunTests(DangSuite{})
 }
@@ -41,16 +43,25 @@ func (DangSuite) TestFormatLanguage(_ context.Context, t *testctx.T) {
 	runFormatLanguageTests(t)
 }
 
-func runLanguageTests(ctx context.Context, t *testctx.T) {
-	// Import configs come from dang.toml (schema + service).
-	// Pre-load them so they're available to each test without re-resolving.
+func (DangSuite) TestGraphQLServiceImport(ctx context.Context, t *testctx.T) {
+	// Keep coverage of the actual dang.toml service startup and HTTP transport;
+	// the language matrix uses isolated in-process servers for speed.
 	services := &dang.ServiceRegistry{}
-	t.Cleanup(func() { services.StopAll() })
+	t.Cleanup(services.StopAll)
+	ctx = dang.ContextWithServices(ctx, services)
+	ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
+	if err := dang.RunFile(ctx, "test_graphql_object_selection.dang", false); err != nil {
+		t.Fatal(err)
+	}
+}
 
+func runLanguageTests(ctx context.Context, t *testctx.T) {
+	// Pre-load schemas and native module paths from dang.toml. Each fixture
+	// gets its own GraphQL clients below: mutation tests must not change the
+	// seed data observed by other fixtures.
 	var importConfigs []dang.ImportConfig
 	configPath, projectConfig, configErr := dang.FindProjectConfig(".")
 	if configErr == nil && projectConfig != nil {
-		ctx = dang.ContextWithServices(ctx, services)
 		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
 		configDir := filepath.Dir(configPath)
 		resolved, err := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
@@ -74,12 +85,23 @@ func runLanguageTests(ctx context.Context, t *testctx.T) {
 	for _, testFileOrDir := range paths {
 		t.Run(filepath.Base(testFileOrDir), func(ctx context.Context, t *testctx.T) {
 			ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
-			ctx = dang.ContextWithServices(ctx, services)
-			if len(importConfigs) > 0 {
-				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+			configs := append([]dang.ImportConfig(nil), importConfigs...)
+			for i, config := range configs {
+				switch config.Name {
+				case "Test", "Other":
+					// Use the same gqlserver as the configured service, without
+					// spawning a separate `go run` process for every fixture.
+					isolated, err := gqlserver.ImportConfig(config.Name)
+					if err != nil {
+						t.Fatal(err)
+					}
+					configs[i].Client = isolated.Client
+				}
+			}
+			if len(configs) > 0 {
+				ctx = dang.ContextWithImportConfigs(ctx, configs...)
 			}
 
-			// t.Parallel()
 			fi, err := os.Stat(testFileOrDir)
 			if err != nil {
 				t.Errorf("Failed to stat test file or directory %s: %v", testFileOrDir, err)
