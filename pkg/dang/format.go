@@ -37,6 +37,10 @@ type Formatter struct {
 	// Set of line numbers whose comments have already been emitted.
 	emittedComments map[int]bool
 
+	// Comma-owning contexts postpone an expression's closing-line comment
+	// until after the comma. A stack preserves nested boundaries on one line.
+	deferredCommentLines []int
+
 	// Dang version whose syntax to emit (e.g. object selection braces).
 	// Zero means CurrentVersion.
 	version Version
@@ -305,8 +309,8 @@ func (f *Formatter) hasTrailingCommentOnLine(line int) bool {
 
 // emitTrailingComment emits a trailing comment for the given line if one exists
 func (f *Formatter) emitTrailingComment(line int) {
-	// Skip if already emitted via nl()
-	if f.emittedComments[line] {
+	// Skip if already emitted via nl(), or postponed by a comma-owning parent.
+	if f.emittedComments[line] || slices.Contains(f.deferredCommentLines, line) {
 		return
 	}
 	for i, comment := range f.comments {
@@ -535,7 +539,7 @@ func (f *Formatter) newline() {
 // then writes a newline. This is the preferred way to end a line when the
 // source line number is known.
 func (f *Formatter) nl(line int) {
-	if line > 0 && f.commentMap != nil {
+	if line > 0 && f.commentMap != nil && !slices.Contains(f.deferredCommentLines, line) {
 		if text, ok := f.commentMap[line]; ok && !f.emittedComments[line] {
 			// Only emit as trailing if there's code on this line (i.e., we've
 			// already written something on this output line).
@@ -1888,17 +1892,18 @@ func (f *Formatter) trial(node Node, col int) *Formatter {
 		}
 	}
 	return &Formatter{
-		comments:        slices.Clone(pending),
-		source:          f.source,
-		commentMap:      f.commentMap,
-		emittedComments: emitted,
-		version:         f.version,
-		migrating:       f.migrating,
-		preserveImports: f.preserveImports,
-		explicitCall:    f.explicitCall,
-		indent:          f.indent,
-		col:             col,
-		inTrial:         true,
+		comments:             slices.Clone(pending),
+		source:               f.source,
+		commentMap:           f.commentMap,
+		emittedComments:      emitted,
+		deferredCommentLines: slices.Clone(f.deferredCommentLines),
+		version:              f.version,
+		migrating:            f.migrating,
+		preserveImports:      f.preserveImports,
+		explicitCall:         f.explicitCall,
+		indent:               f.indent,
+		col:                  col,
+		inTrial:              true,
 	}
 }
 
@@ -2209,7 +2214,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 
 	// Format chain elements with leading dots
 	f.indented(func() {
-		for i, elem := range chain {
+		for _, elem := range chain {
 			// Emit any standalone comments that precede this chain element
 			var elemLine int
 			switch e := elem.(type) {
@@ -2281,12 +2286,8 @@ func (f *Formatter) formatChainedCall(c Node) {
 				// `{ ... }` right after it.
 				f.formatBlockArg(e.Block)
 			}
-			// The enclosing form or expression owns the final comment: it
-			// may need to print a comma before it (e.g. in a call argument).
-			if i < len(chain)-1 {
-				if loc := elem.GetSourceLocation(); loc != nil && loc.End != nil {
-					f.emitTrailingComment(loc.End.Line)
-				}
+			if loc := elem.GetSourceLocation(); loc != nil && loc.End != nil {
+				f.emitTrailingComment(loc.End.Line)
 			}
 		}
 	})
@@ -2403,6 +2404,15 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	return false
 }
 
+// formatBeforeComma leaves the final comment for the caller to emit after its
+// separator. Other expression parents retain ordinary inline comment emission.
+func (f *Formatter) formatBeforeComma(node Node) {
+	depth := len(f.deferredCommentLines)
+	f.deferredCommentLines = append(f.deferredCommentLines, nodeEndLine(node))
+	defer func() { f.deferredCommentLines = f.deferredCommentLines[:depth] }()
+	f.formatNode(node)
+}
+
 func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLine int) {
 	if multiline {
 		f.newline()
@@ -2419,7 +2429,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLi
 					f.write(f.fieldName(arg.Key))
 					f.write(": ")
 				}
-				f.formatNode(arg.Value)
+				f.formatBeforeComma(arg.Value)
 				f.write(",")
 				if endLine := nodeEndLine(arg.Value); endLine > 0 {
 					f.emitTrailingComment(endLine)
@@ -2483,7 +2493,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 
 	// Format each field on its own line with a leading dot, indented one level
 	f.indented(func() {
-		for i, sel := range selects {
+		for _, sel := range selects {
 			// Emit any standalone comments that precede this chain element
 			if sel.Field.Loc != nil && sel.Field.Loc.Line > 0 {
 				f.emitChainCommentsBefore(sel.Field.Loc.Line)
@@ -2493,9 +2503,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 			f.writeIndent()
 			f.write(".")
 			f.write(f.fieldName(sel.Field.Name))
-			// Leave the final comment to the enclosing form or expression,
-			// which may still need to print punctuation before it.
-			if i < len(selects)-1 && sel.Loc != nil && sel.Loc.End != nil {
+			if sel.Loc != nil && sel.Loc.End != nil {
 				f.emitTrailingComment(sel.Loc.End.Line)
 			}
 		}
@@ -3261,7 +3269,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 
 			f.emitCommentsForNode(elem)
 			f.writeIndent()
-			f.formatNode(elem)
+			f.formatBeforeComma(elem)
 
 			// Check if next elements are on the same line - if so, keep them together
 			for i+1 < len(l.Elements) {
@@ -3269,7 +3277,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 				nextLoc := nextElem.GetSourceLocation()
 				if elemLoc != nil && nextLoc != nil && nextLoc.Line == elemLoc.Line {
 					f.write(", ")
-					f.formatNode(nextElem)
+					f.formatBeforeComma(nextElem)
 					i++
 				} else {
 					break
@@ -3381,7 +3389,7 @@ func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 			f.formatObjectFieldKey(field)
 			if !objectFieldShorthand(field) {
 				f.write(": ")
-				f.formatNode(field.Value)
+				f.formatBeforeComma(field.Value)
 			}
 			// Add trailing comma (except for last field)
 			if i < len(o.Fields)-1 {
@@ -3609,6 +3617,10 @@ func (f *Formatter) formatRescueClauses(clauses []*CaseClause, pattern func(*Cas
 			f.formatNode(clause.Expr)
 			if clause.Loc != nil {
 				f.emitTrailingComment(clause.Loc.Line)
+			}
+			if end := nodeEndLine(clause.Expr); end > 0 {
+				f.emitTrailingComment(end)
+				f.lastLine = end
 			}
 			f.newline()
 		}
@@ -4119,6 +4131,7 @@ func (f *Formatter) formatGrouped(g *Grouped) {
 		f.indented(func() {
 			f.writeIndent()
 			f.formatNode(g.Expr)
+			f.emitTrailingComment(nodeEndLine(g.Expr))
 			f.newline()
 		})
 		f.writeIndent()

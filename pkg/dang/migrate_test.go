@@ -3,6 +3,7 @@ package dang
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -318,6 +319,24 @@ func TestMigrateNoFmtBoundaries(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, got, again)
 	})
+}
+
+func TestMigrateChainCommentParents(t *testing.T) {
+	for _, tc := range chainCommentParentCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MigrateSource("comments.dang", []byte(tc.source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+			got, err = MigrateSource("comments.dang", []byte(tc.source+"let force = \"${literal}\"\n"), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Contains(t, got, "let force = '${literal}'")
+			require.Equal(t, 1, strings.Count(got, "KEEP"))
+			require.Less(t, strings.Index(got, "KEEP"), strings.Index(got, tc.following))
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+		})
+	}
 }
 
 func TestMigrationMeaningComparison(t *testing.T) {

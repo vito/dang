@@ -193,6 +193,69 @@ func TestFormatNoFmtBoundaries(t *testing.T) {
 	}
 }
 
+func chainCommentParentCases() []struct{ name, source, following string } {
+	var cases []struct{ name, source, following string }
+	for _, chain := range []struct{ name, source string }{
+		{"call", "foo\n .bar(1)\n .baz(2)"},
+		{"select", "foo\n .bar\n .baz"},
+		{"dot apply", "foo\n .{ _ + 1 }\n .{ _ + 2 }"},
+	} {
+		for _, parent := range []struct{ name, before, after, following string }{
+			{"rescue", "let x = foo rescue {\n err: MyError! => ", " else => 0\n}\nprint(x)\n", "else =>"},
+			{"case", "let x = case (value) {\n 0 => ", " else => 0\n}\nprint(x)\n", "else =>"},
+			{"grouped receiver", "let x = (", ")[0]\nprint(x)\n", ")[0]"},
+			{"index operand", "let x = values[(", ")]\nprint(x)\n", ")]"},
+			{"unary operand", "let x = -(", ")\nprint(x)\n", "print(x)"},
+			{"conditional body", "let x = if (true) {\n ", "} else { 0 }\nprint(x)\n", "else"},
+			{"return", "f: Int! {\n return ", " 0\n}\nprint(1)\n", "print(1)"},
+		} {
+			for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+				cases = append(cases, struct{ name, source, following string }{
+					parent.name + "/" + chain.name + "/" + comment,
+					parent.before + chain.source + " " + comment + "\n" + parent.after,
+					parent.following,
+				})
+			}
+		}
+	}
+	for _, parent := range []struct{ name, before, after, following string }{
+		{"copied rescue literal", "let x = foo rescue {\n err: MyError! => ", " else => 0\n}\nprint(x)\n", "else =>"},
+		{"copied grouped literal", "let x = (", ")[0]\nprint(x)\n", ")[0]"},
+	} {
+		cases = append(cases, struct{ name, source, following string }{
+			parent.name,
+			parent.before + "\"\"\"\n abc\n\"\"\" # nofmt KEEP\n" + parent.after,
+			parent.following,
+		})
+	}
+	cases = append(cases, struct{ name, source, following string }{
+		"nested same-line comma owners",
+		"print(\n foo(\n  bar\n .baz(1)) # KEEP\n)\nprint(2)\n",
+		"print(2)",
+	})
+	return cases
+}
+
+func TestFormatChainCommentParents(t *testing.T) {
+	for _, tc := range chainCommentParentCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatFile([]byte(tc.source))
+			require.NoError(t, err)
+			require.Equal(t, 1, strings.Count(got, "KEEP"))
+			require.Less(t, strings.Index(got, "KEEP"), strings.Index(got, tc.following))
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+			original, err := Parse("original.dang", []byte(tc.source))
+			require.NoError(t, err)
+			formatted, err := Parse("formatted.dang", []byte(got))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(original.(Node), formatted.(Node))
+			require.False(t, differs)
+		})
+	}
+}
+
 func TestFormatFixedPoint(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
