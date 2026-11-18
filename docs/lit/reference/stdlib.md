@@ -30,6 +30,24 @@
 
 \stdlib-methods{Path}
 
+## `SemVer!` methods
+
+`SemVer("v1.2.3-rc.1+build.7")` validates a SemVer 2.0.0 version and removes
+an optional leading `v`. All three core numbers are required.
+
+Build metadata affects equality, but not version precedence. Use `.compare`
+or `.sortBy { version => version.sortKey }` for semantic ordering; ordinary
+scalar ordering and `.sort` compare the text instead.
+
+\literate-fences
+
+```dang
+let releases: [SemVer!]! = ["v1.10.0", "1.2.0", "1.2.0-rc.1"]
+releases.sortBy { version => version.sortKey }.map { version => version.string }
+```
+
+\stdlib-methods{SemVer}
+
 ## `URL!` methods
 
 `URL(raw: String!)` accepts absolute URLs and relative references, preserving

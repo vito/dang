@@ -1,0 +1,14 @@
+# A user scalar with the same name retains its own constructor and methods.
+scalar SemVer {
+  new(raw: String!) { raw.toUpper }
+
+  major: String! { "custom" }
+}
+
+let custom = SemVer("not a version")
+assert { (custom :: String!) == "NOT A VERSION" }
+assert { custom.major == "custom" }
+let major = &custom.major
+assert { major == "custom" }
+let decoded: SemVer! = JSON.decode('"also not a version"')
+assert { (decoded :: String!) == "ALSO NOT A VERSION" }

@@ -22,6 +22,7 @@ var stdlibSkillSections = map[string]string{
 	"String": "## `String!` methods",
 	"Match":  "### `Match` object",
 	"Path":   "## `Path!` scalar",
+	"SemVer": "## `SemVer!` scalar",
 	"URL":    "## `URL!` scalar",
 	"List":   "## `[T]!` methods",
 	"Map":    "## `Map[T]!` methods",
