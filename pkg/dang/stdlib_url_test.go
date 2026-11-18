@@ -327,11 +327,25 @@ func TestURLRootlessPathComposition(t *testing.T) {
 // composition matrix from measuring the parser and type checker per case.
 func urlResolutionProbe(t testing.TB) func(string, string) (string, error) {
 	t.Helper()
-	parsed, err := ParseWithRecovery("url-probe", []byte(`
+	call := urlPublicProbe(t, "resolveURL", `
 resolveURL(base: String!, reference: String!): String! {
   URL(base).resolve(URL(reference)).string
 }
-`))
+`)
+	return func(base, reference string) (string, error) {
+		result, err := call(map[string]Value{
+			"base": StringValue{Val: base}, "reference": StringValue{Val: reference},
+		})
+		if err != nil {
+			return "", err
+		}
+		return result.(StringValue).Val, nil
+	}
+}
+
+func urlPublicProbe(t testing.TB, name, source string) func(map[string]Value) (Value, error) {
+	t.Helper()
+	parsed, err := ParseWithRecovery("url-probe", []byte(source))
 	require.NoError(t, err)
 	file := parsed.(*FileBlock)
 	types, values := BuildScopesFromImports("", nil)
@@ -342,18 +356,12 @@ resolveURL(base: String!, reference: String!): String! {
 		_, err = EvalNode(ctx, values, node)
 		require.NoError(t, err)
 	}
-	fn, found, err := values.Lookup(ctx, "resolveURL")
+	fn, found, err := values.Lookup(ctx, name)
 	require.NoError(t, err)
 	require.True(t, found)
 	call := fn.(Callable)
-	return func(base, reference string) (string, error) {
-		result, err := call.Call(ctx, values, map[string]Value{
-			"base": StringValue{Val: base}, "reference": StringValue{Val: reference},
-		})
-		if err != nil {
-			return "", err
-		}
-		return result.(StringValue).Val, nil
+	return func(args map[string]Value) (Value, error) {
+		return call.Call(ctx, values, args)
 	}
 }
 
@@ -395,6 +403,199 @@ func TestURLBuilderValidation(t *testing.T) {
 	} {
 		t.Run(script, func(t *testing.T) { require.Error(t, evalExample(script)) })
 	}
+}
+
+func TestURLByteConformance(t *testing.T) {
+	// Infer once and pass strings as values, so invalid UTF-8 never passes
+	// through a source-code or JSON decoder. All URL operations are public.
+	probe := urlPublicProbe(t, "checkBytes", `
+checkBytes(raw: String!, segment: String!, path: String!, query: String!, fragment: String!, percent: String!): Boolean! {
+  let data = String.fromBytes(raw.bytes)
+  assert { data.bytes == raw.bytes }
+  let appended = URL("/").appendPath([data])
+  assert { appended.string == "/" + segment }
+  assert { appended.path.bytes == ("/" + raw).bytes }
+  let replaced = URL("https://example.com").withPath("/" + data)
+  assert { replaced.escapedPath == path }
+  assert { replaced.path.bytes == ("/" + raw).bytes }
+  let queried = URL("").withQuery([data: [data]])
+  assert { queried.rawQuery == query + "=" + query }
+  assert { queried.query[data] == [raw] }
+  let fragmented = URL("").withFragment(data)
+  assert { fragmented.string == "#" + fragment }
+  assert { fragmented.fragment == raw }
+  assert { URL("/" + percent).path.bytes == ("/" + raw).bytes }
+  assert { URL("?" + percent + "=" + percent).query[raw] == [raw] }
+  assert { URL("#" + percent).fragment == raw }
+  true
+}
+`)
+	check := func(t *testing.T, raw string) {
+		t.Helper()
+		segment := url.PathEscape(raw)
+		if raw == "." || raw == ".." {
+			segment = strings.ReplaceAll(raw, ".", "%2E")
+		}
+		path := (&url.URL{Path: "/" + raw}).EscapedPath()
+		fragment := (&url.URL{Fragment: raw}).EscapedFragment()
+		var percent strings.Builder
+		for _, b := range []byte(raw) {
+			fmt.Fprintf(&percent, "%%%02X", b)
+		}
+		for _, escaped := range []string{percent.String(), strings.ToLower(percent.String())} {
+			_, err := probe(map[string]Value{
+				"raw": StringValue{Val: raw}, "segment": StringValue{Val: segment},
+				"path": StringValue{Val: path}, "query": StringValue{Val: url.QueryEscape(raw)},
+				"fragment": StringValue{Val: fragment}, "percent": StringValue{Val: escaped},
+			})
+			require.NoError(t, err)
+		}
+	}
+	for i := range 256 {
+		t.Run(fmt.Sprintf("byte-%02X", i), func(t *testing.T) { check(t, string([]byte{byte(i)})) })
+	}
+	for name, raw := range map[string]string{
+		"empty": "", "dot-dot": "..", "Unicode": "café/東京/🙂 e\u0301",
+		"invalid UTF-8": string([]byte{0xff, 0xc0, 0xaf, 0xed, 0xa0, 0x80, 0xe2, 0x82}),
+		"delimiters":    "a/b?c#d%+ &;=:@!$'(),[]",
+	} {
+		t.Run(name, func(t *testing.T) { check(t, raw) })
+	}
+}
+
+func TestURLAuthorityConformance(t *testing.T) {
+	// net/url is an independent oracle for ordinary RFC authority examples,
+	// not for its permissive acceptance of malformed IP address literals.
+	for _, raw := range []string{
+		"https://user%40name:p%3Ass@example.com:00443/a%2fb?x=a+b#c%20d",
+		"https://user:@example.com/", "https://@example.com/",
+		"https://[::ffff:192.0.2.128]:8080/a",
+		"https://[2001:db8::192.0.2.1]/",
+		"http://[fe80::1%25eth0]:80/",
+		"http://[fe80::1%25en%30]/",
+		"//user%3Aname:p%40ss@[::1]:0/",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			parsed, err := url.Parse(raw)
+			require.NoError(t, err)
+			changed := *parsed
+			changed.Host = "example.net"
+			require.NoError(t, evalExample(fmt.Sprintf(`
+let u = URL(%q)
+assert { u.host == %q }
+assert { u.hostname == %q }
+assert { u.path == %q }
+assert { u.escapedPath == %q }
+assert { u.string == %q }
+assert { u.withPort(null).withHostname("example.net").string == %q }
+`, raw, parsed.Host, parsed.Hostname(), parsed.Path, parsed.EscapedPath(), raw, changed.String())))
+		})
+	}
+	require.NoError(t, evalExample(`
+let u = URL("https://user:p%40ss@example.com:00443/a")
+assert { u.withHostname("::ffff:192.0.2.128").string == "https://user:p%40ss@[::ffff:192.0.2.128]:00443/a" }
+assert { u.withHostname("fe80::1%eth0").hostname == "fe80::1%eth0" }
+assert { u.withHostname("fe80::1%eth0").withPort(null).string == "https://user:p%40ss@[fe80::1%25eth0]/a" }
+assert { URL("//").host == null }
+assert { URL("//").hostname == null }
+assert { URL("//").port == null }
+assert { URL("//").withFragment("").string == "//#" }
+assert { URL("///a").withQuery([:]).string == "///a?" }
+`))
+	for _, host := range []string{"::ffff:192.0.2.999", "2001:db8:::1", "[::1]", "fe80::1%eth/0", "example.com%zone"} {
+		t.Run(host, func(t *testing.T) {
+			require.Error(t, evalExample(fmt.Sprintf(`URL("").withHostname(%q)`, host)))
+		})
+	}
+}
+
+func TestURLMalformedEscapes(t *testing.T) {
+	for _, escaped := range []string{"%", "%0", "%GG", "%0g", "%g0", "ok%20bad%", "%é"} {
+		t.Run(escaped, func(t *testing.T) {
+			for _, raw := range []string{"/" + escaped, "#" + escaped, "http://user" + escaped + "@example.com/", "http://example.com" + escaped + "/"} {
+				require.ErrorContains(t, evalExample(fmt.Sprintf(`URL(%q)`, raw)), "invalid URL")
+			}
+			// Query validation is deliberately lazy, unlike path and fragment.
+			raw := "?valid=ok&broken=" + escaped
+			require.NoError(t, evalExample(fmt.Sprintf(`assert { URL(%q).rawQuery == %q }`, raw, raw[1:])))
+			for _, raw := range []string{raw, "?" + escaped + "=value"} {
+				require.ErrorContains(t, evalExample(fmt.Sprintf(`URL(%q).query`, raw)), "invalid URL query")
+			}
+		})
+	}
+	for _, raw := range []string{"http://[::1", "http://[::1]:abc/", "http://[fe80::1%eth0]/", "http://[fe80::1%25eth%GG]/", "http://user name@example.com/", "1http://example.com/", ":relative"} {
+		t.Run(raw, func(t *testing.T) {
+			require.ErrorContains(t, evalExample(fmt.Sprintf(`URL(%q)`, raw)), "invalid URL")
+		})
+	}
+}
+
+func TestURLScalarBoundaries(t *testing.T) {
+	require.NoError(t, evalExample(`
+let raw = "HTTPS://user:p%40ss@[::1]:00443/a%2fb?x=a+b#"
+let constructed = URL(raw)
+let literal: URL! = "HTTPS://user:p%40ss@[::1]:00443/a%2fb?x=a+b#"
+let cast = raw :: URL!
+let decoded: URL! = JSON.decode(JSON.encode(raw))
+assert { constructed == literal }
+assert { literal == cast }
+assert { cast == decoded }
+assert { JSON.encode(constructed) == JSON.encode(raw) }
+let yaml: URL! = YAML.decode(YAML.encode(constructed))
+assert { yaml == constructed }
+let record: {{url: URL!}} = TOML.decode(TOML.encode({{url: constructed}}))
+assert { record.url == constructed }
+let absent: URL = JSON.decode("null")
+assert { absent == null }
+let values: [URL!]! = JSON.decode('["/a%2Fb", "?#", ""]')
+assert { values[0].path == "/a/b" }
+assert { values[1].rawQuery == "" }
+assert { values[1].fragment == "" }
+assert { values[2].string == "" }
+`))
+	for name, script := range map[string]string{
+		"JSON invalid URL": `let u: URL! = JSON.decode('"https://example.com/%GG"')`,
+		"YAML invalid URL": `let u: URL! = YAML.decode('https://example.com/%GG')`,
+		"TOML invalid URL": `let u: {{url: URL!}} = TOML.decode('url = "https://example.com/%GG"')`,
+		"JSON wrong shape": `let u: URL! = JSON.decode("42")`,
+		"JSON non-null":    `let u: URL! = JSON.decode("null")`,
+		"constructor null": `URL(null)`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := evalExample(script)
+			if strings.Contains(name, "invalid URL") {
+				require.ErrorContains(t, err, "invalid URL")
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestURLNullableDefaults(t *testing.T) {
+	require.NoError(t, evalExample(`
+let empty = URL("")
+let scheme: String = empty.scheme
+let host: String = empty.host
+let hostname: String = empty.hostname
+let port: Int = empty.port
+let query: String = empty.rawQuery
+let fragment: String = empty.fragment
+assert { scheme == null }
+assert { host == null }
+assert { hostname == null }
+assert { port == null }
+assert { query == null }
+assert { fragment == null }
+assert { empty.path == "" }
+assert { empty.escapedPath == "" }
+assert { empty.query == [:] }
+assert { !empty.isAbsolute }
+assert { empty.withScheme(null).withHostname(null).withPort(null).withQuery(null).withFragment(null) == empty }
+assert { empty.withQuery([:]).withFragment("").string == "?#" }
+assert { URL("?#").withQuery(null).string == "#" }
+assert { URL("?#").withFragment(null).string == "?" }
+`))
 }
 
 func TestURLPreservesText(t *testing.T) {
