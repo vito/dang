@@ -57,6 +57,49 @@ func TestMigrateSource(t *testing.T) {
 		assert.Equal(t, "let x = ```\n  a ${u.{{name}}}\n    b\n```\n", migrated)
 	})
 
+	t.Run("unsorted imports need no migration", func(t *testing.T) {
+		src := "import YAML\nimport JSON\nprint(JSON.encode([1, 2]))\n"
+		migrated, err := migrate(src, Version2_1, Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, src, migrated)
+	})
+
+	t.Run("syntax migration preserves import order", func(t *testing.T) {
+		for _, imports := range []string{
+			"import YAML\nimport JSON\n",
+			"import YAML # nofmt\nimport JSON\n",
+			"import Zed\nimport Alpha\n",
+		} {
+			src := imports + "let x = user.{name}\n"
+			migrated, err := migrate(src, Version1_0, Version2_0)
+			require.NoError(t, err)
+			assert.Equal(t, imports+"\nlet x = user.{{name}}\n", migrated)
+		}
+	})
+
+	t.Run("ordinary formatting still sorts imports", func(t *testing.T) {
+		src := "import YAML\nimport JSON\nprint(JSON.encode([1, 2]))\n"
+		want := "import JSON\nimport YAML\n\nprint(JSON.encode([1, 2]))\n"
+		formatted, err := FormatFileWithVersion([]byte(src), Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, want, formatted)
+		migrated, err := migrate(src, Version2_5, Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, want, migrated)
+	})
+
+	t.Run("else-if normalization", func(t *testing.T) {
+		conditional := "let x = if (true) { 1 } else { if (false) { 2 } else { 3 } }\n"
+		migrated, err := migrate(conditional, Version2_1, Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, conditional, migrated)
+		// Force actual syntax migration too, so the normalized conditional
+		// is checked in the output instead of returning unchanged source.
+		migrated, err = migrate(conditional+"let y = user.{name}\n", Version1_0, Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = if (true) { 1 } else if (false) { 2 } else { 3 }\nlet y = user.{{name}}\n", migrated)
+	})
+
 	t.Run("same version is formatting", func(t *testing.T) {
 		migrated, err := migrate("let x   = 1\n", Version2_0, Version2_0)
 		require.NoError(t, err)
@@ -166,6 +209,23 @@ func TestMigrationMeaningComparison(t *testing.T) {
 		name, original, migrated string
 		differs                  bool
 	}{
+		{
+			name:     "import reordering is not assumed safe",
+			original: "import Zed\nimport Alpha\n",
+			migrated: "import Alpha\nimport Zed\n",
+			differs:  true,
+		},
+		{
+			name:     "else-if spelling",
+			original: "let x = if (true) { 1 } else { if (false) { 2 } else { 3 } }\n",
+			migrated: "let x = if (true) { 1 } else if (false) { 2 } else { 3 }\n",
+		},
+		{
+			name:     "else block declarations cannot be dropped",
+			original: "let x = if (true) { 1 } else { let y = 2; if (false) { y } else { 3 } }\n",
+			migrated: "let x = if (true) { 1 } else if (false) { y } else { 3 }\n",
+			differs:  true,
+		},
 		{
 			name:     "literal quote spelling",
 			original: "let s = \"\"\"waivers:\n  - kind: vulnerability\n    owner: platform\n\"\"\"\n",

@@ -46,6 +46,10 @@ type Formatter struct {
 	// of echoing them (see formatTemplate).
 	migrating bool
 
+	// Migration preserves import order: native modules may have effects,
+	// and imports can contribute overlapping unqualified names.
+	preserveImports bool
+
 	// inTrial is set on formatters that only trial-render (see renderInline).
 	inTrial bool
 }
@@ -65,13 +69,13 @@ func FormatFile(source []byte) (string, error) {
 // FormatFileWithVersion parses and formats a Dang source file written in the
 // given Dang version, emitting that version's syntax.
 func FormatFileWithVersion(source []byte, version Version) (string, error) {
-	return formatSource("format", source, version, version, false)
+	return formatSource("format", source, version, version, false, false)
 }
 
 // formatSource parses source written in version from and formats it in
 // version to's syntax. migrating re-prints template interpolations rather
-// than echoing them; see MigrateSource.
-func formatSource(filename string, source []byte, from, to Version, migrating bool) (string, error) {
+// than echoing them; preserveImports keeps their order; see MigrateSource.
+func formatSource(filename string, source []byte, from, to Version, migrating, preserveImports bool) (string, error) {
 	result, commentMap, err := ParseWithComments(filename, source, WithVersion(from))
 	if err != nil {
 		return "", err
@@ -88,6 +92,7 @@ func formatSource(filename string, source []byte, from, to Version, migrating bo
 		emittedComments: make(map[int]bool),
 		version:         to,
 		migrating:       migrating,
+		preserveImports: preserveImports,
 	}
 	f.formatNode(result.(*FileBlock))
 
@@ -793,7 +798,9 @@ func importSortKey(imp *ImportDecl) string {
 
 func (f *Formatter) formatFileBlock(m *FileBlock) {
 	// Sort imports: collect them, sort, and reorder in the forms slice
-	f.sortImports(m)
+	if !f.preserveImports {
+		f.sortImports(m)
+	}
 	f.formatDeclForms(m.Forms)
 }
 
@@ -1855,6 +1862,7 @@ func (f *Formatter) trial(node Node, col int) *Formatter {
 		emittedComments: emitted,
 		version:         f.version,
 		migrating:       f.migrating,
+		preserveImports: f.preserveImports,
 		indent:          f.indent,
 		col:             col,
 		inTrial:         true,
@@ -2722,6 +2730,7 @@ func (f *Formatter) migrateInterpolations(t *Template, orig string) string {
 			emittedComments: f.emittedComments,
 			version:         f.version,
 			migrating:       true,
+			preserveImports: f.preserveImports,
 			inTrial:         f.inTrial,
 		}
 		sub.formatNodeInline(p.Expr)

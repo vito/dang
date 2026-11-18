@@ -28,7 +28,10 @@ import (
 // source locations aside, as the source parsed as written in version from.
 // That catches formatter regressions as well as text echoed verbatim, like a
 // #nofmt region, whose meaning changed between versions. And it must
-// be stable: formatting it again as version to must reproduce it exactly.
+// be stable: formatting it again as version to, preserving import order,
+// must reproduce it exactly. Import order is kept during migration because
+// imported modules may have effects or contribute overlapping names. A
+// same-version call remains ordinary formatting, including import sorting.
 //
 // Source that is spelled the same in both versions is returned as is, not
 // reformatted, so moving to a version that changed no syntax this file uses
@@ -47,7 +50,7 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 	// Template interpolations are code, so a migration re-prints them in the
 	// target version rather than echoing them as written.
 	migrating := from.orCurrent() != to.orCurrent()
-	migrated, err := formatSource(filename, source, from, to, migrating)
+	migrated, err := formatSource(filename, source, from, to, migrating, migrating)
 	if err != nil {
 		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, enhanceParseError(err, filename, source, from))
 	}
@@ -79,7 +82,7 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		// is rather than reformatting it, provided it means the same as
 		// written. The formatted texts agreeing is not enough: formatting
 		// normalizes old spellings like 2.0's comma separators.
-		formatted, err := formatSource(filename, source, from, from, true)
+		formatted, err := formatSource(filename, source, from, from, true, true)
 		if err != nil {
 			return "", err
 		}
@@ -87,7 +90,7 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 			return string(source), nil
 		}
 	}
-	again, err := formatSource(filename, []byte(migrated), to, to, false)
+	again, err := formatSource(filename, []byte(migrated), to, to, false, migrating)
 	if err != nil {
 		return "", err
 	}
@@ -224,6 +227,17 @@ func declaresLoopAtTop(filename string, source []byte, v Version) bool {
 // builtin's aliases for desugared `for` loops as `loop`, how they migrate
 // (forLoopCollision checks that this keeps their meaning).
 func migrationCanonical(n Node) Node {
+	// An else block containing only an if introduces no declarations in
+	// its scope; the formatter collapses it to an else-if chain.
+	if cond, ok := n.(*Conditional); ok {
+		if block, ok := cond.Else.(*Block); ok && len(block.Forms) == 1 {
+			if nested, ok := block.Forms[0].(*Conditional); ok {
+				canonical := *cond
+				canonical.Else = nested
+				return &canonical
+			}
+		}
+	}
 	if sym, ok := n.(*Symbol); ok && isForLoopBuiltin(sym.Name) {
 		loop := *sym
 		loop.Name = "loop"
