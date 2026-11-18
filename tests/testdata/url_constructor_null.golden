@@ -1,0 +1,8 @@
+[1m[31mError:[0m cannot use a? as String!
+  [2m[34m--> errors/url_constructor_null.dang:1:5[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mURL(null)
+[2m           [31m^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

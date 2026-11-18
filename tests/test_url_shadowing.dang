@@ -1,0 +1,14 @@
+scalar URL {
+  new(raw: String!) { raw.toUpper }
+
+  host: String! { "custom" }
+
+  string: String! { "custom-string" }
+}
+
+let u = URL("hello")
+assert { (u :: String!) == "HELLO" }
+assert { u.host == "custom" }
+assert { u.string == "custom-string" }
+let host = &u.host
+assert { host == "custom" }

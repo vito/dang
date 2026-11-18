@@ -193,4 +193,711 @@ assert { URL("mailto:user@example.com").withFragment("part").fragment == "part" 
 assert { (("/%zz" :: URL!) rescue null) == null }
 assert { (urlHost("https://foo:abc/") rescue null) == null }
 
+# Queries distinguish empty delimiters and keep repeated-key order.
+checkQueriesAndFragments: Boolean! {
+  let absent = URL("")
+  let query: Map[[String!]!]! = absent.query
+  assert { query == [:] }
+  assert { absent.rawQuery == null }
+  assert { absent.fragment == null }
+  let empty = URL("?#")
+  assert { empty.rawQuery == "" }
+  assert { empty.query == [:] }
+  assert { empty.fragment == "" }
+  let u = URL("/?z=one&x=a+b&z=two&semi=a;b&empty&%78=last#hello%20world")
+  assert { u.query == ["z": ["one", "two"], "x": ["a b", "last"], "semi": ["a;b"], "empty": [""]] }
+  assert { u.fragment == "hello world" }
+  assert { u.isAbsolute == false }
+  assert { URL("mailto:hello").isAbsolute }
+  assert { URL("/?x=%zz").rawQuery == "x=%zz" }
+  assert { URL("https://foo:65536").port == 65536 }
+
+  assert { URL("?z=1&x=2&z=3&y=4").query.keys == ["z", "x", "y"] }
+  true
+}
+
+assert { checkQueriesAndFragments }
+
+# Builders preserve untouched spelling and escape decoded components.
+checkBuilders: Boolean! {
+  let u = URL("https://user:pass@[::1]:00443/a%2fb//?keep=a%20b#")
+  let v = u.withHostname("fe80::1%eth0").withPort(65536).withScheme("HTTP")
+  assert { v.string == "http://user:pass@[fe80::1%25eth0]:65536/a%2fb//?keep=a%20b#" }
+  assert { u.string == "https://user:pass@[::1]:00443/a%2fb//?keep=a%20b#" }
+  assert { v.withPort(null).host == "[fe80::1%eth0]" }
+  assert { v.withHostname(null).host == null }
+  assert { v.withHostname(null).string == "http:/a%2fb//?keep=a%20b#" }
+  assert { URL("").withScheme("https").withHostname("example.com").withPath("/a ?#%").string == "https://example.com/a%20%3F%23%25" }
+  assert { URL("/api/").appendPath(["users", "a/b", "a?b#c%"]).string == "/api/users/a%2Fb/a%3Fb%23c%25" }
+  assert { URL("/a%2fb//").appendPath([".", "..", ""]).string == "/a%2fb//%2E/%2E%2E/" }
+  assert { URL("/a//").appendPath([]).string == "/a//" }
+  assert { URL("").appendPath(["a:b"]).scheme == null }
+  assert { URL("").withPath("a:b").path == "a:b" }
+  assert { URL("").withPath("a:b").scheme == null }
+  assert { URL("").withPath("//evil/path").host == null }
+  assert { URL("").withPath("//evil/path").path == "//evil/path" }
+  assert { URL("https:").withPath("//evil/path").host == null }
+  assert { URL("https:").withPath("//evil/path").path == "//evil/path" }
+  assert { URL("%2Ffoo").withScheme("https").path == "/foo" }
+  assert { URL("%2Ffoo").withHostname("example.com").path == "/foo" }
+  assert { URL("%2F%2Ffoo").withScheme("https").path == "//foo" }
+  assert { URL("%2F%2Ffoo").withScheme("https").host == null }
+  assert { URL("HTTPS://foo/a%2fb").appendPath([]).string == "HTTPS://foo/a%2fb" }
+  assert { URL("/a").withFragment("").string == "/a#" }
+  assert { URL("/a#old").withFragment(null).string == "/a" }
+  assert { URL("/a").withFragment("a #?%").fragment == "a #?%" }
+  assert { URL("/a?old=1#").withQuery(null).string == "/a#" }
+  assert { URL("/a").withQuery([:]).string == "/a?" }
+  assert { URL("/a").withQuery(["omit": [], "keep": ["x"]]).string == "/a?keep=x" }
+  assert { URL("/a").withQuery(["omit": []]).string == "/a?" }
+  assert { URL("/a").withQuery(["x": ["a;b", "a+b"]]).string == "/a?x=a%3Bb&x=a%2Bb" }
+  assert { URL("?x=1&y=2&x=3").withQueryParam("x", "new").query == ["x": ["new"], "y": ["2"]] }
+  assert { URL("?x=1&x=2").withAddedQueryParam("x", "3").query == ["x": ["1", "2", "3"]] }
+  assert { URL("?x=1").withoutQueryParam("x").rawQuery == null }
+  assert { URL("?x=1&y=2").withoutQueryParam("x").query == ["y": ["2"]] }
+  assert { URL("mailto:a%zz").withQueryParam("x", "y").withFragment("").string == "mailto:a%zz?x=y#" }
+  assert { URL("https://foo/a/b?old=1#old").resolve(URL("../c?")).string == "https://foo/c?" }
+  assert { URL("https://foo/a?x=1#old").resolve(URL("#")).string == "https://foo/a?x=1#" }
+  assert { URL("https://foo/a?x=1#").resolve(URL("")).string == "https://foo/a?x=1" }
+  assert {
+    URL("https://foo/a").resolve(
+      URL("other").appendPath([".."]).withFragment(""),
+    ).string == "https://foo/other/%2E%2E#"
+  }
+  true
+}
+
+assert { checkBuilders }
+
+# Explicit empty authorities and escaped leading slashes stay distinct.
+checkReferenceResolution: Boolean! {
+  assert { URL("///local/file").string == "///local/file" }
+  assert { URL("///local/file").path == "/local/file" }
+  assert { URL("///local/file").escapedPath == "/local/file" }
+  assert { URL("///local/file").withFragment("new").string == "///local/file#new" }
+  assert { URL("//").withQuery([:]).string == "//?" }
+  assert { URL("//").appendPath(["a"]).string == "///a" }
+  assert { URL("file://").withFragment("").string == "file://#" }
+  assert { URL("/a").withScheme("file").string == "file:/a" }
+  assert { URL("file:/a").withScheme(null).string == "/a" }
+  assert { URL("file:///a").withScheme(null).string == "///a" }
+  assert { URL("").withPath("//foo").path == "//foo" }
+  assert { URL("").withPath("//foo").string == "/%2Ffoo" }
+  assert { URL("file://server/a").resolve(URL("").withPath("//foo")).host == "server" }
+  assert { URL("file://server/a").resolve(URL("").withPath("//foo")).path == "//foo" }
+  true
+}
+
+assert { checkReferenceResolution }
+
+# Scalar materialization round-trips through JSON, YAML and TOML.
+checkScalarBoundaries: Boolean! {
+  let raw = "HTTPS://user:p%40ss@[::1]:00443/a%2fb?x=a+b#"
+  let constructed = URL(raw)
+  let literal: URL! = "HTTPS://user:p%40ss@[::1]:00443/a%2fb?x=a+b#"
+  let cast = raw :: URL!
+  let decoded: URL! = JSON.decode(JSON.encode(raw))
+  assert { constructed == literal }
+  assert { literal == cast }
+  assert { cast == decoded }
+  assert { JSON.encode(constructed) == JSON.encode(raw) }
+  let yaml: URL! = YAML.decode(YAML.encode(constructed))
+  assert { yaml == constructed }
+  let record: {{url: URL!}} = TOML.decode(TOML.encode({{url: constructed}}))
+  assert { record.url == constructed }
+  let absent: URL = JSON.decode("null")
+  assert { absent == null }
+  let values: [URL!]! = JSON.decode('["/a%2Fb", "?#", ""]')
+  assert { values[0].path == "/a/b" }
+  assert { values[1].rawQuery == "" }
+  assert { values[1].fragment == "" }
+  assert { values[2].string == "" }
+  true
+}
+
+assert { checkScalarBoundaries }
+
+# Absent optional components and null edits retain their defaults.
+checkNullableDefaults: Boolean! {
+  let empty = URL("")
+  let scheme: String = empty.scheme
+  let host: String = empty.host
+  let hostname: String = empty.hostname
+  let port: Int = empty.port
+  let query: String = empty.rawQuery
+  let fragment: String = empty.fragment
+  assert { scheme == null }
+  assert { host == null }
+  assert { hostname == null }
+  assert { port == null }
+  assert { query == null }
+  assert { fragment == null }
+  assert { empty.path == "" }
+  assert { empty.escapedPath == "" }
+  assert { empty.query == [:] }
+  assert { !empty.isAbsolute }
+  assert { empty.withScheme(null).withHostname(null).withPort(null).withQuery(null).withFragment(null) == empty }
+  assert { empty.withQuery([:]).withFragment("").string == "?#" }
+  assert { URL("?#").withQuery(null).string == "#" }
+  assert { URL("?#").withFragment(null).string == "?" }
+  true
+}
+
+assert { checkNullableDefaults }
+
+# Scalar equality is textual, not normalized URL equivalence.
+checkPreservesText: Boolean! {
+  let u: URL! = "HTTPS://foo/a%2fb"
+  let decoded: URL! = JSON.decode('"HTTPS://foo/a%2fb"')
+  assert { u == decoded }
+  assert { u != URL("https://foo/a/b") }
+  assert { u.path == "/a/b" }
+  assert { u.string == "HTTPS://foo/a%2fb" }
+  true
+}
+
+assert { checkPreservesText }
+
+# Table-driven component parsing includes absent, opaque and raw-query forms.
+type URLComponentsCase {
+  name: String!
+  raw: String!
+  scheme: String
+  host: String
+  hostname: String
+  port: Int
+  path: String!
+}
+
+[
+  URLComponentsCase(
+    "absolute",
+    "https://foo:1234/bar",
+    "https",
+    "foo:1234",
+    "foo",
+    1234,
+    "/bar",
+  ),
+
+  URLComponentsCase(
+    "credentials and escapes",
+    "HTTPS://user:pass@Example.com:00443/a%2Fb%20c?q=a%20b#frag",
+    "https",
+    "Example.com:00443",
+    "Example.com",
+    443,
+    "/a/b c",
+  ),
+
+  URLComponentsCase(
+    "IPv6",
+    "https://[2001:db8::1]:8443/",
+    "https",
+    "[2001:db8::1]:8443",
+    "2001:db8::1",
+    8443,
+    "/",
+  ),
+
+  URLComponentsCase(
+    "IPv6 zone",
+    "http://[fe80::1%25eth0]/",
+    "http",
+    "[fe80::1%eth0]",
+    "fe80::1%eth0",
+    null,
+    "/",
+  ),
+
+  URLComponentsCase(
+    "no port or path",
+    "https://foo",
+    "https",
+    "foo",
+    "foo",
+    null,
+    "",
+  ),
+
+  URLComponentsCase(
+    "empty port",
+    "https://foo:/",
+    "https",
+    "foo:",
+    "foo",
+    null,
+    "/",
+  ),
+
+  URLComponentsCase("relative", "../a%20b?x=1#f", null, null, null, null, "../a b"),
+  URLComponentsCase(
+    "network reference",
+    "//foo:80/a",
+    null,
+    "foo:80",
+    "foo",
+    80,
+    "/a",
+  ),
+
+  URLComponentsCase("absolute path", "/a/b", null, null, null, null, "/a/b"),
+  URLComponentsCase(
+    "opaque",
+    "mailto:user@example.com",
+    "mailto",
+    null,
+    null,
+    null,
+    "",
+  ),
+
+  URLComponentsCase(
+    "raw query",
+    "https://foo/?q=%zz",
+    "https",
+    "foo",
+    "foo",
+    null,
+    "/",
+  ),
+
+  URLComponentsCase(
+    "raw opaque",
+    "mailto:user%zz@example.com",
+    "mailto",
+    null,
+    null,
+    null,
+    "",
+  ),
+
+  URLComponentsCase("empty", "", null, null, null, null, ""),
+].each { tc =>
+  let u = URL(raw: tc.raw)
+  let scheme: String = u.scheme
+  let host: String = u.host
+  let hostname: String = u.hostname
+  let port: Int = u.port
+  let path: String! = u.path
+  assert(message: tc.name) { scheme == tc.scheme }
+  assert(message: tc.name) { host == tc.host }
+  assert(message: tc.name) { hostname == tc.hostname }
+  assert(message: tc.name) { port == tc.port }
+  assert(message: tc.name) { path == tc.path }
+  assert { u.string == tc.raw }
+  assert { toString(u) == tc.raw }
+}
+
+# Literal equality coerces on either side, unlike a String-typed variable.
+assert { URL("https://foo:1234/bar") == "https://foo:1234/bar" }
+assert { "https://foo:1234/bar" == URL("https://foo:1234/bar") }
+assert { URL("HTTPS://user:pass@Example.com:00443/a%2Fb%20c?q=a%20b#frag") == "HTTPS://user:pass@Example.com:00443/a%2Fb%20c?q=a%20b#frag" }
+assert { "HTTPS://user:pass@Example.com:00443/a%2Fb%20c?q=a%20b#frag" == URL("HTTPS://user:pass@Example.com:00443/a%2Fb%20c?q=a%20b#frag") }
+assert { URL("https://[2001:db8::1]:8443/") == "https://[2001:db8::1]:8443/" }
+assert { "https://[2001:db8::1]:8443/" == URL("https://[2001:db8::1]:8443/") }
+assert { URL("http://[fe80::1%25eth0]/") == "http://[fe80::1%25eth0]/" }
+assert { "http://[fe80::1%25eth0]/" == URL("http://[fe80::1%25eth0]/") }
+assert { URL("https://foo") == "https://foo" }
+assert { "https://foo" == URL("https://foo") }
+assert { URL("https://foo:/") == "https://foo:/" }
+assert { "https://foo:/" == URL("https://foo:/") }
+assert { URL("../a%20b?x=1#f") == "../a%20b?x=1#f" }
+assert { "../a%20b?x=1#f" == URL("../a%20b?x=1#f") }
+assert { URL("//foo:80/a") == "//foo:80/a" }
+assert { "//foo:80/a" == URL("//foo:80/a") }
+assert { URL("/a/b") == "/a/b" }
+assert { "/a/b" == URL("/a/b") }
+assert { URL("mailto:user@example.com") == "mailto:user@example.com" }
+assert { "mailto:user@example.com" == URL("mailto:user@example.com") }
+assert { URL("https://foo/?q=%zz") == "https://foo/?q=%zz" }
+assert { "https://foo/?q=%zz" == URL("https://foo/?q=%zz") }
+assert { URL("mailto:user%zz@example.com") == "mailto:user%zz@example.com" }
+assert { "mailto:user%zz@example.com" == URL("mailto:user%zz@example.com") }
+assert { URL("") == "" }
+assert { "" == URL("") }
+
+# Reference resolution preserves explicit authority and delimiter semantics.
+[
+  {{
+    base: "file://server/share/file",
+    ref: "///local/file",
+    want: "file:///local/file"
+  }},
+
+  {{
+    base: "https://user:pass@server/a?old=1#old",
+    ref: "///local/file",
+    want: "https:///local/file"
+  }},
+
+  {{base: "file://server/share/file", ref: "//", want: "file://"}},
+  {{
+    base: "file://server/share/file",
+    ref: "///a/../b?x=1#",
+    want: "file:///b?x=1#"
+  }},
+
+  {{
+    base: "file://server/share/file",
+    ref: "////local/file",
+    want: "file:////local/file"
+  }},
+
+  {{
+    base: "file://server/share/file",
+    ref: "file:///local/file",
+    want: "file:///local/file"
+  }},
+
+  {{
+    base: "file://server/share/file",
+    ref: "file:/local/file",
+    want: "file:/local/file"
+  }},
+
+  {{base: "/base/path", ref: "///local/file", want: "///local/file"}},
+  {{
+    base: "mailto:opaque?old=1#old",
+    ref: "///local/file",
+    want: "mailto:///local/file"
+  }},
+
+  {{base: "https://server/a?", ref: "", want: "https://server/a?"}},
+  {{base: "https://server/a?#old", ref: "", want: "https://server/a?"}},
+  {{base: "https://server/a?", ref: "#", want: "https://server/a?#"}},
+  {{base: "https://server/a?", ref: "#new", want: "https://server/a?#new"}},
+  {{base: "https://server/a#old", ref: "", want: "https://server/a"}},
+  {{base: "https://server/a#", ref: "", want: "https://server/a"}},
+  {{base: "https://server/a?old=1#old", ref: "?", want: "https://server/a?"}},
+  {{base: "file:/etc/a", ref: "#new", want: "file:/etc/a#new"}},
+  {{base: "file:/etc/a", ref: "b", want: "file:/etc/b"}},
+  {{base: "file:/etc/a?", ref: "#", want: "file:/etc/a?#"}},
+  {{base: "file:/etc/a?", ref: "", want: "file:/etc/a?"}},
+  {{base: "file:///etc/a", ref: "b", want: "file:///etc/b"}},
+  {{base: "file:///etc/a", ref: "#new", want: "file:///etc/a#new"}},
+].each { tc =>
+  let base = URL(tc.base)
+  let ref = URL(tc.ref)
+  let relative = base.resolve(ref)
+  assert { relative.string == tc.want }
+}
+
+# Rootless composition agrees before and after choosing an absolute origin.
+[
+  {{base: "..", ref: "image.png", want: "../image.png"}},
+  {{base: "docs/..", ref: "image.png", want: "image.png"}},
+  {{base: "docs/../..", ref: "image.png", want: "../image.png"}},
+  {{base: ".", ref: "image.png", want: "image.png"}},
+  {{base: "docs/.", ref: "image.png", want: "docs/image.png"}},
+  {{base: "docs//..", ref: "image.png", want: "docs/image.png"}},
+  {{base: "..", ref: "../image.png", want: "../../image.png"}},
+  {{base: "docs/page", ref: "#section", want: "docs/page#section"}},
+  {{base: "docs/page?old=1#old", ref: "", want: "docs/page?old=1"}},
+  {{base: "docs/page", ref: "?q=x", want: "docs/page?q=x"}},
+  {{base: "docs/page?", ref: "#", want: "docs/page?#"}},
+  {{
+    base: "docs/./a/../page%2fdata",
+    ref: "#new",
+    want: "docs/./a/../page%2fdata#new"
+  }},
+
+  {{base: "docs/page", ref: "other", want: "docs/other"}},
+  {{base: "docs/page", ref: "../other", want: "other"}},
+  {{base: "docs/page", ref: "../../other", want: "../other"}},
+  {{base: "../docs/page", ref: "../../other", want: "../../other"}},
+  {{base: "docs/page", ref: ".", want: "docs/"}},
+  {{base: "docs/page", ref: "..", want: "./"}},
+  {{base: "docs/page", ref: "../..", want: "../"}},
+  {{base: "docs/page", ref: "../../..", want: "../../"}},
+  {{base: "page", ref: "other", want: "other"}},
+  {{base: "", ref: "other", want: "other"}},
+  {{base: "", ref: ".", want: "./"}},
+  {{base: "", ref: "..", want: "../"}},
+  {{base: "docs//page", ref: "other", want: "docs//other"}},
+  {{base: "docs//page", ref: "../other", want: "docs/other"}},
+  {{base: "docs//page", ref: "../../other", want: "other"}},
+  {{base: "docs/page", ref: "..//other", want: ".//other"}},
+  {{base: "docs/page", ref: "../a//", want: "a//"}},
+  {{base: "docs/page", ref: "../a/..//..", want: "./"}},
+  {{base: "%2Fdocs/page", ref: "other", want: "%2Fdocs/other"}},
+  {{base: "docs/page", ref: "%2Fother", want: "docs/%2Fother"}},
+  {{base: "docs/page", ref: "%2E%2E/other", want: "docs/%2E%2E/other"}},
+  {{base: "docs%2Fdata/page", ref: "../other", want: "other"}},
+].each { tc =>
+  let base = URL(tc.base)
+  let ref = URL(tc.ref)
+  let relative = base.resolve(ref)
+  assert { relative.string == tc.want }
+  let origin = URL("https://example.com/project/?origin=1#old")
+  assert { origin.resolve(relative) == origin.resolve(base).resolve(ref) }
+}
+
+# Authority edits retain credentials, zones and empty delimiters.
+checkAuthorityExamples: Boolean! {
+  let u = URL("https://user:p%40ss@example.com:00443/a")
+  assert { u.withHostname("::ffff:192.0.2.128").string == "https://user:p%40ss@[::ffff:192.0.2.128]:00443/a" }
+  assert { u.withHostname("fe80::1%eth0").hostname == "fe80::1%eth0" }
+  assert { u.withHostname("fe80::1%eth0").withPort(null).string == "https://user:p%40ss@[fe80::1%25eth0]/a" }
+  assert { URL("//").host == null }
+  assert { URL("//").hostname == null }
+  assert { URL("//").port == null }
+  assert { URL("//").withFragment("").string == "//#" }
+  assert { URL("///a").withQuery([:]).string == "///a?" }
+  true
+}
+
+assert { checkAuthorityExamples }
+
+# Builder failures are runtime validation, not type errors.
+assert { (URL("").withScheme("https://evil") rescue null) == null }
+assert { (URL("").withScheme("") rescue null) == null }
+assert { (URL("abc").withScheme("https") rescue null) == null }
+assert { (URL("abc").withHostname("example.com") rescue null) == null }
+assert { (URL("a%3Ab").withScheme("https") rescue null) == null }
+assert { (URL("https://foo").withPath("relative") rescue null) == null }
+assert { (URL("https://foo").withPort(-1) rescue null) == null }
+assert { (URL("").withPort(80) rescue null) == null }
+assert { (URL("").withHostname("evil/path") rescue null) == null }
+assert { (URL("").withHostname("evil?query") rescue null) == null }
+assert { (URL("").withHostname("evil#frag") rescue null) == null }
+assert { (URL("").withHostname("user@evil") rescue null) == null }
+assert { (URL("").withHostname("foo:80") rescue null) == null }
+assert { (URL("").withHostname("foo%20bar") rescue null) == null }
+assert { (URL("").withHostname("foo bar") rescue null) == null }
+assert { (URL("?x=%zz").withAddedQueryParam("x", "y") rescue null) == null }
+assert { (URL("?x=%zz").withQueryParam("x", "y") rescue null) == null }
+assert { (URL("?x=%zz").withoutQueryParam("x") rescue null) == null }
+assert { (URL("mailto:a").withScheme(null) rescue null) == null }
+assert { (URL("mailto:a").withHostname("foo") rescue null) == null }
+assert { (URL("mailto:a").withPort(null) rescue null) == null }
+assert { (URL("mailto:a").withPath("/a") rescue null) == null }
+assert { (URL("mailto:a").appendPath(["a"]) rescue null) == null }
+assert { (URL("").withHostname("::ffff:192.0.2.999") rescue null) == null }
+assert { (URL("").withHostname("2001:db8:::1") rescue null) == null }
+assert { (URL("").withHostname("[::1]") rescue null) == null }
+assert { (URL("").withHostname("fe80::1%eth/0") rescue null) == null }
+assert { (URL("").withHostname("example.com%zone") rescue null) == null }
+assert {
+  (
+    { URL("?x=%zz").query; false } rescue {
+      e: Error! => e.message.contains("invalid URL query")
+    }
+  )
+}
+assert {
+  (
+    { URL("?%zz=x").query; false } rescue {
+      e: Error! => e.message.contains("invalid URL query")
+    }
+  )
+}
+assert {
+  (
+    { URL("?valid=ok&broken=%").query; false } rescue {
+      e: Error! => e.message.contains("invalid URL query")
+    }
+  )
+}
+assert {
+  (
+    { URL("https://foo:99999999999999999999999999").port; false } rescue {
+      e: Error! => e.message.contains("invalid URL port")
+    }
+  )
+}
+
+# Constructor, literal coercion and explicit cast all invoke validation.
+assert {
+  (
+    { URL("https://foo/%zz"); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = "https://foo/%zz"; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let s = "https://foo/%zz"; s :: URL!; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { URL("https://foo:abc/"); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = "https://foo:abc/"; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let s = "https://foo:abc/"; s :: URL!; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { URL("https://[::1/"); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = "https://[::1/"; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let s = "https://[::1/"; s :: URL!; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { URL("https://foo/#%zz"); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = "https://foo/#%zz"; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let s = "https://foo/#%zz"; s :: URL!; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { URL("https://foo/\nbar"); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = "https://foo/\nbar"; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let s = "https://foo/\nbar"; s :: URL!; false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = JSON.decode('"https://example.com/%GG"'); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = YAML.decode('https://example.com/%GG'); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: {{url: URL!}} = TOML.decode('url = "https://example.com/%GG"'); false } rescue {
+      e: Error! => e.message.contains("invalid URL")
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = JSON.decode("42"); false } rescue {
+      e: Error! => true
+    }
+  )
+}
+assert {
+  (
+    { let u: URL! = JSON.decode("null"); false } rescue {
+      e: Error! => true
+    }
+  )
+}
+
+# Malformed escapes fail eagerly except in the deliberately lazy raw query.
+["%", "%0", "%GG", "%0g", "%g0", "ok%20bad%", "%é"].each { escaped =>
+  ["/" + escaped, "#" + escaped, "http://user" + escaped + "@example.com/", "http://example.com" + escaped + "/"].each { raw =>
+    assert {
+      (
+        { URL(raw); false } rescue {
+          e: Error! => e.message.contains("invalid URL")
+        }
+      )
+    }
+  }
+  let raw = "?valid=ok&broken=" + escaped
+  assert { URL(raw).rawQuery == "valid=ok&broken=" + escaped }
+  [raw, "?" + escaped + "=value"].each { query =>
+    assert {
+      (
+        { URL(query).query; false } rescue {
+          e: Error! => e.message.contains("invalid URL query")
+        }
+      )
+    }
+  }
+}
+["http://[::1", "http://[::1]:abc/", "http://[::1]:80:90/", "http://[::1]::/", "http://[::1]:abc:90/", "http://[fe80::1%eth0]/", "http://[fe80::1%25eth%GG]/", "http://user name@example.com/", "1http://example.com/", ":relative"].each { raw =>
+  assert {
+    (
+      { URL(raw); false } rescue {
+        e: Error! => e.message.contains("invalid URL")
+      }
+    )
+  }
+}
+
+# Build large fixtures linearly: both duplicate values and distinct keys must
+# survive parsing and encoding, without accumulating copied lists in a loop.
+[false, true].each { distinct =>
+  let count = 4096
+  let parts = "".padRight(count).split("").map { item, index =>
+    let key = if (distinct) { "x" + toString(index) } else { "x" }
+    key + "=" + toString(index)
+  }
+  let q = URL("?" + parts.join("&")).query
+  assert { q.length == (if (distinct) { count } else { 1 }) }
+  assert { q.values.map { values => values.length }.sum == count }
+  assert { URL("").withQuery(q).query == q }
+  if (!distinct) {
+    assert { q["x"][0] == "0" }
+    assert { q["x"][count - 1] == toString(count - 1) }
+  }
+}
+
 print("All URL tests passed!")
