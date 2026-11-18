@@ -2038,15 +2038,13 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 	}
 }
 
-// emptyCallParens reports whether a call without arguments must keep its
-// parentheses: `f!()` calls the asserted function, while `f!` would assert
-// what auto-calling `f` returns.
+// emptyCallParens preserves explicit calls: without type information we cannot
+// know whether the callee auto-calls. In particular, a constructor with nullable
+// fields but no defaults accepts () without being auto-callable. It may also be
+// reached through an alias or a selection, so its name cannot tell us either.
+// A block argument already makes the call explicit and needs no parentheses.
 func emptyCallParens(c *FunCall) bool {
-	if c.BlockArg != nil {
-		return false
-	}
-	_, isAssert := c.Fun.(*NonNullAssert)
-	return isAssert
+	return c.BlockArg == nil
 }
 
 func (f *Formatter) formatFunCallInline(c *FunCall) {
@@ -2219,6 +2217,8 @@ func (f *Formatter) formatChainedCall(c Node) {
 					}
 					f.formatCallArgs(e.Args, multiline, closingLine)
 					f.write(")")
+				} else if emptyCallParens(e) {
+					f.write("()")
 				}
 				if e.BlockArg != nil {
 					f.write(" ")

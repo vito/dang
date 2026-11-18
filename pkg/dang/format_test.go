@@ -741,6 +741,95 @@ func (FormatSuite) TestUnaryMinusFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestEmptyCallFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "constructor",
+			input:    `pub x = P()`,
+			expected: "pub x = P()\n",
+		},
+		{
+			name:     "inline constructor calls",
+			input:    `pub x = [P(), constructors.p(), constructors[0]()]`,
+			expected: "pub x = [P(), constructors.p(), constructors[0]()]\n",
+		},
+		{
+			name:     "lowercase alias",
+			input:    `pub x = make()`,
+			expected: "pub x = make()\n",
+		},
+		{
+			name:     "chain root",
+			input:    "pub x = P()\n  .runners\n  .length",
+			expected: "pub x = P()\n  .runners\n  .length\n",
+		},
+		{
+			name:     "chain element",
+			input:    "pub x = constructors\n  .p()\n  .runners.length",
+			expected: "pub x = constructors\n  .p()\n  .runners\n  .length\n",
+		},
+		{
+			name:     "bare autocall stays bare",
+			input:    `pub x = P`,
+			expected: "pub x = P\n",
+		},
+		{
+			name:     "block argument already makes call explicit",
+			input:    `pub x = make() { 1 }`,
+			expected: "pub x = make { 1 }\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+			again, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, result, again)
+		})
+	}
+}
+
+// Nullable fields without defaults allow P() but do not make P auto-callable.
+// Check actual evaluation as well as spelling, including fallback-only paths.
+func TestFormatConstructorCalls(t *testing.T) {
+	const source = `type Q {
+  n: Int! = 1
+}
+
+type P {
+  runners: [String!]! = []
+  coverage: Q
+}
+
+let maybe: P = null
+let make = &P
+print((maybe ?? P()).runners.length)
+print((if (false) { maybe! } else { P() }).runners.length)
+print(make().runners.length)
+print(P()
+  .runners
+  .length)
+`
+	original, err := evalWithContext(t, t.Context(), source)
+	require.NoError(t, err)
+	require.Equal(t, "0\n0\n0\n0\n", original)
+
+	for _, version := range []Version{{Major: 2, Minor: 1}, CurrentVersion} {
+		formatted, err := FormatFileWithVersion([]byte(source), version)
+		require.NoError(t, err)
+		actual, err := evalWithContext(t, t.Context(), formatted)
+		require.NoError(t, err)
+		require.Equal(t, original, actual)
+	}
+}
+
 // `f!()` calls the asserted function; `f!` asserts what auto-calling `f`
 // returns, so the formatter must keep the empty parentheses.
 func (FormatSuite) TestNonNullAssertCallFormatting(ctx context.Context, t *testctx.T) {
@@ -1563,19 +1652,19 @@ func (FormatSuite) TestNoFmtDirective(ctx context.Context, t *testctx.T) {
 		{
 			name: "prefix nofmt preserves single node",
 			input: `#nofmt
-pub x = foo.bar()
-pub y = foo.bar()`,
+pub x = foo.bar( 1 )
+pub y = foo.bar( 1 )`,
 			expected: `#nofmt
-pub x = foo.bar()
-pub y = foo.bar
+pub x = foo.bar( 1 )
+pub y = foo.bar(1)
 `,
 		},
 		{
 			name: "trailing nofmt preserves single node",
-			input: `pub x = foo.bar() #nofmt
-pub y = foo.bar()`,
-			expected: `pub x = foo.bar() #nofmt
-pub y = foo.bar
+			input: `pub x = foo.bar( 1 ) #nofmt
+pub y = foo.bar( 1 )`,
+			expected: `pub x = foo.bar( 1 ) #nofmt
+pub y = foo.bar(1)
 `,
 		},
 		{
@@ -1589,9 +1678,9 @@ pub x = foo.bar()
 		{
 			name: "without nofmt file is formatted",
 			input: `# regular comment
-pub x = foo.bar()`,
+pub x = foo.bar( 1 )`,
 			expected: `# regular comment
-pub x = foo.bar
+pub x = foo.bar(1)
 `,
 		},
 	}
@@ -1632,14 +1721,14 @@ func (FormatSuite) TestGroupedExpressions(ctx context.Context, t *testctx.T) {
 			expected: "let x = (foo.bar).baz\n",
 		},
 		{
-			name:     "zero-arg calls still elided",
+			name:     "zero-arg calls preserved",
 			input:    `let x = foo.bar()`,
-			expected: "let x = foo.bar\n",
+			expected: "let x = foo.bar()\n",
 		},
 		{
-			name:     "zero-arg chain calls still elided",
+			name:     "zero-arg chain calls preserved",
 			input:    `let x = foo().bar().baz`,
-			expected: "let x = foo.bar.baz\n",
+			expected: "let x = foo().bar().baz\n",
 		},
 		{
 			name:     "nested grouped preserved",
