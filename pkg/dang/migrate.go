@@ -292,10 +292,44 @@ func sameMeaning(filename string, source []byte, from, to Version) bool {
 // (tagged `dang:"spelling"`), and reports whether they differ,
 // with the location of the innermost node enclosing the first difference.
 func firstASTDifference(a, b Node) (*SourceLocation, bool) {
-	return compareAST(reflect.ValueOf(a), reflect.ValueOf(b), a.GetSourceLocation())
+	return compareAST(reflect.ValueOf(a), reflect.ValueOf(b), a.GetSourceLocation(), false)
 }
 
-func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool) {
+// migrationAutoCall recognizes exactly the read expressions that auto-call.
+// For valid programs, an explicit call with no arguments or block requires no
+// arguments, so reading its callee has the same effect. Never erase a call of
+// an arbitrary expression (including an assertion or another call).
+func migrationAutoCall(n Node) Node {
+	call, ok := n.(*FunCall)
+	if !ok || len(call.Args) != 0 || call.BlockArg != nil {
+		return n
+	}
+	switch fun := call.Fun.(type) {
+	case *Symbol:
+		if !fun.AutoCall {
+			canonical := *fun
+			canonical.AutoCall = true
+			return &canonical
+		}
+	case *Select:
+		if !fun.AutoCall {
+			canonical := *fun
+			canonical.AutoCall = true
+			return &canonical
+		}
+	case *Index:
+		if !fun.AutoCall {
+			canonical := *fun
+			canonical.AutoCall = true
+			return &canonical
+		}
+	}
+	return n
+}
+
+// reference suppresses empty-call elision at the current node: &f() calls f,
+// while &f suppresses its auto-call. Grouping preserves that context.
+func compareAST(a, b reflect.Value, loc *SourceLocation, reference bool) (*SourceLocation, bool) {
 	if a.IsValid() != b.IsValid() {
 		return loc, true
 	}
@@ -320,16 +354,19 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 				if nodeLoc := an.GetSourceLocation(); nodeLoc != nil {
 					loc = nodeLoc
 				}
+				if !reference {
+					an, bn = migrationAutoCall(an), migrationAutoCall(bn)
+				}
 				a, b = reflect.ValueOf(migrationCanonical(an)), reflect.ValueOf(migrationCanonical(bn))
 				if a.Type() != b.Type() {
 					return loc, true
 				}
 				if a.Kind() != reflect.Pointer {
-					return compareAST(a, b, loc)
+					return compareAST(a, b, loc, reference)
 				}
 			}
 		}
-		return compareAST(a.Elem(), b.Elem(), loc)
+		return compareAST(a.Elem(), b.Elem(), loc, reference)
 	case reflect.Struct:
 		for i := 0; i < a.NumField(); i++ {
 			field := a.Type().Field(i)
@@ -337,7 +374,18 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 				field.Tag.Get("dang") == "spelling" {
 				continue
 			}
-			if at, differs := compareAST(a.Field(i), b.Field(i), loc); differs {
+			childReference := false
+			if field.Name == "Expr" {
+				switch a.Type() {
+				case reflect.TypeFor[FunctionRef]():
+					childReference = true
+				case reflect.TypeFor[Grouped]():
+					childReference = reference
+				case reflect.TypeFor[NonNullAssert]():
+					childReference = a.FieldByName("Callee").Bool() || b.FieldByName("Callee").Bool()
+				}
+			}
+			if at, differs := compareAST(a.Field(i), b.Field(i), loc, childReference); differs {
 				return at, true
 			}
 		}
@@ -347,7 +395,7 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 			return loc, true
 		}
 		for i := 0; i < a.Len(); i++ {
-			if at, differs := compareAST(a.Index(i), b.Index(i), loc); differs {
+			if at, differs := compareAST(a.Index(i), b.Index(i), loc, false); differs {
 				return at, true
 			}
 		}
@@ -359,7 +407,7 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 		iter := a.MapRange()
 		for iter.Next() {
 			bv := b.MapIndex(iter.Key())
-			if at, differs := compareAST(iter.Value(), bv, loc); differs {
+			if at, differs := compareAST(iter.Value(), bv, loc, false); differs {
 				return at, true
 			}
 		}

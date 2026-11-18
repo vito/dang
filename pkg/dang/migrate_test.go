@@ -238,21 +238,75 @@ func TestMigrationMeaningComparison(t *testing.T) {
 			differs:  true,
 		},
 		{
-			name:     "constructor call is not a reference",
+			name:     "constructor auto-call",
 			original: "let p = maybe ?? P()\n",
 			migrated: "let p = maybe ?? P\n",
-			differs:  true,
 		},
 		{
-			name:     "constructor alias call is not a reference",
+			name:     "function or constructor alias auto-call",
 			original: "let p = make()\n",
 			migrated: "let p = make\n",
+		},
+		{
+			name:     "selected constructor auto-call",
+			original: "let p = module.P()\n",
+			migrated: "let p = module.P\n",
+		},
+		{
+			name:     "indexed auto-call",
+			original: "let p = fs[0]()\n",
+			migrated: "let p = fs[0]\n",
+		},
+		{
+			name:     "asserted calls are explicit",
+			original: "let p = f!()\n",
+			migrated: "let p = f!\n",
 			differs:  true,
 		},
 		{
-			name:     "selected constructor call is not a reference",
-			original: "let p = module.P()\n",
-			migrated: "let p = module.P\n",
+			name:     "reference suppresses auto-call",
+			original: "let p = &f()\n",
+			migrated: "let p = &f\n",
+			differs:  true,
+		},
+		{
+			name:     "grouped reference suppresses auto-call",
+			original: "let p = &(f())\n",
+			migrated: "let p = &(f)\n",
+			differs:  true,
+		},
+		{
+			name:     "asserted callee suppresses operand auto-call",
+			original: "let p = f()!()\n",
+			migrated: "let p = f!()\n",
+			differs:  true,
+		},
+		{
+			name:     "reference permits receiver auto-call",
+			original: "let p = &factory().f\n",
+			migrated: "let p = &factory.f\n",
+		},
+		{
+			name:     "reference keeps outer call but permits receiver auto-call",
+			original: "let p = &factory().f()\n",
+			migrated: "let p = &factory.f()\n",
+		},
+		{
+			name:     "arguments cannot be removed",
+			original: "let p = f(x: 1)\n",
+			migrated: "let p = f\n",
+			differs:  true,
+		},
+		{
+			name:     "arguments cannot be changed",
+			original: "let p = f(x: 1)\n",
+			migrated: "let p = f(x: 2)\n",
+			differs:  true,
+		},
+		{
+			name:     "block arguments cannot be removed",
+			original: "let p = f { 1 }\n",
+			migrated: "let p = f\n",
 			differs:  true,
 		},
 		{
@@ -273,6 +327,23 @@ func TestMigrationMeaningComparison(t *testing.T) {
 				assert.Equal(t, 1, loc.Line)
 			}
 		})
+	}
+}
+
+func TestMigrationKeepsCallsOfOtherExpressions(t *testing.T) {
+	// These general callee expressions are not all expressible in today's
+	// parser, but the AST comparison must not equate their calls with reads.
+	for _, callee := range []Node{
+		&FunCall{Fun: &Symbol{Name: "factory"}},
+		&FunctionRef{Expr: &Symbol{Name: "f"}},
+		&Conditional{Condition: &Symbol{Name: "condition"}, Then: &Symbol{Name: "f"}, Else: &Symbol{Name: "g"}},
+		&Grouped{Expr: &Symbol{Name: "f"}},
+		&Symbol{Name: "f", AutoCall: true},
+	} {
+		called := &FileBlock{Forms: []Node{&FunCall{Fun: callee}}}
+		bare := &FileBlock{Forms: []Node{callee}}
+		_, differs := firstASTDifference(called, bare)
+		assert.True(t, differs, "must preserve explicit call of %T", callee)
 	}
 }
 
