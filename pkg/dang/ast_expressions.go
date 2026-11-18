@@ -852,6 +852,11 @@ type Symbol struct {
 	AutoCall bool
 	Loc      *SourceLocation
 
+	// keepCallable records that inference kept the function value rather than
+	// auto-calling it. Its runtime implementation may accept a wider range of
+	// arguments (including none) than the signature through which it was read.
+	keepCallable bool
+
 	// selectedThrough marks an auto-called symbol whose result is immediately
 	// selected from. See markSelectedThrough.
 	selectedThrough bool
@@ -894,6 +899,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			var called bool
 			before := t
 			t, called, err = autoCallInstantiated(t)
+			s.keepCallable = !called
 			if err != nil {
 				return nil, err
 			}
@@ -954,7 +960,7 @@ func (s *Symbol) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		}
 
 		// Auto-call zero-arity functions when accessed as symbols
-		if s.AutoCall && isAutoCallableFn(val) {
+		if s.AutoCall && !s.keepCallable && isAutoCallableFn(val) {
 			return autoCallFn(ctx, scope, withSelectedThrough(val, s.selectedThrough))
 		}
 
@@ -984,6 +990,9 @@ type Select struct {
 	// signature before auto-calling replaces it with the return type. Runtime
 	// binding must use this same signature to decide which arguments are optional.
 	builtinMethodType *hm.FunctionType
+
+	// See Symbol.keepCallable: the declared member signature governs this read.
+	keepCallable bool
 
 	// selectedThrough marks an auto-called selection whose result is
 	// immediately selected from. See markSelectedThrough.
@@ -1118,7 +1127,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 							}
 							if d.AutoCall {
 								var err error
-								t, _, err = autoCallInstantiated(t)
+								var called bool
+								t, called, err = autoCallInstantiated(t)
+								d.keepCallable = !called
 								if err != nil {
 									return nil, err
 								}
@@ -1171,7 +1182,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			if d.AutoCall {
 				var err error
-				methodType, _, err = autoCallFnType(methodType)
+				var called bool
+				methodType, called, err = autoCallFnType(methodType)
+				d.keepCallable = !called
 				if err != nil {
 					return nil, err
 				}
@@ -1217,7 +1230,9 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			if d.AutoCall {
 				var err error
-				methodType, _, err = autoCallFnType(methodType)
+				var called bool
+				methodType, called, err = autoCallFnType(methodType)
+				d.keepCallable = !called
 				if err != nil {
 					return nil, err
 				}
@@ -1333,6 +1348,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			var called bool
 			before := t
 			t, called, err = autoCallInstantiated(t)
+			d.keepCallable = !called
 			if err != nil {
 				return nil, err
 			}
@@ -1398,7 +1414,7 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				val = BoundMethod{Method: fnVal, Receiver: statics}
 			}
 			// Zero-arg statics auto-call, matching the normal selection path.
-			if d.AutoCall && isAutoCallableFn(val) {
+			if d.AutoCall && !d.keepCallable && isAutoCallableFn(val) {
 				return autoCallFn(ctx, scope, val)
 			}
 			return val, nil
@@ -1530,7 +1546,7 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		}
 
 		// Auto-call zero-arity functions when accessed as symbols
-		if d.AutoCall && isAutoCallableFn(val) {
+		if d.AutoCall && !d.keepCallable && isAutoCallableFn(val) {
 			return autoCallFn(ctx, scope, withSelectedThrough(val, d.selectedThrough))
 		}
 
@@ -1564,6 +1580,9 @@ type Index struct {
 	Index    Node
 	AutoCall bool
 	Loc      *SourceLocation
+
+	// See Symbol.keepCallable: the collection's element signature governs reads.
+	keepCallable bool
 }
 
 var _ Node = (*Index)(nil)
@@ -1618,7 +1637,9 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		// Apply auto-call if needed
 		if i.AutoCall {
 			var err error
-			elementType, _, err = autoCallInstantiated(elementType)
+			var called bool
+			elementType, called, err = autoCallInstantiated(elementType)
+			i.keepCallable = !called
 			if err != nil {
 				return nil, err
 			}
@@ -1684,7 +1705,7 @@ func (i *Index) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			if !found {
 				return NullValue{}, nil
 			}
-			if i.AutoCall && isAutoCallableFn(element) {
+			if i.AutoCall && !i.keepCallable && isAutoCallableFn(element) {
 				return autoCallFn(ctx, scope, element)
 			}
 			return element, nil
@@ -1713,7 +1734,7 @@ func (i *Index) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		element := listVal.Elements[idx]
 
 		// Auto-call zero-arity functions when accessed
-		if i.AutoCall && isAutoCallableFn(element) {
+		if i.AutoCall && !i.keepCallable && isAutoCallableFn(element) {
 			return autoCallFn(ctx, scope, element)
 		}
 
@@ -1830,6 +1851,9 @@ type FieldSelection struct {
 	Args      Record           // For arguments like repositories(first: 100)
 	Selection *ObjectSelection // For nested selections like profile.{{bio, avatar}}
 	Loc       *SourceLocation
+
+	// Passed to the synthetic Select used to evaluate this field.
+	keepCallable bool
 }
 
 func (f *FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
@@ -2236,14 +2260,16 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		if err := checkMemberAccessible(ctx, rec, field.Name); err != nil {
 			return nil, NewInferError(err, field)
 		}
-		fieldType, err = (&Symbol{
+		symbol := &Symbol{
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      field.Loc,
-		}).Infer(outsideTypeBodies(ctx), rec, fresh)
+		}
+		fieldType, err = symbol.Infer(outsideTypeBodies(ctx), rec, fresh)
 		if err != nil {
 			return nil, err
 		}
+		field.keepCallable = symbol.keepCallable
 	}
 
 	ret, _, err := autoCallFnType(fieldType)
@@ -2814,8 +2840,9 @@ func (o *ObjectSelection) evalFieldSelection(recv Value, field *FieldSelection, 
 		Field:    &Symbol{Name: field.Name, Loc: field.Loc},
 		// With no arguments the field is auto-called when it resolves to a
 		// zero-arity function, mirroring how the type was inferred.
-		AutoCall: len(field.Args) == 0,
-		Loc:      field.Loc,
+		AutoCall:     len(field.Args) == 0,
+		Loc:          field.Loc,
+		keepCallable: field.keepCallable,
 	}
 	// A nested selection selects through the field's result right away.
 	selectedThrough := field.Selection != nil

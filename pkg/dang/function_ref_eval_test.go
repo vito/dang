@@ -266,6 +266,91 @@ assert { missing(nullableEntries, "two") }
 	require.Empty(t, out)
 }
 
+func TestAutoCallRespectsDeclaredCallableReads(t *testing.T) {
+	out, err := evalWithContext(t, t.Context(), `type Predicate {
+  test(element: Int!): Boolean! { false }
+}
+
+has[a](xs: [a]!, value: a!): Boolean! {
+  let required(element: a!): Boolean! { false }
+  required = &xs.contains
+  let read = required
+  read(value)
+}
+
+let run: Boolean! {
+  let nullable: [Int]! = [1, null]
+  let p = Predicate
+  p.test = &nullable.contains
+
+  # Select keeps the required signature even though the implementation is optional.
+  let test = p.test
+  let alias = test
+  assert { test(1) }
+  assert { alias(1) }
+  assert { p.test(1) }
+  let ref = &p.test
+  assert { ref(1) }
+  let selected = p.{{test}}
+  let fromSelection = selected.test
+  assert { fromSelection(1) }
+
+  # Index reads retain the collection's required function signature as well.
+  let list = [&p.test]
+  let fromList = list[0]!
+  assert { fromList(1) }
+  let map = ["test": &p.test]
+  let fromMap = map["test"]!
+  assert { fromMap(1) }
+
+  # Symbol reads of reassigned function bindings follow the declared signature.
+  let required(element: Int!): Boolean! { false }
+  required = &nullable.contains
+  let fromSymbol = required
+  assert { fromSymbol(1) }
+
+  # A regular nullable-argument function may implement the same contract.
+  let optional(element: Int): Boolean! { element == 1 }
+  p.test = &optional
+  let replaced = p.test
+  assert { replaced(1) }
+  true
+}
+assert { run }
+assert { has([1, null], 1) }
+assert { has(["a", null], "a") }
+`)
+	require.NoError(t, err)
+	require.Empty(t, out)
+}
+
+func TestAutoCallReturningCallable(t *testing.T) {
+	args := NewRecordType("", Keyed[*hm.Scheme]{Key: "x", Value: hm.NewScheme(nil, NonNull(IntType))})
+	target := BuiltinFunction{Name: "target", FnType: hm.NewFnType(args, NonNull(IntType))}
+	calls := 0
+	factory := BuiltinFunction{
+		Name:   "factory",
+		FnType: hm.NewFnType(NewRecordType(""), target.FnType),
+		CallFn: func(context.Context, ValueScope, map[string]Value) (Value, error) {
+			calls++
+			return target, nil
+		},
+	}
+	types := NewPreludeTypeScope("autocall")
+	types.Add("factory", hm.NewScheme(nil, factory.FnType))
+	scope := NewValueScope(types)
+	scope.Bind("factory", factory, PrivateVisibility)
+	symbol := &Symbol{Name: "factory", AutoCall: true}
+	_, err := symbol.Infer(t.Context(), types, hm.NewSimpleFresher())
+	require.NoError(t, err)
+	// The result is still a function type, but inference called the factory.
+	require.IsType(t, target.FnType, symbol.GetInferredType())
+	result, err := EvalNode(t.Context(), scope, symbol)
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+	require.Equal(t, "target", result.(BuiltinFunction).Name)
+}
+
 func TestAutoCallEligibilityMatchesEmptyCall(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
