@@ -62,6 +62,21 @@ let text: String! = u
 assert { text == "https://foo:1234/bar" }
 assert { hello(name: u) == "Hello, https://foo:1234/bar!" }
 
+# Path interoperates through String handoff; URL escaping still treats it as data.
+let pathBase = URL("https://example.com")
+assert { pathBase.withPath(Path("/api//users/")).string == "https://example.com/api/users" }
+assert { pathBase.withPath(Path("/users/alice smith")).string == "https://example.com/users/alice%20smith" }
+assert { pathBase.withPath(Path("/a?b#c")).string == "https://example.com/a%3Fb%23c" }
+assert { pathBase.appendPath(Path("users/alice smith").parts).string == "https://example.com/users/alice%20smith" }
+assert { pathBase.appendPath(Path("../images").parts).escapedPath == "/%2E%2E/images" }
+assert { pathBase.string == "https://example.com" }
+
+# Converting a URL path to Path opts into normalization without changing the URL.
+let urlWithDotSegments = URL("https://example.com/a//b/../c/")
+assert { urlWithDotSegments.path == "/a//b/../c/" }
+assert { Path(urlWithDotSegments.path).string == "/a/c" }
+assert { urlWithDotSegments.string == "https://example.com/a//b/../c/" }
+
 # The builtin does not replace a schema's nominal URL scalar.
 let schemaURL: Test.URL! = homepage
 assert { (schemaURL :: URL!).hostname == "danglang.org" }

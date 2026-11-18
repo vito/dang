@@ -1,7 +1,5 @@
 """
-a URL reference; preserves its original text until edited, accepts relative and
-opaque references; query escapes are validated only when decoded query data is
-accessed or edited
+a URL reference, preserving its original spelling
 """
 @example(```dang
 URL("https://example.com/a%20b?x=1#part")
@@ -37,7 +35,7 @@ scalar URL {
   hostname: String { urlNonempty(urlHostname(urlRead(self)["host"] ?? "")) }
 
   """
-  the explicit numeric port, or null when absent or empty; fails on Int overflow, with no network port range restriction
+  the explicit port number, or null when absent; no default port is inferred
   """
   @example(```dang
   URL("https://foo:1234").port
@@ -75,7 +73,8 @@ scalar URL {
   rawQuery: String { urlRead(self)["query"] }
 
   """
-  the decoded query map, empty when absent; duplicate values and first-seen key order are preserved, + means space and semicolons are data; invalid percent escapes raise an error
+  decoded query parameters, preserving repeated values; empty when absent;
+  + decodes to a space, and invalid percent escapes raise an error
   """
   @example(```dang
   URL("/?q=one&q=two").query
@@ -103,7 +102,7 @@ scalar URL {
   isAbsolute: Boolean! { urlRead(self)["scheme"] != null }
 
   """
-  the exact original text, or the serialization of the latest edit; edits need not preserve all original spelling
+  the URL as text; construction preserves spelling, while edits may re-escape components
   """
   @example(```dang
   URL("https://foo/a%20b").string
@@ -128,7 +127,8 @@ scalar URL {
   }
 
   """
-  return a URL with a hostname (IPv6 accepted without brackets), preserving user information and port; null clears host, port and user information; rejects opaque URLs and nonempty relative paths
+  replace the hostname, preserving the port and credentials; accepts bare IPv6;
+  null removes the hostname, port and credentials
   """
   @example(```dang
   URL("https://foo:80/a").withHostname("example.com")
@@ -174,10 +174,11 @@ scalar URL {
   }
 
   """
-  return a URL with a decoded path, escaping delimiters; rejects opaque URLs; authority paths must be empty or start with /
+  replace the decoded path without normalization; a URL with an authority
+  requires an empty path or one starting with /
   """
   @example(```dang
-  URL("https://foo").withPath("/a b")
+  URL("https://example.com").withPath(Path("/users/alice smith"))
   ```)
   withPath(path: String!): URL! {
     let u = urlHierarchical(urlRead(self))
@@ -185,10 +186,11 @@ scalar URL {
   }
 
   """
-  append decoded segments as data, escaping slash, percent, query/fragment delimiters and dot segments; preserves existing escaped path and repeated slashes; rejects opaque URLs
+  append decoded path segments as data, escaping embedded slashes and literal
+  . or .. segments rather than treating them as navigation
   """
   @example(```dang
-  URL("/api/").appendPath(["users", "a/b"])
+  URL("https://example.com").appendPath(Path("users/alice smith").parts)
   ```)
   appendPath(segments: [String!]!): URL! {
     let u = urlHierarchical(urlRead(self))
@@ -206,7 +208,7 @@ scalar URL {
   }
 
   """
-  replace the query map; null removes ?, an empty map adds ?, and empty value lists emit no pairs; preserves map iteration order
+  replace query parameters; null removes the query, while an empty map adds a trailing ?
   """
   @example(```dang
   URL("/search").withQuery(["q": ["hello world"]])
@@ -270,7 +272,8 @@ scalar URL {
   }
 
   """
-  resolve a reference using RFC 3986 rules; rootless relative bases stay rootless and retain unresolved parent segments; an empty reference path preserves the base path
+  resolve a reference against this URL, interpreting . and .. as navigation;
+  the reference may replace the host or scheme
   """
   @example(```dang
   URL("https://foo/a/b").resolve(URL("../c"))

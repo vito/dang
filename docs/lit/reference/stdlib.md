@@ -32,42 +32,35 @@
 
 ## `URL!` methods
 
-> `URL(raw: String!)` constructs a URL reference, preserving its original text rather than normalizing it: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`. String literals in `URL!`-typed slots and explicit `:: URL!` casts validate through the same hook. URL values degrade to `String!` at value-handoff boundaries, like `Path`.
+`URL(raw: String!)` accepts absolute URLs and relative references, preserving
+the original text. `.path` and `.fragment` expose decoded text; `.escapedPath`
+and `.rawQuery` retain escaping. `.query` groups repeated parameters into lists
+and returns an empty map when there is no query.
 
-> URL is implemented in Dang itself, in the embedded prelude. Its `new()` hook validates at runtime at every materialization boundary, including literal coercion, explicit casts, and codec decoding. Invalid values raise recoverably; the type checker does not execute Dang-defined hooks.
-
-> Absolute, relative, empty, and opaque references are accepted. This is not a check that a URL is absolute or safe to fetch. A schema's same-named scalar remains a separate type (use `MyAPI.URL`), while unqualified `URL` refers to the builtin unless shadowed by a local declaration.
-
-### Reading components
-
-Optional components use null rather than sentinel values: `.port` is an `Int`, and `.scheme`, `.host`, `.hostname`, and `.fragment` are nullable strings. No default port is inferred. The path is a non-null string, not a filesystem `Path`: repeated/trailing slashes matter, and `.escapedPath` preserves the distinction between an encoded slash and a separator.
-
-`.query` is a **non-null `Map[[String!]!]!`**: missing queries yield an empty map, and repeated parameters retain every value in order. Form decoding treats `+` as a space, `%2B` as a plus, and bare `flag` as an empty value. Semicolons are ordinary data. Invalid escapes raise rather than dropping parameters. `.rawQuery` exposes uninterpreted query text; malformed query escapes do not prevent constructing a URL, but reading `.query` or editing its parameters raises.
-
-Use `.rawQuery` to distinguish no query (`null`) from a trailing `?` (`""`). Likewise `.fragment` distinguishes no fragment (`null`) from a trailing `#` (`""`). `.isAbsolute` means a scheme is present, not that there is necessarily a host or an HTTP endpoint. Explicit ports must fit an `Int` when read, without imposing a network-port ceiling of 65535.
+URL paths are strings, not filesystem paths: repeated and trailing slashes can
+matter. An existing `Path` works with `.withPath`, and its `.parts` work with
+`.appendPath`. Use `Path(url.path)` when you explicitly want path normalization.
 
 ### Building URLs
 
-Build from a base URL or start from `URL("")` and add components. Helpers return a new URL, leave the receiver unchanged, and accept **decoded data**, escaping delimiters for the appropriate component:
+\literate-fences
+
+Start from a base URL or build one from components. Helpers return a new URL
+and escape **decoded data** for you. `.appendPath` adds segments as data;
+`.resolve` follows references such as `../other` instead.
 
 ```dang
 let endpoint = URL("")
   .withScheme("https")
   .withHostname("api.example.com")
   .withPort(8443)
+  .withPath(Path("/api"))
   .appendPath(["users", "name/with/slashes"])
   .withQuery(["tag": ["a", "b"]])
   .withAddedQueryParam("tag", "c")
   .withFragment("details")
-assert { endpoint.escapedPath == "/users/name%2Fwith%2Fslashes" }
-assert { endpoint.query["tag"] == ["a", "b", "c"] }
+endpoint.string
 ```
-
-`.withQueryParam` replaces a key's values; `.withAddedQueryParam` appends; `.withoutQueryParam` removes them. `.withQuery(null)` removes the query, while `.withQuery([:])` emits a trailing `?`. Empty value lists emit no pairs. `.withFragment(null)` removes the fragment; an empty string emits a trailing `#`. `.withHostname(null)` clears the entire authority, including credentials and port. Query edits may regroup keys and normalize escaping; use the original `.string` when exact spelling matters.
-
-`.withPath` replaces a decoded path without cleaning it; with an authority, a nonempty path must start with `/`. `.appendPath` treats every supplied segment as data, escaping embedded slashes and literal `.`/`..` segments. By contrast, `.resolve("../other")` applies URL reference rules, including dot-segment navigation and replacement by absolute references. With a rootless relative base such as `docs/page`, relative resolution stays rootless and retains excess leading `..` segments, so the result can subsequently be resolved against an origin. Resolution is **not** a same-origin or containment check for untrusted input.
-
-Invalid schemes/hostnames and negative ports raise. Path/authority edits on opaque URLs raise rather than discarding their payload. Adding a scheme or hostname to an existing nonempty relative path also raises: root the path first with `.withPath("/...")`, or rebuild from `URL("")` with scheme and hostname before appending segments. This prevents the path from silently becoming opaque or gaining a leading slash.
 
 ### Methods
 
