@@ -115,11 +115,24 @@ func TestMigrateSource(t *testing.T) {
 			assert.False(t, differs, "normalizing %s", tc.source)
 			migrated, err := migrate(tc.source, Version2_0, Version2_1)
 			require.NoError(t, err)
+			assert.Equal(t, tc.want, migrated)
 			got, err := Parse("migrated.dang", []byte(migrated), WithVersion(Version2_1))
 			require.NoError(t, err)
 			_, differs = firstASTDifference(want.(Node), got.(Node))
 			assert.False(t, differs, "migrating %s", tc.source)
 		}
+	})
+
+	t.Run("empty catch at a reference operand is not normalized", func(t *testing.T) {
+		source := "let x = &(try { factory } catch {})\n"
+		original, err := Parse("original.dang", []byte(source), WithVersion(Version2_0))
+		require.NoError(t, err)
+		changed, err := Parse("changed.dang", []byte("let x = &(factory)\n"), WithVersion(Version2_1))
+		require.NoError(t, err)
+		_, differs := firstASTDifference(original.(Node), changed.(Node))
+		assert.True(t, differs)
+		_, err = migrate(source, Version2_0, Version2_1)
+		require.ErrorContains(t, err, "would change the meaning")
 	})
 
 	t.Run("same version is formatting", func(t *testing.T) {

@@ -226,7 +226,13 @@ func declaresLoopAtTop(filename string, source []byte, v Version) bool {
 // the formatter unwraps such blocks unless comments keep them; and the loop
 // builtin's aliases for desugared `for` loops as `loop`, how they migrate
 // (forLoopCollision checks that this keeps their meaning).
-func migrationCanonical(n Node) Node {
+func migrationCanonical(n Node, reference bool) Node {
+	// A reference suppresses auto-calling on a read, but not through a
+	// rescue expression. Unwrapping its empty catch here could hide that
+	// change in behavior (for example &(try { factory } catch {})).
+	if r, ok := n.(*RescueExpr); ok && reference && r.TryCatch && len(r.Clauses) == 0 {
+		return n
+	}
 	// An else block containing only an if introduces no declarations in
 	// its scope; the formatter collapses it to an else-if chain.
 	if cond, ok := n.(*Conditional); ok {
@@ -356,7 +362,7 @@ func compareAST(a, b reflect.Value, loc *SourceLocation, reference bool) (*Sourc
 				}
 				// A zero-clause try/catch can unwrap directly to a call.
 				// Normalize that wrapper before recognizing its auto-call.
-				an, bn = migrationCanonical(an), migrationCanonical(bn)
+				an, bn = migrationCanonical(an, reference), migrationCanonical(bn, reference)
 				if !reference {
 					an, bn = migrationAutoCall(an), migrationAutoCall(bn)
 				}
