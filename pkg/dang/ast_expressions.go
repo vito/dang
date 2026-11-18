@@ -821,29 +821,10 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 		providedArgs[key] = true
 	}
 
-	// Check each parameter in the function signature
+	// Use the same optionality rule for explicit calls and auto-calling.
 	for _, field := range rt.Fields {
-		paramName := field.Key
-		scheme := field.Value
-
-		// Skip if this argument was provided, or has a default (which a
-		// non-null type pinned by the other arguments doesn't change:
-		// `y: a = x` isn't required once a := Int!)
-		if providedArgs[paramName] || rt.Defaulted[paramName] {
-			continue
-		}
-
-		// Get the type of this parameter
-		paramType, isMono := scheme.Type()
-		if !isMono {
-			continue // Skip polymorphic parameters for now
-		}
-
-		// Check if this parameter is required (hm.NonNullType)
-		// With our transformation, arguments with defaults are now nullable in the signature,
-		// so only truly required arguments (without defaults) will be NonNull here
-		if _, isNonNull := paramType.(hm.NonNullType); isNonNull {
-			return NewInferError(fmt.Errorf("missing required argument: %q", paramName), c)
+		if !providedArgs[field.Key] && requiredCallArgument(rt, field) {
+			return NewInferError(fmt.Errorf("missing required argument: %q", field.Key), c)
 		}
 	}
 

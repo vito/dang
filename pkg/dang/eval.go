@@ -109,9 +109,11 @@ type InputObjectConstructor struct {
 	FnType    *hm.FunctionType
 }
 
-func (c InputObjectConstructor) Type() hm.Type        { return c.FnType }
-func (c InputObjectConstructor) String() string       { return fmt.Sprintf("input:%s", c.TypeName) }
-func (c InputObjectConstructor) IsAutoCallable() bool { return false }
+func (c InputObjectConstructor) Type() hm.Type  { return c.FnType }
+func (c InputObjectConstructor) String() string { return fmt.Sprintf("input:%s", c.TypeName) }
+func (c InputObjectConstructor) IsAutoCallable() bool {
+	return canAutoCallFunctionType(c.FnType)
+}
 
 func (c InputObjectConstructor) ParameterNames() []string {
 	rec := c.FnType.Arg().(*RecordType)
@@ -2110,31 +2112,7 @@ func (f FunctionValue) ParameterNames() []string {
 }
 
 func (f FunctionValue) IsAutoCallable() bool {
-	if f.BlockParamName != "" || (f.FnType != nil && f.FnType.Block() != nil) {
-		return false
-	}
-
-	for _, argName := range f.Args {
-		// If this argument has a default value, it's optional
-		if _, hasDefault := f.Defaults[argName]; hasDefault {
-			continue
-		}
-
-		// If no default, check if the type is nullable (optional)
-		if rt, ok := f.FnType.Arg().(*RecordType); ok {
-			scheme, found := rt.SchemeOf(argName)
-			if found {
-				if fieldType, _ := scheme.Type(); fieldType != nil {
-					if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
-						// This is a required argument with no default value
-						return false
-					}
-				}
-			}
-		}
-	}
-	// All arguments are either optional or have defaults, so this function can be auto-called
-	return true
+	return f.BlockParamName == "" && canAutoCallFunctionType(f.FnType)
 }
 
 // pendingInit is a deferred initializer registered via BindLazy. It runs at
@@ -3380,13 +3358,7 @@ func (b BuiltinFunction) IsAutoCallable() bool {
 	if b.FnType != nil && b.FnType.Block() != nil {
 		return false
 	}
-	if b.AllDefaulted {
-		return true
-	}
-	if rt, ok := b.FnType.Arg().(*RecordType); ok {
-		return len(rt.Fields) == 0
-	}
-	return false
+	return b.AllDefaulted || canAutoCallFunctionType(b.FnType)
 }
 
 // ConstructorFunction represents a object constructor that evaluates the object body when called
@@ -3583,18 +3555,7 @@ func (c *ConstructorFunction) ParameterNames() []string {
 }
 
 func (c *ConstructorFunction) IsAutoCallable() bool {
-	if c.BlockParamName != "" || (c.FnType != nil && c.FnType.Block() != nil) {
-		return false
-	}
-
-	for _, param := range c.Parameters {
-		if param.Value == nil {
-			// No default value, so this is a required parameter
-			return false
-		}
-	}
-	// All parameters have default values, so constructor can be auto-called
-	return true
+	return c.BlockParamName == "" && canAutoCallFunctionType(c.FnType)
 }
 
 func RunFile(ctx context.Context, filePath string, debug bool) error {

@@ -79,21 +79,8 @@ func autoCallFnType(t hm.Type) (hm.Type, bool, error) {
 		if ft.Block() != nil {
 			return t, false, fmt.Errorf("function requires a block argument")
 		}
-		if rt, ok := ft.Arg().(*RecordType); ok {
-			// Check if all fields are optional (no NonNullType fields)
-			// Note: This function only has type information, not default value information
-			// The actual auto-call decision is made in isAutoCallableFn with FunctionValue
-			hasRequiredArgs := false
-			for _, field := range rt.Fields {
-				if fieldType, _ := field.Value.Type(); fieldType != nil {
-					if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
-						hasRequiredArgs = true
-						break
-					}
-				}
-			}
-
-			if hasRequiredArgs {
+		if _, ok := ft.Arg().(*RecordType); ok {
+			if !canAutoCallFunctionType(ft) {
 				return t, false, nil
 			}
 
@@ -102,6 +89,37 @@ func autoCallFnType(t hm.Type) (hm.Type, bool, error) {
 		}
 	}
 	return t, true, nil
+}
+
+// requiredCallArgument is shared by explicit-call validation and auto-calling.
+// Defaults remain optional even if inference specializes their type to non-null.
+func requiredCallArgument(args *RecordType, field Keyed[*hm.Scheme]) bool {
+	if args.Defaulted[field.Key] {
+		return false
+	}
+	t, mono := field.Value.Type()
+	_, nonNull := t.(hm.NonNullType)
+	return mono && nonNull
+}
+
+// canAutoCallFunctionType reports whether the signature accepts an empty call.
+// Nullable parameters without defaults are optional, just like defaulted ones;
+// a block parameter is always required. Function and constructor signatures
+// both encode defaults in their argument record.
+func canAutoCallFunctionType(ft *hm.FunctionType) bool {
+	if ft == nil || ft.Block() != nil {
+		return false
+	}
+	args, ok := ft.Arg().(*RecordType)
+	if !ok {
+		return false
+	}
+	for _, field := range args.Fields {
+		if requiredCallArgument(args, field) {
+			return false
+		}
+	}
+	return true
 }
 
 // isAutoCallableFn checks if a function can be auto-called (has no required arguments)
