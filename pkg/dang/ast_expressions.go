@@ -980,6 +980,11 @@ type Select struct {
 	staticOwner *Type
 	Loc         *SourceLocation
 
+	// builtinMethodType keeps a collection method's receiver-specialized
+	// signature before auto-calling replaces it with the return type. Runtime
+	// binding must use this same signature to decide which arguments are optional.
+	builtinMethodType *hm.FunctionType
+
 	// selectedThrough marks an auto-called selection whose result is
 	// immediately selected from. See markSelectedThrough.
 	selectedThrough bool
@@ -1162,6 +1167,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				return nil, err
 			}
 			methodType := instantiateListMethod(def, listElemType)
+			d.builtinMethodType = methodType.(*hm.FunctionType)
 
 			if d.AutoCall {
 				var err error
@@ -1207,6 +1213,7 @@ func (d *Select) infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 			// Build method type with the value type substituted for 'a'.
 			methodType := instantiateListMethod(def, mapValType)
+			d.builtinMethodType = methodType.(*hm.FunctionType)
 
 			if d.AutoCall {
 				var err error
@@ -1496,8 +1503,7 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
-						// Create a bound method that will pass the list as self
-						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+						return d.bindBuiltinMethod(ctx, builtinFn, rec), nil
 					}
 				}
 				return nil, fmt.Errorf("list value does not have method %q", d.Field.Name)
@@ -1510,8 +1516,7 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
-						// Create a bound method that will pass the map as self
-						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+						return d.bindBuiltinMethod(ctx, builtinFn, rec), nil
 					}
 				}
 				return nil, fmt.Errorf("map value does not have method %q", d.Field.Name)
@@ -1531,6 +1536,16 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		return val, nil
 	})
+}
+
+func (d *Select) bindBuiltinMethod(ctx context.Context, fn BuiltinFunction, receiver Value) BoundBuiltinMethod {
+	if d.builtinMethodType != nil {
+		// The registry's signature still has the collection's element variable.
+		// Use the signature checked at this selection, resolving variables from
+		// an enclosing generic call without modifying the shared builtin value.
+		fn.FnType = runtimeType(ctx, d.builtinMethodType).(*hm.FunctionType)
+	}
+	return BoundBuiltinMethod{Method: fn, Receiver: receiver}
 }
 
 func (d *Select) Walk(fn func(Node) bool) {

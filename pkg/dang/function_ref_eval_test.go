@@ -204,6 +204,68 @@ func TestAutoCallNativeOptionalArguments(t *testing.T) {
 	}
 }
 
+func TestAutoCallCollectionMethodsUseReceiverSignature(t *testing.T) {
+	out, err := evalWithContext(t, t.Context(), `let contains = [1, 2, 3].contains
+let indexOf = [1, 2, 3].indexOf
+assert { contains(2) }
+assert { indexOf(3) == 2 }
+assert { [1, 2, 3].contains(2) }
+assert { [1, 2, 3].indexOf(3) == 2 }
+
+let nullable: [Int]! = [1, null, 3]
+let nullableContains = nullable.contains
+let nullableIndexOf = nullable.indexOf
+assert { nullableContains == nullable.contains() }
+assert { nullableIndexOf == nullable.indexOf() }
+let explicitContains = &nullable.contains
+let explicitIndexOf = &nullable.indexOf
+assert { explicitContains(1) }
+assert { explicitIndexOf(3) == 2 }
+
+# The annotation, not the narrower literal's runtime element type, is binding.
+let widened: [Int]! = [1, 2, 3]
+assert { widened.contains == widened.contains() }
+assert { widened.indexOf == widened.indexOf() }
+
+# Binding an optional method must not change the shared builtin registration.
+let requiredAgain = [4, 5].contains
+assert { requiredAgain(5) }
+assert { [1, 2].length == [1, 2].length() }
+
+let entries = ["one": 1, "two": 2]
+let get = entries.get
+let with = entries.with
+assert { get("one") == 1 }
+assert { with("three", 3).get("three") == 3 }
+assert { entries.values == entries.values() }
+let nullableEntries: Map[Int]! = ["one": 1, "two": null]
+let nullableGet = nullableEntries.get
+assert { nullableGet("two") == null }
+assert { nullableEntries.values == nullableEntries.values() }
+
+has[a](xs: [a!]!, value: a!): Boolean! {
+  let contains = xs.contains
+  contains(value)
+}
+position[a](xs: [a!]!, value: a!): Int {
+  let indexOf = xs.indexOf
+  indexOf(value)
+}
+missing[a](entries: Map[a]!, key: String!): Boolean! {
+  let get = entries.get
+  get(key) == null
+}
+assert { has([1, 2], 2) }
+assert { has(["a", "b"], "b") }
+assert { position([1, 2], 2) == 1 }
+assert { position(["a", "b"], "b") == 1 }
+assert { !missing(entries, "one") }
+assert { missing(nullableEntries, "two") }
+`)
+	require.NoError(t, err)
+	require.Empty(t, out)
+}
+
 func TestAutoCallEligibilityMatchesEmptyCall(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
