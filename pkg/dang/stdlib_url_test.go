@@ -79,6 +79,22 @@ func TestURLValidation(t *testing.T) {
 	}
 }
 
+func TestURLScalarShadowing(t *testing.T) {
+	require.NoError(t, evalExample(`
+scalar URL {
+  new(raw: String!) { raw.toUpper }
+  host: String! { "custom" }
+  string: String! { "custom-string" }
+}
+let u = URL("hello")
+assert { (u :: String!) == "HELLO" }
+assert { u.host == "custom" }
+assert { u.string == "custom-string" }
+let host = &u.host
+assert { host() == "custom" }
+`))
+}
+
 func TestURLPreservesText(t *testing.T) {
 	require.NoError(t, evalExample(`
 let u: URL! = "HTTPS://foo/a%2fb"
