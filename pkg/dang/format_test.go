@@ -237,6 +237,24 @@ func chainCommentParentCases() []struct{ name, source, following string } {
 			})
 		}
 	}
+	for _, chain := range []struct{ name, source string }{
+		{"call", "foo\n .bar(1)"},
+		{"select", "foo\n .bar"},
+		{"dot apply", "foo\n .{ _ + 1 }"},
+	} {
+		for _, suffix := range []string{" + 2", "!", "[0]", " rescue 0", " ?? 0"} {
+			cases = append(cases, struct{ name, source, following string }{
+				"same-line suffix/" + chain.name + "/" + suffix,
+				"let x = " + chain.source + suffix + " # KEEP\nprint(x)\n",
+				"print(x)",
+			})
+		}
+	}
+	cases = append(cases, struct{ name, source, following string }{
+		"unicode chain with same-line elements",
+		"let x = foo\n .bar(\"café\").baz(2) + 2 # KEEP\nprint(x)\n",
+		"print(x)",
+	})
 	cases = append(cases, struct{ name, source, following string }{
 		"nested same-line comma owners",
 		"print(\n foo(\n  bar\n .baz(1)) # KEEP\n)\nprint(2)\n",
@@ -261,6 +279,23 @@ func TestFormatChainCommentParents(t *testing.T) {
 			require.NoError(t, err)
 			_, differs := firstASTDifference(original.(Node), formatted.(Node))
 			require.False(t, differs)
+		})
+	}
+}
+
+func TestFormatChainSourceBoundaries(t *testing.T) {
+	for _, middle := range []string{".bar(1)", ".bar", ".{ _ + 1 }"} {
+		t.Run(middle, func(t *testing.T) {
+			source := "let x = foo # root\n " + middle + " # middle\n .baz + 2 # end\nprint(x)\n"
+			want := "let x = foo # root\n  " + middle + " # middle\n  .baz + 2 # end\nprint(x)\n"
+			got, err := FormatFile([]byte(source))
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			// Trailing-dot notation moves only the dots, not their comments.
+			source = "let x = foo. # root\n " + strings.TrimPrefix(middle, ".") + ". # middle\n baz + 2 # end\nprint(x)\n"
+			got, err = FormatFile([]byte(source))
+			require.NoError(t, err)
+			require.Equal(t, want, got)
 		})
 	}
 }

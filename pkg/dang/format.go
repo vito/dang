@@ -328,6 +328,37 @@ func (f *Formatter) emitTrailingComment(line int) {
 	}
 }
 
+// emitNodeTrailingComment emits a chain node's comment only when no enclosing
+// syntax follows the node on that source line. Otherwise the parent must emit
+// it after its suffix (an operator, index, assertion, etc.), not inside it.
+// A chain's trailing dot is the exception: it moves to the next element's line.
+func (f *Formatter) emitNodeTrailingComment(node Node, continues bool) {
+	loc := node.GetSourceLocation()
+	if loc == nil || loc.End == nil {
+		return
+	}
+	text, ok := f.commentMap[loc.End.Line]
+	if !ok {
+		return
+	}
+	end := f.lineColumnToOffset(loc.End.Line, loc.End.Column)
+	if end < 0 || end > len(f.source) {
+		return
+	}
+	tail := f.source[end:]
+	if newline := bytes.IndexByte(tail, '\n'); newline >= 0 {
+		tail = tail[:newline]
+	}
+	comment := bytes.LastIndex(tail, []byte(text))
+	if comment < 0 {
+		return
+	}
+	suffix := bytes.TrimSpace(tail[:comment])
+	if len(suffix) == 0 || (continues && bytes.Equal(suffix, []byte("."))) {
+		f.emitTrailingComment(loc.End.Line)
+	}
+}
+
 // writeOriginalSource accounts for comments copied with a node's source so later
 // comment emission does not print them again. Comments on the closing line are
 // outside the AST span and are emitted by the enclosing form or expression.
@@ -2208,13 +2239,11 @@ func (f *Formatter) formatChainedCall(c Node) {
 	f.formatNode(root)
 
 	// Emit trailing comment on the root's line before breaking to chain
-	if rootEndLine := nodeEndLine(root); rootEndLine > 0 {
-		f.emitTrailingComment(rootEndLine)
-	}
+	f.emitNodeTrailingComment(root, true)
 
 	// Format chain elements with leading dots
 	f.indented(func() {
-		for _, elem := range chain {
+		for i, elem := range chain {
 			// Emit any standalone comments that precede this chain element
 			var elemLine int
 			switch e := elem.(type) {
@@ -2286,9 +2315,7 @@ func (f *Formatter) formatChainedCall(c Node) {
 				// `{ ... }` right after it.
 				f.formatBlockArg(e.Block)
 			}
-			if loc := elem.GetSourceLocation(); loc != nil && loc.End != nil {
-				f.emitTrailingComment(loc.End.Line)
-			}
+			f.emitNodeTrailingComment(elem, i < len(chain)-1)
 		}
 	})
 }
@@ -2487,13 +2514,11 @@ func (f *Formatter) formatSelectChain(s *Select) {
 	f.formatNode(root)
 
 	// Emit trailing comment on the root's line before breaking to chain
-	if rootEndLine := nodeEndLine(root); rootEndLine > 0 {
-		f.emitTrailingComment(rootEndLine)
-	}
+	f.emitNodeTrailingComment(root, true)
 
 	// Format each field on its own line with a leading dot, indented one level
 	f.indented(func() {
-		for _, sel := range selects {
+		for i, sel := range selects {
 			// Emit any standalone comments that precede this chain element
 			if sel.Field.Loc != nil && sel.Field.Loc.Line > 0 {
 				f.emitChainCommentsBefore(sel.Field.Loc.Line)
@@ -2503,9 +2528,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 			f.writeIndent()
 			f.write(".")
 			f.write(f.fieldName(sel.Field.Name))
-			if sel.Loc != nil && sel.Loc.End != nil {
-				f.emitTrailingComment(sel.Loc.End.Line)
-			}
+			f.emitNodeTrailingComment(sel, i < len(selects)-1)
 		}
 	})
 }
