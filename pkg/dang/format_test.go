@@ -92,6 +92,55 @@ func TestFormatConvergence(t *testing.T) {
 	})
 }
 
+var noFmtCommentCases = []struct{ name, source string }{
+	{"interior standalone comment", "# nofmt\nlet x = {\n # keep this explanation\n 1\n}\n"},
+	{"opening directive and interior trailing comment", "let x = { # nofmt\n # keep this explanation\n 1 # keep this too\n}\n"},
+	{"closing directive", "# nofmt\nlet x = {\n # keep this explanation\n 1\n} # nofmt\n"},
+	{"comments outside the copied span", "# before\n# nofmt\nlet x = {\n # keep this explanation\n 1\n} # closing comment\n\n# after\n"},
+	{"nested form", "let x = {\n  # nofmt\n  let y = {\n   # nested explanation\n   1 # nested trailing\n  }\n  y\n}\n"},
+	{"enclosed comments", "# nofmt\nlet xs = [\n {{\n  # record explanation\n  a: 1 # field trailing\n }}, # element trailing\n]\n"},
+}
+
+func TestFormatNoFmtComments(t *testing.T) {
+	for _, tc := range noFmtCommentCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatFile([]byte(tc.source))
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+		})
+	}
+}
+
+func TestFormatNoFmtExpressionComments(t *testing.T) {
+	for _, closing := range []string{"# nofmt closing", "# outside"} {
+		t.Run(closing, func(t *testing.T) {
+			source := []byte("# nofmt preceding\n{{\n # interior\n a: 1 # trailing\n}} " + closing + "\n")
+			parsed, comments, err := ParseWithComments("nofmt.dang", source)
+			require.NoError(t, err)
+			file := parsed.(*FileBlock)
+			f := &Formatter{
+				source:          source,
+				comments:        extractComments(source, comments, file),
+				commentMap:      comments,
+				emittedComments: make(map[int]bool),
+			}
+			// Exercise the expression path directly, not handleNoFmtForm.
+			f.formatNode(file.Forms[0])
+			require.True(t, f.emittedComments[3])
+			require.True(t, f.emittedComments[4])
+			require.False(t, f.emittedComments[1])
+			require.Equal(t, isNoFmtText(closing), f.emittedComments[5])
+			f.emitRemainingComments()
+			for _, text := range comments {
+				require.Equal(t, 1, strings.Count(f.buf.String(), text), text)
+			}
+		})
+	}
+}
+
 func TestFormatFixedPoint(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

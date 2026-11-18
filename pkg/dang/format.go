@@ -335,13 +335,22 @@ func (f *Formatter) emitTrailingComment(line int) {
 	}
 }
 
-// removeTrailingNoFmtComment removes a trailing #nofmt comment on the given line
-// (because it's already included in the preserved original source)
-func (f *Formatter) removeTrailingNoFmtComment(line int) {
-	for i, c := range f.comments {
-		if c.Line == line && c.IsTrailing && isNoFmtText(c.Text) {
-			f.comments = append(f.comments[:i], f.comments[i+1:]...)
-			return
+// writeNoFmtSource accounts for comments copied with a verbatim node so later
+// comment emission does not print them again. Ordinary trailing comments on
+// the closing line are outside the node's span; getOriginalSource only extends
+// that span for a trailing nofmt directive.
+func (f *Formatter) writeNoFmtSource(node Node, source string) {
+	f.write(source)
+	loc := node.GetSourceLocation()
+	if loc == nil || loc.End == nil {
+		return
+	}
+	for line, text := range f.commentMap {
+		if line < loc.Line || line > loc.End.Line {
+			continue
+		}
+		if line < loc.End.Line || strings.HasSuffix(source, text) {
+			f.emittedComments[line] = true
 		}
 	}
 }
@@ -601,10 +610,10 @@ func (f *Formatter) handleNoFmtForm(form Node) bool {
 	}
 	f.emitCommentsForNode(form)
 	f.writeIndent()
-	f.write(orig)
+	f.writeNoFmtSource(form, orig)
 	fullLoc := form.GetSourceLocation()
 	if fullLoc != nil && fullLoc.End != nil {
-		f.removeTrailingNoFmtComment(fullLoc.End.Line)
+		f.emitTrailingComment(fullLoc.End.Line)
 		f.lastLine = fullLoc.End.Line
 	}
 	return true
@@ -648,7 +657,7 @@ func (f *Formatter) formatNode(node Node) {
 	if f.hasNoFmtComment(node) {
 		orig := f.getOriginalSource(node)
 		if orig != "" {
-			f.write(orig)
+			f.writeNoFmtSource(node, orig)
 			return
 		}
 	}

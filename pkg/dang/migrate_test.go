@@ -275,6 +275,26 @@ func TestMigrateConvergence(t *testing.T) {
 	})
 }
 
+func TestMigrateNoFmtComments(t *testing.T) {
+	for _, tc := range noFmtCommentCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MigrateSource("nofmt.dang", []byte(tc.source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+
+			// Force a syntax change outside the preserved region as well.
+			source := tc.source + "\nlet text = \"${hello}\"\n"
+			want := tc.source + "\nlet text = '${hello}'\n"
+			got, err = MigrateSource("nofmt.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+		})
+	}
+}
+
 func TestMigrationMeaningComparison(t *testing.T) {
 	for _, tc := range []struct {
 		name, original, migrated string
