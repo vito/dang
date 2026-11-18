@@ -10,6 +10,7 @@ The built-in surface of Dang itself (everything here is available without any
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
 - `URL(raw: String!) -> URL!` — validates a URL reference while preserving its original text; implemented in the Dang prelude (see the `URL!` section below).
+- `SemVer(raw: String!) -> SemVer!` — validates a full semantic version and removes an optional leading `v` (see the `SemVer!` section below).
 - `Regexp(pattern: String!) -> Regexp!` — compiles a pattern from any String expression; raises `invalid regexp "...": ...` when it doesn't compile (see `String!` regex methods below).
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; render everything else as the Dang literal it would be written as (`toString(["a", "b"])` → `["a", "b"]`, `toString({{a: 1}})` → `{{a: 1}}`, `toString(["k": 1])` → `["k": 1]`, Decoded data → the literal of its data, objects as map literals with sorted keys; floats always read as floats, `1.0`; an enum value inside a collection is `Color.RED`; a record shows its data fields, an object its public data fields (not methods or `let` fields; `{{}}` when all are `let`); a GraphQL object is the lazy query it is, `<Container: container.from(address: …)>` (a mutation's result `<Type: mutation.field(…)>`), sending nothing and showing argument names but never their values; select `.id` for the ID). String interpolation, `List.join` and `print` render values the same way. It is not an encoder: use `JSON.encode` for JSON.
@@ -178,6 +179,32 @@ rootless and retains excess leading `..` segments, so the result can later be
 resolved against an origin. Reference resolution is not a containment or
 same-origin check; do not use it to constrain an untrusted reference to a base
 URL.
+
+## `SemVer!` scalar
+
+`SemVer(raw: String!)` accepts SemVer 2.0.0 with an optional single lowercase
+`v` prefix, removed on construction. All three core numbers are required;
+whitespace, leading zeros in core numbers or numeric prerelease identifiers,
+and empty suffix identifiers are rejected. Build identifiers may contain
+leading zeros. Invalid input raises at materialization (including literal
+coercion, casts and codec decoding), like other Dang-defined scalar hooks.
+
+- `.core -> SemVer!` — version with prerelease and build metadata removed
+- `.major`, `.minor`, `.patch -> Int!` — numeric core components; reading one raises if it exceeds Int
+- `.prerelease`, `.build -> String` — suffix text without its delimiter, or null when absent
+- `.isPrerelease -> Boolean!` — whether there is a prerelease suffix
+- `.string -> String!` — canonical text without the leading `v`
+- `.compare(other: SemVer!) -> Int!` — SemVer precedence: -1, 0 or 1; ignores build metadata and handles arbitrarily long numeric identifiers
+- `.sortKey -> [String!]!` — an opaque key for `.sortBy { version => version.sortKey }`; build metadata is excluded
+- `.withPrerelease(prerelease: String)`, `.withBuild(build: String) -> SemVer!` — replace a suffix, or remove it with null; empty or invalid suffixes raise
+- `.bumpMajor`, `.bumpMinor`, `.bumpPatch -> SemVer!` — increment that component once, reset lower components, and clear both suffixes; decimal carry does not overflow Int
+
+Ordinary scalar equality compares canonical text, so distinct build metadata
+remains unequal even when `.compare` returns 0. Ordinary scalar ordering and
+`.sort` are textual, not SemVer precedence: use `.compare` or `.sortKey`.
+Construction, comparison and bumping accept arbitrarily long decimal numbers;
+only the Int-valued component getters impose Int's range. Use `.core` to drop
+suffixes without incrementing (including graduating a prerelease to its core).
 
 ## `[T]!` methods (lists)
 
