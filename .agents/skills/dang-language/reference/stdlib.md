@@ -96,28 +96,79 @@ Paths; use `.join` or interpolation.
 
 ## `URL!` scalar
 
-`URL(raw: String!) -> URL!` parses a URL reference with Go's `net/url.Parse`.
-Absolute, relative (including `//host/path`), empty, and opaque references are
-accepted; this is not a check that a URL is absolute or safe to fetch. Errors
-detected by `net/url.Parse` (such as invalid path escapes or non-numeric ports)
-raise `invalid URL: ...`; query strings and opaque components are not checked
-for valid percent escapes. The original text is preserved, not normalized:
-`URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
+`URL(raw: String!) -> URL!` constructs a URL reference. Absolute, relative
+(including `//host/path`), empty, and opaque references are accepted; this is
+not a check that a URL is absolute or safe to fetch. Construction preserves
+original text: `URL("https://foo:1234/bar") == "https://foo:1234/bar"`.
 Like other scalars, literals at `URL!` boundaries and explicit casts validate
 through the same hook; invalid literals are rejected during type checking.
-String variables require `URL(s)` or a cast. Equality uses the original text,
-not semantic URL equivalence.
+String variables require `URL(s)` or a cast. Equality is textual, not semantic.
+A schema's same-named scalar remains distinct: qualify it as `MyAPI.URL`.
 
-- `.scheme -> String!` — lower-case scheme, without the colon
-- `.host -> String!` — host with any explicit port and IPv6 brackets, without user information
-- `.hostname -> String!` — host without its port or IPv6 brackets
-- `.port -> String!` — explicit numeric port as text; no default port is inferred
-- `.path -> String!` — percent-decoded path, excluding query and fragment; empty for opaque URLs such as `mailto:user@example.com`
-- `.string -> String!` — original text, including its spelling and escapes
+### Components
 
-Absent components return `""`, not null. For example,
-`URL("https://foo:1234/bar").host` is `"foo:1234"`, `.hostname` is `"foo"`,
-`.port` is `"1234"`, and `.path` is `"/bar"`.
+- `.scheme -> String` — lowercase scheme without `:`, or null
+- `.host -> String` — host with explicit port and IPv6 brackets, excluding credentials, or null
+- `.hostname -> String` — host without port or IPv6 brackets, or null
+- `.port -> Int` — explicit port as a number, or null; no default port is inferred
+- `.path -> String!` — decoded path, excluding query and fragment; empty for opaque URLs such as `mailto:user@example.com`
+- `.escapedPath -> String!` — escaped path, retaining distinctions such as `/a%2Fb` versus `/a/b`
+- `.query -> Map[[String!]!]!` — decoded parameters, empty map when absent; repeated values retained in occurrence order
+- `.rawQuery -> String` — query text without `?`; null when absent, `""` for a trailing `?`
+- `.fragment -> String` — decoded fragment without `#`; null when absent, `""` for a trailing `#`
+- `.isAbsolute -> Boolean!` — whether a scheme is present (not necessarily HTTP or a URL with a host)
+- `.string -> String!` — original text, including spelling and escapes
+
+For example, `URL("https://foo:1234/bar?tag=a&tag=b#part").port` is `1234`,
+`.query["tag"]` is `["a", "b"]`, and `.fragment` is `"part"`.
+Query parameters use form encoding: `+` means space, `%2B` means `+`, bare
+`flag` means an empty value, and semicolons are ordinary data. Decoding errors
+raise rather than returning a partial map. Use `.rawQuery` for non-form query
+syntaxes. Construction checks URL syntax, not query parameter encoding;
+malformed query escapes raise when reading `.query` or editing individual
+parameters. Replacing the entire query with `.withQuery` does not decode the
+old query, so it can replace malformed query text.
+Ports must fit an Int when read; no network-port ceiling of 65535 is imposed.
+Paths are strings, not filesystem `Path` values: repeated and trailing slashes
+and encoded slashes can be significant.
+
+### Building and editing
+
+All helpers return a new `URL!`; the receiver is unchanged. Values are decoded
+component data, not pre-escaped strings. Edits may reserialize spelling, but
+preserve unrelated components; query edits may regroup repeated keys and
+normalize query escaping.
+
+- `.withScheme(scheme: String)` — set a scheme or clear with null
+- `.withHostname(hostname: String)` — set a hostname (bare IPv6 accepted), preserving port and credentials; null clears the authority, including port and credentials
+- `.withPort(port: Int)` — set a nonnegative explicit port on an existing host, or clear with null
+- `.withPath(path: String!)` — replace a decoded path, escaping delimiters without filesystem normalization; with an authority, a nonempty path must start with `/`
+- `.appendPath(segments: [String!]!)` — append decoded segments; `/` inside a segment is escaped, `.` and `..` are data rather than navigation; no path cleaning
+- `.withQuery(query: Map[[String!]!])` — replace all parameters; null removes `?`, an empty map emits `?`; empty value lists emit no pairs
+- `.withQueryParam(name: String!, value: String!)` — replace a parameter's values with one value
+- `.withAddedQueryParam(name: String!, value: String!)` — append another value for a parameter
+- `.withoutQueryParam(name: String!)` — remove all values for a parameter; removing the last parameter removes `?`
+- `.withFragment(fragment: String)` — replace the decoded fragment; null removes `#`, `""` emits `#`
+- `.resolve(reference: URL!)` — resolve a URL reference, including dot-segment navigation; a leading `/` replaces the path, `//host` replaces the authority, and an absolute URL replaces the base
+
+```dang
+let endpoint = URL("https://api.example.com")
+  .appendPath(["users", "name/with/slashes"])
+  .withQuery(["tag": ["a", "b"]])
+  .withAddedQueryParam("tag", "c")
+  .withFragment("details")
+assert { endpoint.escapedPath == "/users/name%2Fwith%2Fslashes" }
+assert { endpoint.query["tag"] == ["a", "b", "c"] }
+```
+
+To build entirely from components, start with `URL("").withScheme("https")`
+and then `.withHostname(...)`. Invalid schemes/hostnames and negative ports
+raise rather than injecting delimiters. Hierarchical path/authority edits on
+opaque URLs raise rather than discarding their payload. Adding a scheme to a
+nonempty relative path without a host also raises: set the hostname or use a
+rooted path first, so the path cannot silently become an opaque payload.
+Reference resolution is not a containment or same-origin check; do not use it
+to constrain an untrusted reference to a base URL.
 
 ## `[T]!` methods (lists)
 

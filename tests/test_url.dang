@@ -6,7 +6,7 @@ assert { u == "https://foo:1234/bar" }
 assert { u.scheme == "https" }
 assert { u.host == "foo:1234" }
 assert { u.hostname == "foo" }
-assert { u.port == "1234" }
+assert { u.port == 1234 }
 assert { u.path == "/bar" }
 
 # Parsing preserves the original text rather than normalizing it.
@@ -16,21 +16,21 @@ assert { escaped.string == raw }
 assert { escaped.scheme == "https" }
 assert { escaped.host == "Example.COM:443" }
 assert { escaped.hostname == "Example.COM" }
-assert { escaped.port == "443" }
+assert { escaped.port == 443 }
 assert { escaped.path == "/a/b//../c" }
 assert { (escaped :: String!) == raw }
 assert { toString(escaped) == raw }
 assert { `URL: ${u}` == "URL: https://foo:1234/bar" }
 
-# Missing components are empty strings; relative references are valid.
+# Missing optional components are null; an empty path is still a String.
 let bare = URL("https://example.com")
-assert { bare.port == "" }
+assert { bare.port == null }
 assert { bare.path == "" }
 let relative = URL("../a%20b?next=/foo#section")
-assert { relative.scheme == "" }
-assert { relative.host == "" }
-assert { relative.hostname == "" }
-assert { relative.port == "" }
+assert { relative.scheme == null }
+assert { relative.host == null }
+assert { relative.hostname == null }
+assert { relative.port == null }
 assert { relative.path == "../a b" }
 assert { URL("").string == "" }
 assert { URL("//example.com/path").host == "example.com" }
@@ -41,14 +41,14 @@ assert { URL("mailto:user@example.com").path == "" }
 let ipv6 = URL("https://[2001:db8::1]:8443/path")
 assert { ipv6.host == "[2001:db8::1]:8443" }
 assert { ipv6.hostname == "2001:db8::1" }
-assert { ipv6.port == "8443" }
-assert { URL("http://[::1]/").port == "" }
+assert { ipv6.port == 8443 }
+assert { URL("http://[::1]/").port == null }
 
 # Literal coercion, explicit casts, and String degradation follow Path.
 let annotated: URL! = "https://example.com/typed"
 assert { annotated.path == "/typed" }
 
-urlHost(candidate: URL! = "https://default.example"): String! { candidate.hostname }
+urlHost(candidate: URL! = "https://default.example"): String { candidate.hostname }
 
 assert { urlHost == "default.example" }
 assert { urlHost("https://arg.example") == "arg.example" }
@@ -84,5 +84,91 @@ invalids.each { invalid =>
 }
 let invalidConfig = '{"endpoint":"https://example.com/%zz"}'
 assert { ((JSON.decode(invalidConfig) :: Config!) rescue null) == null }
+
+# Optional components distinguish missing from explicitly empty.
+assert { bare.query == [:] }
+assert { bare.rawQuery == null }
+assert { bare.fragment == null }
+assert { URL("https://example.com?").query == [:] }
+assert { URL("https://example.com?").rawQuery == "" }
+assert { URL("https://example.com#").fragment == "" }
+assert { URL("https://example.com").isAbsolute }
+assert { !relative.isAbsolute }
+assert { escaped.escapedPath == "/a%2Fb//../c" }
+assert { URL("https://foo:00080").port == 80 }
+assert { URL("https://foo:0").port == 0 }
+
+# Decoded queries retain repeated values, empty values, and Unicode.
+let search = URL("/search?tag=a&tag=b&blank=&flag&q=hello+world&literal=%2B&utf=%E2%9C%93#hello%20world")
+assert { search.query == ["tag": ["a", "b"], "blank": [""], "flag": [""], "q": ["hello world"], "literal": ["+"], "utf": ["✓"]] }
+assert { search.fragment == "hello world" }
+assert { URL("?a=one;two").query == ["a": ["one;two"]] }
+assert { URL("?x=1&x=2").query["x"] == ["1", "2"] }
+assert { URL("?bad=%zz").rawQuery == "bad=%zz" }
+assert { (URL("?good=ok&bad=%zz").query rescue null) == null }
+
+# Build URLs from decoded components, escaping data rather than concatenating it.
+let built = URL("")
+  .withScheme("https")
+  .withHostname("example.com")
+  .withPort(8443)
+  .withPath("/api/")
+  .appendPath(["users", "a/b", "a?b#c%"])
+  .withQuery(["tag": ["a", "b"], "q": ["hello world"]])
+  .withFragment("results #1")
+assert { built.scheme == "https" }
+assert { built.host == "example.com:8443" }
+assert { built.path == "/api/users/a/b/a?b#c%" }
+assert { built.escapedPath == "/api/users/a%2Fb/a%3Fb%23c%25" }
+assert { built.query == ["tag": ["a", "b"], "q": ["hello world"]] }
+assert { built.fragment == "results #1" }
+assert { URL(built.string) == built }
+assert { built.withPort(null).host == "example.com" }
+assert { built.withHostname("::1").host == "[::1]:8443" }
+assert { built.withScheme(null).scheme == null }
+assert { built.withFragment(null).fragment == null }
+assert { built.withFragment("").fragment == "" }
+assert { built.withQuery(null).query == [:] }
+assert { built.withQuery(null).rawQuery == null }
+assert { built.withQuery([:]).rawQuery == "" }
+assert { built.withQuery(["omit": [], "keep": ["x"]]).query == ["keep": ["x"]] }
+assert { built.port == 8443 }
+assert { built.fragment == "results #1" }
+
+# Query edits retain the other parameters and do not mutate the receiver.
+let edited = search.withQueryParam("tag", "c").withAddedQueryParam("tag", "d")
+assert { edited.query["tag"] == ["c", "d"] }
+assert { edited.query["q"] == ["hello world"] }
+assert { search.query["tag"] == ["a", "b"] }
+assert { edited.withoutQueryParam("tag").query["tag"] == null }
+assert { URL("?only=value").withoutQueryParam("only").query == [:] }
+assert { URL("?only=value").withoutQueryParam("only").rawQuery == null }
+assert { URL("").withQueryParam("a&b", "c=d#e").query == ["a&b": ["c=d#e"]] }
+
+# Paths are URL paths, not filesystem paths: do not clean or double-escape.
+assert { URL("/a//b/").appendPath(["c"]).path == "/a//b/c" }
+assert { URL("/a%2Fb").appendPath(["c/d"]).escapedPath == "/a%2Fb/c%2Fd" }
+assert { URL("/a").appendPath(["..", "."]).escapedPath == "/a/%2E%2E/%2E" }
+assert { URL("/a%2Fb?#").appendPath([]).string == "/a%2Fb?#" }
+assert { URL("/a?x=1#old").withPath("/b?new#frag").path == "/b?new#frag" }
+assert { URL("").withPath("//not-a-host").host == null }
+assert { URL("").withPath("//not-a-host").path == "//not-a-host" }
+assert { URL("").withPath("looks:like-a-scheme").scheme == null }
+
+# Resolve uses URL reference rules; relative references may replace the filename.
+let baseURL = URL("https://example.com/a/b?old=1#old")
+assert { baseURL.resolve("../c?new=2#new") == "https://example.com/c?new=2#new" }
+assert { baseURL.resolve("//other.example/x") == "https://other.example/x" }
+assert { baseURL.resolve("?new=2").path == "/a/b" }
+assert { baseURL.resolve("#").fragment == "" }
+assert { baseURL.resolve("https://other.example/").hostname == "other.example" }
+
+# Invalid edits raise rather than inject delimiters or discard opaque data.
+assert { (u.withHostname("evil.example/path") rescue null) == null }
+assert { (u.withScheme("http://") rescue null) == null }
+assert { (u.withPort(-1) rescue null) == null }
+assert { (URL("relative").withPort(80) rescue null) == null }
+assert { (URL("mailto:user@example.com").withPath("/other") rescue null) == null }
+assert { URL("mailto:user@example.com").withFragment("part").fragment == "part" }
 
 print("All URL tests passed!")
