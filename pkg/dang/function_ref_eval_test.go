@@ -356,6 +356,20 @@ assert { values() == [1] }
 	require.Equal(t, "{\"x\":1}\n", out)
 }
 
+func TestObjectSelectionReturningCallable(t *testing.T) {
+	out, err := evalWithContext(t, t.Context(), `let f(): Int! { 7 }
+type T { factory[a](value: a): a { value } }
+let selected = T.{{factory(value: &f)}}
+print(selected.factory + 1)
+let callable = &selected.factory
+print(callable())
+let selectedAgain = selected.{{factory}}
+print(selectedAgain.factory + 1)
+`)
+	require.NoError(t, err)
+	require.Equal(t, "8\n7\n8\n", out)
+}
+
 func TestAutoCallReturningCallable(t *testing.T) {
 	args := NewRecordType("", Keyed[*hm.Scheme]{Key: "x", Value: hm.NewScheme(nil, NonNull(IntType))})
 	target := BuiltinFunction{Name: "target", FnType: hm.NewFnType(args, NonNull(IntType))}

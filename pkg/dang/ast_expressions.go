@@ -2272,10 +2272,10 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		field.keepCallable = symbol.keepCallable
 	}
 
-	ret, _, err := autoCallFnType(fieldType)
-	if err != nil {
-		return nil, err
-	}
+	// Symbol.Infer and FunCall.Infer already account for the invocation
+	// performed by evaluation. Its result may itself be a function; do not
+	// infer a second call that evaluation never makes.
+	ret := fieldType
 
 	// Handle nested selections
 	if field.Selection != nil {
