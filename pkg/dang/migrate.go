@@ -24,11 +24,14 @@ import (
 // migrating.
 //
 // The result is checked twice. It must mean the same as the source: parsed
-// as version to, it must be the same AST, source locations aside, as the
-// source formatted and parsed as version from. That catches text the
-// formatter echoes verbatim, like a #nofmt region, whose meaning changed
-// between the versions; such a region has to be migrated by hand. And it must
-// be stable: formatting it again as version to must reproduce it exactly.
+// as version to, it must be the same AST, known safe normalizations and
+// source locations aside, as the source parsed as written in version from.
+// That catches formatter regressions as well as text echoed verbatim, like a
+// #nofmt region, whose meaning changed between versions. And it must
+// be stable: formatting iterates to a fixed point as version to, preserving
+// import order, with a pass limit and cycle detection. Import order is kept because
+// imported modules may have effects or contribute overlapping names. A
+// same-version call remains ordinary formatting, including import sorting.
 //
 // Source that is spelled the same in both versions is returned as is, not
 // reformatted, so moving to a version that changed no syntax this file uses
@@ -47,36 +50,36 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 	// Template interpolations are code, so a migration re-prints them in the
 	// target version rather than echoing them as written.
 	migrating := from.orCurrent() != to.orCurrent()
-	migrated, err := formatSource(filename, source, from, to, migrating)
+	migrated, err := formatSource(filename, source, from, to, migrating, migrating)
 	if err != nil {
 		return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, enhanceParseError(err, filename, source, from))
+	}
+	// Only the first pass reads the old syntax. Later passes see target-version
+	// source, and must retain migration's import order rather than sorting it.
+	migrated, err = stabilizeFormat(filename, migrated, to, migrating)
+	if err != nil {
+		return "", fmt.Errorf("formatting migrated source as Dang %s: %w", to, err)
 	}
 	got, err := Parse(filename, []byte(migrated), WithVersion(to))
 	if err != nil {
 		return "", fmt.Errorf("migrated source does not parse as Dang %s: %w", to, enhanceParseError(err, filename, []byte(migrated), to))
 	}
 	if migrating {
-		// Compare against the source formatted in its own version, so that
-		// formatting's own normalizations (e.g. dropping empty parens) don't
-		// count as differences. Its interpolations are re-printed too, so
-		// that the two texts are comparable.
-		formatted, err := formatSource(filename, source, from, from, true)
+		// Compare against the source as written. Formatting it first would
+		// hide formatter bugs shared by the source and target versions.
+		want, err := Parse(filename, source, WithVersion(from))
 		if err != nil {
-			return "", err
-		}
-		want, err := Parse(filename, []byte(formatted), WithVersion(from))
-		if err != nil {
-			return "", fmt.Errorf("formatted source does not parse as Dang %s: %w", from, err)
+			return "", fmt.Errorf("%w as Dang %s: %w", errUnparseable, from, enhanceParseError(err, filename, source, from))
 		}
 		if loc, differs := firstASTDifference(want.(Node), got.(Node)); differs {
 			where := "it"
 			if loc != nil {
 				where = fmt.Sprintf("line %d", loc.Line)
 			}
-			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the source as formatted: is it in a #nofmt region?); migrate it by hand", to, where)
+			return "", fmt.Errorf("migrating to Dang %s would change the meaning of %s (in the original source; check for a formatter bug or a #nofmt region); migrate it by hand", to, where)
 		}
-		if parsed, err := Parse(filename, source, WithVersion(from)); err == nil && !to.forLoops() {
-			if loc := forLoopCollision(parsed.(*FileBlock), moduleBindsLoop); loc != nil {
+		if !to.forLoops() {
+			if loc := forLoopCollision(want.(*FileBlock), moduleBindsLoop); loc != nil {
 				return "", fmt.Errorf("migrating to Dang %s would change the meaning of line %d: its `for` loop becomes a call to `loop`, which names a binding of this program's own there rather than the builtin; rename that binding first", to, loc.Line)
 			}
 		}
@@ -85,16 +88,17 @@ func migrateSource(filename string, source []byte, from, to Version, moduleBinds
 		// is rather than reformatting it, provided it means the same as
 		// written. The formatted texts agreeing is not enough: formatting
 		// normalizes old spellings like 2.0's comma separators.
+		formatted, err := formatSource(filename, source, from, from, true, true)
+		if err != nil {
+			return "", err
+		}
+		formatted, err = stabilizeFormat(filename, formatted, from, true)
+		if err != nil {
+			return "", err
+		}
 		if formatted == migrated && sameMeaning(filename, source, from, to) {
 			return string(source), nil
 		}
-	}
-	again, err := formatSource(filename, []byte(migrated), to, to, false)
-	if err != nil {
-		return "", err
-	}
-	if again != migrated {
-		return "", fmt.Errorf("migrated source is not stable when formatted as Dang %s", to)
 	}
 	return migrated, nil
 }
@@ -225,7 +229,24 @@ func declaresLoopAtTop(filename string, source []byte, v Version) bool {
 // the formatter unwraps such blocks unless comments keep them; and the loop
 // builtin's aliases for desugared `for` loops as `loop`, how they migrate
 // (forLoopCollision checks that this keeps their meaning).
-func migrationCanonical(n Node) Node {
+func migrationCanonical(n Node, reference bool) Node {
+	// A reference suppresses auto-calling on a read, but not through a
+	// rescue expression. Unwrapping its empty catch here could hide that
+	// change in behavior (for example &(try { factory } catch {})).
+	if r, ok := n.(*RescueExpr); ok && reference && r.TryCatch && len(r.Clauses) == 0 {
+		return n
+	}
+	// An else block containing only an if introduces no declarations in
+	// its scope; the formatter collapses it to an else-if chain.
+	if cond, ok := n.(*Conditional); ok {
+		if block, ok := cond.Else.(*Block); ok && len(block.Forms) == 1 {
+			if nested, ok := block.Forms[0].(*Conditional); ok {
+				canonical := *cond
+				canonical.Else = nested
+				return &canonical
+			}
+		}
+	}
 	if sym, ok := n.(*Symbol); ok && isForLoopBuiltin(sym.Name) {
 		loop := *sym
 		loop.Name = "loop"
@@ -280,10 +301,44 @@ func sameMeaning(filename string, source []byte, from, to Version) bool {
 // (tagged `dang:"spelling"`), and reports whether they differ,
 // with the location of the innermost node enclosing the first difference.
 func firstASTDifference(a, b Node) (*SourceLocation, bool) {
-	return compareAST(reflect.ValueOf(a), reflect.ValueOf(b), a.GetSourceLocation())
+	return compareAST(reflect.ValueOf(a), reflect.ValueOf(b), a.GetSourceLocation(), false)
 }
 
-func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool) {
+// migrationAutoCall recognizes exactly the read expressions that auto-call.
+// For valid programs, an explicit call with no arguments or block requires no
+// arguments, so reading its callee has the same effect. Never erase a call of
+// an arbitrary expression (including an assertion or another call).
+func migrationAutoCall(n Node) Node {
+	call, ok := n.(*FunCall)
+	if !ok || len(call.Args) != 0 || call.BlockArg != nil {
+		return n
+	}
+	switch fun := call.Fun.(type) {
+	case *Symbol:
+		if !fun.AutoCall {
+			canonical := *fun
+			canonical.AutoCall = true
+			return &canonical
+		}
+	case *Select:
+		if !fun.AutoCall {
+			canonical := *fun
+			canonical.AutoCall = true
+			return &canonical
+		}
+	case *Index:
+		if !fun.AutoCall {
+			canonical := *fun
+			canonical.AutoCall = true
+			return &canonical
+		}
+	}
+	return n
+}
+
+// reference suppresses empty-call elision at the current node: &f() calls f,
+// while &f suppresses its auto-call. Grouping preserves that context.
+func compareAST(a, b reflect.Value, loc *SourceLocation, reference bool) (*SourceLocation, bool) {
 	if a.IsValid() != b.IsValid() {
 		return loc, true
 	}
@@ -308,16 +363,22 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 				if nodeLoc := an.GetSourceLocation(); nodeLoc != nil {
 					loc = nodeLoc
 				}
-				a, b = reflect.ValueOf(migrationCanonical(an)), reflect.ValueOf(migrationCanonical(bn))
+				// A zero-clause try/catch can unwrap directly to a call.
+				// Normalize that wrapper before recognizing its auto-call.
+				an, bn = migrationCanonical(an, reference), migrationCanonical(bn, reference)
+				if !reference {
+					an, bn = migrationAutoCall(an), migrationAutoCall(bn)
+				}
+				a, b = reflect.ValueOf(an), reflect.ValueOf(bn)
 				if a.Type() != b.Type() {
 					return loc, true
 				}
 				if a.Kind() != reflect.Pointer {
-					return compareAST(a, b, loc)
+					return compareAST(a, b, loc, reference)
 				}
 			}
 		}
-		return compareAST(a.Elem(), b.Elem(), loc)
+		return compareAST(a.Elem(), b.Elem(), loc, reference)
 	case reflect.Struct:
 		for i := 0; i < a.NumField(); i++ {
 			field := a.Type().Field(i)
@@ -325,7 +386,18 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 				field.Tag.Get("dang") == "spelling" {
 				continue
 			}
-			if at, differs := compareAST(a.Field(i), b.Field(i), loc); differs {
+			childReference := false
+			if field.Name == "Expr" {
+				switch a.Type() {
+				case reflect.TypeFor[FunctionRef]():
+					childReference = true
+				case reflect.TypeFor[Grouped]():
+					childReference = reference
+				case reflect.TypeFor[NonNullAssert]():
+					childReference = a.FieldByName("Callee").Bool() || b.FieldByName("Callee").Bool()
+				}
+			}
+			if at, differs := compareAST(a.Field(i), b.Field(i), loc, childReference); differs {
 				return at, true
 			}
 		}
@@ -335,7 +407,7 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 			return loc, true
 		}
 		for i := 0; i < a.Len(); i++ {
-			if at, differs := compareAST(a.Index(i), b.Index(i), loc); differs {
+			if at, differs := compareAST(a.Index(i), b.Index(i), loc, false); differs {
 				return at, true
 			}
 		}
@@ -347,7 +419,7 @@ func compareAST(a, b reflect.Value, loc *SourceLocation) (*SourceLocation, bool)
 		iter := a.MapRange()
 		for iter.Next() {
 			bv := b.MapIndex(iter.Key())
-			if at, differs := compareAST(iter.Value(), bv, loc); differs {
+			if at, differs := compareAST(iter.Value(), bv, loc, false); differs {
 				return at, true
 			}
 		}

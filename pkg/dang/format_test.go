@@ -2,7 +2,9 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,429 @@ import (
 
 func TestMain(m *testing.M) {
 	os.Exit(oteltestctx.Main(m))
+}
+
+// Both repros from #198 need source-line-based layout to catch up with wrapping.
+var formatConvergenceCases = []struct{ name, source, want string }{
+	{
+		"method body with record and another form",
+		`type A {
+  total: Int! = 0
+
+  m2: Int! { {{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11}}; total }
+}
+`,
+		`type A {
+  total: Int! = 0
+
+  m2: Int! {
+    {{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11}}
+    total
+  }
+}
+`,
+	},
+	{
+		"list of long records",
+		`let cases = [
+  {{name: "first case with a long enough name", expected: "an error message that pushes the record past the width"}},
+  {{name: "second case with a long enough name", expected: "another error message that pushes the record past the width"}},
+]
+print(cases.length)
+`,
+		`let cases = [
+  {{
+    name: "first case with a long enough name",
+    expected: "an error message that pushes the record past the width"
+  }},
+
+  {{
+    name: "second case with a long enough name",
+    expected: "another error message that pushes the record past the width"
+  }},
+]
+print(cases.length)
+`,
+	},
+}
+
+func TestFormatConvergence(t *testing.T) {
+	for _, tc := range formatConvergenceCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, version := range []Version{Version2_1, Version2_5} {
+				got, err := FormatFileWithVersion([]byte(tc.source), version)
+				require.NoError(t, err)
+				require.Equal(t, tc.want, got)
+				again, err := FormatFileWithVersion([]byte(got), version)
+				require.NoError(t, err)
+				require.Equal(t, got, again)
+			}
+		})
+	}
+	t.Run("deeply nested bodies converge", func(t *testing.T) {
+		source := "let x = " + strings.Repeat("{ ", 20) +
+			"{{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11}}" +
+			strings.Repeat("; 1 }", 20) + "\n"
+		got, err := FormatFile([]byte(source))
+		require.NoError(t, err)
+		again, err := FormatFile([]byte(got))
+		require.NoError(t, err)
+		require.Equal(t, got, again)
+	})
+	t.Run("nofmt stays verbatim while other forms settle", func(t *testing.T) {
+		kept := "let kept   = {{a:1,b:2}} # nofmt\n"
+		got, err := FormatFile([]byte(kept + formatConvergenceCases[1].source))
+		require.NoError(t, err)
+		require.Equal(t, kept+formatConvergenceCases[1].want, got)
+	})
+}
+
+var noFmtCommentCases = []struct{ name, source string }{
+	{"interior standalone comment", "# nofmt\nlet x = {\n # keep this explanation\n 1\n}\n"},
+	{"opening directive and interior trailing comment", "let x = { # nofmt\n # keep this explanation\n 1 # keep this too\n}\n"},
+	{"closing directive", "# nofmt\nlet x = {\n # keep this explanation\n 1\n} # nofmt\n"},
+	{"comments outside the copied span", "# before\n# nofmt\nlet x = {\n # keep this explanation\n 1\n} # closing comment\n\n# after\n"},
+	{"nested form", "let x = {\n  # nofmt\n  let y = {\n   # nested explanation\n   1 # nested trailing\n  }\n  y\n}\n"},
+	{"enclosed comments", "# nofmt\nlet xs = [\n {{\n  # record explanation\n  a: 1 # field trailing\n }}, # element trailing\n]\n"},
+}
+
+func TestFormatNoFmtComments(t *testing.T) {
+	for _, tc := range noFmtCommentCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatFile([]byte(tc.source))
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+		})
+	}
+}
+
+func TestFormatNoFmtExpressionComments(t *testing.T) {
+	for _, closing := range []string{"# nofmt closing", "# outside"} {
+		t.Run(closing, func(t *testing.T) {
+			source := []byte("# nofmt preceding\n{{\n # interior\n a: 1 # trailing\n}} " + closing + "\n")
+			parsed, comments, err := ParseWithComments("nofmt.dang", source)
+			require.NoError(t, err)
+			file := parsed.(*FileBlock)
+			f := &Formatter{
+				source:          source,
+				comments:        extractComments(source, comments, file),
+				commentMap:      comments,
+				emittedComments: make(map[int]bool),
+			}
+			// Exercise the expression path directly, not handleNoFmtForm.
+			f.formatNode(file.Forms[0])
+			require.True(t, f.emittedComments[3])
+			require.True(t, f.emittedComments[4])
+			require.False(t, f.emittedComments[1])
+			require.False(t, f.emittedComments[5])
+			f.emitRemainingComments()
+			for _, text := range comments {
+				require.Equal(t, 1, strings.Count(f.buf.String(), text), text)
+			}
+		})
+	}
+}
+
+var noFmtBoundaryCases = []struct{ name, source, want string }{
+	{
+		"chained argument",
+		"print(\n foo\n .bar(1)\n .baz(2) # nofmt\n)\n",
+		"print(\n  foo\n    .bar(1)\n    .baz(2), # nofmt\n)\n",
+	},
+	{
+		"chained record field",
+		"let x = {{\n a: foo\n .bar(1)\n .baz(2), # nofmt\n b: 1\n}}\n",
+		"let x = {{\n  a: foo\n    .bar(1)\n    .baz(2), # nofmt\n\n  b: 1\n}}\n",
+	},
+	{
+		"selected argument",
+		"print(\n foo\n .bar\n .baz # nofmt\n)\n",
+		"print(\n  foo\n    .bar\n    .baz, # nofmt\n)\n",
+	},
+	{
+		"literal list element",
+		"let xs = [\n  \"\"\"\n   abc\n  \"\"\" # nofmt\n]\n",
+		"let xs = [\n  \"\"\"\n    abc\n  \"\"\", # nofmt\n]\n",
+	},
+	{
+		"quoted literal",
+		"let x = \"\"\"\n abc\n\"\"\" # nofmt\n",
+		"let x = \"\"\"\n  abc\n\"\"\" # nofmt\n",
+	},
+	{
+		"backtick literal",
+		"let x = ```\n abc\n``` # nofmt\n",
+		"let x = ```\n  abc\n``` # nofmt\n",
+	},
+}
+
+func TestFormatNoFmtBoundaries(t *testing.T) {
+	for _, tc := range noFmtBoundaryCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatFile([]byte(tc.source))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+			original, err := Parse("original.dang", []byte(tc.source))
+			require.NoError(t, err)
+			formatted, err := Parse("formatted.dang", []byte(got))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(original.(Node), formatted.(Node))
+			require.False(t, differs, "formatting must keep the original meaning")
+		})
+	}
+}
+
+func chainCommentParentCases() []struct{ name, source, following string } {
+	var cases []struct{ name, source, following string }
+	for _, chain := range []struct{ name, source string }{
+		{"call", "foo\n .bar(1)\n .baz(2)"},
+		{"select", "foo\n .bar\n .baz"},
+		{"dot apply", "foo\n .{ _ + 1 }\n .{ _ + 2 }"},
+	} {
+		for _, parent := range []struct{ name, before, after, following string }{
+			{"rescue", "let x = foo rescue {\n err: MyError! => ", " else => 0\n}\nprint(x)\n", "else =>"},
+			{"case", "let x = case (value) {\n 0 => ", " else => 0\n}\nprint(x)\n", "else =>"},
+			{"grouped receiver", "let x = (", ")[0]\nprint(x)\n", ")[0]"},
+			{"index operand", "let x = values[(", ")]\nprint(x)\n", ")]"},
+			{"unary operand", "let x = -(", ")\nprint(x)\n", "print(x)"},
+			{"conditional body", "let x = if (true) {\n ", "} else { 0 }\nprint(x)\n", "else"},
+			{"return", "f: Int! {\n return ", " 0\n}\nprint(1)\n", "print(1)"},
+		} {
+			for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+				cases = append(cases, struct{ name, source, following string }{
+					parent.name + "/" + chain.name + "/" + comment,
+					parent.before + chain.source + " " + comment + "\n" + parent.after,
+					parent.following,
+				})
+			}
+		}
+	}
+	for _, parent := range []struct{ name, before, after, following string }{
+		{"copied rescue literal", "let x = foo rescue {\n err: MyError! => ", " else => 0\n}\nprint(x)\n", "else =>"},
+		{"copied grouped literal", "let x = (", ")[0]\nprint(x)\n", ")[0]"},
+	} {
+		cases = append(cases, struct{ name, source, following string }{
+			parent.name,
+			parent.before + "\"\"\"\n abc\n\"\"\" # nofmt KEEP\n" + parent.after,
+			parent.following,
+		})
+	}
+	for _, fence := range []string{"\"\"\"", "'''", "```"} {
+		for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+			cases = append(cases, struct{ name, source, following string }{
+				"binary left literal/" + fence + "/" + comment,
+				"let x = " + fence + "\n abc\n" + fence + " " + comment + "\n + \"def\"\nprint(x)\n",
+				"+ \"def\"",
+			})
+		}
+	}
+	for _, chain := range []struct{ name, source string }{
+		{"call", "foo\n .bar(1)"},
+		{"select", "foo\n .bar"},
+		{"dot apply", "foo\n .{ _ + 1 }"},
+	} {
+		for _, suffix := range []string{" + 2", "!", "[0]", " rescue 0", " ?? 0"} {
+			cases = append(cases, struct{ name, source, following string }{
+				"same-line suffix/" + chain.name + "/" + suffix,
+				"let x = " + chain.source + suffix + " # KEEP\nprint(x)\n",
+				"print(x)",
+			})
+		}
+	}
+	for _, chain := range []struct{ name, source string }{
+		{"call", "foo\n .bar(1).baz(2)"},
+		{"select", "foo\n .bar.baz"},
+		{"dot apply", "foo\n .{ _ + 1 }.{ _ + 2 }"},
+	} {
+		for _, parent := range []struct{ name, before, after string }{
+			{"rescue suffix", "let x = ", " rescue 0\nprint(x)\n"},
+			{"condition", "let x = if (", ") { 1 } else { 0 }\nprint(x)\n"},
+			{"case condition", "let x = case (", ") { else => 0 }\nprint(x)\n"},
+			{"grouped index", "let x = (", ")[0]\nprint(x)\n"},
+			{"asserted immediate call", "let x = (", ")!()\nprint(x)\n"},
+			{"selection suffix", "let x = ", " .{{field}}\nprint(x)\n"},
+			{"binary suffix", "let x = ", " + 2\nprint(x)\n"},
+		} {
+			for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+				cases = append(cases, struct{ name, source, following string }{
+					"next-line suffix/" + parent.name + "/" + chain.name + "/" + comment,
+					parent.before + chain.source + " " + comment + "\n" + parent.after,
+					"print(x)",
+				})
+			}
+		}
+	}
+	for _, fence := range []string{"\"\"\"", "'''", "```"} {
+		for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+			for _, prefix := range []string{"", "enabled\n and "} {
+				cases = append(cases, struct{ name, source, following string }{
+					"logical operand/" + fence + "/" + comment + "/" + prefix,
+					"let x = " + prefix + "actual == " + fence + "\n expected\n" + fence + " " + comment + "\n and enabled\nprint(x)\n",
+					"print(x)",
+				})
+			}
+		}
+	}
+	cases = append(cases, struct{ name, source, following string }{
+		"unicode chain with same-line elements",
+		"let x = foo\n .bar(\"café\").baz(2) + 2 # KEEP\nprint(x)\n",
+		"print(x)",
+	})
+	cases = append(cases, struct{ name, source, following string }{
+		"nested same-line comma owners",
+		"print(\n foo(\n  bar\n .baz(1)) # KEEP\n)\nprint(2)\n",
+		"print(2)",
+	})
+	return cases
+}
+
+func TestFormatChainCommentParents(t *testing.T) {
+	for _, tc := range chainCommentParentCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatFile([]byte(tc.source))
+			require.NoError(t, err)
+			require.Equal(t, 1, strings.Count(got, "KEEP"))
+			require.Less(t, strings.Index(got, "KEEP"), strings.Index(got, tc.following))
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+			original, err := Parse("original.dang", []byte(tc.source))
+			require.NoError(t, err)
+			formatted, err := Parse("formatted.dang", []byte(got))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(original.(Node), formatted.(Node))
+			require.False(t, differs)
+		})
+	}
+}
+
+func TestFormatChainSourceBoundaries(t *testing.T) {
+	for _, middle := range []string{".bar(1)", ".bar", ".{ _ + 1 }"} {
+		t.Run(middle, func(t *testing.T) {
+			source := "let x = foo # root\n " + middle + " # middle\n .baz + 2 # end\nprint(x)\n"
+			want := "let x = foo # root\n  " + middle + " # middle\n  .baz + 2 # end\nprint(x)\n"
+			got, err := FormatFile([]byte(source))
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			// Trailing-dot notation moves only the dots, not their comments.
+			source = "let x = foo. # root\n " + strings.TrimPrefix(middle, ".") + ". # middle\n baz + 2 # end\nprint(x)\n"
+			got, err = FormatFile([]byte(source))
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestFormatTrailingCommentWrites(t *testing.T) {
+	for _, newline := range []bool{false, true} {
+		f := &Formatter{
+			indent:          1,
+			comments:        []Comment{{Line: 1, Text: "# comment", IsTrailing: true}},
+			emittedComments: make(map[int]bool),
+		}
+		f.write("value")
+		f.emitTrailingComment(1)
+		f.write(" ")
+		f.write("\t")
+		if newline {
+			f.newline()
+			f.writeIndent()
+		}
+		f.write("+ 1")
+		require.Equal(t, "value # comment\n  + 1", trimTrailingWhitespace(f.buf.String()))
+	}
+	t.Run("nl clears the comment state", func(t *testing.T) {
+		f := &Formatter{commentMap: map[int]string{1: "# comment"}, emittedComments: make(map[int]bool)}
+		f.write("value")
+		f.nl(1)
+		f.write("next")
+		require.Equal(t, "value # comment\nnext", f.buf.String())
+	})
+	t.Run("literal contents are not comment emission", func(t *testing.T) {
+		f := &Formatter{}
+		f.write("\"# literal\"")
+		f.write("[0]")
+		require.Equal(t, "\"# literal\"[0]", f.buf.String())
+	})
+}
+
+func TestFormatFixedPoint(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		outputs []string
+		want    string
+		err     string
+	}{
+		{"already stable", []string{"a"}, "a", ""},
+		{"settles", []string{"b", "c", "c"}, "c", ""},
+		{"cycle to input", []string{"b", "a"}, "", "cycle detected after 2 passes"},
+		{"cycle after prefix", []string{"b", "c", "b"}, "", "cycle detected after 3 passes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			got, err := formatFixedPoint("a", func(source string) (string, error) {
+				if calls == 0 {
+					require.Equal(t, "a", source)
+				} else {
+					require.Equal(t, tc.outputs[calls-1], source)
+				}
+				require.Less(t, calls, len(tc.outputs))
+				out := tc.outputs[calls]
+				calls++
+				return out, nil
+			})
+			if tc.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.err)
+			}
+			require.Equal(t, tc.want, got)
+			require.Equal(t, len(tc.outputs), calls)
+		})
+	}
+	t.Run("converges on last permitted pass", func(t *testing.T) {
+		calls := 0
+		got, err := formatFixedPoint("a", func(source string) (string, error) {
+			calls++
+			if calls == maxFormatPasses {
+				return source, nil
+			}
+			return source + "x", nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "a"+strings.Repeat("x", maxFormatPasses-1), got)
+		require.Equal(t, maxFormatPasses, calls)
+	})
+	t.Run("pass limit", func(t *testing.T) {
+		calls := 0
+		got, err := formatFixedPoint("a", func(source string) (string, error) {
+			calls++
+			return source + "x", nil
+		})
+		require.ErrorContains(t, err, "did not converge after")
+		require.Empty(t, got)
+		require.Equal(t, maxFormatPasses, calls)
+	})
+	t.Run("error on later pass", func(t *testing.T) {
+		failure := errors.New("cannot parse intermediate output")
+		calls := 0
+		got, err := formatFixedPoint("a", func(source string) (string, error) {
+			calls++
+			if calls == 1 {
+				return "b", nil
+			}
+			return "", failure
+		})
+		require.ErrorIs(t, err, failure)
+		require.Empty(t, got)
+		require.Equal(t, 2, calls)
+	})
 }
 
 type FormatSuite struct{}
@@ -739,6 +1164,130 @@ func (FormatSuite) TestUnaryMinusFormatting(ctx context.Context, t *testctx.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func (FormatSuite) TestEmptyCallFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "constructor",
+			input:    `pub x = P()`,
+			expected: "pub x = P\n",
+		},
+		{
+			name:     "inline constructor calls",
+			input:    `pub x = [P(), constructors.p(), constructors[0]()]`,
+			expected: "pub x = [P, constructors.p, constructors[0]]\n",
+		},
+		{
+			name:     "lowercase alias",
+			input:    `pub x = make()`,
+			expected: "pub x = make\n",
+		},
+		{
+			name:     "chain root",
+			input:    "pub x = P()\n  .runners\n  .length",
+			expected: "pub x = P\n  .runners\n  .length\n",
+		},
+		{
+			name:     "chain element",
+			input:    "pub x = constructors\n  .p()\n  .runners.length",
+			expected: "pub x = constructors\n  .p\n  .runners\n  .length\n",
+		},
+		{
+			name:     "reference operand keeps its call",
+			input:    `pub x = &factory()`,
+			expected: "pub x = &factory()\n",
+		},
+		{
+			name:     "grouped reference operand keeps its call",
+			input:    `pub x = &(factory())`,
+			expected: "pub x = &(factory())\n",
+		},
+		{
+			name:     "reference still elides receiver calls",
+			input:    `pub x = &factory().f()`,
+			expected: "pub x = &factory.f()\n",
+		},
+		{
+			name:     "multiline reference keeps only its operand call",
+			input:    "pub x = &factory()\n  .f()",
+			expected: "pub x = &factory\n  .f()\n",
+		},
+		{
+			name:     "asserted callee keeps its operand call",
+			input:    `pub x = factory()!()`,
+			expected: "pub x = factory()!()\n",
+		},
+		{
+			name:     "bare autocall stays bare",
+			input:    `pub x = P`,
+			expected: "pub x = P\n",
+		},
+		{
+			name:     "block argument already makes call explicit",
+			input:    `pub x = make() { 1 }`,
+			expected: "pub x = make { 1 }\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+			again, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, result, again)
+		})
+	}
+}
+
+// Nullable fields without defaults are optional for both explicit calls and
+// auto-calling. Check that eliding () keeps evaluation, including fallback paths.
+func TestFormatConstructorCalls(t *testing.T) {
+	const source = `type Q {
+  n: Int! = 1
+}
+
+type P {
+  runners: [String!]! = []
+  coverage: Q
+}
+
+let maybe: P = null
+let make = &P
+print((maybe ?? P()).runners.length)
+print((if (false) { maybe! } else { P() }).runners.length)
+print(make().runners.length)
+print(P()
+  .runners
+  .length)
+`
+	original, err := evalWithContext(t, t.Context(), source)
+	require.NoError(t, err)
+	require.Equal(t, "0\n0\n0\n0\n", original)
+
+	for _, version := range []Version{Version2_1, CurrentVersion} {
+		formatted, err := FormatFileWithVersion([]byte(source), version)
+		require.NoError(t, err)
+		require.NotContains(t, formatted, "P()")
+		require.NotContains(t, formatted, "make()")
+		actual, err := evalWithContext(t, t.Context(), formatted)
+		require.NoError(t, err)
+		require.Equal(t, original, actual)
+	}
+
+	// Force a syntax-changing migration so it cannot just return the input.
+	migrated, err := MigrateSource("constructor.dang", []byte(source+"let text = \"${HOME}\"\n"), Version2_1, Version2_5)
+	require.NoError(t, err)
+	require.NotContains(t, migrated, "P()")
+	actual, err := evalWithContext(t, t.Context(), migrated)
+	require.NoError(t, err)
+	require.Equal(t, original, actual)
 }
 
 // `f!()` calls the asserted function; `f!` asserts what auto-calling `f`
@@ -1563,19 +2112,19 @@ func (FormatSuite) TestNoFmtDirective(ctx context.Context, t *testctx.T) {
 		{
 			name: "prefix nofmt preserves single node",
 			input: `#nofmt
-pub x = foo.bar()
-pub y = foo.bar()`,
+pub x = foo.bar( 1 )
+pub y = foo.bar( 1 )`,
 			expected: `#nofmt
-pub x = foo.bar()
-pub y = foo.bar
+pub x = foo.bar( 1 )
+pub y = foo.bar(1)
 `,
 		},
 		{
 			name: "trailing nofmt preserves single node",
-			input: `pub x = foo.bar() #nofmt
-pub y = foo.bar()`,
-			expected: `pub x = foo.bar() #nofmt
-pub y = foo.bar
+			input: `pub x = foo.bar( 1 ) #nofmt
+pub y = foo.bar( 1 )`,
+			expected: `pub x = foo.bar( 1 ) #nofmt
+pub y = foo.bar(1)
 `,
 		},
 		{
@@ -1589,9 +2138,9 @@ pub x = foo.bar()
 		{
 			name: "without nofmt file is formatted",
 			input: `# regular comment
-pub x = foo.bar()`,
+pub x = foo.bar( 1 )`,
 			expected: `# regular comment
-pub x = foo.bar
+pub x = foo.bar(1)
 `,
 		},
 	}

@@ -3,6 +3,7 @@ package dang
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,6 +35,15 @@ func TestMigrateSource(t *testing.T) {
 		require.ErrorContains(t, err, "would change the meaning of line 2")
 	})
 
+	t.Run("meaning errors point to the source as written", func(t *testing.T) {
+		// Formatting collapses the parentheses onto one line. The meaning
+		// check must use the original tree, not that formatted baseline.
+		src := "let x = (\n  1\n)\nlet y = user.{name} # nofmt\n"
+		_, err := migrate(src, Version1_0, Version2_0)
+		require.ErrorContains(t, err, "would change the meaning of line 4")
+		assert.Contains(t, err.Error(), "original source")
+	})
+
 	t.Run("template interpolations are migrated", func(t *testing.T) {
 		src := "let x = `v=${toJSON(u.{name})}  kept  `\n"
 		migrated, err := migrate(src, Version1_0, Version2_0)
@@ -46,6 +56,84 @@ func TestMigrateSource(t *testing.T) {
 		migrated, err := migrate(src, Version1_0, Version2_0)
 		require.NoError(t, err)
 		assert.Equal(t, "let x = ```\n  a ${u.{{name}}}\n    b\n```\n", migrated)
+	})
+
+	t.Run("unsorted imports need no migration", func(t *testing.T) {
+		src := "import YAML\nimport JSON\nprint(JSON.encode([1, 2]))\n"
+		migrated, err := migrate(src, Version2_1, Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, src, migrated)
+	})
+
+	t.Run("syntax migration preserves import order", func(t *testing.T) {
+		for _, imports := range []string{
+			"import YAML\nimport JSON\n",
+			"import YAML # nofmt\nimport JSON\n",
+			"import Zed\nimport Alpha\n",
+		} {
+			src := imports + "let x = user.{name}\n"
+			migrated, err := migrate(src, Version1_0, Version2_0)
+			require.NoError(t, err)
+			assert.Equal(t, imports+"\nlet x = user.{{name}}\n", migrated)
+		}
+	})
+
+	t.Run("ordinary formatting still sorts imports", func(t *testing.T) {
+		src := "import YAML\nimport JSON\nprint(JSON.encode([1, 2]))\n"
+		want := "import JSON\nimport YAML\n\nprint(JSON.encode([1, 2]))\n"
+		formatted, err := FormatFileWithVersion([]byte(src), Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, want, formatted)
+		migrated, err := migrate(src, Version2_5, Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, want, migrated)
+	})
+
+	t.Run("else-if normalization", func(t *testing.T) {
+		conditional := "let x = if (true) { 1 } else { if (false) { 2 } else { 3 } }\n"
+		migrated, err := migrate(conditional, Version2_1, Version2_5)
+		require.NoError(t, err)
+		assert.Equal(t, conditional, migrated)
+		// Force actual syntax migration too, so the normalized conditional
+		// is checked in the output instead of returning unchanged source.
+		migrated, err = migrate(conditional+"let y = user.{name}\n", Version1_0, Version2_0)
+		require.NoError(t, err)
+		assert.Equal(t, "let x = if (true) { 1 } else if (false) { 2 } else { 3 }\nlet y = user.{{name}}\n", migrated)
+	})
+
+	t.Run("empty catch normalizes before implicit calls", func(t *testing.T) {
+		for _, tc := range []struct{ source, want string }{
+			{"let x = try { f() } catch {}\n", "let x = f\n"},
+			{"let x = try { obj.f() } catch {}\n", "let x = obj.f\n"},
+			{"let x = try { fs[0]() } catch {}\n", "let x = fs[0]\n"},
+			{"let x = try { try { f() } catch {} } catch {}\n", "let x = { f }\n"},
+		} {
+			original, err := Parse("original.dang", []byte(tc.source), WithVersion(Version2_0))
+			require.NoError(t, err)
+			want, err := Parse("expected.dang", []byte(tc.want), WithVersion(Version2_1))
+			require.NoError(t, err)
+			_, differs := firstASTDifference(original.(Node), want.(Node))
+			assert.False(t, differs, "normalizing %s", tc.source)
+			migrated, err := migrate(tc.source, Version2_0, Version2_1)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, migrated)
+			got, err := Parse("migrated.dang", []byte(migrated), WithVersion(Version2_1))
+			require.NoError(t, err)
+			_, differs = firstASTDifference(want.(Node), got.(Node))
+			assert.False(t, differs, "migrating %s", tc.source)
+		}
+	})
+
+	t.Run("empty catch at a reference operand is not normalized", func(t *testing.T) {
+		source := "let x = &(try { factory } catch {})\n"
+		original, err := Parse("original.dang", []byte(source), WithVersion(Version2_0))
+		require.NoError(t, err)
+		changed, err := Parse("changed.dang", []byte("let x = &(factory)\n"), WithVersion(Version2_1))
+		require.NoError(t, err)
+		_, differs := firstASTDifference(original.(Node), changed.(Node))
+		assert.True(t, differs)
+		_, err = migrate(source, Version2_0, Version2_1)
+		require.ErrorContains(t, err, "would change the meaning")
 	})
 
 	t.Run("same version is formatting", func(t *testing.T) {
@@ -150,6 +238,248 @@ func TestMigrateSource(t *testing.T) {
 		_, err := migrate("let x = 1\n", Version2_0, Version1_0)
 		require.ErrorContains(t, err, "cannot migrate")
 	})
+}
+
+func TestMigrateConvergence(t *testing.T) {
+	for _, tc := range formatConvergenceCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// A syntax change forces migration rather than the no-op path.
+			// The unsorted imports and nofmt line must survive every pass.
+			prefix := "import Zed\nimport Alpha\n\nlet kept   = 1 # nofmt\n\n"
+			source := prefix + tc.source + "\nlet text = \"${hello}\"\n"
+			want := prefix + tc.want + "\nlet text = '${hello}'\n"
+			got, err := MigrateSource("convergence.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			again, err := formatSource("convergence.dang", []byte(got), Version2_5, Version2_5, false, true)
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+
+			// Without a syntax change even a source needing multiple formatting
+			// passes must be returned byte-for-byte, not silently reformatted.
+			source = prefix + tc.source
+			got, err = MigrateSource("convergence.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, source, got)
+
+			got, err = MigrateSource("convergence.dang", []byte(tc.source), Version2_5, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+	t.Run("convergence must not hide changed string contents", func(t *testing.T) {
+		// The literal becomes an interpolation despite nofmt. Other forms
+		// converging must not bypass the original-source meaning check.
+		source := "let s = \"${value}\" # nofmt\n" + formatConvergenceCases[1].source
+		_, err := MigrateSource("meaning.dang", []byte(source), Version2_1, Version2_5)
+		require.ErrorContains(t, err, "would change the meaning of line 1")
+	})
+}
+
+func TestMigrateNoFmtComments(t *testing.T) {
+	for _, tc := range noFmtCommentCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MigrateSource("nofmt.dang", []byte(tc.source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+
+			// Force a syntax change outside the preserved region as well.
+			source := tc.source + "\nlet text = \"${hello}\"\n"
+			want := tc.source + "\nlet text = '${hello}'\n"
+			got, err = MigrateSource("nofmt.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+		})
+	}
+}
+
+func TestMigrateNoFmtBoundaries(t *testing.T) {
+	for _, tc := range noFmtBoundaryCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MigrateSource("nofmt.dang", []byte(tc.source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+			source := tc.source + "\nlet text = \"${hello}\"\n"
+			want := tc.want + "\nlet text = '${hello}'\n"
+			got, err = MigrateSource("nofmt.dang", []byte(source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
+	t.Run("raw literal conversion keeps its closing directive", func(t *testing.T) {
+		source := "let x = \"\"\"\n ${literal}\n\"\"\" # nofmt\n"
+		want := "let x = '''\n  ${literal}\n''' # nofmt\n"
+		got, err := MigrateSource("nofmt.dang", []byte(source), Version2_1, Version2_5)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+		again, err := FormatFile([]byte(got))
+		require.NoError(t, err)
+		require.Equal(t, got, again)
+	})
+}
+
+func TestMigrateChainCommentParents(t *testing.T) {
+	for _, tc := range chainCommentParentCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MigrateSource("comments.dang", []byte(tc.source), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Equal(t, tc.source, got)
+			got, err = MigrateSource("comments.dang", []byte(tc.source+"let force = \"${literal}\"\n"), Version2_1, Version2_5)
+			require.NoError(t, err)
+			require.Contains(t, got, "let force = '${literal}'")
+			require.Equal(t, 1, strings.Count(got, "KEEP"))
+			require.Less(t, strings.Index(got, "KEEP"), strings.Index(got, tc.following))
+			again, err := FormatFile([]byte(got))
+			require.NoError(t, err)
+			require.Equal(t, got, again)
+		})
+	}
+}
+
+func TestMigrationMeaningComparison(t *testing.T) {
+	for _, tc := range []struct {
+		name, original, migrated string
+		differs                  bool
+	}{
+		{
+			name:     "import reordering is not assumed safe",
+			original: "import Zed\nimport Alpha\n",
+			migrated: "import Alpha\nimport Zed\n",
+			differs:  true,
+		},
+		{
+			name:     "else-if spelling",
+			original: "let x = if (true) { 1 } else { if (false) { 2 } else { 3 } }\n",
+			migrated: "let x = if (true) { 1 } else if (false) { 2 } else { 3 }\n",
+		},
+		{
+			name:     "else block declarations cannot be dropped",
+			original: "let x = if (true) { 1 } else { let y = 2; if (false) { y } else { 3 } }\n",
+			migrated: "let x = if (true) { 1 } else if (false) { y } else { 3 }\n",
+			differs:  true,
+		},
+		{
+			name:     "literal quote spelling",
+			original: "let s = \"\"\"waivers:\n  - kind: vulnerability\n    owner: platform\n\"\"\"\n",
+			migrated: "let s = '''\nwaivers:\n  - kind: vulnerability\n    owner: platform\n'''\n",
+		},
+		{
+			name:     "literal indentation is meaning",
+			original: "let s = \"\"\"waivers:\n  - kind: vulnerability\n    owner: platform\n\"\"\"\n",
+			migrated: "let s = '''\nwaivers:\n    - kind: vulnerability\n      owner: platform\n'''\n",
+			differs:  true,
+		},
+		{
+			name:     "constructor auto-call",
+			original: "let p = maybe ?? P()\n",
+			migrated: "let p = maybe ?? P\n",
+		},
+		{
+			name:     "function or constructor alias auto-call",
+			original: "let p = make()\n",
+			migrated: "let p = make\n",
+		},
+		{
+			name:     "selected constructor auto-call",
+			original: "let p = module.P()\n",
+			migrated: "let p = module.P\n",
+		},
+		{
+			name:     "indexed auto-call",
+			original: "let p = fs[0]()\n",
+			migrated: "let p = fs[0]\n",
+		},
+		{
+			name:     "asserted calls are explicit",
+			original: "let p = f!()\n",
+			migrated: "let p = f!\n",
+			differs:  true,
+		},
+		{
+			name:     "reference suppresses auto-call",
+			original: "let p = &f()\n",
+			migrated: "let p = &f\n",
+			differs:  true,
+		},
+		{
+			name:     "grouped reference suppresses auto-call",
+			original: "let p = &(f())\n",
+			migrated: "let p = &(f)\n",
+			differs:  true,
+		},
+		{
+			name:     "asserted callee suppresses operand auto-call",
+			original: "let p = f()!()\n",
+			migrated: "let p = f!()\n",
+			differs:  true,
+		},
+		{
+			name:     "reference permits receiver auto-call",
+			original: "let p = &factory().f\n",
+			migrated: "let p = &factory.f\n",
+		},
+		{
+			name:     "reference keeps outer call but permits receiver auto-call",
+			original: "let p = &factory().f()\n",
+			migrated: "let p = &factory.f()\n",
+		},
+		{
+			name:     "arguments cannot be removed",
+			original: "let p = f(x: 1)\n",
+			migrated: "let p = f\n",
+			differs:  true,
+		},
+		{
+			name:     "arguments cannot be changed",
+			original: "let p = f(x: 1)\n",
+			migrated: "let p = f(x: 2)\n",
+			differs:  true,
+		},
+		{
+			name:     "block arguments cannot be removed",
+			original: "let p = f { 1 }\n",
+			migrated: "let p = f\n",
+			differs:  true,
+		},
+		{
+			name:     "empty parens before a block argument",
+			original: "let p = xs.map() { x => x }\n",
+			migrated: "let p = xs.map { x => x }\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original, err := Parse("original.dang", []byte(tc.original), WithVersion(Version2_1))
+			require.NoError(t, err)
+			migrated, err := Parse("migrated.dang", []byte(tc.migrated), WithVersion(Version2_5))
+			require.NoError(t, err)
+			loc, differs := firstASTDifference(original.(Node), migrated.(Node))
+			assert.Equal(t, tc.differs, differs)
+			if tc.differs {
+				require.NotNil(t, loc)
+				assert.Equal(t, 1, loc.Line)
+			}
+		})
+	}
+}
+
+func TestMigrationKeepsCallsOfOtherExpressions(t *testing.T) {
+	// These general callee expressions are not all expressible in today's
+	// parser, but the AST comparison must not equate their calls with reads.
+	for _, callee := range []Node{
+		&FunCall{Fun: &Symbol{Name: "factory"}},
+		&FunctionRef{Expr: &Symbol{Name: "f"}},
+		&Conditional{Condition: &Symbol{Name: "condition"}, Then: &Symbol{Name: "f"}, Else: &Symbol{Name: "g"}},
+		&Grouped{Expr: &Symbol{Name: "f"}},
+		&Symbol{Name: "f", AutoCall: true},
+	} {
+		called := &FileBlock{Forms: []Node{&FunCall{Fun: callee}}}
+		bare := &FileBlock{Forms: []Node{callee}}
+		_, differs := firstASTDifference(called, bare)
+		assert.True(t, differs, "must preserve explicit call of %T", callee)
+	}
 }
 
 func TestSetConfigVersion(t *testing.T) {

@@ -103,11 +103,15 @@ Slot("start").combined
 
 ## Zero-arg auto-construction
 
-A type whose constructor needs nothing (every field has a default)
-constructs on bare reference: `Settings` is the same as `Settings()`.
+Functions and constructors auto-call on bare reference when every parameter
+is nullable or has a default, and no block argument is required.
+`Settings` is therefore the same as `Settings()`:
 
 ```dang
-type Settings { verbose: Boolean! = false }
+type Settings {
+  verbose: Boolean! = false
+  label: String
+}
 
 let settings = Settings
 settings.verbose
