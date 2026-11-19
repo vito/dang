@@ -41,6 +41,10 @@ type Formatter struct {
 	// until after the comma. A stack preserves nested boundaries on one line.
 	deferredCommentLines []int
 
+	// Code written after an emitted trailing comment must start a new line.
+	// This is emission state, never inferred from literal or copied source text.
+	afterTrailingComment bool
+
 	// Dang version whose syntax to emit (e.g. object selection braces).
 	// Zero means CurrentVersion.
 	version Version
@@ -317,6 +321,7 @@ func (f *Formatter) emitTrailingComment(line int) {
 		if comment.Line == line && comment.IsTrailing {
 			f.write(" ")
 			f.write(comment.Text)
+			f.afterTrailingComment = true
 			f.emittedComments[line] = true
 			// Remove this comment from the list
 			f.comments = append(f.comments[:i], f.comments[i+1:]...)
@@ -552,6 +557,19 @@ func typeNodeLine(t TypeNode) int {
 }
 
 func (f *Formatter) write(s string) {
+	if f.afterTrailingComment {
+		code := strings.TrimLeft(s, " \t\r")
+		if code != "" {
+			if !strings.HasPrefix(code, "\n") {
+				f.buf.WriteByte('\n')
+				indent := strings.Repeat(indentString, f.indent)
+				f.buf.WriteString(indent)
+				f.col = len(indent)
+				s = code
+			}
+			f.afterTrailingComment = false
+		}
+	}
 	f.buf.WriteString(s)
 	// Update column tracking (approximate)
 	if idx := strings.LastIndex(s, "\n"); idx >= 0 {
@@ -577,6 +595,7 @@ func (f *Formatter) nl(line int) {
 			if f.col > 0 {
 				f.write(" ")
 				f.write(text)
+				f.afterTrailingComment = true
 			}
 			f.emittedComments[line] = true
 		}
@@ -1928,6 +1947,7 @@ func (f *Formatter) trial(node Node, col int) *Formatter {
 		commentMap:           f.commentMap,
 		emittedComments:      emitted,
 		deferredCommentLines: slices.Clone(f.deferredCommentLines),
+		afterTrailingComment: f.afterTrailingComment,
 		version:              f.version,
 		migrating:            f.migrating,
 		preserveImports:      f.preserveImports,
@@ -4192,9 +4212,11 @@ func (f *Formatter) formatLogicalOp(node Node, left, right Node, op string) {
 		f.write(")")
 	}
 
-	// Format remaining operands on new lines with leading operator
+	// Format remaining operands on new lines with leading operator.
+	// Copied literals leave their end-line comments for their parent to emit.
 	f.indented(func() {
-		for _, operand := range operands[1:] {
+		for i, operand := range operands[1:] {
+			f.emitTrailingComment(nodeEndLine(operands[i]))
 			f.newline()
 			f.writeIndent()
 			f.write(op)

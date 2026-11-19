@@ -250,6 +250,40 @@ func chainCommentParentCases() []struct{ name, source, following string } {
 			})
 		}
 	}
+	for _, chain := range []struct{ name, source string }{
+		{"call", "foo\n .bar(1).baz(2)"},
+		{"select", "foo\n .bar.baz"},
+		{"dot apply", "foo\n .{ _ + 1 }.{ _ + 2 }"},
+	} {
+		for _, parent := range []struct{ name, before, after string }{
+			{"rescue suffix", "let x = ", " rescue 0\nprint(x)\n"},
+			{"condition", "let x = if (", ") { 1 } else { 0 }\nprint(x)\n"},
+			{"case condition", "let x = case (", ") { else => 0 }\nprint(x)\n"},
+			{"grouped index", "let x = (", ")[0]\nprint(x)\n"},
+			{"asserted immediate call", "let x = (", ")!()\nprint(x)\n"},
+			{"selection suffix", "let x = ", " .{{field}}\nprint(x)\n"},
+			{"binary suffix", "let x = ", " + 2\nprint(x)\n"},
+		} {
+			for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+				cases = append(cases, struct{ name, source, following string }{
+					"next-line suffix/" + parent.name + "/" + chain.name + "/" + comment,
+					parent.before + chain.source + " " + comment + "\n" + parent.after,
+					"print(x)",
+				})
+			}
+		}
+	}
+	for _, fence := range []string{"\"\"\"", "'''", "```"} {
+		for _, comment := range []string{"# KEEP", "# nofmt KEEP"} {
+			for _, prefix := range []string{"", "enabled\n and "} {
+				cases = append(cases, struct{ name, source, following string }{
+					"logical operand/" + fence + "/" + comment + "/" + prefix,
+					"let x = " + prefix + "actual == " + fence + "\n expected\n" + fence + " " + comment + "\n and enabled\nprint(x)\n",
+					"print(x)",
+				})
+			}
+		}
+	}
 	cases = append(cases, struct{ name, source, following string }{
 		"unicode chain with same-line elements",
 		"let x = foo\n .bar(\"café\").baz(2) + 2 # KEEP\nprint(x)\n",
@@ -298,6 +332,39 @@ func TestFormatChainSourceBoundaries(t *testing.T) {
 			require.Equal(t, want, got)
 		})
 	}
+}
+
+func TestFormatTrailingCommentWrites(t *testing.T) {
+	for _, newline := range []bool{false, true} {
+		f := &Formatter{
+			indent:          1,
+			comments:        []Comment{{Line: 1, Text: "# comment", IsTrailing: true}},
+			emittedComments: make(map[int]bool),
+		}
+		f.write("value")
+		f.emitTrailingComment(1)
+		f.write(" ")
+		f.write("\t")
+		if newline {
+			f.newline()
+			f.writeIndent()
+		}
+		f.write("+ 1")
+		require.Equal(t, "value # comment\n  + 1", trimTrailingWhitespace(f.buf.String()))
+	}
+	t.Run("nl clears the comment state", func(t *testing.T) {
+		f := &Formatter{commentMap: map[int]string{1: "# comment"}, emittedComments: make(map[int]bool)}
+		f.write("value")
+		f.nl(1)
+		f.write("next")
+		require.Equal(t, "value # comment\nnext", f.buf.String())
+	})
+	t.Run("literal contents are not comment emission", func(t *testing.T) {
+		f := &Formatter{}
+		f.write("\"# literal\"")
+		f.write("[0]")
+		require.Equal(t, "\"# literal\"[0]", f.buf.String())
+	})
 }
 
 func TestFormatFixedPoint(t *testing.T) {
