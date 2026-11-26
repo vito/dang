@@ -6,6 +6,7 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang/analysis"
 )
 
 func (h *langHandler) handleTextDocumentRename(ctx context.Context, req *jrpc2.Request) (any, error) {
@@ -36,7 +37,7 @@ func (h *langHandler) handleTextDocumentRename(ctx context.Context, req *jrpc2.R
 	// Rename the declaration the name resolves to, and the references that
 	// resolve to it, in every file of the directory: not other bindings of
 	// the same name.
-	if changes := h.referenceEdits(f, params.TextDocument.URI, params.Position, params.NewName); changes != nil {
+	if changes := h.referenceEdits(ctx, f, params.TextDocument.URI, params.Position, params.NewName); changes != nil {
 		return &WorkspaceEdit{Changes: changes}, nil
 	}
 
@@ -91,8 +92,8 @@ func (h *langHandler) handleTextDocumentRename(ctx context.Context, req *jrpc2.R
 
 // referenceEdits returns the edits renaming what the name at pos names to
 // newName, by URI, or nil if it isn't declared in the directory.
-func (h *langHandler) referenceEdits(f *File, uri DocumentURI, pos Position, newName string) map[string][]TextEdit {
-	locs := references(f, uri, pos)
+func (h *langHandler) referenceEdits(ctx context.Context, f *File, uri DocumentURI, pos Position, newName string) map[string][]TextEdit {
+	locs := h.directoryReferences(ctx, f, uri, pos)
 	if len(locs) == 0 {
 		return nil
 	}
@@ -106,14 +107,35 @@ func (h *langHandler) referenceEdits(f *File, uri DocumentURI, pos Position, new
 	return changes
 }
 
-// references returns the LSP locations of the declaration of what the name
-// at pos in f names and of its references (see analysis.References).
-func references(f *File, uri DocumentURI, pos Position) []Location {
+// directoryReferences is like references, but resolves them against a full
+// analysis of f's directory. f's own analysis infers only f's bodies, so it
+// misses references that need inference to resolve in sibling files, such as
+// a method called through an instance in another file's function body.
+func (h *langHandler) directoryReferences(ctx context.Context, f *File, uri DocumentURI, pos Position) []Location {
 	if f == nil || f.Analysis == nil {
 		return nil
 	}
+	fp, err := fromURI(uri)
+	if err != nil {
+		return references(f.Analysis, f.Path, uri, pos)
+	}
+	full, err := h.analyze(ctx, fp, "")
+	if err != nil {
+		slog.WarnContext(ctx, "full directory analysis failed; using the file's own", "error", err)
+		return references(f.Analysis, f.Path, uri, pos)
+	}
+	return references(full, f.Path, uri, pos)
+}
+
+// references returns the LSP locations of the declaration of what the name
+// at pos in the file at path names and of its references, according to a
+// (see analysis.References).
+func references(a *analysis.Analysis, path string, uri DocumentURI, pos Position) []Location {
+	if a == nil {
+		return nil
+	}
 	var locs []Location
-	for _, ref := range f.Analysis.References(f.Path, analysisPos(pos)) {
+	for _, ref := range a.References(path, analysisPos(pos)) {
 		if loc, ok := lspLocation(uri, ref); ok {
 			locs = append(locs, loc)
 		}

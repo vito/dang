@@ -100,3 +100,72 @@ func (LSPSuite) TestReferencesAndRenameResolveShadowedLocals(ctx context.Context
 		position(shadowingSource, "x * 2", 0),
 	}, renamed)
 }
+
+const memberDeclSource = `type Greeter {
+  pub prefix: String! = "hello"
+
+  pub greet(name: String!): String! {
+    prefix + ", " + name
+  }
+}
+`
+
+const memberUseSource = `pub shout(g: Greeter!): String! {
+  g.greet("world") + "!"
+}
+
+print(Greeter().prefix)
+`
+
+// Starting from a member's declaration, references and rename must include
+// uses through an instance in sibling files: in function bodies and
+// top-level statements, which the focused analysis of the declaring file
+// doesn't infer.
+func (LSPSuite) TestReferencesAndRenameFindMemberUsesInSiblingFiles(ctx context.Context, t *testctx.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.dang")
+	otherPath := filepath.Join(root, "other.dang")
+	writeDangFile(t, mainPath, memberDeclSource)
+	writeDangFile(t, otherPath, memberUseSource)
+
+	h := newLSPHarness(ctx, t, root)
+	uri := h.open(ctx, t, mainPath)
+	require.Empty(t, h.waitForDiagnostics(ctx, t, uri))
+	otherURI := fileURI(t, otherPath)
+
+	for _, tc := range []struct {
+		member  string
+		declPos lsp.Position
+		usePos  lsp.Position
+	}{
+		{"greet", position(memberDeclSource, "greet(", 0), position(memberUseSource, "greet(", 0)},
+		{"prefix", position(memberDeclSource, "prefix:", 0), position(memberUseSource, "().prefix", len("()."))},
+	} {
+		var refs []lsp.Location
+		require.NoError(t, h.client.CallResult(ctx, "textDocument/references", lsp.ReferenceParams{
+			TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+				TextDocument: lsp.TextDocumentIdentifier{URI: uri},
+				Position:     tc.declPos,
+			},
+			Context: lsp.ReferenceContext{IncludeDeclaration: true},
+		}, &refs))
+		require.Contains(t, refs, lsp.Location{URI: otherURI, Range: lsp.Range{
+			Start: tc.usePos,
+			End:   lsp.Position{Line: tc.usePos.Line, Character: tc.usePos.Character + len(tc.member)},
+		}}, "references to %s from its declaration", tc.member)
+
+		var edit struct {
+			Changes map[string][]lsp.TextEdit `json:"changes"`
+		}
+		require.NoError(t, h.client.CallResult(ctx, "textDocument/rename", lsp.RenameParams{
+			TextDocument: lsp.TextDocumentIdentifier{URI: uri},
+			Position:     tc.declPos,
+			NewName:      "renamed",
+		}, &edit))
+		var otherStarts []lsp.Position
+		for _, e := range edit.Changes[string(otherURI)] {
+			otherStarts = append(otherStarts, e.Range.Start)
+		}
+		require.Equal(t, []lsp.Position{tc.usePos}, otherStarts, "rename of %s from its declaration", tc.member)
+	}
+}

@@ -17,7 +17,7 @@ func (h *langHandler) handleTextDocumentReferences(ctx context.Context, req *jrp
 	}
 
 	f := h.waitForFile(params.TextDocument.URI)
-	locs := references(f, params.TextDocument.URI, params.Position)
+	locs := h.directoryReferences(ctx, f, params.TextDocument.URI, params.Position)
 	if len(locs) == 0 {
 		return []Location{}, nil
 	}
