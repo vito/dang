@@ -244,41 +244,8 @@ type fileAnalysis struct {
 // The analysis reads the directory from disk, with the open buffers in it
 // laid over, through a Source rooted at the directory.
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
-	fileDir := filepath.Dir(fp)
 	focus := filepath.Base(fp)
-
-	// Look up the directory's dang.toml once per analysis: it decides both the
-	// Dang version every file in the directory is parsed as and the imports.
-	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
-	if configErr != nil {
-		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
-	}
-	version := dang.VersionForConfig(ctx, projectConfig)
-	if projectConfig != nil {
-		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
-	}
-
-	// Resolve import configs once for the directory, using a cache to avoid
-	// spawning new dagger sessions on every keystroke, and only once the file
-	// parses.
-	resolveImports := func(ctx context.Context) []dang.ImportConfig {
-		configs, _ := h.resolveImports(ctx, fileDir, configPath, projectConfig)
-		return configs
-	}
-
-	// The schema-module cache is long-lived, per directory. Without it, each
-	// analyzeDirectory call gets a fresh cache and ImportDecls in re-parsed
-	// sibling files build divergent *Type instances — types like
-	// Test.ServerInfo fail to unify.
-	src := analysis.Overlay(os.DirFS(fileDir), h.openBuffers(fileDir))
-	a, err := analysis.Analyze(ctx, src, ".", analysis.Options{
-		Root:              fileDir,
-		Focus:             focus,
-		ResolveImports:    resolveImports,
-		SchemaModuleCache: h.schemaModuleCacheFor(fileDir),
-		Version:           version,
-		Parses:            h.parses,
-	})
+	a, err := h.analyze(ctx, fp, focus)
 	if err != nil {
 		return nil, err
 	}
@@ -310,6 +277,47 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	result.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
 
 	return result, nil
+}
+
+// analyze analyzes the directory of the file at fp, reading it from disk
+// with the open buffers in it laid over. With a focus, only that file's
+// bodies are inferred (siblings only for their declarations); with an empty
+// focus, every file is inferred in full.
+func (h *langHandler) analyze(ctx context.Context, fp string, focus string) (*analysis.Analysis, error) {
+	fileDir := filepath.Dir(fp)
+
+	// Look up the directory's dang.toml once per analysis: it decides both the
+	// Dang version every file in the directory is parsed as and the imports.
+	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
+	if configErr != nil {
+		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
+	}
+	version := dang.VersionForConfig(ctx, projectConfig)
+	if projectConfig != nil {
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
+	}
+
+	// Resolve import configs once for the directory, using a cache to avoid
+	// spawning new dagger sessions on every keystroke, and only once the file
+	// parses.
+	resolveImports := func(ctx context.Context) []dang.ImportConfig {
+		configs, _ := h.resolveImports(ctx, fileDir, configPath, projectConfig)
+		return configs
+	}
+
+	// The schema-module cache is long-lived, per directory. Without it, each
+	// analyzeDirectory call gets a fresh cache and ImportDecls in re-parsed
+	// sibling files build divergent *Type instances — types like
+	// Test.ServerInfo fail to unify.
+	src := analysis.Overlay(os.DirFS(fileDir), h.openBuffers(fileDir))
+	return analysis.Analyze(ctx, src, ".", analysis.Options{
+		Root:              fileDir,
+		Focus:             focus,
+		ResolveImports:    resolveImports,
+		SchemaModuleCache: h.schemaModuleCacheFor(fileDir),
+		Version:           version,
+		Parses:            h.parses,
+	})
 }
 
 func (h *langHandler) finishFileUpdate(f *File, result *fileAnalysis) (int, []Diagnostic) {
