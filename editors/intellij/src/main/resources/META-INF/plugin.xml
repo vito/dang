@@ -1,0 +1,58 @@
+<idea-plugin>
+    <id>danglang</id>
+    <name>Dang</name>
+    <vendor url="https://github.com/vito/dang">Dang</vendor>
+
+    <description><![CDATA[
+    Language support for <a href="https://github.com/vito/dang">Dang</a>, the
+    language for scripting <a href="https://dagger.io">Dagger</a>'s GraphQL API.
+    <ul>
+      <li>Syntax highlighting (customisable under <i>Editor | Color Scheme | Dang</i>),
+          brace matching, and comment toggling</li>
+      <li>Completion, hover, go to definition, find usages, rename,
+          formatting, code actions, workspace symbols and diagnostics via the
+          <code>dang --lsp</code> language server</li>
+    </ul>
+    Requires the <code>dang</code> binary, either on <code>PATH</code> or
+    configured under <i>Settings | Languages &amp; Frameworks | Dang</i>.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lsp</depends>
+
+    <actions>
+        <action id="danglang.RestartLanguageServer"
+                class="danglang.intellij.lsp.DangRestartServerAction"
+                text="Restart Dang Language Server"
+                description="Restart the dang --lsp language server, e.g. after upgrading dang or dagger"
+                icon="AllIcons.Actions.Restart">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType name="Dang" language="Dang" extensions="dang" fieldName="INSTANCE"
+                  implementationClass="danglang.intellij.lang.DangFileType"/>
+        <lang.parserDefinition language="Dang" implementationClass="danglang.intellij.lang.DangParserDefinition"/>
+        <lang.syntaxHighlighterFactory language="Dang"
+                                       implementationClass="danglang.intellij.lang.DangSyntaxHighlighterFactory"/>
+        <colorSettingsPage implementation="danglang.intellij.lang.DangColorSettingsPage"/>
+        <lang.commenter language="Dang" implementationClass="danglang.intellij.lang.DangCommenter"/>
+        <lang.braceMatcher language="Dang" implementationClass="danglang.intellij.lang.DangBraceMatcher"/>
+        <lang.quoteHandler language="Dang" implementationClass="danglang.intellij.lang.DangQuoteHandler"/>
+        <lineIndentProvider implementation="danglang.intellij.lang.DangLineIndentProvider"/>
+        <langCodeStyleSettingsProvider implementation="danglang.intellij.lang.DangCodeStyleSettingsProvider"/>
+
+        <platform.lsp.integrationProvider
+                implementation="danglang.intellij.lsp.DangLspIntegrationProvider"/>
+
+        <applicationService serviceImplementation="danglang.intellij.settings.DangSettings"/>
+        <applicationConfigurable
+                parentId="language"
+                id="danglang.settings"
+                displayName="Dang"
+                instance="danglang.intellij.settings.DangConfigurable"/>
+
+        <notificationGroup id="Dang" displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>
