@@ -15,6 +15,15 @@ class DangSettingsState : BaseState() {
 
     /** Passed as `--lsp-log-file`; blank means log to stderr (IDE log). */
     var logFile by string("")
+
+    /**
+     * Start the server through `mise exec` when the project has a mise
+     * config, so it uses the project's pinned tools (dagger in particular).
+     */
+    var useMise by property(true)
+
+    /** Path to the `mise` binary; blank means look it up on PATH. */
+    var misePath by string("")
 }
 
 @Service(Service.Level.APP)

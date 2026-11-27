@@ -24,6 +24,8 @@ import danglang.intellij.lang.DangFile
 import danglang.intellij.lang.DangFileType
 import danglang.intellij.lsp.DangLspIntegrationProvider
 import danglang.intellij.settings.DangSettings
+import java.nio.file.Files
+import java.nio.file.Path
 import org.eclipse.lsp4j.CompletionParams
 import org.eclipse.lsp4j.HoverParams
 import org.eclipse.lsp4j.Position
@@ -50,6 +52,11 @@ class DangPluginTest : UsefulTestCase() {
 
     override fun tearDown() {
         try {
+            DangSettings.getInstance().state.apply {
+                dangPath = ""
+                useMise = true
+                misePath = ""
+            }
             LspClientManager.getInstance(fixture.project).stopClients(DangLspIntegrationProvider::class.java)
             fixture.tearDown()
         } catch (e: Throwable) {
@@ -157,6 +164,64 @@ class DangPluginTest : UsefulTestCase() {
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
             Thread.sleep(100)
         }
+    }
+
+    /**
+     * A stand-in for mise: records its working directory and arguments, then
+     * runs the command after `--`, as `mise exec -- ...` does.
+     */
+    private fun fakeMise(): Pair<Path, Path> {
+        val dir = Files.createTempDirectory("fake-mise")
+        val log = dir.resolve("invocation.log")
+        val script = dir.resolve("mise")
+        Files.writeString(
+            script,
+            """
+            #!/bin/sh
+            { pwd; printf '%s\n' "${'$'}@"; } > '$log'
+            [ "${'$'}1" = exec ] && shift
+            [ "${'$'}1" = -- ] && shift
+            exec "${'$'}@"
+            """.trimIndent() + "\n",
+        )
+        script.toFile().setExecutable(true)
+        return script to log
+    }
+
+    fun testLanguageServerStartsThroughMiseWhenProjectHasMiseConfig() {
+        val binary = System.getProperty("dang.binary")
+        if (binary.isNullOrBlank()) return println("DANG_BINARY not set; skipping")
+        val (mise, log) = fakeMise()
+        DangSettings.getInstance().state.apply {
+            dangPath = binary
+            misePath = mise.toString()
+        }
+        val root = fixture.tempDirFixture.getFile("")!!.toNioPath()
+        fixture.tempDirFixture.createFile("mise.toml", "[tools]\n")
+
+        fixture.configureByText("main.dang", source)
+        waitForClient()
+
+        val invocation = Files.readAllLines(log)
+        assertEquals("runs in the root with the mise config", root.toRealPath().toString(), Path.of(invocation[0]).toRealPath().toString())
+        assertEquals(listOf("exec", "--", binary, "--lsp"), invocation.drop(1))
+    }
+
+    fun testLanguageServerSkipsMiseWhenDisabled() {
+        val binary = System.getProperty("dang.binary")
+        if (binary.isNullOrBlank()) return println("DANG_BINARY not set; skipping")
+        val (mise, log) = fakeMise()
+        DangSettings.getInstance().state.apply {
+            dangPath = binary
+            misePath = mise.toString()
+            useMise = false
+        }
+        fixture.tempDirFixture.createFile("mise.toml", "[tools]\n")
+
+        fixture.configureByText("main.dang", source)
+        waitForClient()
+
+        assertFalse("mise should not be used", Files.exists(log))
     }
 
     private fun waitForClient(): LspClient {

@@ -8,7 +8,7 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
-import danglang.intellij.lsp.DangBinary
+import danglang.intellij.lsp.Executables
 import danglang.intellij.lsp.restartDangLspServers
 
 class DangConfigurable : BoundConfigurable("Dang") {
@@ -26,8 +26,24 @@ class DangConfigurable : BoundConfigurable("Dang") {
                 .align(AlignX.FILL)
                 .bindText({ state.dangPath.orEmpty() }, { state.dangPath = it.trim() })
                 .comment(
-                    DangBinary.find(null)?.let { "Leave empty to use $it" }
+                    Executables.findDang(null)?.let { "Leave empty to use $it" }
                         ?: "Leave empty to search PATH (dang was not found there)",
+                )
+        }
+        row {
+            checkBox("Start through mise when the project has a mise config")
+                .bindSelected({ state.useMise }, { state.useMise = it })
+                .comment("Runs <code>mise exec -- dang --lsp</code> in the project root, so the server uses the project's pinned tools, e.g. its dagger version")
+        }
+        row("Path to mise:") {
+            textFieldWithBrowseButton(
+                FileChooserDescriptorFactory.singleFile().withTitle("Select mise Binary"),
+            )
+                .align(AlignX.FILL)
+                .bindText({ state.misePath.orEmpty() }, { state.misePath = it.trim() })
+                .comment(
+                    Executables.findMise(null)?.let { "Leave empty to use $it" }
+                        ?: "Leave empty to search PATH (mise was not found there)",
                 )
         }
         row("LSP log file:") {

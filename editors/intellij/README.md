@@ -33,6 +33,21 @@ roots, in a trusted project.
   `direnv` and `DAGGER_*` variables are picked up even when the IDE was
   started from a desktop launcher.
 
+## mise
+
+If the project root has a mise config (`mise.toml`, `.mise.toml`,
+`.config/mise.toml`, … — anywhere mise reads one from), the server is started
+as `mise exec -- dang --lsp` in that root, so it runs with the project's
+pinned tools and environment. This matters for Dagger: `dang` starts
+`dagger session`, and the `dagger` CLI version (or `DAGGER_X_RELEASE`)
+decides which engine runs — the wrong one replaces the project's engine and
+kills builds in progress.
+
+Without mise installed, or with *Start through mise* turned off, the server
+starts from `PATH` as usual; if the project has a mise config but mise wasn't
+found, a notification says so. The mise config must be trusted
+(`mise trust`), or `mise exec` refuses to run.
+
 ## Settings
 
 *Settings | Languages & Frameworks | Dang*:
@@ -41,6 +56,8 @@ roots, in a trusted project.
 |---|---|---|
 | Enable language server | on | Start `dang --lsp` for `.dang` files |
 | Path to dang | empty (search `PATH`) | Explicit path to the binary |
+| Start through mise | on | Use `mise exec` when the project has a mise config |
+| Path to mise | empty (search `PATH`, `~/.local/bin`) | Explicit path to the binary |
 | LSP log file | empty | Passed as `--lsp-log-file` |
 
 Changes restart the server. To restart it yourself (say, after upgrading

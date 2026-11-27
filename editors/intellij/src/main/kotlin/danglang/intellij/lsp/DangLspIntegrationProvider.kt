@@ -5,7 +5,9 @@ import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.LspClient
@@ -22,7 +24,6 @@ import com.intellij.psi.PsiFile
 import danglang.intellij.settings.DangConfigurable
 import danglang.intellij.settings.DangSettings
 import java.nio.file.Path
-import kotlin.io.path.isDirectory
 
 private fun VirtualFile.isDang() = extension == "dang"
 
@@ -36,13 +37,29 @@ class DangLspIntegrationProvider : LspIntegrationProvider {
         val settings = DangSettings.getInstance().state
         if (!settings.lspEnabled) return
 
-        val binary = DangBinary.find(settings.dangPath)
-        if (binary == null) {
+        val dang = Executables.findDang(settings.dangPath)
+        if (dang == null && !settings.dangPath.isNullOrBlank()) {
             notifyMissingBinary(project, settings.dangPath)
             return
         }
-        clientStarter.ensureClientStarted(DangLspClientDescriptor(project, binary.toString(), settings.logFile))
+        val roots = rootCandidates(project)
+        val mise = if (settings.useMise) Executables.findMise(settings.misePath) else null
+        if (settings.useMise && mise == null && roots.any(DangLaunch::hasMiseConfig)) {
+            notifyMiseMissing(project, settings.misePath)
+        }
+        val launch = DangLaunch.resolve(dang, mise, roots, settings.logFile)
+        if (launch == null) {
+            notifyMissingBinary(project, settings.dangPath)
+            return
+        }
+        clientStarter.ensureClientStarted(DangLspClientDescriptor(project, launch))
     }
+
+    /** Where to look for a mise config and run the server: the project's base directory, then its content roots. */
+    private fun rootCandidates(project: Project): List<Path> =
+        (listOfNotNull(project.basePath?.let { Path.of(it) }) +
+            ProjectRootManager.getInstance(project).contentRoots.filter { it.isInLocalFileSystem }.map { it.toNioPath() })
+            .distinct()
 
     override fun createWidgetItem(lspClient: LspClient, currentFile: VirtualFile?): LspClientWidgetItem =
         LspClientWidgetItem(lspClient, currentFile, settingsPageClass = DangConfigurable::class.java)
@@ -50,8 +67,7 @@ class DangLspIntegrationProvider : LspIntegrationProvider {
 
 private class DangLspClientDescriptor(
     project: Project,
-    private val binary: String,
-    private val logFile: String?,
+    private val launch: DangLaunch,
 ) : ProjectWideLspClientDescriptor(project, "Dang") {
     override fun isSupportedFile(file: VirtualFile) = file.isDang()
 
@@ -75,30 +91,57 @@ private class DangLspClientDescriptor(
         }
     }
 
-    override fun createCommandLine(): GeneralCommandLine =
-        GeneralCommandLine(binary, "--lsp")
-            .apply { if (!logFile.isNullOrBlank()) addParameters("--lsp-log-file", logFile) }
-            .withWorkingDirectory(workingDirectory())
+    override fun createCommandLine(): GeneralCommandLine {
+        LOG.info("Starting Dang language server: ${launch.command.joinToString(" ")} (in ${launch.workingDirectory})")
+        return GeneralCommandLine(launch.command)
+            // With mise, the root holding the mise config, which mise reads
+            // from the working directory. Otherwise any existing project
+            // directory: the server takes its workspace from rootUri, but the
+            // process won't launch in a directory that doesn't exist.
+            .withWorkingDirectory(launch.workingDirectory)
             // Use the user's login-shell environment so tools dang shells out
             // to (dagger, direnv) and DAGGER_* variables are visible even when
             // the IDE was launched from a desktop launcher.
             .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
             .withCharset(Charsets.UTF_8)
+    }
 
-    // The server takes its workspace from rootUri/workspaceFolders; the
-    // working directory only needs to exist, or the process won't launch.
-    private fun workingDirectory(): Path? =
-        (listOfNotNull(project.basePath?.let { Path.of(it) }) +
-            roots.filter { it.isInLocalFileSystem }.map { it.toNioPath() })
-            .firstOrNull { it.isDirectory() }
+    private companion object {
+        val LOG = logger<DangLspClientDescriptor>()
+    }
 }
 
 fun restartDangLspServers(project: Project) {
     project.putUserData(MISSING_BINARY_NOTIFIED, null)
+    project.putUserData(MISSING_MISE_NOTIFIED, null)
     LspClientManager.getInstance(project).stopAndRestartClientsIfNeeded(DangLspIntegrationProvider::class.java)
 }
 
 private val MISSING_BINARY_NOTIFIED = Key.create<Boolean>("dang.missingBinaryNotified")
+private val MISSING_MISE_NOTIFIED = Key.create<Boolean>("dang.missingMiseNotified")
+
+private fun notifyMiseMissing(project: Project, configured: String?) {
+    if (project.getUserData(MISSING_MISE_NOTIFIED) == true) return
+    project.putUserData(MISSING_MISE_NOTIFIED, true)
+
+    val content = if (configured.isNullOrBlank()) {
+        "This project has a mise config, but <code>mise</code> was not found on PATH, so the language server " +
+            "uses the tools on PATH instead of the project's pinned versions (e.g. a different dagger, " +
+            "which starts a different engine). Install mise or set its path."
+    } else {
+        "The configured <code>mise</code> binary does not exist: <code>$configured</code>. " +
+            "The language server uses the tools on PATH instead of the project's pinned versions."
+    }
+    NotificationGroupManager.getInstance()
+        .getNotificationGroup("Dang")
+        .createNotification("Dang language server not using mise", content, NotificationType.WARNING)
+        .addAction(
+            NotificationAction.createSimpleExpiring("Configure…") {
+                ShowSettingsUtil.getInstance().showSettingsDialog(project, DangConfigurable::class.java)
+            },
+        )
+        .notify(project)
+}
 
 private fun notifyMissingBinary(project: Project, configured: String?) {
     if (project.getUserData(MISSING_BINARY_NOTIFIED) == true) return
