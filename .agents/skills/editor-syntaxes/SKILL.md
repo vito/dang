@@ -5,9 +5,9 @@ description: How to maintain editor syntax definitions for Dang. Use when adding
 
 # Editor Syntax Maintenance
 
-Dang has syntax definitions for three editors. When the language grammar
+Dang has syntax definitions for four editors. When the language grammar
 changes (keywords added/removed, tokens renamed, new constructs), all
-three must be updated in sync.
+four must be updated in sync.
 
 ## Locations
 
@@ -15,6 +15,15 @@ three must be updated in sync.
 - `editors/vscode/syntaxes/dang.tmLanguage.json` — TextMate grammar
 - Lives in the main repo (not a submodule)
 - Keywords are in the `keyword-control` pattern as a `\b(...)\b` regex
+
+### IntelliJ
+- `editors/intellij/src/main/kotlin/danglang/intellij/lang/DangLexer.kt` —
+  hand-written highlighting lexer mirroring the TextMate grammar
+- Keywords are the `KEYWORDS`, `DECLARATION_KEYWORDS`, `CONSTANTS` and
+  `BUILTINS` sets in its companion object; `DangLexerTest` fails if they
+  drift from the TextMate grammar's word lists
+- New token kinds (string syntax, operators) need handling in the lexer and
+  a colour mapping in `DangSyntaxHighlighter.kt`
 
 ### Zed
 - `editors/zed/languages/dang/highlights.scm` — tree-sitter highlights
